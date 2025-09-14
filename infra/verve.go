@@ -2,6 +2,10 @@ package main
 
 import (
 	"github.com/aws/aws-cdk-go/awscdk/v2"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awsapigateway"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awsdynamodb"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awslambda"
+
 	// "github.com/aws/aws-cdk-go/awscdk/v2/awssqs"
 	"github.com/aws/constructs-go/constructs/v10"
 	"github.com/aws/jsii-runtime-go"
@@ -18,12 +22,42 @@ func NewVerveStack(scope constructs.Construct, id string, props *VerveStackProps
 	}
 	stack := awscdk.NewStack(scope, &id, &sprops)
 
-	// The code that defines your stack goes here
+	table := awsdynamodb.NewTable(stack, jsii.String("VerveHealthLogsTable"), &awsdynamodb.TableProps{
+		PartitionKey: &awsdynamodb.Attribute{
+			Name: jsii.String("userId"),
+			Type: awsdynamodb.AttributeType_STRING,
+		},
+		SortKey: &awsdynamodb.Attribute{
+			Name: jsii.String("timestamp"),
+			Type: awsdynamodb.AttributeType_STRING,
+		},
+		TableName:   jsii.String("verve-health-logs"),
+		BillingMode: awsdynamodb.BillingMode_PAY_PER_REQUEST,
+	})
 
-	// example resource
-	// queue := awssqs.NewQueue(stack, jsii.String("VerveQueue"), &awssqs.QueueProps{
-	// 	VisibilityTimeout: awscdk.Duration_Seconds(jsii.Number(300)),
-	// })
+	myFunction := awslambda.NewFunction(stack, jsii.String("VerveHealthLogsFunction"), &awslambda.FunctionProps{
+		Runtime: awslambda.Runtime_PROVIDED_AL2023(),
+		Handler: jsii.String("bootstrap"),
+		Code:    awslambda.Code_FromAsset(jsii.String("../lambda"), nil),
+		Environment: &map[string]*string{
+			"DYNAMODB_TABLE_NAME": table.TableName(),
+		},
+	})
+	table.GrantReadWriteData(myFunction)
+
+	api := awsapigateway.NewRestApi(stack, jsii.String("VerveHealthLogsAPI"), &awsapigateway.RestApiProps{
+		DefaultCorsPreflightOptions: &awsapigateway.CorsOptions{
+			AllowHeaders: jsii.Strings("Content-Type", "Authorization"),
+			AllowMethods: jsii.Strings("GET", "POST", "DELETE", "PUT", "OPTIONS"),
+			AllowOrigins: jsii.Strings("*"),
+		},
+	})
+
+	integration := awsapigateway.NewLambdaIntegration(myFunction, nil)
+
+	logsResource := api.Root().AddResource(jsii.String("logs"), nil)
+	logsResource.AddMethod(jsii.String("POST"), integration, nil)
+	logsResource.AddMethod(jsii.String("GET"), integration, nil)
 
 	return stack
 }
