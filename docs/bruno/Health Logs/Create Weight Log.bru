@@ -1,0 +1,29 @@
+meta {
+  name: Create Weight Log
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{BASE_URL}}/logs
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "userId": "1",
+    "type": "weight",
+    "value": "88.55"
+  }
+}
+
+tests {
+  test("Status should be 201", function() {
+    expect(res.getStatus()).to.equal(201);
+  });
+}

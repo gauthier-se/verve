@@ -1,0 +1,30 @@
+meta {
+  name: Delete Health Log
+  type: http
+  seq: 4
+}
+
+delete {
+  url: {{BASE_URL}}/logs
+  body: none
+  auth: none
+}
+
+params:query {
+  userId: test-user-123
+  timestamp: 2024-09-18T10:30:00Z
+}
+
+tests {
+  test("Status should be 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+
+  test("Response should have success", function() {
+    expect(res.getBody()).to.have.property('success', true);
+  });
+
+  test("Response should have message", function() {
+    expect(res.getBody()).to.have.property('message');
+  });
+}

@@ -20,3 +20,4 @@ cdk.out
 
 tmp/
 *bootstrap*
+docs/bruno/environments/Local.bru
