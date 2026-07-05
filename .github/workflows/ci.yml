@@ -10,17 +10,9 @@ permissions:
   contents: read
 
 jobs:
-  commitlint:
-    name: Commit convention
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Lint commits (Conventional Commits)
-        uses: wagoid/commitlint-github-action@v6
-
+  # Conventional Commits are still encouraged (commitlint.config.mjs + .gitmessage
+  # for local use), but not enforced in CI: the format is a good practice, not a
+  # merge blocker.
   go:
     name: Go build, vet, test
     runs-on: ubuntu-latest
