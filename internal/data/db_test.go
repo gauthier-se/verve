@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"database/sql"
+	"io/fs"
 	"path/filepath"
 	"testing"
 )
@@ -68,12 +69,18 @@ func TestMigrateIsIdempotent(t *testing.T) {
 		}
 	}
 
+	// Each embedded migration must be recorded exactly once, no matter how many
+	// times Migrate runs.
+	wantVersions, err := fs.Glob(migrationsFS, migrationsDir+"/*.sql")
+	if err != nil {
+		t.Fatalf("glob migrations: %v", err)
+	}
 	var count int
 	if err := db.QueryRow(`SELECT count(*) FROM schema_migrations`).Scan(&count); err != nil {
 		t.Fatalf("count schema_migrations: %v", err)
 	}
-	if count != 1 {
-		t.Errorf("schema_migrations rows = %d, want 1", count)
+	if count != len(wantVersions) {
+		t.Errorf("schema_migrations rows = %d, want %d", count, len(wantVersions))
 	}
 
 	// The accounts table must exist and be usable after re-migration.
