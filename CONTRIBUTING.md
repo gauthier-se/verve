@@ -65,8 +65,11 @@ git config commit.template .gitmessage
 
 ### Enforcement
 
-CI validates the Conventional Commits format on every pull request (see
-`.github/workflows/ci.yml`). Non-conforming commits fail the check.
+Conventional Commits are encouraged but **not enforced by CI** — the format is a
+good practice, not a merge blocker. Use the bundled tooling locally to stay
+consistent: point git at the template (below) and run commitlint against your
+own commits if you like (`npx commitlint --from origin/main`, config in
+`commitlint.config.mjs`).
 
 ## Workflow
 
