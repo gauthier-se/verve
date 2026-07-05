@@ -1,0 +1,31 @@
+# --- Personal / sensitive data ---
+sample_data/
+
+# --- Verve runtime data ---
+# The data directory (verve.db, artifacts/, imports).
+/data/
+*.db
+*.db-wal
+*.db-shm
+artifacts/
+
+# --- Go ---
+/bin/
+verve
+*.test
+*.out
+coverage.*
+
+# --- Node / front-end ---
+node_modules/
+dist/
+.vite/
+*.local
+
+# --- Editors / OS ---
+.DS_Store
+.idea/
+.vscode/
+*.swp
+.envrc
+.env

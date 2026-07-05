@@ -1,0 +1,9 @@
+# <type>(<scope>): <short summary>   (<=72 chars, imperative mood)
+#
+# <body: what & why, wrap at 72>
+#
+# <footer: BREAKING CHANGE: …  /  Refs: .scratch/<feature>/issues/NN>
+#
+# type:  feat fix docs refactor perf test build ci chore style
+# scope: catalog connector ingestion data query api auth spa dashboard packaging deps
+# Conventional Commits — see CONTRIBUTING.md
