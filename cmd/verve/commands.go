@@ -115,13 +115,26 @@ func (app *application) importCommand(ctx context.Context, args []string) error 
 		return err
 	}
 
+	// The artifacts dir (where GPX routes are copied) is created at startup in
+	// run(), so it already exists here.
 	app.logger.Info("import started", "account", acc.Email, "file", path)
-	report, err := applehealth.Import(ctx, app.models.Measurements, acc.ID, path)
+	report, err := applehealth.Import(ctx, importStore{
+		app.models.Measurements, app.models.States, app.models.Sessions,
+	}, acc.ID, path, app.config.artifactsDir())
 	if err != nil {
 		return err
 	}
 	renderReport(os.Stdout, report)
 	return nil
+}
+
+// importStore satisfies applehealth.Store by embedding the family models, whose
+// promoted methods (InsertBatch, InsertStateBatch, InsertSession, …) together
+// cover the interface — so the Connector writes through one value.
+type importStore struct {
+	data.MeasurementModel
+	data.StateModel
+	data.SessionModel
 }
 
 // renderReport writes a human-readable import summary: one line per Metric with
@@ -140,6 +153,13 @@ func renderReport(w io.Writer, r applehealth.Report) {
 		fmt.Fprintf(w, "  %-38s %8d added  %8d skipped\n", slug, c.Added, c.Skipped)
 	}
 
+	renderFamily(w, "States", r.PerState)
+	renderFamily(w, "Sessions", r.PerActivity)
+
+	if r.RoutesAdded > 0 || r.RoutesSkipped > 0 {
+		fmt.Fprintf(w, "\n  Routes: %d added, %d skipped\n", r.RoutesAdded, r.RoutesSkipped)
+	}
+
 	if len(r.UnmappedTypes) > 0 {
 		fmt.Fprintf(w, "\n  Unmapped (kept for a later slice):\n")
 		types := make([]string, 0, len(r.UnmappedTypes))
@@ -152,5 +172,26 @@ func renderReport(w io.Writer, r applehealth.Report) {
 		}
 	}
 
-	fmt.Fprintf(w, "\n  Total: %d added, %d skipped, %d unmapped\n\n", r.Added, r.Skipped, r.Unmapped)
+	fmt.Fprintf(w, "\n  Total: %d measurements, %d states, %d sessions, %d routes added",
+		r.Added, r.StatesAdded, r.SessionsAdded, r.RoutesAdded)
+	fmt.Fprintf(w, " (%d/%d/%d/%d skipped, %d unmapped)\n\n",
+		r.Skipped, r.StatesSkipped, r.SessionsSkipped, r.RoutesSkipped, r.Unmapped)
+}
+
+// renderFamily prints one non-scalar family's per-bucket added/skipped tallies
+// (States by kind, Sessions by activity type), sorted for a stable report.
+func renderFamily(w io.Writer, title string, per map[string]applehealth.Tally) {
+	if len(per) == 0 {
+		return
+	}
+	keys := make([]string, 0, len(per))
+	for k := range per {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	fmt.Fprintf(w, "\n  %s:\n", title)
+	for _, k := range keys {
+		c := per[k]
+		fmt.Fprintf(w, "    %-38s %8d added  %8d skipped\n", k, c.Added, c.Skipped)
+	}
 }
