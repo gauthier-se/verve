@@ -11,6 +11,22 @@ import (
 	"github.com/gauthier-se/verve/internal/data"
 )
 
+// tinyExport is a minimal Apple Health export written to a temp file for the
+// import-command tests.
+const tinyExport = `<HealthData locale="en_US">
+ <Record type="HKQuantityTypeIdentifierStepCount" sourceName="Watch" unit="count" startDate="2024-01-01 08:00:00 +0000" endDate="2024-01-01 09:00:00 +0000" value="120"/>
+ <Record type="HKCategoryTypeIdentifierSleepAnalysis" sourceName="Watch" startDate="2024-01-01 23:00:00 +0000" endDate="2024-01-02 06:00:00 +0000" value="HKCategoryValueSleepAnalysisAsleepCore"/>
+</HealthData>`
+
+func writeExport(t *testing.T, dir string) string {
+	t.Helper()
+	path := filepath.Join(dir, "export.xml")
+	if err := os.WriteFile(path, []byte(tinyExport), 0o600); err != nil {
+		t.Fatalf("write export: %v", err)
+	}
+	return path
+}
+
 func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
@@ -100,5 +116,63 @@ func TestRunAcceptance(t *testing.T) {
 	defer db.Close()
 	if _, err := data.NewModels(db).Accounts.GetByEmail(ctx, "alice@example.com"); err != nil {
 		t.Fatalf("account not visible after run: %v", err)
+	}
+}
+
+func TestImportCommand(t *testing.T) {
+	app := newTestApp(t)
+	ctx := context.Background()
+	if err := app.accountCreate(ctx, []string{"--email=me@example.com"}); err != nil {
+		t.Fatalf("accountCreate: %v", err)
+	}
+	path := writeExport(t, t.TempDir())
+
+	if err := app.importCommand(ctx, []string{"--account=me@example.com", path}); err != nil {
+		t.Fatalf("importCommand: %v", err)
+	}
+
+	acc, err := app.models.Accounts.GetByEmail(ctx, "me@example.com")
+	if err != nil {
+		t.Fatalf("GetByEmail: %v", err)
+	}
+	var count int
+	if err := app.db.QueryRowContext(ctx,
+		`SELECT count(*) FROM measurements WHERE account_id = ? AND metric = 'steps'`, acc.ID).Scan(&count); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("steps rows = %d, want 1", count)
+	}
+
+	// Re-importing the same file is idempotent: no new rows.
+	if err := app.importCommand(ctx, []string{"--account=me@example.com", path}); err != nil {
+		t.Fatalf("second importCommand: %v", err)
+	}
+	if err := app.db.QueryRowContext(ctx,
+		`SELECT count(*) FROM measurements WHERE account_id = ?`, acc.ID).Scan(&count); err != nil {
+		t.Fatalf("count all: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("measurement rows after re-import = %d, want 1", count)
+	}
+}
+
+func TestImportCommandUnknownAccount(t *testing.T) {
+	app := newTestApp(t)
+	path := writeExport(t, t.TempDir())
+	err := app.importCommand(context.Background(), []string{"--account=ghost@example.com", path})
+	if err == nil {
+		t.Error("import for a nonexistent account should error")
+	}
+}
+
+func TestImportCommandRequiresArgs(t *testing.T) {
+	app := newTestApp(t)
+	ctx := context.Background()
+	if err := app.importCommand(ctx, []string{"somefile.xml"}); err == nil {
+		t.Error("import without --account should error")
+	}
+	if err := app.importCommand(ctx, []string{"--account=me@example.com"}); err == nil {
+		t.Error("import without a file argument should error")
 	}
 }

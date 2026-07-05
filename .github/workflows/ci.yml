@@ -10,9 +10,8 @@ permissions:
   contents: read
 
 jobs:
-  # Conventional Commits are still encouraged (commitlint.config.mjs + .gitmessage
-  # for local use), but not enforced in CI: the format is a good practice, not a
-  # merge blocker.
+  # Conventional Commits are encouraged as a good practice, but not enforced in
+  # CI: the format is a convention, not a merge blocker.
   go:
     name: Go build, vet, test
     runs-on: ubuntu-latest
