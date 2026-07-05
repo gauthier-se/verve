@@ -2,6 +2,7 @@ package applehealth
 
 import (
 	"context"
+	"database/sql"
 	"io"
 	"log/slog"
 	"path/filepath"
@@ -12,9 +13,17 @@ import (
 	"github.com/gauthier-se/verve/internal/data"
 )
 
-// openStore opens a fresh migrated DB and returns its MeasurementModel (which
-// satisfies Store) plus a seeded account id.
-func openStore(t *testing.T) (data.MeasurementModel, int64) {
+// testStore satisfies Store by embedding the family models, exactly as the CLI's
+// importStore does, so the Connector writes every family through one value.
+type testStore struct {
+	data.MeasurementModel
+	data.StateModel
+	data.SessionModel
+}
+
+// openStore opens a fresh migrated DB and returns a Store over every family plus
+// the underlying handle (for SELECT assertions) and a seeded account id.
+func openStore(t *testing.T) (testStore, *sql.DB, int64) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "verve.db")
 	db, err := data.Open(path)
@@ -30,7 +39,7 @@ func openStore(t *testing.T) (data.MeasurementModel, int64) {
 	if err := models.Accounts.Insert(context.Background(), acc); err != nil {
 		t.Fatalf("seed account: %v", err)
 	}
-	return models.Measurements, acc.ID
+	return testStore{models.Measurements, models.States, models.Sessions}, db, acc.ID
 }
 
 // sampleXML is a tiny export: two mappable scalar Records (one in kg, one a
@@ -48,10 +57,10 @@ const sampleXML = `<?xml version="1.0" encoding="UTF-8"?>
 </HealthData>`
 
 func TestImportStreamMapsAndBins(t *testing.T) {
-	store, acc := openStore(t)
+	store, db, acc := openStore(t)
 	ctx := context.Background()
 
-	report, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(sampleXML))
+	report, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(sampleXML), t.TempDir(), nil)
 	if err != nil {
 		t.Fatalf("importStream: %v", err)
 	}
@@ -67,18 +76,30 @@ func TestImportStreamMapsAndBins(t *testing.T) {
 	if got := report.PerMetric["body_mass"].Added; got != 1 {
 		t.Errorf("body_mass added = %d, want 1", got)
 	}
-	// The sleep category is out of scope → Unmapped bin, kept not dropped.
-	if report.Unmapped != 1 {
-		t.Errorf("Unmapped = %d, want 1", report.Unmapped)
+	// The sleep category is now a State, not an Unmapped record.
+	if report.Unmapped != 0 {
+		t.Errorf("Unmapped = %d, want 0", report.Unmapped)
 	}
-	if got := report.UnmappedTypes["HKCategoryTypeIdentifierSleepAnalysis"]; got != 1 {
-		t.Errorf("unmapped sleep count = %d, want 1", got)
+	if report.StatesAdded != 1 {
+		t.Errorf("StatesAdded = %d, want 1", report.StatesAdded)
+	}
+	if got := report.PerState["sleep"].Added; got != 1 {
+		t.Errorf("sleep states added = %d, want 1", got)
+	}
+	var kind, stateValue string
+	if err := db.QueryRowContext(ctx,
+		`SELECT kind, state_value FROM states WHERE account_id = ?`, acc).
+		Scan(&kind, &stateValue); err != nil {
+		t.Fatalf("select state: %v", err)
+	}
+	if kind != "sleep" || stateValue != "asleep_core" {
+		t.Errorf("state = (%q, %q), want (sleep, asleep_core)", kind, stateValue)
 	}
 
 	// A SELECT shows canonical slugs, canonical units, normalized times, owner.
 	var metric, unit, start, source string
 	var value float64
-	err = store.DB.QueryRowContext(ctx,
+	err = db.QueryRowContext(ctx,
 		`SELECT metric, value, original_unit, start_at, source FROM measurements
 		 WHERE account_id = ? AND metric = 'steps'`, acc).
 		Scan(&metric, &value, &unit, &start, &source)
@@ -99,13 +120,13 @@ func TestImportStreamMapsAndBins(t *testing.T) {
 // TestImportStreamIdempotent is the acceptance guard: importing the same stream
 // twice adds nothing the second time (ADR 0006).
 func TestImportStreamIdempotent(t *testing.T) {
-	store, acc := openStore(t)
+	store, db, acc := openStore(t)
 	ctx := context.Background()
 
-	if _, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(sampleXML)); err != nil {
+	if _, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(sampleXML), t.TempDir(), nil); err != nil {
 		t.Fatalf("first import: %v", err)
 	}
-	report, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(sampleXML))
+	report, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(sampleXML), t.TempDir(), nil)
 	if err != nil {
 		t.Fatalf("second import: %v", err)
 	}
@@ -115,33 +136,43 @@ func TestImportStreamIdempotent(t *testing.T) {
 	if report.Skipped != 2 {
 		t.Errorf("re-import Skipped = %d, want 2", report.Skipped)
 	}
+	// The sleep State is idempotent too: nothing added, one skipped.
+	if report.StatesAdded != 0 || report.StatesSkipped != 1 {
+		t.Errorf("re-import states = %d added, %d skipped, want 0/1", report.StatesAdded, report.StatesSkipped)
+	}
 
 	var count int
-	if err := store.DB.QueryRowContext(ctx, `SELECT count(*) FROM measurements WHERE account_id = ?`, acc).Scan(&count); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM measurements WHERE account_id = ?`, acc).Scan(&count); err != nil {
 		t.Fatalf("count: %v", err)
 	}
 	if count != 2 {
 		t.Errorf("measurement rows after re-import = %d, want 2", count)
+	}
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM states WHERE account_id = ?`, acc).Scan(&count); err != nil {
+		t.Fatalf("count states: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("state rows after re-import = %d, want 1", count)
 	}
 }
 
 // TestImportStreamNormalizesUnits feeds a body mass in grams and expects it
 // stored in the canonical kg, with the original unit preserved.
 func TestImportStreamNormalizesUnits(t *testing.T) {
-	store, acc := openStore(t)
+	store, db, acc := openStore(t)
 	ctx := context.Background()
 
 	const grams = `<HealthData locale="en_US">
  <Record type="HKQuantityTypeIdentifierBodyMass" sourceName="Scale" unit="g" startDate="2024-02-01 07:00:00 +0000" endDate="2024-02-01 07:00:00 +0000" value="70500"/>
 </HealthData>`
 
-	if _, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(grams)); err != nil {
+	if _, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(grams), t.TempDir(), nil); err != nil {
 		t.Fatalf("importStream: %v", err)
 	}
 
 	var value float64
 	var unit string
-	if err := store.DB.QueryRowContext(ctx,
+	if err := db.QueryRowContext(ctx,
 		`SELECT value, original_unit FROM measurements WHERE account_id = ? AND metric = 'body_mass'`, acc).
 		Scan(&value, &unit); err != nil {
 		t.Fatalf("select: %v", err)
