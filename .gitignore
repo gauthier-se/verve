@@ -11,7 +11,8 @@ artifacts/
 
 # --- Go ---
 /bin/
-verve
+# Root-level built binary (anchored so it doesn't match the cmd/verve/ source dir).
+/verve
 *.test
 *.out
 coverage.*
