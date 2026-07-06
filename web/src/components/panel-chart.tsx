@@ -98,8 +98,14 @@ function renderChart(chartType: ChartType, data: ChartData, axes: Axes): React.R
           <Line type="monotone" dataKey="value" stroke={VALUE} strokeWidth={2} dot={false} />
         </ComposedChart>
       );
-    case "bar":
+    // stacked_bar is the sleep (duration_by_state) variant. That aggregation is
+    // not served yet — the query engine defers it and no Catalog Metric uses it
+    // (internal/query/query.go) — so this Series never carries per-state values
+    // to stack. Until it does, the branch renders the single value as a plain
+    // bar rather than pretending to stack; the true stacked rendering lands with
+    // the sleep slice.
     case "stacked_bar":
+    case "bar":
     default:
       return (
         <BarChart data={data} margin={margin}>

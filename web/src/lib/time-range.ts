@@ -6,7 +6,11 @@ import { differenceInCalendarDays, format, subDays, subMonths, subYears } from "
 import type { Bucket, Dashboard, Panel } from "./types";
 
 /** ALL_FLOOR is the lower bound the "All" preset expands to — earlier than any
- *  plausible imported history, so it effectively means "everything". */
+ *  plausible imported history, so it effectively means "everything". Its span is
+ *  always >1y, so autoBucket resolves it to `month`, which keeps the bucket
+ *  count under the server's range-too-large cap (a day bucket over this span
+ *  would be rejected). The two must stay consistent: a much later floor with a
+ *  finer auto-bucket could exceed the cap. */
 const ALL_FLOOR = "2000-01-01";
 
 const DAY = "yyyy-MM-dd";

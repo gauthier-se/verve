@@ -482,7 +482,7 @@ func validateChartType(v *Validator, chartType string, agg catalog.Aggregation) 
 	case "band":
 		v.Check(agg == catalog.Average, "chart_type", "the band variant is only for average metrics")
 	case "stacked_bar":
-		v.Check(agg == catalog.DurationByState, "chart_type", "the stacked-bar variant is only for sleep")
+		v.Check(agg == catalog.DurationByState, "chart_type", "the stacked-bar variant is only for duration-by-state metrics")
 	}
 }
 

@@ -27,5 +27,15 @@ export default defineConfig({
     // keeps go:embed compiling before the first UI build. The `make ui` target
     // clears stale hashed assets/ instead.
     emptyOutDir: false,
+    rollupOptions: {
+      output: {
+        // Split the charting library (the heaviest dependency) into its own
+        // hashed chunk: it changes rarely, so a returning visitor re-downloads
+        // only the app chunk, and neither chunk trips the size warning.
+        manualChunks: {
+          charts: ["recharts"],
+        },
+      },
+    },
   },
 });
