@@ -19,9 +19,14 @@ coverage.*
 
 # --- Node / front-end ---
 node_modules/
-dist/
 .vite/
 *.local
+
+# Built SPA assets are embedded via go:embed at build time, not committed. Keep
+# the dist directory itself (its .gitkeep placeholder lets `go:embed` compile
+# before the UI is built) but ignore the Vite build output written into it.
+/internal/web/dist/*
+!/internal/web/dist/.gitkeep
 
 # --- Editors / OS ---
 .DS_Store

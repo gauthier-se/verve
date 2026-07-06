@@ -26,6 +26,10 @@ type Config struct {
 	SecureCookies bool
 	// SessionTTL is how long a new session lasts; zero uses defaultSessionTTL.
 	SessionTTL time.Duration
+	// SPA serves the embedded front-end on every non-/v1 path (ADR 0005). It is
+	// injected so the api package stays decoupled from the web-assets package and
+	// tests can run without embedding a build. Nil means API-only (no SPA mount).
+	SPA http.Handler
 }
 
 // Server holds the HTTP layer's dependencies. It owns no global state.
@@ -37,6 +41,7 @@ type Server struct {
 	loginLimiter  *loginLimiter
 	secureCookies bool
 	sessionTTL    time.Duration
+	spa           http.Handler
 	// decoyHash is verified against on logins for missing accounts so timing does
 	// not reveal which emails exist. It is a hash of an unguessable value.
 	decoyHash string
@@ -65,14 +70,16 @@ func New(logger *slog.Logger, models data.Models, engine query.Engine, cfg Confi
 		loginLimiter:  newLoginLimiter(),
 		secureCookies: cfg.SecureCookies,
 		sessionTTL:    ttl,
+		spa:           cfg.SPA,
 		decoyHash:     decoy,
 	}
 }
 
 // Handler builds the routed, panic-recovering http.Handler for the server. It
-// uses Go 1.22 method+pattern routing so an unknown path 404s and a wrong
-// method 405s for free. The whole mux runs behind authenticate (identity
-// resolution); Account-data routes additionally sit behind requireAuth.
+// uses Go 1.22 method+pattern routing so an unknown /v1 path 404s and a wrong
+// method 405s for free. The /v1 mux runs behind authenticate (identity
+// resolution); Account-data routes additionally sit behind requireAuth. Every
+// non-/v1 path is served by the embedded SPA (ADR 0005) when one is configured.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
@@ -88,8 +95,26 @@ func (s *Server) Handler() http.Handler {
 	// Account data: only the authenticated Account's own series.
 	mux.Handle("GET /v1/series", s.requireAuth(s.handleSeries))
 
-	// The mux's method+pattern routing 404s an unknown path and 405s a known
-	// path with the wrong method for free; those routing-level errors keep the
-	// stdlib's plain-text body, while every application error is JSON.
-	return s.recoverPanic(s.authenticate(mux))
+	// Dashboards and their Panels: Account-scoped CRUD backing the SPA.
+	mux.Handle("GET /v1/dashboards", s.requireAuth(s.handleListDashboards))
+	mux.Handle("POST /v1/dashboards", s.requireAuth(s.handleCreateDashboard))
+	mux.Handle("GET /v1/dashboards/{id}", s.requireAuth(s.handleGetDashboard))
+	mux.Handle("PATCH /v1/dashboards/{id}", s.requireAuth(s.handleUpdateDashboard))
+	mux.Handle("DELETE /v1/dashboards/{id}", s.requireAuth(s.handleDeleteDashboard))
+	mux.Handle("POST /v1/dashboards/{id}/panels", s.requireAuth(s.handleCreatePanel))
+	mux.Handle("PATCH /v1/dashboards/{id}/panels/order", s.requireAuth(s.handleReorderPanels))
+	mux.Handle("PATCH /v1/panels/{id}", s.requireAuth(s.handleUpdatePanel))
+	mux.Handle("DELETE /v1/panels/{id}", s.requireAuth(s.handleDeletePanel))
+
+	// Split the surface: /v1/* is the JSON API (identity-resolved), everything
+	// else is the SPA. The mux's method+pattern routing 404s an unknown /v1 path
+	// and 405s a known one with the wrong method for free; those routing-level
+	// errors keep the stdlib's plain-text body, while every application error is
+	// JSON.
+	root := http.NewServeMux()
+	root.Handle("/v1/", s.authenticate(mux))
+	if s.spa != nil {
+		root.Handle("/", s.spa)
+	}
+	return s.recoverPanic(root)
 }
