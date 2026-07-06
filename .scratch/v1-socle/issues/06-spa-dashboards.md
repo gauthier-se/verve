@@ -55,3 +55,17 @@ Rich workout UI + GPS map (v1.x). Cross-metric / period comparison / annotations
 
 ADR 0005 (embedded SPA), 0012 (aggregated API + shadcn/Recharts), 0013 (TanStack
 libs, not Start). Glossary: Dashboard, Panel, Time range.
+
+## Comments
+
+**Implemented** on branch `feat/spa-dashboards` (commits `c415508`, `79028cf`,
+`67d218a`). All three acceptance criteria verified end-to-end (login → dashboard
+→ steps panel over real seeded data → range change refetches panels; single
+binary serves the embedded SPA with an index fallback). `make ci` green.
+
+Deferred within the listed scope, both reasonably: **TanStack Table** (no tabular
+view is needed for a chart-only v1) and the true **stacked-bar** rendering for
+sleep (`duration_by_state` is not served by the query engine yet and no Catalog
+Metric uses it — the chart-type is plumbed through but renders as a plain bar
+until the sleep slice lands). Two-axis `/code-review` run; follow-ups applied in
+`67d218a`.
