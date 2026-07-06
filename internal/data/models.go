@@ -9,6 +9,7 @@ import (
 // single injected value rather than reaching for *sql.DB directly.
 type Models struct {
 	Accounts     AccountModel
+	AuthSessions AuthSessionModel
 	Measurements MeasurementModel
 	States       StateModel
 	Sessions     SessionModel
@@ -22,6 +23,7 @@ type Models struct {
 func NewModels(db *sql.DB) Models {
 	return Models{
 		Accounts:     AccountModel{DB: db},
+		AuthSessions: AuthSessionModel{DB: db},
 		Measurements: MeasurementModel{DB: db},
 		States:       StateModel{DB: db},
 		Sessions:     SessionModel{DB: db},

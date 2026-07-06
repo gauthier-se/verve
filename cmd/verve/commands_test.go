@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/gauthier-se/verve/internal/auth"
 	"github.com/gauthier-se/verve/internal/data"
 )
 
@@ -32,6 +33,8 @@ func testLogger() *slog.Logger {
 }
 
 // newTestApp builds an application backed by a fresh, migrated temp database.
+// stdout is discarded; stdin is set per-test with feedStdin when a command needs
+// a password.
 func newTestApp(t *testing.T) *application {
 	t.Helper()
 
@@ -44,14 +47,34 @@ func newTestApp(t *testing.T) *application {
 	if err := data.Migrate(context.Background(), db, testLogger()); err != nil {
 		t.Fatalf("Migrate: %v", err)
 	}
-	return &application{config: cfg, logger: testLogger(), db: db, models: data.NewModels(db)}
+	return &application{config: cfg, logger: testLogger(), db: db, models: data.NewModels(db), stdout: io.Discard}
 }
+
+// feedStdin points app.stdin at a pipe pre-loaded with content, so a
+// --password-stdin command reads content as its password.
+func feedStdin(t *testing.T, app *application, content string) {
+	t.Helper()
+	pr, pw, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	if _, err := pw.WriteString(content); err != nil {
+		t.Fatalf("write stdin: %v", err)
+	}
+	pw.Close()
+	app.stdin = pr
+	t.Cleanup(func() { pr.Close() })
+}
+
+// testPassword is a valid (>= minPasswordLength) password for CLI tests.
+const testPassword = "s3cret-pass"
 
 func TestAccountCreate(t *testing.T) {
 	app := newTestApp(t)
 	ctx := context.Background()
+	feedStdin(t, app, testPassword+"\n")
 
-	if err := app.accountCreate(ctx, []string{"--email=bob@example.com"}); err != nil {
+	if err := app.accountCreate(ctx, []string{"--email=bob@example.com", "--password-stdin"}); err != nil {
 		t.Fatalf("accountCreate: %v", err)
 	}
 
@@ -61,6 +84,56 @@ func TestAccountCreate(t *testing.T) {
 	}
 	if got.Email != "bob@example.com" {
 		t.Errorf("Email = %q, want bob@example.com", got.Email)
+	}
+	// The password is stored as an argon2id hash and verifies.
+	if got.PasswordHash == nil {
+		t.Fatal("PasswordHash is nil, want a stored hash")
+	}
+	if ok, err := auth.VerifyPassword(testPassword, *got.PasswordHash); err != nil || !ok {
+		t.Errorf("VerifyPassword = %v, %v; want true, nil", ok, err)
+	}
+}
+
+func TestAccountCreateRejectsShortPassword(t *testing.T) {
+	app := newTestApp(t)
+	feedStdin(t, app, "short\n")
+	if err := app.accountCreate(context.Background(), []string{"--email=x@example.com", "--password-stdin"}); err == nil {
+		t.Error("accountCreate with a too-short password should error")
+	}
+}
+
+func TestAccountPasswd(t *testing.T) {
+	app := newTestApp(t)
+	ctx := context.Background()
+
+	feedStdin(t, app, testPassword+"\n")
+	if err := app.accountCreate(ctx, []string{"--email=carol@example.com", "--password-stdin"}); err != nil {
+		t.Fatalf("accountCreate: %v", err)
+	}
+
+	const newPassword = "brand-new-pass"
+	feedStdin(t, app, newPassword+"\n")
+	if err := app.accountPasswd(ctx, []string{"--email=carol@example.com", "--password-stdin"}); err != nil {
+		t.Fatalf("accountPasswd: %v", err)
+	}
+
+	got, err := app.models.Accounts.GetByID(ctx, 1)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if ok, _ := auth.VerifyPassword(newPassword, *got.PasswordHash); !ok {
+		t.Error("new password does not verify after passwd")
+	}
+	if ok, _ := auth.VerifyPassword(testPassword, *got.PasswordHash); ok {
+		t.Error("old password still verifies after passwd")
+	}
+}
+
+func TestAccountPasswdUnknownAccount(t *testing.T) {
+	app := newTestApp(t)
+	feedStdin(t, app, testPassword+"\n")
+	if err := app.accountPasswd(context.Background(), []string{"--email=ghost@example.com", "--password-stdin"}); err == nil {
+		t.Error("passwd for a nonexistent account should error")
 	}
 }
 
@@ -75,10 +148,12 @@ func TestAccountCreateDuplicate(t *testing.T) {
 	app := newTestApp(t)
 	ctx := context.Background()
 
-	if err := app.accountCreate(ctx, []string{"--email=dup@example.com"}); err != nil {
+	feedStdin(t, app, testPassword+"\n")
+	if err := app.accountCreate(ctx, []string{"--email=dup@example.com", "--password-stdin"}); err != nil {
 		t.Fatalf("first accountCreate: %v", err)
 	}
-	if err := app.accountCreate(ctx, []string{"--email=dup@example.com"}); err == nil {
+	feedStdin(t, app, testPassword+"\n")
+	if err := app.accountCreate(ctx, []string{"--email=dup@example.com", "--password-stdin"}); err == nil {
 		t.Error("duplicate accountCreate should error")
 	}
 }
@@ -91,7 +166,15 @@ func TestRunAcceptance(t *testing.T) {
 	ctx := context.Background()
 
 	// First run: `account create` triggers dir creation, db open, and migration.
-	if err := run(ctx, testLogger(), []string{"-data-dir=" + dir, "account", "create", "--email=alice@example.com"}); err != nil {
+	// The password comes from a stdin pipe (--password-stdin).
+	pr, pw, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	pw.WriteString(testPassword + "\n")
+	pw.Close()
+	defer pr.Close()
+	if err := run(ctx, testLogger(), pr, io.Discard, []string{"-data-dir=" + dir, "account", "create", "--email=alice@example.com", "--password-stdin"}); err != nil {
 		t.Fatalf("first run: %v", err)
 	}
 
@@ -104,7 +187,7 @@ func TestRunAcceptance(t *testing.T) {
 	}
 
 	// Second run against the same data dir must succeed (idempotent migration).
-	if err := run(ctx, testLogger(), []string{"-data-dir=" + dir, "migrate"}); err != nil {
+	if err := run(ctx, testLogger(), os.Stdin, io.Discard, []string{"-data-dir=" + dir, "migrate"}); err != nil {
 		t.Fatalf("second run (migrate): %v", err)
 	}
 
@@ -122,7 +205,8 @@ func TestRunAcceptance(t *testing.T) {
 func TestImportCommand(t *testing.T) {
 	app := newTestApp(t)
 	ctx := context.Background()
-	if err := app.accountCreate(ctx, []string{"--email=me@example.com"}); err != nil {
+	feedStdin(t, app, testPassword+"\n")
+	if err := app.accountCreate(ctx, []string{"--email=me@example.com", "--password-stdin"}); err != nil {
 		t.Fatalf("accountCreate: %v", err)
 	}
 	path := writeExport(t, t.TempDir())

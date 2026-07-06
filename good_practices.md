@@ -95,7 +95,9 @@ struct; HTTP handlers hang off it as methods. Keeps things testable.
 
 ## 8. Security
 
-- **Passwords hashed with argon2id.** Opaque, signed session cookies for auth.
+- **Passwords hashed with argon2id.** Opaque, server-side session cookies for
+  auth — the cookie carries a high-entropy random token looked up in an
+  `auth_sessions` table, not a signed stateless token (ADR 0008 explains why).
 - **Strict per-Account isolation** on all data access (see §5).
 - **Rate limiting** on auth-sensitive endpoints to blunt brute-forcing.
 

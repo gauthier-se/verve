@@ -1,72 +1,95 @@
 // Package api is Verve's HTTP layer: a small net/http server that exposes the
 // query engine as a JSON API returning only server-side aggregated buckets,
-// never a raw series (ADR 0012). Every request is scoped to one Account (ADR
-// 0007); until auth lands (slice 05) the target Account comes from a dev flag
-// or the X-Verve-Account header.
+// never a raw series (ADR 0012). Every data request is scoped to the
+// authenticated Account (ADR 0007): local login sets an opaque session cookie
+// (ADR 0008), the authenticate middleware resolves it to an Account, and
+// requireAuth rejects unauthenticated access to Account data.
 package api
 
 import (
-	"context"
-	"errors"
 	"log/slog"
 	"net/http"
+	"time"
 
+	"github.com/gauthier-se/verve/internal/auth"
 	"github.com/gauthier-se/verve/internal/data"
 	"github.com/gauthier-se/verve/internal/query"
 )
 
-// accountHeader lets a request override the server's dev Account, so a single
-// `verve serve` can be exercised as different Accounts before auth exists.
-const accountHeader = "X-Verve-Account"
+// defaultSessionTTL is how long a login session stays valid absent an override.
+const defaultSessionTTL = 30 * 24 * time.Hour
 
-// errNoAccount means the request named no Account and the server has no dev
-// default to fall back on.
-var errNoAccount = errors.New("no account: set the -account flag or send an " + accountHeader + " header")
+// Config carries the HTTP layer's auth-facing settings.
+type Config struct {
+	// SecureCookies sets the Secure attribute on the session cookie: true behind
+	// HTTPS (production), false for plain-HTTP local development.
+	SecureCookies bool
+	// SessionTTL is how long a new session lasts; zero uses defaultSessionTTL.
+	SessionTTL time.Duration
+}
 
 // Server holds the HTTP layer's dependencies. It owns no global state.
 type Server struct {
-	logger     *slog.Logger
-	models     data.Models
-	engine     query.Engine
-	devAccount string // default Account email until auth (slice 05); may be empty
+	logger        *slog.Logger
+	models        data.Models
+	engine        query.Engine
+	resolver      authResolver
+	loginLimiter  *loginLimiter
+	secureCookies bool
+	sessionTTL    time.Duration
+	// decoyHash is verified against on logins for missing accounts so timing does
+	// not reveal which emails exist. It is a hash of an unguessable value.
+	decoyHash string
 }
 
-// New builds a Server. devAccount is the fallback Account email a request is
-// scoped to when it sends no X-Verve-Account header; it may be empty, in which
-// case every request must carry the header.
-func New(logger *slog.Logger, models data.Models, engine query.Engine, devAccount string) *Server {
-	return &Server{logger: logger, models: models, engine: engine, devAccount: devAccount}
+// New builds a Server. cfg tunes cookie security and session lifetime.
+func New(logger *slog.Logger, models data.Models, engine query.Engine, cfg Config) *Server {
+	ttl := cfg.SessionTTL
+	if ttl <= 0 {
+		ttl = defaultSessionTTL
+	}
+	// decoyHash is verified against on logins for missing accounts, so a failed
+	// login costs an argon2 verify whether or not the email exists. HashPassword
+	// only fails if the RNG does (startup-fatal territory); the empty-string
+	// fallback then verifies fast, but that path is effectively unreachable.
+	decoy, err := auth.HashPassword("verve-login-timing-decoy")
+	if err != nil {
+		logger.Error("build login timing decoy", "err", err)
+	}
+
+	return &Server{
+		logger:        logger,
+		models:        models,
+		engine:        engine,
+		resolver:      sessionResolver{sessions: models.AuthSessions},
+		loginLimiter:  newLoginLimiter(),
+		secureCookies: cfg.SecureCookies,
+		sessionTTL:    ttl,
+		decoyHash:     decoy,
+	}
 }
 
 // Handler builds the routed, panic-recovering http.Handler for the server. It
 // uses Go 1.22 method+pattern routing so an unknown path 404s and a wrong
-// method 405s for free.
+// method 405s for free. The whole mux runs behind authenticate (identity
+// resolution); Account-data routes additionally sit behind requireAuth.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+
+	// Public: liveness and the static Catalog (reference data, not Account data).
 	mux.HandleFunc("GET /v1/healthz", s.handleHealthz)
 	mux.HandleFunc("GET /v1/metrics", s.handleMetrics)
-	mux.HandleFunc("GET /v1/series", s.handleSeries)
+
+	// Auth: login and logout are public entry points; me is protected.
+	mux.HandleFunc("POST /v1/auth/login", s.handleLogin)
+	mux.HandleFunc("POST /v1/auth/logout", s.handleLogout)
+	mux.Handle("GET /v1/auth/me", s.requireAuth(s.handleMe))
+
+	// Account data: only the authenticated Account's own series.
+	mux.Handle("GET /v1/series", s.requireAuth(s.handleSeries))
+
 	// The mux's method+pattern routing 404s an unknown path and 405s a known
 	// path with the wrong method for free; those routing-level errors keep the
-	// stdlib's plain-text body, while every application error below is JSON.
-	return s.recoverPanic(mux)
-}
-
-// accountForRequest resolves the owning Account for a request: the
-// X-Verve-Account header if present, else the server's dev default. It returns
-// errNoAccount when neither is set and data.ErrRecordNotFound when the named
-// Account does not exist.
-func (s *Server) accountForRequest(ctx context.Context, r *http.Request) (int64, error) {
-	email := r.Header.Get(accountHeader)
-	if email == "" {
-		email = s.devAccount
-	}
-	if email == "" {
-		return 0, errNoAccount
-	}
-	acc, err := s.models.Accounts.GetByEmail(ctx, email)
-	if err != nil {
-		return 0, err
-	}
-	return acc.ID, nil
+	// stdlib's plain-text body, while every application error is JSON.
+	return s.recoverPanic(s.authenticate(mux))
 }
