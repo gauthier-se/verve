@@ -9,6 +9,7 @@ import (
 
 	"github.com/gauthier-se/verve/internal/api"
 	"github.com/gauthier-se/verve/internal/query"
+	"github.com/gauthier-se/verve/internal/web"
 )
 
 // serveCommand starts the HTTP server and blocks until the context is cancelled
@@ -24,7 +25,10 @@ func (app *application) serveCommand(ctx context.Context, args []string) error {
 		return err
 	}
 
-	server := api.New(app.logger, app.models, query.Engine{DB: app.db}, api.Config{SecureCookies: *secureCookie})
+	server := api.New(app.logger, app.models, query.Engine{DB: app.db}, api.Config{
+		SecureCookies: *secureCookie,
+		SPA:           web.Handler(),
+	})
 	srv := &http.Server{
 		Addr:         *addr,
 		Handler:      server.Handler(),

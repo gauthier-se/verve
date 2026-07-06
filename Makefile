@@ -20,11 +20,27 @@ help:
 	@echo "Verve — make targets:"
 	@sed -n 's/^## //p' $(MAKEFILE_LIST) | awk -F': ' '{printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
 
-## build: compile the binary into bin/
+## build: compile the binary into bin/ (embeds whatever is in internal/web/dist)
 .PHONY: build
 build:
 	@mkdir -p $(BIN_DIR)
 	$(GO) build -o $(BIN_DIR)/$(BINARY) $(CMD)
+
+## ui: install front-end deps and build the React SPA into internal/web/dist
+.PHONY: ui
+ui:
+	npm --prefix web ci
+	rm -rf internal/web/dist/assets
+	npm --prefix web run build
+
+## ui-dev: run the Vite dev server (proxies /v1 to `make run ARGS=serve`)
+.PHONY: ui-dev
+ui-dev:
+	npm --prefix web run dev
+
+## dist: build the SPA then the binary — the full single-binary release (ADR 0005)
+.PHONY: dist
+dist: ui build
 
 ## run: build and run the binary (pass flags via ARGS="...")
 .PHONY: run

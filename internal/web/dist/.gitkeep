@@ -1,0 +1,2 @@
+# Placeholder so `go:embed all:dist` compiles before the SPA is built.
+# `make ui` overwrites this directory with the real Vite build output.

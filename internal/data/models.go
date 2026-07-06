@@ -13,6 +13,8 @@ type Models struct {
 	Measurements MeasurementModel
 	States       StateModel
 	Sessions     SessionModel
+	Dashboards   DashboardModel
+	Panels       PanelModel
 
 	// db is retained for cross-cutting concerns (e.g. health checks) that need
 	// the handle itself rather than a specific DAO.
@@ -27,6 +29,8 @@ func NewModels(db *sql.DB) Models {
 		Measurements: MeasurementModel{DB: db},
 		States:       StateModel{DB: db},
 		Sessions:     SessionModel{DB: db},
+		Dashboards:   DashboardModel{DB: db},
+		Panels:       PanelModel{DB: db},
 		db:           db,
 	}
 }
