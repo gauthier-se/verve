@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -10,13 +11,21 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/gauthier-se/verve/internal/auth"
 	"github.com/gauthier-se/verve/internal/data"
 	"github.com/gauthier-se/verve/internal/query"
 )
 
+const (
+	testEmail    = "dev@example.com"
+	testPassword = "correct horse battery staple"
+)
+
 // newTestServer builds a Server over a fresh migrated DB, seeded with a dev
-// account, and returns it with the account email and models for seeding data.
-func newTestServer(t *testing.T) (*Server, data.Models) {
+// account whose password is testPassword, and returns it with the models and a
+// session cookie already authenticating that account. Cookies are non-Secure so
+// the httptest (plain-HTTP) client keeps them.
+func newTestServer(t *testing.T) (*Server, data.Models, *http.Cookie) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "verve.db")
 	db, err := data.Open(path)
@@ -28,12 +37,47 @@ func newTestServer(t *testing.T) (*Server, data.Models) {
 		t.Fatalf("Migrate: %v", err)
 	}
 	models := data.NewModels(db)
-	acc := &data.Account{Email: "dev@example.com"}
+	seedAccountWithPassword(t, models, testEmail, testPassword)
+
+	srv := New(slog.New(slog.NewTextHandler(io.Discard, nil)), models, query.Engine{DB: db}, Config{SecureCookies: false})
+	cookie := login(t, srv, testEmail, testPassword)
+	return srv, models, cookie
+}
+
+// seedAccountWithPassword inserts an account and sets its argon2id password hash.
+func seedAccountWithPassword(t *testing.T, models data.Models, email, password string) {
+	t.Helper()
+	acc := &data.Account{Email: email}
 	if err := models.Accounts.Insert(context.Background(), acc); err != nil {
-		t.Fatalf("insert account: %v", err)
+		t.Fatalf("insert account %s: %v", email, err)
 	}
-	srv := New(slog.New(slog.NewTextHandler(io.Discard, nil)), models, query.Engine{DB: db}, "dev@example.com")
-	return srv, models
+	hash, err := auth.HashPassword(password)
+	if err != nil {
+		t.Fatalf("hash password: %v", err)
+	}
+	if err := models.Accounts.SetPassword(context.Background(), acc.ID, hash); err != nil {
+		t.Fatalf("set password: %v", err)
+	}
+}
+
+// login POSTs credentials and returns the session cookie the server set.
+func login(t *testing.T, srv *Server, email, password string) *http.Cookie {
+	t.Helper()
+	body, _ := json.Marshal(map[string]string{"email": email, "password": password})
+	req := httptest.NewRequest(http.MethodPost, "/v1/auth/login", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, req)
+	res := rec.Result()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("login status = %d, want 200", res.StatusCode)
+	}
+	for _, c := range res.Cookies() {
+		if c.Name == sessionCookieName {
+			return c
+		}
+	}
+	t.Fatalf("login set no %s cookie", sessionCookieName)
+	return nil
 }
 
 func seedSteps(t *testing.T, models data.Models, email string, ms []data.Measurement) {
@@ -50,10 +94,16 @@ func seedSteps(t *testing.T, models data.Models, email string, ms []data.Measure
 	}
 }
 
-// do sends a GET to the server's handler and returns the response and decoded body.
-func do(t *testing.T, srv *Server, target string) (*http.Response, map[string]json.RawMessage) {
+// do sends a GET to the server's handler, attaching any cookies, and returns the
+// response and decoded body.
+func do(t *testing.T, srv *Server, target string, cookies ...*http.Cookie) (*http.Response, map[string]json.RawMessage) {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, target, nil)
+	for _, c := range cookies {
+		if c != nil {
+			req.AddCookie(c)
+		}
+	}
 	rec := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(rec, req)
 	res := rec.Result()
@@ -67,7 +117,7 @@ func do(t *testing.T, srv *Server, target string) (*http.Response, map[string]js
 }
 
 func TestHealthz(t *testing.T) {
-	srv, _ := newTestServer(t)
+	srv, _, _ := newTestServer(t)
 	res, body := do(t, srv, "/v1/healthz")
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", res.StatusCode)
@@ -78,7 +128,7 @@ func TestHealthz(t *testing.T) {
 }
 
 func TestMetricsListsCatalog(t *testing.T) {
-	srv, _ := newTestServer(t)
+	srv, _, _ := newTestServer(t)
 	res, body := do(t, srv, "/v1/metrics")
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", res.StatusCode)
@@ -106,12 +156,12 @@ func TestMetricsListsCatalog(t *testing.T) {
 }
 
 func TestSeriesStepsSummedPerDay(t *testing.T) {
-	srv, models := newTestServer(t)
-	seedSteps(t, models, "dev@example.com", []data.Measurement{
+	srv, models, cookie := newTestServer(t)
+	seedSteps(t, models, testEmail, []data.Measurement{
 		{Metric: "steps", Value: 100, OriginalUnit: "count", StartAt: "2024-01-01T08:00:00Z", EndAt: "2024-01-01T08:00:00Z", Source: "Watch", ContentKey: "a"},
 		{Metric: "steps", Value: 200, OriginalUnit: "count", StartAt: "2024-01-01T18:00:00Z", EndAt: "2024-01-01T18:00:00Z", Source: "Watch", ContentKey: "b"},
 	})
-	res, body := do(t, srv, "/v1/series?metric=steps&from=2024-01-01&to=2024-01-02&bucket=day")
+	res, body := do(t, srv, "/v1/series?metric=steps&from=2024-01-01&to=2024-01-02&bucket=day", cookie)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d body=%s, want 200", res.StatusCode, body["error"])
 	}
@@ -125,12 +175,12 @@ func TestSeriesStepsSummedPerDay(t *testing.T) {
 }
 
 func TestSeriesHeartRateBand(t *testing.T) {
-	srv, models := newTestServer(t)
-	seedSteps(t, models, "dev@example.com", []data.Measurement{
+	srv, models, cookie := newTestServer(t)
+	seedSteps(t, models, testEmail, []data.Measurement{
 		{Metric: "heart_rate", Value: 60, OriginalUnit: "count/min", StartAt: "2024-01-01T08:00:00Z", EndAt: "2024-01-01T08:00:00Z", Source: "Watch", ContentKey: "a"},
 		{Metric: "heart_rate", Value: 100, OriginalUnit: "count/min", StartAt: "2024-01-01T09:00:00Z", EndAt: "2024-01-01T09:00:00Z", Source: "Watch", ContentKey: "b"},
 	})
-	_, body := do(t, srv, "/v1/series?metric=heart_rate&from=2024-01-01&to=2024-01-02&bucket=day")
+	_, body := do(t, srv, "/v1/series?metric=heart_rate&from=2024-01-01&to=2024-01-02&bucket=day", cookie)
 	var series query.Series
 	if err := json.Unmarshal(body["series"], &series); err != nil {
 		t.Fatalf("decode series: %v", err)
@@ -145,17 +195,17 @@ func TestSeriesHeartRateBand(t *testing.T) {
 }
 
 func TestSeriesRangeShorthand(t *testing.T) {
-	srv, _ := newTestServer(t)
+	srv, _, cookie := newTestServer(t)
 	// No data, but a valid "1y" range should resolve and return an empty series.
-	res, body := do(t, srv, "/v1/series?metric=steps&range=1y&bucket=day")
+	res, body := do(t, srv, "/v1/series?metric=steps&range=1y&bucket=day", cookie)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d body=%s, want 200", res.StatusCode, body["error"])
 	}
 }
 
 func TestSeriesBucketBelowCapRejected(t *testing.T) {
-	srv, _ := newTestServer(t)
-	res, body := do(t, srv, "/v1/series?metric=steps&range=7d&bucket=hour")
+	srv, _, cookie := newTestServer(t)
+	res, body := do(t, srv, "/v1/series?metric=steps&range=7d&bucket=hour", cookie)
 	if res.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("status = %d, want 422", res.StatusCode)
 	}
@@ -169,7 +219,7 @@ func TestSeriesBucketBelowCapRejected(t *testing.T) {
 }
 
 func TestSeriesValidationErrors(t *testing.T) {
-	srv, _ := newTestServer(t)
+	srv, _, cookie := newTestServer(t)
 	tests := map[string]struct {
 		target string
 		field  string
@@ -183,7 +233,7 @@ func TestSeriesValidationErrors(t *testing.T) {
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			res, body := do(t, srv, tc.target)
+			res, body := do(t, srv, tc.target, cookie)
 			if res.StatusCode != http.StatusUnprocessableEntity {
 				t.Fatalf("status = %d, want 422", res.StatusCode)
 			}
@@ -198,58 +248,10 @@ func TestSeriesValidationErrors(t *testing.T) {
 	}
 }
 
-func TestSeriesAccountScopingViaHeader(t *testing.T) {
-	srv, models := newTestServer(t)
-	// A second account with its own steps; the dev account has none.
-	other := &data.Account{Email: "other@example.com"}
-	if err := models.Accounts.Insert(context.Background(), other); err != nil {
-		t.Fatalf("insert other: %v", err)
-	}
-	seedSteps(t, models, "other@example.com", []data.Measurement{
-		{Metric: "steps", Value: 500, OriginalUnit: "count", StartAt: "2024-01-01T08:00:00Z", EndAt: "2024-01-01T08:00:00Z", Source: "Watch", ContentKey: "a"},
-	})
-
-	// Default (dev) account sees nothing.
-	req := httptest.NewRequest(http.MethodGet, "/v1/series?metric=steps&from=2024-01-01&to=2024-01-02", nil)
-	rec := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(rec, req)
-	var devBody map[string]json.RawMessage
-	json.NewDecoder(rec.Body).Decode(&devBody)
-	var devSeries query.Series
-	json.Unmarshal(devBody["series"], &devSeries)
-	if len(devSeries.Points) != 0 {
-		t.Errorf("dev account points = %+v, want none", devSeries.Points)
-	}
-
-	// The header scopes the request to the other account, which has data.
-	req = httptest.NewRequest(http.MethodGet, "/v1/series?metric=steps&from=2024-01-01&to=2024-01-02", nil)
-	req.Header.Set(accountHeader, "other@example.com")
-	rec = httptest.NewRecorder()
-	srv.Handler().ServeHTTP(rec, req)
-	var otherBody map[string]json.RawMessage
-	json.NewDecoder(rec.Body).Decode(&otherBody)
-	var otherSeries query.Series
-	json.Unmarshal(otherBody["series"], &otherSeries)
-	if len(otherSeries.Points) != 1 || otherSeries.Points[0].Value != 500 {
-		t.Errorf("other account points = %+v, want one bucket of 500", otherSeries.Points)
-	}
-}
-
-func TestSeriesUnknownAccount(t *testing.T) {
-	srv, _ := newTestServer(t)
-	req := httptest.NewRequest(http.MethodGet, "/v1/series?metric=steps&range=7d", nil)
-	req.Header.Set(accountHeader, "ghost@example.com")
-	rec := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(rec, req)
-	if rec.Result().StatusCode != http.StatusNotFound {
-		t.Errorf("status = %d, want 404 for unknown account", rec.Result().StatusCode)
-	}
-}
-
 // TestUnknownRouteAndMethod checks the mux's method+pattern routing: an unknown
 // path 404s and a known path with the wrong method 405s.
 func TestUnknownRouteAndMethod(t *testing.T) {
-	srv, _ := newTestServer(t)
+	srv, _, _ := newTestServer(t)
 	get := func(method, target string) int {
 		req := httptest.NewRequest(method, target, nil)
 		rec := httptest.NewRecorder()

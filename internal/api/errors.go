@@ -37,3 +37,24 @@ func (s *Server) notFoundResponse(w http.ResponseWriter, r *http.Request, messag
 func (s *Server) failedValidationResponse(w http.ResponseWriter, r *http.Request, errors map[string]string) {
 	s.errorResponse(w, r, http.StatusUnprocessableEntity, errors)
 }
+
+// authenticationRequiredResponse returns a 401 for a request that must be
+// authenticated but is not. The WWW-Authenticate header names the scheme so a
+// client knows a session cookie is expected.
+func (s *Server) authenticationRequiredResponse(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("WWW-Authenticate", "Cookie")
+	s.errorResponse(w, r, http.StatusUnauthorized, "you must be authenticated to access this resource")
+}
+
+// invalidCredentialsResponse returns a 401 for a failed login. The message is
+// deliberately generic — it never reveals whether the email exists — to avoid
+// account enumeration.
+func (s *Server) invalidCredentialsResponse(w http.ResponseWriter, r *http.Request) {
+	s.errorResponse(w, r, http.StatusUnauthorized, "invalid email or password")
+}
+
+// rateLimitExceededResponse returns a 429 when a client has made too many
+// login attempts too quickly.
+func (s *Server) rateLimitExceededResponse(w http.ResponseWriter, r *http.Request) {
+	s.errorResponse(w, r, http.StatusTooManyRequests, "too many requests — slow down and try again shortly")
+}

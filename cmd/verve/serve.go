@@ -13,17 +13,18 @@ import (
 
 // serveCommand starts the HTTP server and blocks until the context is cancelled
 // (SIGINT/SIGTERM, wired in main), then shuts down gracefully so in-flight
-// requests finish. Until auth lands (slice 05), --account sets the dev Account
-// every request is scoped to unless it sends an X-Verve-Account header.
+// requests finish. Requests authenticate via a session cookie (ADR 0008);
+// --secure-cookie=false relaxes the cookie's Secure attribute for plain-HTTP
+// local development.
 func (app *application) serveCommand(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	addr := fs.String("addr", ":8080", "address to listen on")
-	account := fs.String("account", "", "dev Account email requests default to (overridable per request by the X-Verve-Account header)")
+	secureCookie := fs.Bool("secure-cookie", true, "set the Secure attribute on the session cookie (disable only for plain-HTTP local dev)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
-	server := api.New(app.logger, app.models, query.Engine{DB: app.db}, *account)
+	server := api.New(app.logger, app.models, query.Engine{DB: app.db}, api.Config{SecureCookies: *secureCookie})
 	srv := &http.Server{
 		Addr:         *addr,
 		Handler:      server.Handler(),
@@ -36,7 +37,7 @@ func (app *application) serveCommand(ctx context.Context, args []string) error {
 	// command returns it instead of blocking forever on shutdown.
 	listenErr := make(chan error, 1)
 	go func() {
-		app.logger.Info("http server listening", "addr", *addr, "dev_account", *account)
+		app.logger.Info("http server listening", "addr", *addr, "secure_cookie", *secureCookie)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			listenErr <- err
 		}

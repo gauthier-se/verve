@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/gauthier-se/verve/internal/catalog"
-	"github.com/gauthier-se/verve/internal/data"
 	"github.com/gauthier-se/verve/internal/query"
 )
 
@@ -57,11 +56,8 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 // bucket → one point per bucket under the Metric's rule (ADR 0012), scoped to
 // the request's Account.
 func (s *Server) handleSeries(w http.ResponseWriter, r *http.Request) {
-	accountID, err := s.accountForRequest(r.Context(), r)
-	if err != nil {
-		s.respondAccountError(w, r, err)
-		return
-	}
+	// requireAuth guarantees an authenticated Account on the context.
+	accountID, _ := s.accountID(r)
 
 	qs := r.URL.Query()
 	v := NewValidator()
@@ -174,18 +170,6 @@ func parseRange(s string, now time.Time) (from, to time.Time, ok bool) {
 		return time.Time{}, time.Time{}, false
 	}
 	return from, now, true
-}
-
-// respondAccountError maps account-resolution failures to HTTP responses.
-func (s *Server) respondAccountError(w http.ResponseWriter, r *http.Request, err error) {
-	switch {
-	case errors.Is(err, errNoAccount):
-		s.badRequestResponse(w, r, err)
-	case errors.Is(err, data.ErrRecordNotFound):
-		s.notFoundResponse(w, r, "unknown account")
-	default:
-		s.serverErrorResponse(w, r, err)
-	}
 }
 
 // respondSeriesError maps query-engine errors to HTTP responses. The input

@@ -62,9 +62,46 @@ func (m AccountModel) GetByEmail(ctx context.Context, email string) (*Account, e
 		SELECT id, email, password_hash, date_of_birth, biological_sex, blood_type, created_at, updated_at
 		FROM accounts
 		WHERE email = ?`
+	return m.getOne(ctx, query, email)
+}
 
+// GetByID returns the account with the given id, or ErrRecordNotFound. Used to
+// resolve the authenticated Account from a session's account_id.
+func (m AccountModel) GetByID(ctx context.Context, id int64) (*Account, error) {
+	const query = `
+		SELECT id, email, password_hash, date_of_birth, biological_sex, blood_type, created_at, updated_at
+		FROM accounts
+		WHERE id = ?`
+	return m.getOne(ctx, query, id)
+}
+
+// SetPassword stores a new password hash for the account, bumping updated_at. It
+// returns ErrRecordNotFound if no account has that id. The caller hashes the
+// password (argon2id) before calling; the model never sees a plaintext password.
+func (m AccountModel) SetPassword(ctx context.Context, id int64, passwordHash string) error {
+	const query = `
+		UPDATE accounts
+		SET password_hash = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+		WHERE id = ?`
+	res, err := m.DB.ExecContext(ctx, query, passwordHash, id)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrRecordNotFound
+	}
+	return nil
+}
+
+// getOne runs a single-row account SELECT and scans it, mapping no-rows to
+// ErrRecordNotFound. Shared by GetByEmail and GetByID.
+func (m AccountModel) getOne(ctx context.Context, query string, arg any) (*Account, error) {
 	var a Account
-	err := m.DB.QueryRowContext(ctx, query, email).Scan(
+	err := m.DB.QueryRowContext(ctx, query, arg).Scan(
 		&a.ID,
 		&a.Email,
 		&a.PasswordHash,

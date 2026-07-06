@@ -9,6 +9,7 @@ import (
 	"os"
 	"sort"
 
+	"github.com/gauthier-se/verve/internal/auth"
 	"github.com/gauthier-se/verve/internal/connector/applehealth"
 	"github.com/gauthier-se/verve/internal/data"
 )
@@ -20,10 +21,14 @@ Usage:
 
 Commands:
   migrate                          apply database migrations (auto-applied on startup)
-  account create --email=EMAIL     create an account
+  account create --email=EMAIL     create an account (prompts for a password)
+  account passwd --email=EMAIL     set an account's password
   import --account=EMAIL FILE      import an Apple Health export (.zip or export.xml)
-  serve [--addr=:8080] [--account=EMAIL]
+  serve [--addr=:8080] [--secure-cookie]
                                    run the JSON API server
+
+Password commands prompt interactively; pass --password-stdin to read the
+password from standard input instead (for scripting).
 
 Global flags:
   -data-dir DIR   directory holding verve.db, artifacts/ and imports
@@ -62,21 +67,24 @@ func (app *application) migrateCommand() error {
 // accountCommand handles the `account` subcommand group.
 func (app *application) accountCommand(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: verve account create --email=EMAIL")
+		return errors.New("usage: verve account (create|passwd) --email=EMAIL")
 	}
 	switch args[0] {
 	case "create":
 		return app.accountCreate(ctx, args[1:])
+	case "passwd":
+		return app.accountPasswd(ctx, args[1:])
 	default:
 		return fmt.Errorf("unknown account subcommand %q", args[0])
 	}
 }
 
-// accountCreate creates an Account from --email. Password hashing lands in
-// slice 05, so the account is created without one for now.
+// accountCreate creates an Account from --email with an argon2id-hashed password
+// (prompted, or read from stdin with --password-stdin).
 func (app *application) accountCreate(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("account create", flag.ContinueOnError)
 	email := fs.String("email", "", "email address of the account to create")
+	stdinPw := fs.Bool("password-stdin", false, "read the password from standard input instead of prompting")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -84,7 +92,16 @@ func (app *application) accountCreate(ctx context.Context, args []string) error 
 		return errors.New("account create: --email is required")
 	}
 
-	acc := &data.Account{Email: *email}
+	password, err := app.readNewPassword(*stdinPw)
+	if err != nil {
+		return err
+	}
+	hash, err := auth.HashPassword(password)
+	if err != nil {
+		return err
+	}
+
+	acc := &data.Account{Email: *email, PasswordHash: &hash}
 	if err := app.models.Accounts.Insert(ctx, acc); err != nil {
 		if errors.Is(err, data.ErrDuplicateEmail) {
 			return fmt.Errorf("an account with email %q already exists", *email)
@@ -92,6 +109,41 @@ func (app *application) accountCreate(ctx context.Context, args []string) error 
 		return err
 	}
 	app.logger.Info("account created", "id", acc.ID, "email", acc.Email)
+	return nil
+}
+
+// accountPasswd sets a new password on an existing Account.
+func (app *application) accountPasswd(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("account passwd", flag.ContinueOnError)
+	email := fs.String("email", "", "email address of the account to update")
+	stdinPw := fs.Bool("password-stdin", false, "read the password from standard input instead of prompting")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *email == "" {
+		return errors.New("account passwd: --email is required")
+	}
+
+	acc, err := app.models.Accounts.GetByEmail(ctx, *email)
+	if err != nil {
+		if errors.Is(err, data.ErrRecordNotFound) {
+			return fmt.Errorf("no account with email %q", *email)
+		}
+		return err
+	}
+
+	password, err := app.readNewPassword(*stdinPw)
+	if err != nil {
+		return err
+	}
+	hash, err := auth.HashPassword(password)
+	if err != nil {
+		return err
+	}
+	if err := app.models.Accounts.SetPassword(ctx, acc.ID, hash); err != nil {
+		return err
+	}
+	app.logger.Info("password updated", "id", acc.ID, "email", acc.Email)
 	return nil
 }
 
