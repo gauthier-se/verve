@@ -22,6 +22,8 @@ Commands:
   migrate                          apply database migrations (auto-applied on startup)
   account create --email=EMAIL     create an account
   import --account=EMAIL FILE      import an Apple Health export (.zip or export.xml)
+  serve [--addr=:8080] [--account=EMAIL]
+                                   run the JSON API server
 
 Global flags:
   -data-dir DIR   directory holding verve.db, artifacts/ and imports
@@ -40,6 +42,8 @@ func (app *application) dispatch(ctx context.Context, args []string) error {
 		return app.accountCommand(ctx, args[1:])
 	case "import":
 		return app.importCommand(ctx, args[1:])
+	case "serve":
+		return app.serveCommand(ctx, args[1:])
 	case "help", "-h", "--help":
 		fmt.Print(usage)
 		return nil
