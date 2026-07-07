@@ -76,10 +76,14 @@ min/max band (heart rate, speed), `latest` (body mass), or `duration_by_state`
 in Verve, not free-form strings) but extensible (new entries added deliberately).
 Neutral names, never Apple identifiers (`heart_rate`, not
 `HKQuantityTypeIdentifierHeartRate`).
-A Metric has one of two natures: **imported** (produced by a Connector) or
-**derived** (defined by a formula over other Metrics, e.g.
-`calorie_balance = active_energy + basal_energy − dietary_energy`, computed on
-read). Derived Metrics are a v2 concern but part of the canonical shape.
+A Metric has one of two natures: **imported** (produced by a Connector, carries
+its own aggregation rule) or **derived** (defined by a **Formula** over other
+Metrics and computed on read, e.g.
+`calorie_balance = dietary_energy − (active_energy + basal_energy)`). A derived
+Metric has **no aggregation rule of its own**: at the requested bucket each
+operand is aggregated by *its own* rule and the Formula is then applied per
+bucket (see **Formula** and ADR 0014). Only imported Metrics existed in
+v1; derived Metrics are the first differentiator after the v1 core.
 _Avoid_: Type, Kind, Signal, Indicator.
 
 **Catalog**:
@@ -87,6 +91,17 @@ The closed, curated set of canonical Metrics that Verve understands, each with
 its canonical unit and aggregation rule. A Connector must map incoming data to a
 Catalog Metric.
 _Avoid_: Registry, Dictionary, Schema.
+
+**Formula**:
+The declarative definition of a derived Metric: a **ratio of two weighted sums**
+of other Metrics, times an optional constant — `(k · Σ aᵢ·numᵢ) / (Σ bⱼ·dénᵢ)`.
+A missing denominator is 1 (a plain weighted sum, e.g. `calorie_balance`). Every
+operand is **required**: if any operand — or the whole denominator — has no data
+in a bucket, that bucket is a **gap** (no value), never a zero. A Formula is
+data, not code, so a Connector-style compiled definition today can back a
+user-defined editor later (ADR 0014). Deliberately not a general expression: no
+nesting, no operator precedence.
+_Avoid_: Expression, Equation, Rule (the aggregation rule is a different thing).
 
 **Unmapped bin**:
 Where a Connector puts incoming data whose type it cannot map to a Catalog

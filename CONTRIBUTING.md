@@ -52,24 +52,8 @@ feat(ingestion): stream-parse Apple Health export.zip
 fix(query): use sum aggregation for step buckets
 docs(adr): record aggregated-bucket API decision
 build(deps): add modernc.org/sqlite
-ci: enforce conventional commits on pull requests
+ci: run go vet, test and gofmt on pull requests
 ```
-
-### Local help
-
-Point git at the bundled template so the format is in front of you:
-
-```bash
-git config commit.template .gitmessage
-```
-
-### Enforcement
-
-Conventional Commits are encouraged but **not enforced by CI** — the format is a
-good practice, not a merge blocker. Use the bundled tooling locally to stay
-consistent: point git at the template (below) and run commitlint against your
-own commits if you like (`npx commitlint --from origin/main`, config in
-`commitlint.config.mjs`).
 
 ## Workflow
 
