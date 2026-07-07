@@ -3,8 +3,9 @@
 /** Aggregation is a Metric's Catalog rule for collapsing points into a bucket. */
 export type Aggregation = "sum" | "average" | "latest" | "duration_by_state";
 
-/** ChartType is how a Panel renders its Metric. */
-export type ChartType = "bar" | "line" | "area" | "band" | "stacked_bar";
+/** ChartType is how a Panel renders its Metric. The diverging-bar variant is the
+ *  signed-Metric default: bars from a zero baseline, colored by sign (ADR 0014). */
+export type ChartType = "bar" | "line" | "area" | "band" | "stacked_bar" | "diverging_bar";
 
 /** Bucket is a Panel's time granularity; null means auto-derive from the span. */
 export type Bucket = "day" | "week" | "month";
@@ -12,12 +13,31 @@ export type Bucket = "day" | "week" | "month";
 /** RangePreset is a Dashboard's Time-range choice (custom uses from/to). */
 export type RangePreset = "7d" | "30d" | "3m" | "1y" | "all" | "custom";
 
-/** Metric is one Catalog entry from GET /v1/metrics. */
+/** Term is one Formula operand: a Catalog slug weighted by a coefficient. */
+export interface Term {
+  metric: string;
+  coefficient: number;
+}
+
+/** Formula is a derived Metric's definition: a ratio of two weighted sums times a
+ *  constant scale — (scale · Σ numerator) / (Σ denominator), an absent/empty
+ *  denominator meaning 1 (ADR 0014). Present only on derived Metrics. */
+export interface Formula {
+  scale: number;
+  numerator: Term[];
+  denominator?: Term[];
+}
+
+/** Metric is one Catalog entry from GET /v1/metrics. An imported Metric carries an
+ *  aggregation rule; a derived Metric instead carries a Formula and a signed flag
+ *  and reports no aggregation (ADR 0014). */
 export interface Metric {
   slug: string;
   unit: string;
-  aggregation: Aggregation;
+  aggregation?: Aggregation;
   nature: "imported" | "derived";
+  signed?: boolean;
+  formula?: Formula;
 }
 
 /** Account is the logged-in identity and its `Me` profile. */
@@ -61,7 +81,7 @@ export interface Point {
 export interface Series {
   metric: string;
   unit: string;
-  aggregation: Aggregation;
+  aggregation: Aggregation | "";
   bucket: Bucket;
   source: string;
   points: Point[];

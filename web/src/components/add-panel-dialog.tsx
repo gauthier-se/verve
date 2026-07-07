@@ -23,11 +23,19 @@ export function AddPanelDialog({
   const create = useCreatePanel();
   const [query, setQuery] = React.useState("");
 
-  const filtered = React.useMemo(() => {
-    const all = [...(metrics.data ?? [])].sort((a, b) => a.slug.localeCompare(b.slug));
+  // Group derived Metrics ahead of imported ones so calorie_balance, the macro
+  // shares, and protein_per_kg are discoverable as a distinct family (issue 04).
+  const groups = React.useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return all;
-    return all.filter((m) => m.slug.includes(q) || metricLabel(m.slug).toLowerCase().includes(q));
+    const matches = (m: Metric) =>
+      !q || m.slug.includes(q) || metricLabel(m.slug).toLowerCase().includes(q);
+    const all = [...(metrics.data ?? [])]
+      .filter(matches)
+      .sort((a, b) => a.slug.localeCompare(b.slug));
+    return [
+      { label: "Derived", metrics: all.filter((m) => m.nature === "derived") },
+      { label: "Imported", metrics: all.filter((m) => m.nature !== "derived") },
+    ].filter((g) => g.metrics.length > 0);
   }, [metrics.data, query]);
 
   const add = (metric: Metric) => {
@@ -54,20 +62,27 @@ export function AddPanelDialog({
               className="pl-8"
             />
           </div>
-          <div className="max-h-80 space-y-0.5 overflow-y-auto">
-            {filtered.map((m) => (
-              <button
-                key={m.slug}
-                type="button"
-                disabled={create.isPending}
-                onClick={() => add(m)}
-                className="flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-accent disabled:opacity-50"
-              >
-                <span>{metricLabel(m.slug)}</span>
-                <span className="text-xs text-muted-foreground">{m.unit}</span>
-              </button>
+          <div className="max-h-80 space-y-2 overflow-y-auto">
+            {groups.map((group) => (
+              <div key={group.label} className="space-y-0.5">
+                <div className="px-2.5 pb-0.5 pt-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  {group.label}
+                </div>
+                {group.metrics.map((m) => (
+                  <button
+                    key={m.slug}
+                    type="button"
+                    disabled={create.isPending}
+                    onClick={() => add(m)}
+                    className="flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-accent disabled:opacity-50"
+                  >
+                    <span>{metricLabel(m.slug)}</span>
+                    <span className="text-xs text-muted-foreground">{m.unit}</span>
+                  </button>
+                ))}
+              </div>
             ))}
-            {filtered.length === 0 && <p className="px-2 py-4 text-center text-sm text-muted-foreground">No metrics match.</p>}
+            {groups.length === 0 && <p className="px-2 py-4 text-center text-sm text-muted-foreground">No metrics match.</p>}
           </div>
         </div>
       </DialogContent>

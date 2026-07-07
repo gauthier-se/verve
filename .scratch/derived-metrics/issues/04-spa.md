@@ -1,6 +1,6 @@
 # 04 — SPA: derived Metrics in Panels
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 03
 
 ## Goal
