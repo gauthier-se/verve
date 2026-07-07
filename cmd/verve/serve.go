@@ -41,7 +41,7 @@ func (app *application) serveCommand(ctx context.Context, args []string) error {
 	// command returns it instead of blocking forever on shutdown.
 	listenErr := make(chan error, 1)
 	go func() {
-		app.logger.Info("http server listening", "addr", *addr, "secure_cookie", *secureCookie)
+		app.logger.Info("http server listening", "addr", *addr, "secure_cookie", *secureCookie, "version", version)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			listenErr <- err
 		}

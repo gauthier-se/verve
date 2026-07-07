@@ -1,0 +1,40 @@
+# Keep the build context small and reproducible: the image builds the SPA and
+# binary from source, so no local build output, deps, or personal data are sent
+# to the daemon.
+
+# Git and CI
+.git
+.github
+.gitignore
+
+# Node deps and any local SPA build output (the image rebuilds both)
+web/node_modules
+internal/web/dist
+
+# Go build output
+/bin
+/verve
+*.test
+coverage.*
+
+# Runtime and personal data
+/data
+sample_data
+*.db
+*.db-wal
+*.db-shm
+artifacts
+
+# Agent scratch, editor and OS cruft
+.scratch
+.claude
+.DS_Store
+.idea
+.vscode
+.env
+.envrc
+
+# Docker / compose descriptors are not needed inside the build
+Dockerfile
+.dockerignore
+compose.yml

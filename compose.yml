@@ -1,0 +1,35 @@
+# Minimal homelab deployment of Verve: one service, one volume, one port.
+#
+#   docker compose up -d                 # start the server
+#   docker compose run --rm verve \
+#       account create --email=you@x.dev  # create your first account (once)
+#   docker compose run --rm verve \
+#       import --account=you@x.dev /import/export.zip   # import a snapshot
+#
+# Then open http://localhost:8080 and sign in.
+name: verve
+
+services:
+  verve:
+    # Build the image locally from the Dockerfile so `docker compose up` works
+    # with no prerequisites. Once a published image exists, swap in `image:`.
+    build: .
+    # image: ghcr.io/gauthier-se/verve:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      # The single directory holding verve.db, artifacts/ and imports. Matches
+      # the volume mount and the image default.
+      VERVE_DATA_DIR: /data
+    volumes:
+      - verve-data:/data
+      # Mount a host folder here to make export files reachable by `verve import`.
+      # - ./imports:/import:ro
+    # --secure-cookie=false relaxes the session cookie's Secure attribute so
+    # login works over plain HTTP on a LAN. Behind an HTTPS reverse proxy, drop
+    # this flag (the default is secure) so cookies are only sent over TLS.
+    command: ["serve", "--addr=:8080", "--secure-cookie=false"]
+
+volumes:
+  verve-data:

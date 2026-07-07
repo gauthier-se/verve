@@ -26,6 +26,7 @@ Commands:
   import --account=EMAIL FILE      import an Apple Health export (.zip or export.xml)
   serve [--addr=:8080] [--secure-cookie]
                                    run the JSON API server
+  version                          print the build version
 
 Password commands prompt interactively; pass --password-stdin to read the
 password from standard input instead (for scripting).
