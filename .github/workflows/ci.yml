@@ -10,8 +10,6 @@ permissions:
   contents: read
 
 jobs:
-  # Conventional Commits are encouraged as a good practice, but not enforced in
-  # CI: the format is a convention, not a merge blocker.
   go:
     name: Go build, vet, test
     runs-on: ubuntu-latest
