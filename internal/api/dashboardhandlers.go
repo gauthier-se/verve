@@ -241,13 +241,13 @@ func (s *Server) handleCreatePanel(w http.ResponseWriter, r *http.Request) {
 
 	chartType := ""
 	if known {
-		chartType = defaultChartType(metric.Aggregation)
+		chartType = defaultChartType(metric)
 	}
 	if input.ChartType != nil {
 		chartType = *input.ChartType
 	}
 	if known {
-		validateChartType(v, chartType, metric.Aggregation)
+		validateChartType(v, chartType, metric)
 	}
 
 	bucket := validatePanelBucket(v, input.Bucket)
@@ -313,7 +313,7 @@ func (s *Server) handleUpdatePanel(w http.ResponseWriter, r *http.Request) {
 	// The Metric is known (the panel exists), so chart-type compatibility can be
 	// enforced against its aggregation rule.
 	if metric, known := catalog.Lookup(p.Metric); known && input.ChartType != nil {
-		validateChartType(v, p.ChartType, metric.Aggregation)
+		validateChartType(v, p.ChartType, metric)
 	}
 	if input.Bucket != nil { // key present in the body
 		p.Bucket = parseBucketOverride(input.Bucket, v)
@@ -416,18 +416,23 @@ func (s *Server) respondRecordError(w http.ResponseWriter, r *http.Request, err 
 	s.serverErrorResponse(w, r, err)
 }
 
-// defaultChartType is the chart a Metric gets when a Panel doesn't specify one,
-// derived from its aggregation rule (issue 06): sum→bar, average→band,
-// latest→line, duration_by_state→stacked bar.
-func defaultChartType(agg catalog.Aggregation) string {
-	switch agg {
+// defaultChartType is the chart a Metric gets when a Panel doesn't specify one.
+// A signed derived Metric (calorie_balance) defaults to a diverging bar around
+// zero (ADR 0014); otherwise the aggregation rule decides (issue 06): sum→bar,
+// average→band, latest→line, duration_by_state→stacked bar. A derived Metric with
+// no signed flag has no rule either, so it falls through to line.
+func defaultChartType(m catalog.Metric) string {
+	if m.Signed {
+		return "diverging_bar"
+	}
+	switch m.Aggregation {
 	case catalog.Sum:
 		return "bar"
 	case catalog.Average:
 		return "band"
 	case catalog.DurationByState:
 		return "stacked_bar"
-	default: // Latest
+	default: // Latest, and unsigned derived Metrics
 		return "line"
 	}
 }
@@ -467,22 +472,25 @@ func validateRange(v *Validator, preset string, from, to *string) {
 
 // validChartTypes is the closed set a Panel may take.
 var validChartTypes = map[string]bool{
-	"bar": true, "line": true, "area": true, "band": true, "stacked_bar": true,
+	"bar": true, "line": true, "area": true, "band": true, "stacked_bar": true, "diverging_bar": true,
 }
 
-// validateChartType checks a chart type is known and compatible with the Metric's
-// aggregation: the band variant is only for average Metrics, and the stacked-bar
-// variant only for duration_by_state; bar/line/area suit any scalar Metric.
-func validateChartType(v *Validator, chartType string, agg catalog.Aggregation) {
+// validateChartType checks a chart type is known and compatible with the Metric:
+// the band variant is only for average Metrics, the stacked-bar variant only for
+// duration_by_state, and the diverging-bar variant only for signed (derived)
+// Metrics; bar/line/area suit any scalar Metric.
+func validateChartType(v *Validator, chartType string, m catalog.Metric) {
 	if !validChartTypes[chartType] {
-		v.AddError("chart_type", "must be one of bar, line, area, band, stacked_bar")
+		v.AddError("chart_type", "must be one of bar, line, area, band, stacked_bar, diverging_bar")
 		return
 	}
 	switch chartType {
 	case "band":
-		v.Check(agg == catalog.Average, "chart_type", "the band variant is only for average metrics")
+		v.Check(m.Aggregation == catalog.Average, "chart_type", "the band variant is only for average metrics")
 	case "stacked_bar":
-		v.Check(agg == catalog.DurationByState, "chart_type", "the stacked-bar variant is only for duration-by-state metrics")
+		v.Check(m.Aggregation == catalog.DurationByState, "chart_type", "the stacked-bar variant is only for duration-by-state metrics")
+	case "diverging_bar":
+		v.Check(m.Signed, "chart_type", "the diverging-bar variant is only for signed metrics")
 	}
 }
 

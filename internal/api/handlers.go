@@ -26,30 +26,81 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// metricView is one Catalog entry as exposed by the API.
+// metricView is one Catalog entry as exposed by the API. An imported Metric
+// carries its aggregation rule; a derived Metric instead reports its Formula and
+// a signed flag and omits aggregation — it has no rule of its own (ADR 0014), so
+// the field is dropped rather than faked.
 type metricView struct {
-	Slug        string `json:"slug"`
-	Unit        string `json:"unit"`
-	Aggregation string `json:"aggregation"`
-	Nature      string `json:"nature"`
+	Slug        string       `json:"slug"`
+	Unit        string       `json:"unit"`
+	Aggregation string       `json:"aggregation,omitempty"`
+	Nature      string       `json:"nature"`
+	Signed      bool         `json:"signed,omitempty"`
+	Formula     *formulaView `json:"formula,omitempty"`
 }
 
-// handleMetrics exposes the Catalog: every canonical Metric with its unit,
-// aggregation rule, and nature, sorted by slug for a stable listing.
+// formulaView renders a derived Metric's Formula in a readable, structured form
+// for a tooltip: the operand terms of the numerator and denominator weighted sums
+// plus the constant scale (ADR 0014). An empty denominator means 1.
+type formulaView struct {
+	Scale       float64    `json:"scale"`
+	Numerator   []termView `json:"numerator"`
+	Denominator []termView `json:"denominator,omitempty"`
+}
+
+// termView is one Formula operand: a Catalog slug and its coefficient.
+type termView struct {
+	Metric      string  `json:"metric"`
+	Coefficient float64 `json:"coefficient"`
+}
+
+// handleMetrics exposes the Catalog: every canonical Metric with its unit and
+// nature, imported entries carrying their aggregation rule and derived entries
+// their Formula and signed flag, sorted by slug for a stable listing.
 func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	all := catalog.All()
 	views := make([]metricView, 0, len(all))
 	for _, m := range all {
-		views = append(views, metricView{
-			Slug: m.Slug, Unit: m.Unit,
-			Aggregation: string(m.Aggregation), Nature: string(m.Nature),
-		})
+		views = append(views, metricToView(m))
 	}
 	sort.Slice(views, func(i, j int) bool { return views[i].Slug < views[j].Slug })
 
 	if err := writeJSON(w, http.StatusOK, envelope{"metrics": views}, nil); err != nil {
 		s.serverErrorResponse(w, r, err)
 	}
+}
+
+// metricToView projects a Catalog Metric to its API shape. Aggregation is empty
+// for a derived Metric (omitted by the JSON tag), which instead carries a Formula.
+func metricToView(m catalog.Metric) metricView {
+	v := metricView{
+		Slug: m.Slug, Unit: m.Unit,
+		Aggregation: string(m.Aggregation), Nature: string(m.Nature),
+		Signed: m.Signed,
+	}
+	if m.Formula != nil {
+		v.Formula = formulaToView(*m.Formula)
+	}
+	return v
+}
+
+// formulaToView projects a Catalog Formula to its API shape. The denominator is
+// omitted when empty, mirroring the "denominator = 1" convention (ADR 0014).
+func formulaToView(f catalog.Formula) *formulaView {
+	fv := &formulaView{Scale: f.Scale, Numerator: termsToView(f.Numerator)}
+	if len(f.Denominator) > 0 {
+		fv.Denominator = termsToView(f.Denominator)
+	}
+	return fv
+}
+
+// termsToView projects a Formula's weighted-sum Terms to their API shape.
+func termsToView(terms []catalog.Term) []termView {
+	out := make([]termView, len(terms))
+	for i, t := range terms {
+		out[i] = termView{Metric: t.Metric, Coefficient: t.Coefficient}
+	}
+	return out
 }
 
 // handleSeries answers the aggregated-bucket query: metric + time range +
