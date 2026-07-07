@@ -6,9 +6,41 @@ that does **not** depend on any single source, and visualizes it as customizable
 metric dashboards. Your data outlives — and never depends on — Apple Health.
 
 > ⚠️ **Status: early design / pre-alpha.** The architecture and domain model are
-> settled (see [`CONTEXT.md`](./CONTEXT.md) and [`docs/adr/`](./docs/adr/)).
-> Implementation of the v1 core is just beginning — see
+> settled (see [`CONTEXT.md`](./CONTEXT.md) and [`docs/adr/`](./docs/adr/)); the
+> v1 core (import, catalog, dashboards, multi-user auth) is being built out — see
 > [`.scratch/v1-socle/`](./.scratch/v1-socle/).
+
+## Quickstart
+
+Verve is one static binary that serves the API and the web UI; all state lives in
+a single directory (`VERVE_DATA_DIR`). Accounts are created from the CLI, then you
+sign in through the browser.
+
+**Docker Compose** (recommended for a homelab):
+
+```sh
+docker compose up -d
+# Create your first account (prompts for a password):
+docker compose run --rm verve account create --email=you@example.com
+# Import an Apple Health export (Health app → profile → Export All Health Data).
+# Mount the export into the container first — see the commented volume in compose.yml:
+docker compose run --rm verve import --account=you@example.com /import/export.zip
+```
+
+Then open <http://localhost:8080> and sign in.
+
+**From a binary** (no Docker):
+
+```sh
+export VERVE_DATA_DIR=/srv/verve
+./verve account create --email=you@example.com          # create account
+./verve import --account=you@example.com export.zip     # import a snapshot
+./verve serve --addr=:8080                              # start the server
+```
+
+Migrations auto-apply on startup and re-importing a snapshot is idempotent. Full
+configuration, first-run and backup notes are in
+[`docs/deployment.md`](./docs/deployment.md).
 
 ## Why
 

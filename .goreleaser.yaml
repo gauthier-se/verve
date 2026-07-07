@@ -1,0 +1,61 @@
+# goreleaser builds the static, per-OS/arch binaries for a tagged release.
+# Because the SPA is embedded via go:embed (ADR 0005) and dist/ is not committed,
+# the SPA is rebuilt first in a before-hook; the CGo-free build (ADR 0004) then
+# cross-compiles cleanly to every target from one host.
+#
+#   goreleaser release --clean            # tagged release (needs a git tag)
+#   goreleaser build --snapshot --clean   # local dry run, no publish
+version: 2
+
+before:
+  hooks:
+    - npm --prefix web ci
+    - npm --prefix web run build
+
+builds:
+  - id: verve
+    main: ./cmd/verve
+    binary: verve
+    env:
+      # Pure-Go SQLite driver — no CGo, so cross-compilation just works.
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      # Strip debug info and stamp the version read by `verve version`.
+      - -s -w -X main.version={{ .Version }}
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - id: verve
+    # tar.gz everywhere except Windows, which gets a zip.
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - README.md
+      - LICENSE
+      - docs/deployment.md
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"

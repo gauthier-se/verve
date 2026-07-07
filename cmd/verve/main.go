@@ -52,6 +52,14 @@ func run(ctx context.Context, logger *slog.Logger, stdin *os.File, stdout io.Wri
 		return err
 	}
 
+	// `version` reports the build version and must work on a released binary
+	// with no writable data dir, so it is the one command handled before opening
+	// the database — the sole reason it isn't in dispatch with the rest.
+	if len(rest) > 0 && rest[0] == "version" {
+		fmt.Fprintln(stdout, version)
+		return nil
+	}
+
 	// Creating artifactsDir also creates its parent, the data dir.
 	if err := os.MkdirAll(cfg.artifactsDir(), 0o750); err != nil {
 		return fmt.Errorf("create data dir: %w", err)

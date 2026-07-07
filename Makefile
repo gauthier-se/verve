@@ -11,6 +11,13 @@ DATA_DIR    ?= ./data
 ARGS        ?=
 
 GO          := go
+IMAGE       := verve
+
+# Stamped into the binary as main.version (see cmd/verve/version.go). Falls back
+# to "dev" outside a git checkout. Local builds keep debug symbols; the release
+# builds (Dockerfile, goreleaser) add -s -w on top.
+VERSION     := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+LDFLAGS     := -X main.version=$(VERSION)
 
 .DEFAULT_GOAL := help
 
@@ -24,7 +31,7 @@ help:
 .PHONY: build
 build:
 	@mkdir -p $(BIN_DIR)
-	$(GO) build -o $(BIN_DIR)/$(BINARY) $(CMD)
+	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/$(BINARY) $(CMD)
 
 ## ui: install front-end deps and build the React SPA into internal/web/dist
 .PHONY: ui
@@ -41,6 +48,11 @@ ui-dev:
 ## dist: build the SPA then the binary — the full single-binary release (ADR 0005)
 .PHONY: dist
 dist: ui build
+
+## docker: build the distroless image (tags $(IMAGE):$(VERSION) and :latest)
+.PHONY: docker
+docker:
+	docker build --build-arg VERSION=$(VERSION) -t $(IMAGE):$(VERSION) -t $(IMAGE):latest .
 
 ## run: build and run the binary (pass flags via ARGS="...")
 .PHONY: run
