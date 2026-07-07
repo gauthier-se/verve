@@ -30,6 +30,10 @@
     --chart-1: 262 83% 58%;
     --chart-2: 199 89% 48%;
     --chart-3: 160 84% 39%;
+    /* Diverging pair for signed Metrics (ADR 0014): a warm surplus (above zero)
+       against a cool deficit (below zero), distinct in hue, not just lightness. */
+    --chart-positive: 25 95% 53%;
+    --chart-negative: 199 89% 48%;
   }
 
   .dark {
@@ -55,6 +59,8 @@
     --chart-1: 263 70% 65%;
     --chart-2: 199 89% 55%;
     --chart-3: 160 70% 50%;
+    --chart-positive: 25 90% 60%;
+    --chart-negative: 199 89% 60%;
   }
 }
 

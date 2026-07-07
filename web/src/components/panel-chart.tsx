@@ -6,20 +6,26 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   ComposedChart,
   Line,
   LineChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
+import type { AxisDomain } from "recharts/types/util/types";
 import type { ChartType, Series } from "@/lib/types";
 
 const VALUE = "hsl(var(--chart-1))";
 const BAND = "hsl(var(--chart-2))";
 const GRID = "hsl(var(--border))";
 const AXIS = "hsl(var(--muted-foreground))";
+// Diverging-bar sign colors: surplus (≥ 0) warm, deficit (< 0) cool (ADR 0014).
+const SURPLUS = "hsl(var(--chart-positive))";
+const DEFICIT = "hsl(var(--chart-negative))";
 
 /** PanelChart renders one Series with the Panel's chosen chart type. Because the
  *  API only ever returns a few hundred bucketed points (ADR 0012), the chart
@@ -48,7 +54,14 @@ export function PanelChart({ series, chartType }: { series: Series; chartType: C
   const xAxis = (
     <XAxis dataKey="bucket" tickFormatter={formatTick(series.bucket)} minTickGap={24} {...axisProps} />
   );
-  const yAxis = <YAxis width={40} {...axisProps} tickFormatter={formatValue} />;
+  // A diverging bar reads against a zero baseline, so the Y domain must span zero
+  // even when every value shares a sign (ADR 0014); otherwise Recharts fits the
+  // axis to the data and the "balance around zero" is lost.
+  const yDomain: AxisDomain | undefined =
+    chartType === "diverging_bar"
+      ? [(min: number) => Math.min(0, min), (max: number) => Math.max(0, max)]
+      : undefined;
+  const yAxis = <YAxis width={40} domain={yDomain} {...axisProps} tickFormatter={formatValue} />;
   const grid = <CartesianGrid stroke={GRID} strokeDasharray="3 3" vertical={false} />;
   const tooltip = <Tooltip content={<ChartTooltip unit={series.unit} />} cursor={{ stroke: GRID }} />;
 
@@ -97,6 +110,25 @@ function renderChart(chartType: ChartType, data: ChartData, axes: Axes): React.R
           <Area type="monotone" dataKey="band" stroke="none" fill={BAND} fillOpacity={0.18} />
           <Line type="monotone" dataKey="value" stroke={VALUE} strokeWidth={2} dot={false} />
         </ComposedChart>
+      );
+    // diverging_bar is the signed-Metric variant (calorie_balance, ADR 0014):
+    // bars grow from a zero baseline and are colored by sign — surplus above,
+    // deficit below. Gap buckets are already absent from the Series, so they
+    // simply draw no bar (never a zero bar). A Cell per datum sets the sign color.
+    case "diverging_bar":
+      return (
+        <BarChart data={data} margin={margin}>
+          {grid}
+          {xAxis}
+          {yAxis}
+          {tooltip}
+          <ReferenceLine y={0} stroke={AXIS} strokeWidth={1} />
+          <Bar dataKey="value" radius={[3, 3, 0, 0]} isAnimationActive={false}>
+            {data.map((d) => (
+              <Cell key={d.bucket} fill={d.value < 0 ? DEFICIT : SURPLUS} />
+            ))}
+          </Bar>
+        </BarChart>
       );
     // stacked_bar is the sleep (duration_by_state) variant. That aggregation is
     // not served yet — the query engine defers it and no Catalog Metric uses it

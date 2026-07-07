@@ -1,8 +1,8 @@
 import * as React from "react";
-import { GripVertical, Settings2, Trash2 } from "lucide-react";
+import { GripVertical, Info, Settings2, Trash2 } from "lucide-react";
 import { useDeletePanel, useUpdatePanel } from "@/hooks/use-dashboards";
 import { useSeries } from "@/hooks/use-series";
-import { CHART_TYPE_LABEL, compatibleChartTypes, metricLabel } from "@/lib/metrics";
+import { CHART_TYPE_LABEL, compatibleChartTypes, formatFormula, metricLabel } from "@/lib/metrics";
 import { effectiveBucket, type ResolvedRange } from "@/lib/time-range";
 import type { Bucket, ChartType, Metric, Panel } from "@/lib/types";
 import { Button } from "./ui/button";
@@ -26,6 +26,9 @@ interface PanelCardProps {
 export function PanelCard({ panel, metric, range, dragHandle }: PanelCardProps) {
   const bucket = effectiveBucket(panel, range);
   const series = useSeries({ metric: panel.metric, from: range.from, to: range.to, bucket });
+  // A derived Panel surfaces its Formula on hover of the title (ADR 0014), so the
+  // user understands what the number is.
+  const formulaTip = metric?.formula ? `Formula: ${formatFormula(metric.formula)}` : undefined;
 
   return (
     <Card className="flex h-72 flex-col">
@@ -33,7 +36,14 @@ export function PanelCard({ panel, metric, range, dragHandle }: PanelCardProps) 
         <div className="flex min-w-0 items-center gap-1">
           {dragHandle}
           <div className="min-w-0">
-            <div className="truncate text-sm font-medium">{metricLabel(panel.metric)}</div>
+            <div
+              className="flex items-center gap-1"
+              title={formulaTip}
+              aria-label={formulaTip}
+            >
+              <span className="truncate text-sm font-medium">{metricLabel(panel.metric)}</span>
+              {metric?.formula && <Info className="size-3.5 shrink-0 text-muted-foreground/70" />}
+            </div>
             <div className="text-xs text-muted-foreground">
               {series.data?.unit ?? metric?.unit ?? ""} · {bucket}
               {panel.bucket ? "" : " (auto)"}
@@ -62,7 +72,7 @@ export function PanelCard({ panel, metric, range, dragHandle }: PanelCardProps) 
 function PanelSettings({ panel, metric }: { panel: Panel; metric?: Metric }) {
   const update = useUpdatePanel();
   const remove = useDeletePanel();
-  const chartTypes = metric ? compatibleChartTypes(metric.aggregation) : (["bar", "line", "area"] as ChartType[]);
+  const chartTypes = metric ? compatibleChartTypes(metric) : (["bar", "line", "area"] as ChartType[]);
 
   const patch = (body: Parameters<typeof update.mutate>[0]["patch"]) => update.mutate({ id: panel.id, patch: body });
 
