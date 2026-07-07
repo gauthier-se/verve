@@ -1,6 +1,6 @@
 # 01 — Catalog: Formula type + seed derived Metrics
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: —
 
 ## Goal
