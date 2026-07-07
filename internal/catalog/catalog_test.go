@@ -32,7 +32,9 @@ func TestCatalogIsBroad(t *testing.T) {
 	}
 }
 
-// TestCatalogWellFormed guards every entry's invariants.
+// TestCatalogWellFormed guards every entry's invariants. Imported and derived
+// Metrics have mutually exclusive shapes: an imported Metric has a valid
+// aggregation rule and no Formula; a derived Metric has a Formula and no rule.
 func TestCatalogWellFormed(t *testing.T) {
 	valid := map[Aggregation]bool{Sum: true, Average: true, Latest: true, DurationByState: true}
 	for slug, m := range All() {
@@ -42,11 +44,23 @@ func TestCatalogWellFormed(t *testing.T) {
 		if m.Unit == "" {
 			t.Errorf("metric %q has empty unit", slug)
 		}
-		if !valid[m.Aggregation] {
-			t.Errorf("metric %q has invalid aggregation %q", slug, m.Aggregation)
-		}
-		if m.Nature != Imported {
-			t.Errorf("metric %q nature = %q, want imported", slug, m.Nature)
+		switch m.Nature {
+		case Imported:
+			if !valid[m.Aggregation] {
+				t.Errorf("imported metric %q has invalid aggregation %q", slug, m.Aggregation)
+			}
+			if m.Formula != nil {
+				t.Errorf("imported metric %q carries a Formula", slug)
+			}
+		case Derived:
+			if m.Aggregation != "" {
+				t.Errorf("derived metric %q declares aggregation %q; it has no rule", slug, m.Aggregation)
+			}
+			if m.Formula == nil {
+				t.Errorf("derived metric %q has no Formula", slug)
+			}
+		default:
+			t.Errorf("metric %q has unknown nature %q", slug, m.Nature)
 		}
 	}
 }

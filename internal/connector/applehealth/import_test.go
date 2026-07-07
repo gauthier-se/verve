@@ -186,7 +186,9 @@ func TestImportStreamNormalizesUnits(t *testing.T) {
 }
 
 // TestMappingMatchesCatalog guards ADR 0009: every mapping target is a real
-// Catalog slug, and every Catalog Metric has an Apple mapping (broad seed).
+// Catalog slug, and every *imported* Catalog Metric has an Apple mapping (broad
+// seed). Derived Metrics are computed from other Metrics and have no source, so
+// they carry no Apple mapping (ADR 0014).
 func TestMappingMatchesCatalog(t *testing.T) {
 	for appleType, slug := range typeToMetric {
 		if _, ok := catalog.Lookup(slug); !ok {
@@ -198,9 +200,12 @@ func TestMappingMatchesCatalog(t *testing.T) {
 	for _, slug := range typeToMetric {
 		mapped[slug] = true
 	}
-	for slug := range catalog.All() {
+	for slug, m := range catalog.All() {
+		if m.Nature != catalog.Imported {
+			continue
+		}
 		if !mapped[slug] {
-			t.Errorf("Catalog metric %q has no Apple mapping", slug)
+			t.Errorf("imported Catalog metric %q has no Apple mapping", slug)
 		}
 	}
 }

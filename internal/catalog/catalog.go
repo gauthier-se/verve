@@ -1,8 +1,10 @@
 // Package catalog defines Verve's Catalog: the closed but extensible set of
 // canonical Metrics the system understands (see CONTEXT.md and ADR 0002). Each
 // Metric has a neutral, source-independent slug (heart_rate, never
-// HKQuantityTypeIdentifierHeartRate), one canonical unit, and an aggregation
-// rule that decides how points collapse into a time bucket.
+// HKQuantityTypeIdentifierHeartRate) and one canonical unit. An imported Metric
+// also carries an aggregation rule that decides how points collapse into a time
+// bucket; a derived Metric carries a Formula over other Metrics instead and is
+// computed per bucket on read (ADR 0014).
 //
 // The Catalog is source-independent: it names *what* Verve stores, not *how*
 // any Source spells it. A Connector owns the mapping from its own vocabulary to
@@ -29,26 +31,40 @@ const (
 )
 
 // Nature distinguishes Metrics produced by a Connector from those computed on
-// read. Only Imported Metrics exist in this slice.
+// read from other Metrics.
 type Nature string
 
 const (
-	// Imported Metrics are produced by a Connector from a Source.
+	// Imported Metrics are produced by a Connector from a Source; each carries
+	// its own aggregation rule.
 	Imported Nature = "imported"
-	// Derived Metrics are defined by a formula over other Metrics (v2).
+	// Derived Metrics are defined by a Formula over other Metrics and computed
+	// per bucket on read; they have no aggregation rule of their own (ADR 0014).
 	Derived Nature = "derived"
 )
 
-// Metric is one canonical entry in the Catalog.
+// Metric is one canonical entry in the Catalog. An Imported Metric carries an
+// Aggregation and no Formula; a Derived Metric carries a Formula and no
+// Aggregation — the two shapes are mutually exclusive, so a derived Metric never
+// fakes a rule it does not have.
 type Metric struct {
 	// Slug is the stable, neutral identifier persisted with every Measurement.
 	Slug string
 	// Unit is the single canonical unit; Connectors normalize to it on import.
+	// For a derived Metric it is the unit its Formula produces.
 	Unit string
-	// Aggregation is how points collapse into a time bucket.
+	// Aggregation is how imported points collapse into a time bucket. It is
+	// empty for a derived Metric, which has no rule of its own: each operand
+	// aggregates by its own rule and the Formula combines them per bucket.
 	Aggregation Aggregation
 	// Nature is Imported or Derived.
 	Nature Nature
+	// Formula defines a derived Metric as data; nil for an imported Metric
+	// (ADR 0014).
+	Formula *Formula
+	// Signed marks a derived Metric whose value is meaningfully negative
+	// (calorie_balance), so the API can hint a diverging render around zero.
+	Signed bool
 }
 
 // metrics declares the Catalog as data. Canonical units follow Apple Health's
@@ -209,9 +225,98 @@ func buildMetrics() map[string]Metric {
 		{"number_of_alcoholic_beverages", "count", Sum},
 	}
 
-	m := make(map[string]Metric, len(rows))
+	derived := derivedMetrics()
+	m := make(map[string]Metric, len(rows)+len(derived))
 	for _, r := range rows {
 		m[r.slug] = Metric{Slug: r.slug, Unit: r.unit, Aggregation: r.agg, Nature: Imported}
 	}
+	for _, d := range derived {
+		m[d.Slug] = d
+	}
 	return m
+}
+
+// derivedMetrics declares the seed derived Metrics as data (ADR 0014). Each
+// carries a Formula and a canonical unit but no aggregation rule: its operands
+// aggregate by their own rules and the Formula is applied per bucket. A Catalog
+// test validates every operand slug and the declared unit at build time
+// (formula_test.go).
+func derivedMetrics() []Metric {
+	return []Metric{
+		// total_energy_expenditure = active_energy + basal_energy (kcal).
+		{
+			Slug:   "total_energy_expenditure",
+			Unit:   "kcal",
+			Nature: Derived,
+			Formula: &Formula{
+				Scale: 1,
+				Numerator: []Term{
+					{Metric: "active_energy", Coefficient: 1},
+					{Metric: "basal_energy", Coefficient: 1},
+				},
+			},
+		},
+		// calorie_balance = dietary_energy − active_energy − basal_energy
+		// (kcal, signed: negative on a deficit).
+		{
+			Slug:   "calorie_balance",
+			Unit:   "kcal",
+			Nature: Derived,
+			Signed: true,
+			Formula: &Formula{
+				Scale: 1,
+				Numerator: []Term{
+					{Metric: "dietary_energy", Coefficient: 1},
+					{Metric: "active_energy", Coefficient: -1},
+					{Metric: "basal_energy", Coefficient: -1},
+				},
+			},
+		},
+		// protein_per_kg = dietary_protein / body_mass (g/kg).
+		{
+			Slug:   "protein_per_kg",
+			Unit:   "g/kg",
+			Nature: Derived,
+			Formula: &Formula{
+				Scale:       1,
+				Numerator:   []Term{{Metric: "dietary_protein", Coefficient: 1}},
+				Denominator: []Term{{Metric: "body_mass", Coefficient: 1}},
+			},
+		},
+		// protein_energy_share = 100 · 4·dietary_protein / dietary_energy (%),
+		// the Atwater factor 4 kcal/g turning grams into their energy share.
+		{
+			Slug:   "protein_energy_share",
+			Unit:   "%",
+			Nature: Derived,
+			Formula: &Formula{
+				Scale:       100,
+				Numerator:   []Term{{Metric: "dietary_protein", Coefficient: 4}},
+				Denominator: []Term{{Metric: "dietary_energy", Coefficient: 1}},
+			},
+		},
+		// carb_energy_share = 100 · 4·dietary_carbohydrates / dietary_energy (%).
+		{
+			Slug:   "carb_energy_share",
+			Unit:   "%",
+			Nature: Derived,
+			Formula: &Formula{
+				Scale:       100,
+				Numerator:   []Term{{Metric: "dietary_carbohydrates", Coefficient: 4}},
+				Denominator: []Term{{Metric: "dietary_energy", Coefficient: 1}},
+			},
+		},
+		// fat_energy_share = 100 · 9·dietary_fat_total / dietary_energy (%),
+		// the Atwater factor 9 kcal/g for fat.
+		{
+			Slug:   "fat_energy_share",
+			Unit:   "%",
+			Nature: Derived,
+			Formula: &Formula{
+				Scale:       100,
+				Numerator:   []Term{{Metric: "dietary_fat_total", Coefficient: 9}},
+				Denominator: []Term{{Metric: "dietary_energy", Coefficient: 1}},
+			},
+		},
+	}
 }
