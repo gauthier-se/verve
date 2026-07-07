@@ -1,6 +1,6 @@
 # 03 — API: expose derived Metrics
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 02
 
 ## Goal

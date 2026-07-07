@@ -120,6 +120,39 @@ func TestCreatePanelDefaultsChartTypeFromAggregation(t *testing.T) {
 	}
 }
 
+func TestCreatePanelDefaultsDivergingBarForSignedMetric(t *testing.T) {
+	srv, _, cookie := newTestServer(t)
+	d := createDashboard(t, srv, cookie, "D")
+
+	// calorie_balance is a signed derived Metric → default chart diverging_bar.
+	res, body := doReq(t, srv, http.MethodPost, "/v1/dashboards/"+itoa(d.ID)+"/panels", `{"metric":"calorie_balance"}`, cookie)
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("create panel status = %d, want 201 (%s)", res.StatusCode, body["error"])
+	}
+	var p panelView
+	if err := json.Unmarshal(body["panel"], &p); err != nil {
+		t.Fatalf("decode panel: %v", err)
+	}
+	if p.Metric != "calorie_balance" || p.ChartType != "diverging_bar" {
+		t.Errorf("panel = %+v, want calorie_balance/diverging_bar", p)
+	}
+}
+
+func TestDivergingBarRejectedForUnsignedMetric(t *testing.T) {
+	srv, _, cookie := newTestServer(t)
+	d := createDashboard(t, srv, cookie, "D")
+	// steps is not signed, so it may not take the diverging-bar variant.
+	res, body := doReq(t, srv, http.MethodPost, "/v1/dashboards/"+itoa(d.ID)+"/panels", `{"metric":"steps","chart_type":"diverging_bar"}`, cookie)
+	if res.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422", res.StatusCode)
+	}
+	var fields map[string]string
+	_ = json.Unmarshal(body["error"], &fields)
+	if _, ok := fields["chart_type"]; !ok {
+		t.Errorf("error = %v, want a chart_type error", fields)
+	}
+}
+
 func TestCreatePanelRejectsUnknownMetricAndBadChart(t *testing.T) {
 	srv, _, cookie := newTestServer(t)
 	d := createDashboard(t, srv, cookie, "D")

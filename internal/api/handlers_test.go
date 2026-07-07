@@ -155,6 +155,99 @@ func TestMetricsListsCatalog(t *testing.T) {
 	}
 }
 
+func TestMetricsExposesDerivedFormula(t *testing.T) {
+	srv, _, _ := newTestServer(t)
+	res, body := do(t, srv, "/v1/metrics")
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", res.StatusCode)
+	}
+	var metrics []metricView
+	if err := json.Unmarshal(body["metrics"], &metrics); err != nil {
+		t.Fatalf("decode metrics: %v", err)
+	}
+	var cb *metricView
+	for i := range metrics {
+		if metrics[i].Slug == "calorie_balance" {
+			cb = &metrics[i]
+		}
+	}
+	if cb == nil {
+		t.Fatal("calorie_balance not listed")
+	}
+	if cb.Nature != "derived" || cb.Unit != "kcal" || !cb.Signed {
+		t.Errorf("calorie_balance view = %+v, want derived/kcal/signed", cb)
+	}
+	if cb.Aggregation != "" {
+		t.Errorf("derived Aggregation = %q, want empty", cb.Aggregation)
+	}
+	if cb.Formula == nil || cb.Formula.Scale != 1 || len(cb.Formula.Numerator) != 3 || cb.Formula.Denominator != nil {
+		t.Fatalf("calorie_balance formula = %+v, want scale 1, 3 numerator terms, no denominator", cb.Formula)
+	}
+	want := map[string]float64{"dietary_energy": 1, "active_energy": -1, "basal_energy": -1}
+	for _, term := range cb.Formula.Numerator {
+		if c, ok := want[term.Metric]; !ok || c != term.Coefficient {
+			t.Errorf("numerator term %+v not in expected set %v", term, want)
+		}
+	}
+}
+
+// TestMetricsAggregationOmittedForDerived asserts the raw JSON drops the
+// aggregation key on a derived Metric rather than emitting an empty string.
+func TestMetricsAggregationOmittedForDerived(t *testing.T) {
+	srv, _, _ := newTestServer(t)
+	_, body := do(t, srv, "/v1/metrics")
+	var raw []map[string]json.RawMessage
+	if err := json.Unmarshal(body["metrics"], &raw); err != nil {
+		t.Fatalf("decode metrics: %v", err)
+	}
+	for _, m := range raw {
+		if string(m["slug"]) != `"protein_per_kg"` {
+			continue
+		}
+		if _, present := m["aggregation"]; present {
+			t.Errorf("derived metric carries an aggregation key: %v", m)
+		}
+		return
+	}
+	t.Fatal("protein_per_kg not listed")
+}
+
+func TestSeriesDerivedCalorieBalanceSigned(t *testing.T) {
+	srv, models, cookie := newTestServer(t)
+	// Jan 1 has intake and expenditure → a signed balance; Jan 2 has only
+	// expenditure and no dietary_energy → a gap, not a fake deficit.
+	seedSteps(t, models, testEmail, []data.Measurement{
+		{Metric: "dietary_energy", Value: 1800, OriginalUnit: "kcal", StartAt: "2024-01-01T12:00:00Z", EndAt: "2024-01-01T12:00:00Z", Source: "Food", ContentKey: "d1"},
+		{Metric: "active_energy", Value: 500, OriginalUnit: "kcal", StartAt: "2024-01-01T18:00:00Z", EndAt: "2024-01-01T18:00:00Z", Source: "Watch", ContentKey: "a1"},
+		{Metric: "basal_energy", Value: 1600, OriginalUnit: "kcal", StartAt: "2024-01-01T23:00:00Z", EndAt: "2024-01-01T23:00:00Z", Source: "Watch", ContentKey: "b1"},
+		{Metric: "active_energy", Value: 400, OriginalUnit: "kcal", StartAt: "2024-01-02T18:00:00Z", EndAt: "2024-01-02T18:00:00Z", Source: "Watch", ContentKey: "a2"},
+		{Metric: "basal_energy", Value: 1600, OriginalUnit: "kcal", StartAt: "2024-01-02T23:00:00Z", EndAt: "2024-01-02T23:00:00Z", Source: "Watch", ContentKey: "b2"},
+	})
+	res, body := do(t, srv, "/v1/series?metric=calorie_balance&from=2024-01-01&to=2024-01-03&bucket=day", cookie)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", res.StatusCode, body["error"])
+	}
+	var series query.Series
+	if err := json.Unmarshal(body["series"], &series); err != nil {
+		t.Fatalf("decode series: %v", err)
+	}
+	// A derived Series reports no rule and no single Source.
+	if series.Aggregation != "" || series.Source != "" {
+		t.Errorf("series = %+v, want empty aggregation and source", series)
+	}
+	// Only Jan 1 is complete: 1800 − 500 − 1600 = −300. Jan 2 is a gap.
+	if len(series.Points) != 1 {
+		t.Fatalf("points = %+v, want a single non-gap bucket", series.Points)
+	}
+	p := series.Points[0]
+	if p.Bucket != "2024-01-01" || p.Value != -300 {
+		t.Errorf("point = %+v, want 2024-01-01 = -300", p)
+	}
+	if p.Min != nil || p.Max != nil {
+		t.Errorf("derived point carries a band: %+v", p)
+	}
+}
+
 func TestSeriesStepsSummedPerDay(t *testing.T) {
 	srv, models, cookie := newTestServer(t)
 	seedSteps(t, models, testEmail, []data.Measurement{
