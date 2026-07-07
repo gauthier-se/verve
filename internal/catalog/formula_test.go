@@ -85,6 +85,90 @@ func TestDerivedMetricsWellFormed(t *testing.T) {
 	}
 }
 
+// TestFormulaEvaluate exercises the per-bucket combine (ADR 0014): a weighted
+// sum, a signed difference, a ratio, and a scaled ratio — each computed from one
+// bucket's operand values.
+func TestFormulaEvaluate(t *testing.T) {
+	tests := map[string]struct {
+		formula Formula
+		values  map[string]float64
+		want    float64
+	}{
+		"weighted sum": {
+			formula: Formula{Scale: 1, Numerator: []Term{
+				{Metric: "active_energy", Coefficient: 1},
+				{Metric: "basal_energy", Coefficient: 1},
+			}},
+			values: map[string]float64{"active_energy": 400, "basal_energy": 1600},
+			want:   2000,
+		},
+		"signed difference": {
+			formula: Formula{Scale: 1, Numerator: []Term{
+				{Metric: "dietary_energy", Coefficient: 1},
+				{Metric: "active_energy", Coefficient: -1},
+				{Metric: "basal_energy", Coefficient: -1},
+			}},
+			values: map[string]float64{"dietary_energy": 1800, "active_energy": 400, "basal_energy": 1600},
+			want:   -200,
+		},
+		"ratio": {
+			formula: Formula{Scale: 1,
+				Numerator:   []Term{{Metric: "dietary_protein", Coefficient: 1}},
+				Denominator: []Term{{Metric: "body_mass", Coefficient: 1}}},
+			values: map[string]float64{"dietary_protein": 120, "body_mass": 80},
+			want:   1.5,
+		},
+		"scaled ratio with coefficient": {
+			formula: Formula{Scale: 100,
+				Numerator:   []Term{{Metric: "dietary_protein", Coefficient: 4}},
+				Denominator: []Term{{Metric: "dietary_energy", Coefficient: 1}}},
+			values: map[string]float64{"dietary_protein": 100, "dietary_energy": 2000},
+			want:   20, // 100 · (4·100) / 2000
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			got, ok := tc.formula.Evaluate(tc.values)
+			if !ok {
+				t.Fatalf("Evaluate returned ok=false, want a value")
+			}
+			if got != tc.want {
+				t.Errorf("Evaluate = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestFormulaEvaluateGaps proves the gap semantics: a missing operand (numerator
+// or denominator), a zero denominator, and an absent denominator all yield a gap
+// rather than a zero — never zero-filling (ADR 0014).
+func TestFormulaEvaluateGaps(t *testing.T) {
+	ratio := Formula{Scale: 1,
+		Numerator:   []Term{{Metric: "dietary_protein", Coefficient: 1}},
+		Denominator: []Term{{Metric: "body_mass", Coefficient: 1}}}
+	sum := Formula{Scale: 1, Numerator: []Term{
+		{Metric: "active_energy", Coefficient: 1},
+		{Metric: "basal_energy", Coefficient: 1},
+	}}
+
+	tests := map[string]struct {
+		formula Formula
+		values  map[string]float64
+	}{
+		"missing numerator operand":   {ratio, map[string]float64{"body_mass": 80}},
+		"missing denominator operand": {ratio, map[string]float64{"dietary_protein": 120}},
+		"zero denominator":            {ratio, map[string]float64{"dietary_protein": 120, "body_mass": 0}},
+		"missing sum operand":         {sum, map[string]float64{"active_energy": 400}},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			if v, ok := tc.formula.Evaluate(tc.values); ok {
+				t.Errorf("Evaluate = %v, ok=true; want a gap (ok=false)", v)
+			}
+		})
+	}
+}
+
 // TestFormulaValidationCatchesUnknownSlug proves the guard rejects an operand
 // that is not in the Catalog.
 func TestFormulaValidationCatchesUnknownSlug(t *testing.T) {
