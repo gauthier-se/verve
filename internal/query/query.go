@@ -8,6 +8,10 @@
 // a min–max band / latest), scoped to the owning Account (ADR 0007), and pinned
 // to a single winning Source so overlapping Sources never double-count (ADR
 // 0003). The bucket resolution is capped so the raw series can never be shipped.
+//
+// A derived Metric has no rule of its own: it is recomputed per bucket from its
+// Formula operands, each resolved as its own aggregated series (own Source, own
+// rule) and combined in Go (seriesDerived, ADR 0014).
 package query
 
 import (
@@ -15,6 +19,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/gauthier-se/verve/internal/catalog"
@@ -35,7 +40,8 @@ var (
 	// ErrRangeTooLarge is returned when range ÷ bucket would exceed maxPoints.
 	ErrRangeTooLarge = errors.New("query: range too large for bucket")
 	// ErrUnsupportedAggregation is returned for a Metric whose aggregation rule
-	// the engine does not serve yet (duration_by_state, derived Metrics).
+	// the engine does not serve yet (duration_by_state). Derived Metrics are
+	// served via the seriesDerived path (ADR 0014), not this rule.
 	ErrUnsupportedAggregation = errors.New("query: unsupported aggregation")
 )
 
@@ -157,6 +163,10 @@ func (e Engine) Series(ctx context.Context, req Request) (Series, error) {
 		return Series{}, ErrRangeTooLarge
 	}
 
+	if metric.Nature == catalog.Derived {
+		return e.seriesDerived(ctx, req, metric)
+	}
+
 	out := Series{
 		Metric:      metric.Slug,
 		Unit:        metric.Unit,
@@ -180,6 +190,107 @@ func (e Engine) Series(ctx context.Context, req Request) (Series, error) {
 	}
 	out.Points = points
 	return out, nil
+}
+
+// seriesDerived answers a request for a derived Metric by recomputing it per
+// bucket from its Formula operands (ADR 0014). Each operand is resolved as its
+// own aggregated series — its own winning Source, its own rule — then the Formula
+// combines the operands bucket-by-bucket in Go. A bucket is emitted only when
+// every operand has a value and the denominator is non-zero; otherwise it is a
+// gap, never a zero. The derived Series carries no single Source (each operand
+// resolves independently) and its Points carry no min/max band.
+func (e Engine) seriesDerived(ctx context.Context, req Request, metric catalog.Metric) (Series, error) {
+	if metric.Formula == nil {
+		// A derived Metric always carries a Formula (validated at build time,
+		// formula_test); guard rather than deref-panic on a mislabeled entry.
+		return Series{}, fmt.Errorf("%w: derived %q has no Formula", ErrUnsupportedAggregation, metric.Slug)
+	}
+
+	out := Series{
+		Metric:      metric.Slug,
+		Unit:        metric.Unit,
+		Aggregation: metric.Aggregation, // empty: a derived Metric has no rule
+		Bucket:      req.Bucket,
+		Points:      []Point{},
+	}
+
+	// Resolve each distinct operand into its own per-bucket aggregated values.
+	operands := metric.Formula.Operands()
+	byOperand := make(map[string]map[string]float64, len(operands))
+	for _, slug := range operands {
+		vals, err := e.resolveOperand(ctx, req, slug)
+		if err != nil {
+			return Series{}, err
+		}
+		byOperand[slug] = vals
+	}
+
+	// Combine per bucket over the union of buckets any operand produced; the
+	// Formula decides which are complete (all operands present, denominator
+	// non-zero) and which are gaps.
+	for _, bucket := range unionBuckets(byOperand) {
+		values := make(map[string]float64, len(operands))
+		for slug, vals := range byOperand {
+			if v, ok := vals[bucket]; ok {
+				values[slug] = v
+			}
+		}
+		if v, ok := metric.Formula.Evaluate(values); ok {
+			out.Points = append(out.Points, Point{Bucket: bucket, Value: v})
+		}
+	}
+	return out, nil
+}
+
+// resolveOperand aggregates one Formula operand as its own series — its own
+// winning Source (ADR 0003), its own Catalog rule — and returns its value keyed
+// by bucket. An operand with no data anywhere in the range yields an empty map,
+// so every bucket is a gap for it. Only the aggregated value is kept; an average
+// operand's min/max band is dropped, so no band leaks into the derived Series.
+func (e Engine) resolveOperand(ctx context.Context, req Request, slug string) (map[string]float64, error) {
+	m, ok := catalog.Lookup(slug)
+	if !ok {
+		// Operands are validated against the Catalog at build time (formula_test);
+		// guard rather than assume the invariant holds at runtime.
+		return nil, fmt.Errorf("%w: derived operand %q", ErrUnknownMetric, slug)
+	}
+
+	opReq := req
+	opReq.Metric = slug
+	source, ok, err := e.resolveSource(ctx, opReq)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return map[string]float64{}, nil // no data for this operand in the range
+	}
+
+	points, err := e.aggregate(ctx, opReq, m.Aggregation, source)
+	if err != nil {
+		return nil, err
+	}
+	vals := make(map[string]float64, len(points))
+	for _, p := range points {
+		vals[p.Bucket] = p.Value
+	}
+	return vals, nil
+}
+
+// unionBuckets returns the sorted set of bucket keys present across every
+// operand's values. Bucket keys are YYYY-MM-DD, so lexical order is chronological.
+func unionBuckets(byOperand map[string]map[string]float64) []string {
+	seen := map[string]struct{}{}
+	for _, vals := range byOperand {
+		for b := range vals {
+			seen[b] = struct{}{}
+		}
+	}
+	buckets := make([]string, 0, len(seen))
+	for b := range seen {
+		buckets = append(buckets, b)
+	}
+	sort.Strings(buckets)
+	return buckets
 }
 
 // resolveSource finds the Sources with data for the Metric in the range and
@@ -249,7 +360,9 @@ func (e Engine) aggregate(ctx context.Context, req Request, agg catalog.Aggregat
 		// result shape — not the scalar measurements this engine serves. No
 		// Catalog Metric uses it (catalog.go), so it is unreachable via a metric
 		// slug; it is deferred to the slice that graphs sleep. Derived Metrics
-		// (v2) land here too. Guarded rather than assumed unreachable.
+		// take the seriesDerived path (ADR 0014) and never reach here — an empty
+		// agg would be a mislabeled operand. Guarded rather than assumed
+		// unreachable.
 		return nil, fmt.Errorf("%w: %q", ErrUnsupportedAggregation, agg)
 	}
 }

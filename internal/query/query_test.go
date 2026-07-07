@@ -280,6 +280,165 @@ func TestSeriesErrors(t *testing.T) {
 	})
 }
 
+// TestSeriesDerivedCalorieBalance is the acceptance case: calorie_balance over a
+// range returns one signed value per bucket = dietary − active − basal, and a day
+// with no dietary_energy is an absent bucket (a gap), never a zero deficit.
+func TestSeriesDerivedCalorieBalance(t *testing.T) {
+	e, models, acc := setup(t)
+	seed(t, e.DB, models, acc, []meas{
+		// Day 1: food logged → a real balance.
+		{"dietary_energy", 1800, "2024-01-01T12:00:00Z", "MyFitnessPal"},
+		{"active_energy", 400, "2024-01-01T18:00:00Z", "Watch"},
+		{"basal_energy", 1600, "2024-01-01T23:00:00Z", "Watch"},
+		// Day 2: expenditure recorded but no food logged → gap, not a huge deficit.
+		{"active_energy", 500, "2024-01-02T18:00:00Z", "Watch"},
+		{"basal_energy", 1500, "2024-01-02T23:00:00Z", "Watch"},
+	})
+	s, err := e.Series(context.Background(), Request{
+		AccountID: acc, Metric: "calorie_balance", Bucket: Day,
+		From: mustTime(t, "2024-01-01T00:00:00Z"), To: mustTime(t, "2024-01-03T00:00:00Z"),
+	})
+	if err != nil {
+		t.Fatalf("Series: %v", err)
+	}
+	if s.Unit != "kcal" {
+		t.Errorf("unit = %q, want kcal", s.Unit)
+	}
+	// Only day 1 is emitted; day 2 is a gap for the missing dietary_energy.
+	want := []Point{{Bucket: "2024-01-01", Value: -200}} // 1800 − 400 − 1600
+	if len(s.Points) != 1 || s.Points[0] != want[0] {
+		t.Errorf("points = %+v, want %+v (day 2 absent)", s.Points, want)
+	}
+}
+
+// TestSeriesDerivedProteinPerKg checks a ratio derived Metric: dietary_protein
+// summed over the bucket divided by body_mass taken latest, with a weigh-in-less
+// bucket a gap.
+func TestSeriesDerivedProteinPerKg(t *testing.T) {
+	e, models, acc := setup(t)
+	seed(t, e.DB, models, acc, []meas{
+		// Day 1: protein logged and a weigh-in → a ratio.
+		{"dietary_protein", 60, "2024-01-01T09:00:00Z", "MyFitnessPal"},
+		{"dietary_protein", 60, "2024-01-01T19:00:00Z", "MyFitnessPal"}, // summed → 120
+		{"body_mass", 80, "2024-01-01T07:00:00Z", "Scale"},
+		// Day 2: protein logged but no weigh-in → gap (missing denominator).
+		{"dietary_protein", 100, "2024-01-02T09:00:00Z", "MyFitnessPal"},
+	})
+	s, err := e.Series(context.Background(), Request{
+		AccountID: acc, Metric: "protein_per_kg", Bucket: Day,
+		From: mustTime(t, "2024-01-01T00:00:00Z"), To: mustTime(t, "2024-01-03T00:00:00Z"),
+	})
+	if err != nil {
+		t.Fatalf("Series: %v", err)
+	}
+	want := []Point{{Bucket: "2024-01-01", Value: 1.5}} // 120 / 80
+	if len(s.Points) != 1 || s.Points[0] != want[0] {
+		t.Errorf("points = %+v, want %+v (day 2 absent, no weigh-in)", s.Points, want)
+	}
+}
+
+// TestSeriesDerivedWeeklyRecomputesFromOperands proves weekly/monthly buckets are
+// recomputed from the operands at the requested bucket, not by re-aggregating
+// daily derived values — verified on a sum-of-sums (total_energy_expenditure) and
+// on a ratio (protein_per_kg), where daily ratios do not re-aggregate.
+func TestSeriesDerivedWeeklyRecomputesFromOperands(t *testing.T) {
+	e, models, acc := setup(t)
+	seed(t, e.DB, models, acc, []meas{
+		// Two days in the same ISO week (2024-01-01 is a Monday).
+		{"active_energy", 400, "2024-01-01T18:00:00Z", "Watch"},
+		{"basal_energy", 1600, "2024-01-01T23:00:00Z", "Watch"},
+		{"active_energy", 600, "2024-01-02T18:00:00Z", "Watch"},
+		{"basal_energy", 1400, "2024-01-02T23:00:00Z", "Watch"},
+		// Protein and weigh-ins for the ratio recompute check.
+		{"dietary_protein", 100, "2024-01-01T09:00:00Z", "MyFitnessPal"},
+		{"body_mass", 80, "2024-01-01T07:00:00Z", "Scale"},
+		{"dietary_protein", 140, "2024-01-02T09:00:00Z", "MyFitnessPal"},
+		{"body_mass", 78, "2024-01-02T07:00:00Z", "Scale"}, // latest in the week → 78
+	})
+	req := Request{
+		AccountID: acc, Bucket: Week,
+		From: mustTime(t, "2024-01-01T00:00:00Z"), To: mustTime(t, "2024-01-08T00:00:00Z"),
+	}
+
+	// Sum-of-sums: (400+600) + (1600+1400) = 4000 for the week.
+	req.Metric = "total_energy_expenditure"
+	tee, err := e.Series(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Series TEE: %v", err)
+	}
+	if len(tee.Points) != 1 || tee.Points[0] != (Point{Bucket: "2024-01-01", Value: 4000}) {
+		t.Errorf("weekly TEE = %+v, want one bucket of 4000", tee.Points)
+	}
+
+	// Ratio recomputed from weekly operands: protein summed (240) over body_mass
+	// latest (78) = 3.0769… — NOT the mean of the two daily ratios (1.25, ~1.79).
+	req.Metric = "protein_per_kg"
+	ppk, err := e.Series(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Series PPK: %v", err)
+	}
+	if len(ppk.Points) != 1 {
+		t.Fatalf("weekly PPK points = %+v, want 1", ppk.Points)
+	}
+	if got, want := ppk.Points[0].Value, 240.0/78.0; got != want {
+		t.Errorf("weekly PPK = %v, want %v (Σprotein / latest body_mass, not a mean of ratios)", got, want)
+	}
+}
+
+// TestSeriesDerivedNoBandNoSource proves a derived Series never carries a min/max
+// band (even when an operand is an average Metric) and never a resolved Source
+// (each operand resolves its own — ADR 0003).
+func TestSeriesDerivedNoBandNoSource(t *testing.T) {
+	e, models, acc := setup(t)
+	seed(t, e.DB, models, acc, []meas{
+		{"dietary_energy", 2000, "2024-01-01T12:00:00Z", "MyFitnessPal"},
+		{"active_energy", 400, "2024-01-01T18:00:00Z", "Watch"},
+		{"basal_energy", 1600, "2024-01-01T23:00:00Z", "Watch"},
+	})
+	s, err := e.Series(context.Background(), Request{
+		AccountID: acc, Metric: "calorie_balance", Bucket: Day,
+		From: mustTime(t, "2024-01-01T00:00:00Z"), To: mustTime(t, "2024-01-02T00:00:00Z"),
+	})
+	if err != nil {
+		t.Fatalf("Series: %v", err)
+	}
+	if s.Source != "" {
+		t.Errorf("derived Source = %q, want empty (per-operand resolution)", s.Source)
+	}
+	if len(s.Points) != 1 {
+		t.Fatalf("points = %+v, want 1", s.Points)
+	}
+	if s.Points[0].Min != nil || s.Points[0].Max != nil {
+		t.Errorf("derived point carries a band %v/%v, want none", s.Points[0].Min, s.Points[0].Max)
+	}
+}
+
+// TestResolveOperandAverageDropsBand proves that an average operand collapses to
+// its bare mean when resolved for a derived Metric — no seeded derived Metric has
+// an average operand, so this guards the "never a min/max band, even when an
+// operand is an average Metric" contract (ADR 0014) at the operand seam directly.
+func TestResolveOperandAverageDropsBand(t *testing.T) {
+	e, models, acc := setup(t)
+	seed(t, e.DB, models, acc, []meas{
+		{"heart_rate", 60, "2024-01-01T08:00:00Z", "Watch"},
+		{"heart_rate", 80, "2024-01-01T09:00:00Z", "Watch"},
+		{"heart_rate", 100, "2024-01-01T10:00:00Z", "Watch"}, // avg 80, band 60..100
+	})
+	req := Request{
+		AccountID: acc, Bucket: Day,
+		From: mustTime(t, "2024-01-01T00:00:00Z"), To: mustTime(t, "2024-01-02T00:00:00Z"),
+	}
+	vals, err := e.resolveOperand(context.Background(), req, "heart_rate")
+	if err != nil {
+		t.Fatalf("resolveOperand: %v", err)
+	}
+	// A map[string]float64 keeps only the average — the band cannot survive to a
+	// derived Point.
+	if got, want := vals["2024-01-01"], 80.0; got != want {
+		t.Errorf("resolved average operand = %v, want %v (bare mean, no band)", got, want)
+	}
+}
+
 func TestParseBucket(t *testing.T) {
 	tests := map[string]struct {
 		want Bucket
