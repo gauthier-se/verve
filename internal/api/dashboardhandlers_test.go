@@ -228,6 +228,81 @@ func TestSwitchingToPresetClearsCustomBounds(t *testing.T) {
 	}
 }
 
+// TestCreateDashboardDefaultsBaselineNone proves a new Dashboard starts with
+// comparison off and no bounds (issue 03 / ADR 0015).
+func TestCreateDashboardDefaultsBaselineNone(t *testing.T) {
+	srv, _, cookie := newTestServer(t)
+	d := createDashboard(t, srv, cookie, "D")
+	if d.BaselineRule != "none" || d.BaselineFrom != nil || d.BaselineTo != nil {
+		t.Errorf("dashboard = %+v, want baseline_rule none with nil bounds", d)
+	}
+}
+
+// TestUpdateDashboardBaselineCustom persists and returns a custom Baseline window.
+func TestUpdateDashboardBaselineCustom(t *testing.T) {
+	srv, _, cookie := newTestServer(t)
+	d := createDashboard(t, srv, cookie, "D")
+
+	res, body := doReq(t, srv, http.MethodPatch, "/v1/dashboards/"+itoa(d.ID),
+		`{"baseline_rule":"custom","baseline_from":"2024-01-01","baseline_to":"2024-02-01"}`, cookie)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (%s)", res.StatusCode, body["error"])
+	}
+	var got dashboardView
+	_ = json.Unmarshal(body["dashboard"], &got)
+	if got.BaselineRule != "custom" || got.BaselineFrom == nil || *got.BaselineFrom != "2024-01-01" || got.BaselineTo == nil || *got.BaselineTo != "2024-02-01" {
+		t.Errorf("dashboard = %+v, want custom baseline 2024-01-01..02-01", got)
+	}
+}
+
+// TestUpdateDashboardBaselineRelative persists a relative rule with nil bounds.
+func TestUpdateDashboardBaselineRelative(t *testing.T) {
+	srv, _, cookie := newTestServer(t)
+	d := createDashboard(t, srv, cookie, "D")
+
+	_, body := doReq(t, srv, http.MethodPatch, "/v1/dashboards/"+itoa(d.ID),
+		`{"baseline_rule":"same_period_last_year"}`, cookie)
+	var got dashboardView
+	_ = json.Unmarshal(body["dashboard"], &got)
+	if got.BaselineRule != "same_period_last_year" || got.BaselineFrom != nil || got.BaselineTo != nil {
+		t.Errorf("dashboard = %+v, want same_period_last_year with nil bounds", got)
+	}
+}
+
+// TestUpdateDashboardBaselineBoundsUnderNonCustomRejected enforces that bounds
+// supplied alongside a non-custom rule are a validation error.
+func TestUpdateDashboardBaselineBoundsUnderNonCustomRejected(t *testing.T) {
+	srv, _, cookie := newTestServer(t)
+	d := createDashboard(t, srv, cookie, "D")
+
+	res, body := doReq(t, srv, http.MethodPatch, "/v1/dashboards/"+itoa(d.ID),
+		`{"baseline_rule":"previous","baseline_from":"2024-01-01","baseline_to":"2024-02-01"}`, cookie)
+	if res.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422", res.StatusCode)
+	}
+	var fields map[string]string
+	_ = json.Unmarshal(body["error"], &fields)
+	if _, ok := fields["baseline_from"]; !ok {
+		t.Errorf("error = %v, want a baseline_from error", fields)
+	}
+}
+
+// TestSwitchingBaselineToRelativeClearsCustomBounds mirrors the range behavior:
+// moving off custom clears any stale frozen window so it can't shadow the rule.
+func TestSwitchingBaselineToRelativeClearsCustomBounds(t *testing.T) {
+	srv, _, cookie := newTestServer(t)
+	d := createDashboard(t, srv, cookie, "D")
+	_, _ = doReq(t, srv, http.MethodPatch, "/v1/dashboards/"+itoa(d.ID),
+		`{"baseline_rule":"custom","baseline_from":"2024-01-01","baseline_to":"2024-02-01"}`, cookie)
+
+	_, body := doReq(t, srv, http.MethodPatch, "/v1/dashboards/"+itoa(d.ID), `{"baseline_rule":"previous"}`, cookie)
+	var got dashboardView
+	_ = json.Unmarshal(body["dashboard"], &got)
+	if got.BaselineRule != "previous" || got.BaselineFrom != nil || got.BaselineTo != nil {
+		t.Errorf("dashboard = %+v, want previous with cleared bounds", got)
+	}
+}
+
 func TestReorderPanels(t *testing.T) {
 	srv, _, cookie := newTestServer(t)
 	d := createDashboard(t, srv, cookie, "D")

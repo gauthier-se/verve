@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"time"
@@ -122,21 +123,72 @@ func (s *Server) handleSeries(w http.ResponseWriter, r *http.Request) {
 
 	bucket := s.parseBucket(qs.Get("bucket"), v)
 	from, to := s.parseTimeRange(qs, v, time.Now())
+	baseline, comparing := parseSeriesBaseline(qs, v)
 
 	if !v.Valid() {
 		s.failedValidationResponse(w, r, v.Errors)
 		return
 	}
 
-	series, err := s.engine.Series(r.Context(), query.Request{
-		AccountID: accountID, Metric: metric, From: from, To: to, Bucket: bucket,
-	})
+	req := query.Request{AccountID: accountID, Metric: metric, From: from, To: to, Bucket: bucket}
+
+	// Without a baseline the response keeps its pre-comparison single-series shape.
+	if !comparing {
+		series, err := s.engine.Series(r.Context(), req)
+		if err != nil {
+			s.respondSeriesError(w, r, err)
+			return
+		}
+		if err := writeJSON(w, http.StatusOK, envelope{"series": series}, nil); err != nil {
+			s.serverErrorResponse(w, r, err)
+		}
+		return
+	}
+
+	// Comparison mode: the current series plus a baseline series, aligned and
+	// equal length by the engine (ADR 0015). Each baseline bucket keeps its date.
+	cmp, err := s.engine.SeriesWithBaseline(r.Context(), req, baseline)
 	if err != nil {
 		s.respondSeriesError(w, r, err)
 		return
 	}
-	if err := writeJSON(w, http.StatusOK, envelope{"series": series}, nil); err != nil {
+	if err := writeJSON(w, http.StatusOK, envelope{"series": cmp.Current, "baseline": cmp.Baseline}, nil); err != nil {
 		s.serverErrorResponse(w, r, err)
+	}
+}
+
+// parseSeriesBaseline resolves the optional comparison Baseline from the query
+// string. An absent `baseline` param means no comparison (comparing=false, the
+// single-series response). A present param must name one of the three active
+// rules; `custom` additionally needs well-formed, ordered `baseline_from`/
+// `baseline_to` bounds. Comparison is unavailable for the `all` range — nothing
+// precedes "all" (ADR 0015). Errors are recorded on v; the returned Baseline is
+// only meaningful once v is valid.
+func parseSeriesBaseline(qs url.Values, v *Validator) (query.Baseline, bool) {
+	raw := qs.Get("baseline")
+	// No comparison: an absent param, or the explicit "none" the Dashboard
+	// persists for comparison-off (CONTEXT.md: Baseline rule) — both yield the
+	// single-series response, so the SPA can forward the stored rule verbatim.
+	if raw == "" || raw == "none" {
+		return query.Baseline{}, false
+	}
+	if qs.Get("range") == "all" {
+		v.AddError("baseline", "comparison is not available for the all range")
+		return query.Baseline{}, false
+	}
+	switch query.BaselineRule(raw) {
+	case query.BaselinePrevious, query.BaselineSamePeriodLastYear:
+		return query.Baseline{Rule: query.BaselineRule(raw)}, true
+	case query.BaselineCustom:
+		bFrom := parseTimeParam(qs.Get("baseline_from"), "baseline_from", v)
+		bTo := parseTimeParam(qs.Get("baseline_to"), "baseline_to", v)
+		if !bFrom.IsZero() && !bTo.IsZero() && !bTo.After(bFrom) {
+			v.AddError("baseline_to", "must be after baseline_from")
+		}
+		return query.Baseline{Rule: query.BaselineCustom, From: bFrom, To: bTo}, true
+	default:
+		v.AddError("baseline", "must be one of previous, same_period_last_year, custom")
+		return query.Baseline{}, false
 	}
 }
 
@@ -231,6 +283,9 @@ func (s *Server) respondSeriesError(w http.ResponseWriter, r *http.Request, err 
 		s.failedValidationResponse(w, r, map[string]string{"metric": unknownMetricMsg})
 	case errors.Is(err, query.ErrInvalidRange):
 		s.failedValidationResponse(w, r, map[string]string{"range": "the range is empty or inverted (from must be before to)"})
+	case errors.Is(err, query.ErrUnknownBaselineRule):
+		// Validated at the edge (parseSeriesBaseline); mapped defensively.
+		s.failedValidationResponse(w, r, map[string]string{"baseline": "unknown baseline rule"})
 	case errors.Is(err, query.ErrRangeTooLarge):
 		s.failedValidationResponse(w, r, map[string]string{"bucket": "too many buckets for this range; use a coarser bucket"})
 	case errors.Is(err, query.ErrUnsupportedAggregation):
