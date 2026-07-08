@@ -43,3 +43,11 @@ response. No per-Panel baseline.
 
 ADR 0012 (bucket API), 0015 (comparison). CONTEXT.md: Baseline, Baseline rule.
 `internal/api/handlers.go`, `internal/api/dashboardhandlers.go`.
+
+## Comments
+
+Issue 01 landed `validateBaseline` in `internal/api/dashboardhandlers.go` with
+unit tests, but it has no production call site yet — until this issue wires it
+into the Dashboard payload, the data layer will persist whatever baseline values
+a caller hands it. Wiring `validateBaseline` into create/update is mandatory
+here, not optional.
