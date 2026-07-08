@@ -120,6 +120,84 @@ func TestDashboardUpdateNameAndRange(t *testing.T) {
 	}
 }
 
+func TestDashboardBaselineDefaultsToNone(t *testing.T) {
+	db, models := openTestDB(t)
+	ctx := context.Background()
+	acc := seedNamedAccount(t, models, "a@example.com")
+
+	d := &Dashboard{AccountID: acc, Name: "Plain", RangePreset: "30d"}
+	if err := models.Dashboards.Insert(ctx, d); err != nil {
+		t.Fatalf("Insert: %v", err)
+	}
+	got, err := models.Dashboards.GetByID(ctx, acc, d.ID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if got.BaselineRule != "none" || got.BaselineFrom != nil || got.BaselineTo != nil {
+		t.Errorf("new dashboard baseline = %q from=%v to=%v, want none with nil bounds",
+			got.BaselineRule, got.BaselineFrom, got.BaselineTo)
+	}
+
+	// A row written without the baseline columns — like every dashboard that
+	// predates the 0006 migration — must also read back as rule 'none'.
+	res, err := db.ExecContext(ctx,
+		`INSERT INTO dashboards (account_id, name, range_preset) VALUES (?, 'Legacy', '7d')`, acc)
+	if err != nil {
+		t.Fatalf("raw insert: %v", err)
+	}
+	legacyID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("LastInsertId: %v", err)
+	}
+	legacy, err := models.Dashboards.GetByID(ctx, acc, legacyID)
+	if err != nil {
+		t.Fatalf("GetByID legacy: %v", err)
+	}
+	if legacy.BaselineRule != "none" || legacy.BaselineFrom != nil || legacy.BaselineTo != nil {
+		t.Errorf("legacy dashboard baseline = %q from=%v to=%v, want none with nil bounds",
+			legacy.BaselineRule, legacy.BaselineFrom, legacy.BaselineTo)
+	}
+}
+
+func TestDashboardBaselineRoundTrip(t *testing.T) {
+	_, models := openTestDB(t)
+	ctx := context.Background()
+	acc := seedNamedAccount(t, models, "a@example.com")
+
+	d := &Dashboard{
+		AccountID: acc, Name: "Compare", RangePreset: "30d",
+		BaselineRule: "custom", BaselineFrom: ptr("2024-01-01"), BaselineTo: ptr("2024-02-01"),
+	}
+	if err := models.Dashboards.Insert(ctx, d); err != nil {
+		t.Fatalf("Insert: %v", err)
+	}
+
+	got, err := models.Dashboards.GetByID(ctx, acc, d.ID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if got.BaselineRule != "custom" {
+		t.Errorf("baseline rule = %q, want custom", got.BaselineRule)
+	}
+	if got.BaselineFrom == nil || *got.BaselineFrom != "2024-01-01" || got.BaselineTo == nil || *got.BaselineTo != "2024-02-01" {
+		t.Errorf("custom baseline not persisted: from=%v to=%v", got.BaselineFrom, got.BaselineTo)
+	}
+
+	// A relative rule carries no bounds; Update must persist the switch.
+	got.BaselineRule = "previous"
+	got.BaselineFrom, got.BaselineTo = nil, nil
+	if err := models.Dashboards.Update(ctx, got); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	list, err := models.Dashboards.ListByAccount(ctx, acc)
+	if err != nil {
+		t.Fatalf("ListByAccount: %v", err)
+	}
+	if len(list) != 1 || list[0].BaselineRule != "previous" || list[0].BaselineFrom != nil || list[0].BaselineTo != nil {
+		t.Errorf("updated baseline = %+v, want previous with nil bounds", list)
+	}
+}
+
 func TestDashboardUpdateIsAccountScoped(t *testing.T) {
 	_, models := openTestDB(t)
 	ctx := context.Background()

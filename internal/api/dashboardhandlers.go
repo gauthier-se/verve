@@ -470,6 +470,43 @@ func validateRange(v *Validator, preset string, from, to *string) {
 	}
 }
 
+// validBaselineRules is the closed set a Dashboard's Baseline rule may take
+// (ADR 0015): the two relative rules, an absolute custom window, or none
+// (comparison off).
+var validBaselineRules = map[string]bool{
+	"none": true, "previous": true, "same_period_last_year": true, "custom": true,
+}
+
+// validateBaseline checks the Baseline: a known rule, with a valid, ordered
+// day-granularity window for "custom" — and no bounds at all otherwise, so a
+// stale frozen window can't shadow a relative rule.
+func validateBaseline(v *Validator, rule string, from, to *string) {
+	if !validBaselineRules[rule] {
+		v.AddError("baseline_rule", "must be one of none, previous, same_period_last_year, custom")
+		return
+	}
+	if rule != "custom" {
+		v.Check(from == nil && to == nil, "baseline_from",
+			"baseline bounds are only for the custom rule")
+		return
+	}
+	if from == nil || to == nil {
+		v.AddError("baseline_from", "a custom baseline needs both baseline_from and baseline_to")
+		return
+	}
+	f, okF := parseDay(*from)
+	t, okT := parseDay(*to)
+	if !okF {
+		v.AddError("baseline_from", "must be YYYY-MM-DD")
+	}
+	if !okT {
+		v.AddError("baseline_to", "must be YYYY-MM-DD")
+	}
+	if okF && okT && !t.After(f) {
+		v.AddError("baseline_to", "must be after baseline_from")
+	}
+}
+
 // validChartTypes is the closed set a Panel may take.
 var validChartTypes = map[string]bool{
 	"bar": true, "line": true, "area": true, "band": true, "stacked_bar": true, "diverging_bar": true,

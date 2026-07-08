@@ -11,16 +11,22 @@ import (
 // range (see CONTEXT.md), owned by exactly one Account (ADR 0007). The range is
 // a preset token (7d/30d/3m/1y/all) or "custom", in which case RangeFrom and
 // RangeTo carry day-granularity bounds (YYYY-MM-DD); both are nil for a preset.
+// The Baseline (ADR 0015) is the second window comparison reads against:
+// BaselineRule is none/previous/same_period_last_year/custom, and only "custom"
+// carries BaselineFrom/BaselineTo, shaped exactly like the range bounds.
 type Dashboard struct {
-	ID          int64
-	AccountID   int64
-	Name        string
-	Position    int
-	RangePreset string
-	RangeFrom   *string
-	RangeTo     *string
-	CreatedAt   string
-	UpdatedAt   string
+	ID           int64
+	AccountID    int64
+	Name         string
+	Position     int
+	RangePreset  string
+	RangeFrom    *string
+	RangeTo      *string
+	BaselineRule string
+	BaselineFrom *string
+	BaselineTo   *string
+	CreatedAt    string
+	UpdatedAt    string
 }
 
 // Panel is one card in a Dashboard: a single Catalog Metric rendered as a chart.
@@ -50,11 +56,17 @@ type DashboardModel struct {
 // is the next after the Account's current maximum, computed in the same statement
 // so concurrent inserts can't collide. It populates ID, Position, and timestamps.
 func (m DashboardModel) Insert(ctx context.Context, d *Dashboard) error {
+	// A caller that says nothing about the Baseline gets comparison off, so a
+	// zero-valued rule never reaches the NOT NULL column as ''.
+	if d.BaselineRule == "" {
+		d.BaselineRule = "none"
+	}
 	const query = `
-		INSERT INTO dashboards (account_id, name, position, range_preset, range_from, range_to)
-		VALUES (?, ?, (SELECT COALESCE(MAX(position)+1, 0) FROM dashboards WHERE account_id = ?), ?, ?, ?)
+		INSERT INTO dashboards (account_id, name, position, range_preset, range_from, range_to, baseline_rule, baseline_from, baseline_to)
+		VALUES (?, ?, (SELECT COALESCE(MAX(position)+1, 0) FROM dashboards WHERE account_id = ?), ?, ?, ?, ?, ?, ?)
 		RETURNING id, position, created_at, updated_at`
-	args := []any{d.AccountID, d.Name, d.AccountID, d.RangePreset, d.RangeFrom, d.RangeTo}
+	args := []any{d.AccountID, d.Name, d.AccountID, d.RangePreset, d.RangeFrom, d.RangeTo,
+		d.BaselineRule, d.BaselineFrom, d.BaselineTo}
 	return m.DB.QueryRowContext(ctx, query, args...).
 		Scan(&d.ID, &d.Position, &d.CreatedAt, &d.UpdatedAt)
 }
@@ -62,7 +74,8 @@ func (m DashboardModel) Insert(ctx context.Context, d *Dashboard) error {
 // ListByAccount returns the Account's dashboards in switcher (position) order.
 func (m DashboardModel) ListByAccount(ctx context.Context, accountID int64) ([]Dashboard, error) {
 	const query = `
-		SELECT id, account_id, name, position, range_preset, range_from, range_to, created_at, updated_at
+		SELECT id, account_id, name, position, range_preset, range_from, range_to,
+		       baseline_rule, baseline_from, baseline_to, created_at, updated_at
 		FROM dashboards
 		WHERE account_id = ?
 		ORDER BY position, id`
@@ -76,7 +89,8 @@ func (m DashboardModel) ListByAccount(ctx context.Context, accountID int64) ([]D
 	for rows.Next() {
 		var d Dashboard
 		if err := rows.Scan(&d.ID, &d.AccountID, &d.Name, &d.Position,
-			&d.RangePreset, &d.RangeFrom, &d.RangeTo, &d.CreatedAt, &d.UpdatedAt); err != nil {
+			&d.RangePreset, &d.RangeFrom, &d.RangeTo,
+			&d.BaselineRule, &d.BaselineFrom, &d.BaselineTo, &d.CreatedAt, &d.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("data: scan dashboard: %w", err)
 		}
 		dashboards = append(dashboards, d)
@@ -92,13 +106,15 @@ func (m DashboardModel) ListByAccount(ctx context.Context, accountID int64) ([]D
 // indistinguishable from a missing row.
 func (m DashboardModel) GetByID(ctx context.Context, accountID, id int64) (*Dashboard, error) {
 	const query = `
-		SELECT id, account_id, name, position, range_preset, range_from, range_to, created_at, updated_at
+		SELECT id, account_id, name, position, range_preset, range_from, range_to,
+		       baseline_rule, baseline_from, baseline_to, created_at, updated_at
 		FROM dashboards
 		WHERE id = ? AND account_id = ?`
 	var d Dashboard
 	err := m.DB.QueryRowContext(ctx, query, id, accountID).Scan(
 		&d.ID, &d.AccountID, &d.Name, &d.Position,
-		&d.RangePreset, &d.RangeFrom, &d.RangeTo, &d.CreatedAt, &d.UpdatedAt)
+		&d.RangePreset, &d.RangeFrom, &d.RangeTo,
+		&d.BaselineRule, &d.BaselineFrom, &d.BaselineTo, &d.CreatedAt, &d.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrRecordNotFound
@@ -108,16 +124,18 @@ func (m DashboardModel) GetByID(ctx context.Context, accountID, id int64) (*Dash
 	return &d, nil
 }
 
-// Update saves a dashboard's name and Time range, scoped to d.AccountID so one
-// Account can never mutate another's row. It returns ErrRecordNotFound if no such
-// dashboard belongs to the Account.
+// Update saves a dashboard's name, Time range, and Baseline, scoped to
+// d.AccountID so one Account can never mutate another's row. It returns
+// ErrRecordNotFound if no such dashboard belongs to the Account.
 func (m DashboardModel) Update(ctx context.Context, d *Dashboard) error {
 	const query = `
 		UPDATE dashboards
 		SET name = ?, range_preset = ?, range_from = ?, range_to = ?,
+		    baseline_rule = ?, baseline_from = ?, baseline_to = ?,
 		    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 		WHERE id = ? AND account_id = ?`
-	args := []any{d.Name, d.RangePreset, d.RangeFrom, d.RangeTo, d.ID, d.AccountID}
+	args := []any{d.Name, d.RangePreset, d.RangeFrom, d.RangeTo,
+		d.BaselineRule, d.BaselineFrom, d.BaselineTo, d.ID, d.AccountID}
 	return execExpectingRow(ctx, m.DB, query, args...)
 }
 

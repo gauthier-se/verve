@@ -65,6 +65,36 @@ its Panels. A Panel may override its own bucket (day/week/month) but not the
 range.
 _Avoid_: Period, Window, Span.
 
+**Baseline**:
+The second, earlier Time range a Dashboard compares against when **period
+comparison** is on — overlaid on every Panel as a recessed reference line. Like
+the Time range, the Baseline is a Dashboard-wide property of the time axis and is
+persisted with the Dashboard. It is defined by a **Baseline rule**, not by a
+metric; a Dashboard with no Baseline (rule `none`) shows a single window as
+before. Comparison is disabled when the Time range is `all` (nothing precedes
+"all"). See ADR 0015.
+_Avoid_: Comparison range (that's the feature), Reference (too vague), Previous
+(only one of the rules), Overlay (that's the rendering).
+
+**Baseline rule**:
+How a Dashboard derives its **Baseline** window from the current Time range —
+`previous` (shift back by the range's own length), `same_period_last_year` (shift
+back one year), or `custom` (absolute frozen `from`/`to` dates). The relative
+rules are *recomputed* from the current range, never stored as dates; only
+`custom` is absolute (the same shape the Time range's `custom` preset uses). For
+a `1y` range the two relative rules coincide.
+_Avoid_: Comparison mode, Offset, Shift (that's the mechanic, not the choice).
+
+**Ordinal alignment**:
+How a Baseline series is laid over the current series on one chart: by **position
+within the period** (bucket 1 vs bucket 1, "day 1 of each window"), not by
+calendar date — the dates differ by construction. The overlay is **truncated to
+the shorter** of the two windows, dropping orphan baseline buckets (a leap day, a
+longer custom span) that have no counterpart. Each baseline bucket still carries
+its own real date for the tooltip. Computed server-side so both windows are
+provably consistent (see ADR 0015).
+_Avoid_: Index alignment (jargon), Zip, Overlay (the visual result, not the rule).
+
 ### Cross-cutting
 
 **Metric**:
