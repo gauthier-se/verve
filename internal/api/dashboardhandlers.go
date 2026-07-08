@@ -34,15 +34,19 @@ type panelView struct {
 }
 
 // dashboardView is one Dashboard with its ordered Panels, so a client loads a
-// whole dashboard in one response.
+// whole dashboard in one response. The Baseline mirrors the Time range (ADR
+// 0015): a rule plus, for "custom" only, a frozen from/to window.
 type dashboardView struct {
-	ID          int64       `json:"id"`
-	Name        string      `json:"name"`
-	Position    int         `json:"position"`
-	RangePreset string      `json:"range_preset"`
-	RangeFrom   *string     `json:"range_from"`
-	RangeTo     *string     `json:"range_to"`
-	Panels      []panelView `json:"panels"`
+	ID           int64       `json:"id"`
+	Name         string      `json:"name"`
+	Position     int         `json:"position"`
+	RangePreset  string      `json:"range_preset"`
+	RangeFrom    *string     `json:"range_from"`
+	RangeTo      *string     `json:"range_to"`
+	BaselineRule string      `json:"baseline_rule"`
+	BaselineFrom *string     `json:"baseline_from"`
+	BaselineTo   *string     `json:"baseline_to"`
+	Panels       []panelView `json:"panels"`
 }
 
 func panelToView(p data.Panel) panelView {
@@ -60,6 +64,7 @@ func dashboardToView(d data.Dashboard, panels []data.Panel) dashboardView {
 	return dashboardView{
 		ID: d.ID, Name: d.Name, Position: d.Position,
 		RangePreset: d.RangePreset, RangeFrom: d.RangeFrom, RangeTo: d.RangeTo,
+		BaselineRule: d.BaselineRule, BaselineFrom: d.BaselineFrom, BaselineTo: d.BaselineTo,
 		Panels: views,
 	}
 }
@@ -144,10 +149,13 @@ func (s *Server) handleUpdateDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var input struct {
-		Name        *string `json:"name"`
-		RangePreset *string `json:"range_preset"`
-		RangeFrom   *string `json:"range_from"`
-		RangeTo     *string `json:"range_to"`
+		Name         *string `json:"name"`
+		RangePreset  *string `json:"range_preset"`
+		RangeFrom    *string `json:"range_from"`
+		RangeTo      *string `json:"range_to"`
+		BaselineRule *string `json:"baseline_rule"`
+		BaselineFrom *string `json:"baseline_from"`
+		BaselineTo   *string `json:"baseline_to"`
 	}
 	if err := readJSON(w, r, &input); err != nil {
 		s.badRequestResponse(w, r, err)
@@ -173,11 +181,32 @@ func (s *Server) handleUpdateDashboard(w http.ResponseWriter, r *http.Request) {
 		d.RangeFrom, d.RangeTo = nil, nil
 	}
 
+	if input.BaselineRule != nil {
+		d.BaselineRule = *input.BaselineRule
+	}
+	// Baseline bounds carry meaning only for the custom rule. Switching to a
+	// relative rule clears any stale frozen window (as the range does), but bounds
+	// sent *with* a non-custom rule are kept so validateBaseline can reject them.
+	switch {
+	case d.BaselineRule == "custom":
+		if input.BaselineFrom != nil {
+			d.BaselineFrom = input.BaselineFrom
+		}
+		if input.BaselineTo != nil {
+			d.BaselineTo = input.BaselineTo
+		}
+	case input.BaselineFrom != nil || input.BaselineTo != nil:
+		d.BaselineFrom, d.BaselineTo = input.BaselineFrom, input.BaselineTo
+	default:
+		d.BaselineFrom, d.BaselineTo = nil, nil
+	}
+
 	v := NewValidator()
 	if input.Name != nil {
 		validateName(v, d.Name)
 	}
 	validateRange(v, d.RangePreset, d.RangeFrom, d.RangeTo)
+	validateBaseline(v, d.BaselineRule, d.BaselineFrom, d.BaselineTo)
 	if !v.Valid() {
 		s.failedValidationResponse(w, r, v.Errors)
 		return

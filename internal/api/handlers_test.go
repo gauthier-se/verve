@@ -287,6 +287,179 @@ func TestSeriesHeartRateBand(t *testing.T) {
 	}
 }
 
+// TestSeriesBaselinePrevious is the issue-03 acceptance: a baseline param returns
+// a current series and a baseline series of equal length, index-aligned, each
+// baseline bucket carrying its own real date. Without the param the response is
+// today's single-series shape (TestSeriesNoBaselineSingleSeries).
+func TestSeriesBaselinePrevious(t *testing.T) {
+	srv, models, cookie := newTestServer(t)
+	seedSteps(t, models, testEmail, []data.Measurement{
+		// Current window Feb 1–3.
+		{Metric: "steps", Value: 100, OriginalUnit: "count", StartAt: "2024-02-01T08:00:00Z", EndAt: "2024-02-01T08:00:00Z", Source: "Watch", ContentKey: "c1"},
+		{Metric: "steps", Value: 200, OriginalUnit: "count", StartAt: "2024-02-02T08:00:00Z", EndAt: "2024-02-02T08:00:00Z", Source: "Watch", ContentKey: "c2"},
+		{Metric: "steps", Value: 300, OriginalUnit: "count", StartAt: "2024-02-03T08:00:00Z", EndAt: "2024-02-03T08:00:00Z", Source: "Watch", ContentKey: "c3"},
+		// Previous window (prior 3 days) Jan 29–31.
+		{Metric: "steps", Value: 10, OriginalUnit: "count", StartAt: "2024-01-29T08:00:00Z", EndAt: "2024-01-29T08:00:00Z", Source: "Watch", ContentKey: "b1"},
+		{Metric: "steps", Value: 20, OriginalUnit: "count", StartAt: "2024-01-30T08:00:00Z", EndAt: "2024-01-30T08:00:00Z", Source: "Watch", ContentKey: "b2"},
+		{Metric: "steps", Value: 30, OriginalUnit: "count", StartAt: "2024-01-31T08:00:00Z", EndAt: "2024-01-31T08:00:00Z", Source: "Watch", ContentKey: "b3"},
+	})
+	res, body := do(t, srv, "/v1/series?metric=steps&from=2024-02-01&to=2024-02-04&bucket=day&baseline=previous", cookie)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", res.StatusCode, body["error"])
+	}
+	var current, baseline query.Series
+	if err := json.Unmarshal(body["series"], &current); err != nil {
+		t.Fatalf("decode series: %v", err)
+	}
+	if _, ok := body["baseline"]; !ok {
+		t.Fatalf("response has no baseline key, want a baseline series")
+	}
+	if err := json.Unmarshal(body["baseline"], &baseline); err != nil {
+		t.Fatalf("decode baseline: %v", err)
+	}
+	if len(current.Points) != 3 || len(baseline.Points) != 3 {
+		t.Fatalf("lengths = current %d / baseline %d, want 3/3", len(current.Points), len(baseline.Points))
+	}
+	if current.Points[0].Bucket != "2024-02-01" || baseline.Points[0].Bucket != "2024-01-29" {
+		t.Errorf("first buckets = %q / %q, want 2024-02-01 / 2024-01-29 (baseline keeps its own date)",
+			current.Points[0].Bucket, baseline.Points[0].Bucket)
+	}
+	if baseline.Points[2].Value != 30 {
+		t.Errorf("baseline last value = %v, want 30", baseline.Points[2].Value)
+	}
+}
+
+// TestSeriesNoBaselineSingleSeries proves the response carries no baseline key
+// when the param is absent — the pre-comparison shape, unchanged.
+func TestSeriesNoBaselineSingleSeries(t *testing.T) {
+	srv, models, cookie := newTestServer(t)
+	seedSteps(t, models, testEmail, []data.Measurement{
+		{Metric: "steps", Value: 100, OriginalUnit: "count", StartAt: "2024-01-01T08:00:00Z", EndAt: "2024-01-01T08:00:00Z", Source: "Watch", ContentKey: "a"},
+	})
+	res, body := do(t, srv, "/v1/series?metric=steps&from=2024-01-01&to=2024-01-02&bucket=day", cookie)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", res.StatusCode)
+	}
+	if _, ok := body["series"]; !ok {
+		t.Errorf("response = %v, want a series key", body)
+	}
+	if _, ok := body["baseline"]; ok {
+		t.Errorf("response carries a baseline key without the param, want none")
+	}
+}
+
+// TestSeriesBaselineNoneIsOff proves the explicit "none" rule the Dashboard
+// persists for comparison-off is treated like an absent param: a single series,
+// no baseline key — so the SPA can forward the stored rule verbatim.
+func TestSeriesBaselineNoneIsOff(t *testing.T) {
+	srv, models, cookie := newTestServer(t)
+	seedSteps(t, models, testEmail, []data.Measurement{
+		{Metric: "steps", Value: 100, OriginalUnit: "count", StartAt: "2024-01-01T08:00:00Z", EndAt: "2024-01-01T08:00:00Z", Source: "Watch", ContentKey: "a"},
+	})
+	res, body := do(t, srv, "/v1/series?metric=steps&from=2024-01-01&to=2024-01-02&bucket=day&baseline=none", cookie)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", res.StatusCode, body["error"])
+	}
+	if _, ok := body["baseline"]; ok {
+		t.Errorf("response carries a baseline key for baseline=none, want none")
+	}
+}
+
+// TestSeriesBaselineCustomRequiresBounds rejects a custom baseline missing bounds.
+func TestSeriesBaselineCustomRequiresBounds(t *testing.T) {
+	srv, _, cookie := newTestServer(t)
+	res, body := do(t, srv, "/v1/series?metric=steps&from=2024-02-01&to=2024-02-04&bucket=day&baseline=custom", cookie)
+	if res.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422", res.StatusCode)
+	}
+	var fields map[string]string
+	_ = json.Unmarshal(body["error"], &fields)
+	if _, ok := fields["baseline_from"]; !ok {
+		t.Errorf("error = %v, want a baseline_from error", fields)
+	}
+}
+
+// TestSeriesBaselineCustomWindow serves a custom baseline over absolute bounds.
+func TestSeriesBaselineCustomWindow(t *testing.T) {
+	srv, models, cookie := newTestServer(t)
+	seedSteps(t, models, testEmail, []data.Measurement{
+		{Metric: "steps", Value: 100, OriginalUnit: "count", StartAt: "2024-02-01T08:00:00Z", EndAt: "2024-02-01T08:00:00Z", Source: "Watch", ContentKey: "c1"},
+		{Metric: "steps", Value: 200, OriginalUnit: "count", StartAt: "2024-02-02T08:00:00Z", EndAt: "2024-02-02T08:00:00Z", Source: "Watch", ContentKey: "c2"},
+		{Metric: "steps", Value: 42, OriginalUnit: "count", StartAt: "2023-07-01T08:00:00Z", EndAt: "2023-07-01T08:00:00Z", Source: "Watch", ContentKey: "b1"},
+		{Metric: "steps", Value: 43, OriginalUnit: "count", StartAt: "2023-07-02T08:00:00Z", EndAt: "2023-07-02T08:00:00Z", Source: "Watch", ContentKey: "b2"},
+	})
+	res, body := do(t, srv, "/v1/series?metric=steps&from=2024-02-01&to=2024-02-03&bucket=day&baseline=custom&baseline_from=2023-07-01&baseline_to=2023-07-03", cookie)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", res.StatusCode, body["error"])
+	}
+	var baseline query.Series
+	if err := json.Unmarshal(body["baseline"], &baseline); err != nil {
+		t.Fatalf("decode baseline: %v", err)
+	}
+	if len(baseline.Points) != 2 || baseline.Points[0].Bucket != "2023-07-01" || baseline.Points[0].Value != 42 {
+		t.Errorf("baseline = %+v, want the custom July 2023 window", baseline.Points)
+	}
+}
+
+// TestSeriesBaselineAllRangeRejected enforces the ADR 0015 rule: nothing precedes
+// the `all` range, so a baseline param with it is a validation error.
+func TestSeriesBaselineAllRangeRejected(t *testing.T) {
+	srv, _, cookie := newTestServer(t)
+	res, body := do(t, srv, "/v1/series?metric=steps&range=all&bucket=month&baseline=previous", cookie)
+	if res.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422", res.StatusCode)
+	}
+	var fields map[string]string
+	_ = json.Unmarshal(body["error"], &fields)
+	if _, ok := fields["baseline"]; !ok {
+		t.Errorf("error = %v, want a baseline error for the all range", fields)
+	}
+}
+
+// TestSeriesBaselineUnknownRule rejects a baseline rule outside the active set.
+func TestSeriesBaselineUnknownRule(t *testing.T) {
+	srv, _, cookie := newTestServer(t)
+	res, body := do(t, srv, "/v1/series?metric=steps&from=2024-02-01&to=2024-02-04&bucket=day&baseline=weekly", cookie)
+	if res.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422", res.StatusCode)
+	}
+	var fields map[string]string
+	_ = json.Unmarshal(body["error"], &fields)
+	if _, ok := fields["baseline"]; !ok {
+		t.Errorf("error = %v, want a baseline error", fields)
+	}
+}
+
+// TestSeriesBaselineDerived proves a derived Metric serves a baseline series too,
+// with an empty Source (each operand resolves its own, ADR 0003).
+func TestSeriesBaselineDerived(t *testing.T) {
+	srv, models, cookie := newTestServer(t)
+	seedSteps(t, models, testEmail, []data.Measurement{
+		// Current day Feb 2.
+		{Metric: "dietary_energy", Value: 1800, OriginalUnit: "kcal", StartAt: "2024-02-02T12:00:00Z", EndAt: "2024-02-02T12:00:00Z", Source: "Food", ContentKey: "d1"},
+		{Metric: "active_energy", Value: 400, OriginalUnit: "kcal", StartAt: "2024-02-02T18:00:00Z", EndAt: "2024-02-02T18:00:00Z", Source: "Watch", ContentKey: "a1"},
+		{Metric: "basal_energy", Value: 1600, OriginalUnit: "kcal", StartAt: "2024-02-02T23:00:00Z", EndAt: "2024-02-02T23:00:00Z", Source: "Watch", ContentKey: "e1"},
+		// Previous day Feb 1.
+		{Metric: "dietary_energy", Value: 2200, OriginalUnit: "kcal", StartAt: "2024-02-01T12:00:00Z", EndAt: "2024-02-01T12:00:00Z", Source: "Food", ContentKey: "d0"},
+		{Metric: "active_energy", Value: 300, OriginalUnit: "kcal", StartAt: "2024-02-01T18:00:00Z", EndAt: "2024-02-01T18:00:00Z", Source: "Watch", ContentKey: "a0"},
+		{Metric: "basal_energy", Value: 1500, OriginalUnit: "kcal", StartAt: "2024-02-01T23:00:00Z", EndAt: "2024-02-01T23:00:00Z", Source: "Watch", ContentKey: "e0"},
+	})
+	res, body := do(t, srv, "/v1/series?metric=calorie_balance&from=2024-02-02&to=2024-02-03&bucket=day&baseline=previous", cookie)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", res.StatusCode, body["error"])
+	}
+	var baseline query.Series
+	if err := json.Unmarshal(body["baseline"], &baseline); err != nil {
+		t.Fatalf("decode baseline: %v", err)
+	}
+	if baseline.Source != "" {
+		t.Errorf("derived baseline Source = %q, want empty", baseline.Source)
+	}
+	if len(baseline.Points) != 1 || baseline.Points[0].Value != 400 { // 2200 − 300 − 1500
+		t.Errorf("baseline = %+v, want Feb 1 recomputed to 400", baseline.Points)
+	}
+}
+
 func TestSeriesRangeShorthand(t *testing.T) {
 	srv, _, cookie := newTestServer(t)
 	// No data, but a valid "1y" range should resolve and return an empty series.
