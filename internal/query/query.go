@@ -111,6 +111,48 @@ func (b Bucket) approxDuration() time.Duration {
 	}
 }
 
+// snap rounds a time down to the start of its bucket, in UTC — the Go twin of
+// sqlExpr, so an enumerated bucket start matches the date SQL would label a
+// measurement in that bucket. Kept beside sqlExpr because the two must agree.
+func (b Bucket) snap(t time.Time) time.Time {
+	t = t.UTC()
+	y, m, d := t.Date()
+	switch b {
+	case Week:
+		day := time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+		offset := (int(day.Weekday()) + 6) % 7 // days since Monday (the ISO week start)
+		return day.AddDate(0, 0, -offset)
+	case Month:
+		return time.Date(y, m, 1, 0, 0, 0, 0, time.UTC)
+	default: // Day
+		return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+	}
+}
+
+// next advances a bucket start to the following bucket start (calendar-aware).
+func (b Bucket) next(t time.Time) time.Time {
+	switch b {
+	case Week:
+		return t.AddDate(0, 0, 7)
+	case Month:
+		return t.AddDate(0, 1, 0)
+	default: // Day
+		return t.AddDate(0, 0, 1)
+	}
+}
+
+// starts enumerates the bucket-start dates (YYYY-MM-DD) covering [from, to), in
+// order — the fixed ordinal sequence of a window, used to align a Baseline to the
+// current series by position rather than date (ADR 0015). Dates match what the
+// aggregation SQL emits, so a bucket's ordinal is the index of its start here.
+func (b Bucket) starts(from, to time.Time) []string {
+	out := []string{}
+	for cur := b.snap(from); cur.Before(to.UTC()); cur = b.next(cur) {
+		out = append(out, cur.Format("2006-01-02"))
+	}
+	return out
+}
+
 // Request is one aggregated-series query: a Metric over [From, To) collapsed
 // into Bucket-sized buckets, scoped to AccountID.
 type Request struct {
@@ -124,11 +166,18 @@ type Request struct {
 // Point is one aggregated bucket. Bucket is the bucket-start date (YYYY-MM-DD).
 // Value is the aggregate under the Metric's rule (sum, average, or latest). Min
 // and Max carry the band for average Metrics and are nil otherwise.
+//
+// Gap marks an ordinal slot a comparison had to hold open: a Baseline bucket with
+// no data that still needs a position so the baseline stays index-aligned with
+// the current series (ADR 0015). It appears only in an aligned Baseline series —
+// a normal query never emits gaps, it omits empty buckets — and carries the real
+// bucket date (for a tooltip) but no value.
 type Point struct {
 	Bucket string   `json:"bucket"`
 	Value  float64  `json:"value"`
 	Min    *float64 `json:"min,omitempty"`
 	Max    *float64 `json:"max,omitempty"`
+	Gap    bool     `json:"gap,omitempty"`
 }
 
 // Series is the result of a query: the resolved Metric metadata, the single
