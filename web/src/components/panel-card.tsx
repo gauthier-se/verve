@@ -1,7 +1,7 @@
 import * as React from "react";
 import { GripVertical, Info, Settings2, Trash2 } from "lucide-react";
 import { useDeletePanel, useUpdatePanel } from "@/hooks/use-dashboards";
-import { useSeries } from "@/hooks/use-series";
+import { useSeries, type BaselineParams } from "@/hooks/use-series";
 import { CHART_TYPE_LABEL, compatibleChartTypes, formatFormula, metricLabel } from "@/lib/metrics";
 import { effectiveBucket, type ResolvedRange } from "@/lib/time-range";
 import type { Bucket, ChartType, Metric, Panel } from "@/lib/types";
@@ -17,15 +17,18 @@ interface PanelCardProps {
   panel: Panel;
   metric?: Metric;
   range: ResolvedRange;
+  baseline?: BaselineParams;
   dragHandle?: React.ReactNode;
 }
 
 /** PanelCard renders one Panel: its Metric charted over the Dashboard's range at
- *  the effective bucket, with a settings popover to switch chart type, override
- *  the bucket, resize, or remove it. */
-export function PanelCard({ panel, metric, range, dragHandle }: PanelCardProps) {
+ *  the effective bucket — overlaid with the Dashboard's Baseline in comparison
+ *  mode — with a settings popover to switch chart type, override the bucket,
+ *  resize, or remove it. */
+export function PanelCard({ panel, metric, range, baseline, dragHandle }: PanelCardProps) {
   const bucket = effectiveBucket(panel, range);
-  const series = useSeries({ metric: panel.metric, from: range.from, to: range.to, bucket });
+  const query = useSeries({ metric: panel.metric, from: range.from, to: range.to, bucket, baseline });
+  const current = query.data?.series;
   // A derived Panel surfaces its Formula on hover of the title (ADR 0014), so the
   // user understands what the number is.
   const formulaTip = metric?.formula ? `Formula: ${formatFormula(metric.formula)}` : undefined;
@@ -45,7 +48,7 @@ export function PanelCard({ panel, metric, range, dragHandle }: PanelCardProps) 
               {metric?.formula && <Info className="size-3.5 shrink-0 text-muted-foreground/70" />}
             </div>
             <div className="text-xs text-muted-foreground">
-              {series.data?.unit ?? metric?.unit ?? ""} · {bucket}
+              {current?.unit ?? metric?.unit ?? ""} · {bucket}
               {panel.bucket ? "" : " (auto)"}
             </div>
           </div>
@@ -54,14 +57,14 @@ export function PanelCard({ panel, metric, range, dragHandle }: PanelCardProps) 
       </div>
 
       <div className="min-h-0 flex-1 p-2">
-        {series.isLoading ? (
+        {query.isLoading ? (
           <CenteredSpinner />
-        ) : series.isError ? (
+        ) : query.isError ? (
           <div className="flex h-full items-center justify-center px-4 text-center text-sm text-destructive">
             Couldn’t load this metric
           </div>
-        ) : series.data ? (
-          <PanelChart series={series.data} chartType={panel.chart_type} />
+        ) : current ? (
+          <PanelChart series={current} baseline={query.data?.baseline} chartType={panel.chart_type} />
         ) : null}
       </div>
     </Card>

@@ -13,6 +13,11 @@ export type Bucket = "day" | "week" | "month";
 /** RangePreset is a Dashboard's Time-range choice (custom uses from/to). */
 export type RangePreset = "7d" | "30d" | "3m" | "1y" | "all" | "custom";
 
+/** BaselineRule is how a Dashboard derives its comparison Baseline window from
+ *  the current Time range (ADR 0015). `none` is comparison off; the two relative
+ *  rules are recomputed server-side; `custom` carries absolute from/to bounds. */
+export type BaselineRule = "none" | "previous" | "same_period_last_year" | "custom";
+
 /** Term is one Formula operand: a Catalog slug weighted by a coefficient. */
 export interface Term {
   metric: string;
@@ -58,7 +63,9 @@ export interface Panel {
   position: number;
 }
 
-/** Dashboard is a named grid of Panels carrying the active Time range. */
+/** Dashboard is a named grid of Panels carrying the active Time range and, when
+ *  period comparison is on, a Baseline (ADR 0015). The baseline bounds mirror the
+ *  range bounds: present only for the `custom` rule. */
 export interface Dashboard {
   id: number;
   name: string;
@@ -66,15 +73,21 @@ export interface Dashboard {
   range_preset: RangePreset;
   range_from: string | null;
   range_to: string | null;
+  baseline_rule: BaselineRule;
+  baseline_from: string | null;
+  baseline_to: string | null;
   panels: Panel[];
 }
 
-/** Point is one aggregated bucket; min/max carry the band for average Metrics. */
+/** Point is one aggregated bucket; min/max carry the band for average Metrics. A
+ *  baseline point may instead be a dated gap (`gap: true`, no value) where the
+ *  Baseline window has no data at that ordinal position (ADR 0015). */
 export interface Point {
   bucket: string;
   value: number;
   min?: number;
   max?: number;
+  gap?: boolean;
 }
 
 /** Series is the result of GET /v1/series: metadata plus ordered buckets. */
