@@ -5,20 +5,16 @@ import (
 	"time"
 )
 
-// Comparison is a current series overlaid with its Baseline, aligned by ordinal
-// bucket position and truncated to equal length (ADR 0015). Current and Baseline
-// share the same bucket granularity; each Baseline Point keeps its own real date
-// so a tooltip can show which earlier bucket it came from.
+// Comparison is a current series overlaid with its Baseline, ordinal-aligned and
+// truncated to equal length (ADR 0015). Each Baseline Point keeps its own date.
 type Comparison struct {
 	Current  Series `json:"current"`
 	Baseline Series `json:"baseline"`
 }
 
-// Compare overlays the current window with a Baseline window the caller has
-// already resolved (internal/timeaxis owns the rule→window date math). It runs the
-// bucket query for both windows at the same granularity — the derived path
-// included, each operand resolving its own Source (ADR 0003) — then aligns them by
-// ordinal position, truncating both to the shorter (ADR 0015).
+// Compare overlays the current window with a caller-resolved Baseline window
+// (timeaxis owns the rule→window math), running the bucket query for both at the
+// same granularity, then aligning by ordinal position, truncated to the shorter.
 func (e Engine) Compare(ctx context.Context, req Request, baseFrom, baseTo time.Time) (Comparison, error) {
 	current, err := e.Series(ctx, req)
 	if err != nil {
@@ -36,20 +32,11 @@ func (e Engine) Compare(ctx context.Context, req Request, baseFrom, baseTo time.
 	return Comparison{Current: current, Baseline: baseline}, nil
 }
 
-// alignOrdinal overlays the Baseline on the current series by ordinal bucket
-// position within each window — "day 1 vs day 1" (ADR 0015), not by date, since
-// the dates differ by construction. It maps each series' points onto the ordinal
-// of its bucket (its index in the window's start sequence), not the point's
-// position in the compacted slice: because a normal query omits empty buckets, a
-// window with an interior gap would otherwise misalign every bucket after it.
-//
-// Both windows are truncated to the shorter's bucket count: current points past
-// that ordinal (a leap-day boundary or a longer custom span) are dropped, and the
-// Baseline is rebuilt so index i names the same ordinal as current point i. A
-// Baseline bucket with no data at that ordinal becomes a Gap slot that keeps its
-// own real date — so the overlay stays index-aligned and an empty Baseline window
-// yields an all-gap (effectively absent) series rather than shrinking the current
-// window to nothing.
+// alignOrdinal overlays the Baseline on the current series by ordinal position
+// within each window — "day 1 vs day 1" (ADR 0015), keyed on each bucket's index
+// in the window's start sequence (not its slice position, since a query omits
+// empty buckets). Both windows truncate to the shorter's count; a Baseline bucket
+// with no data at an ordinal becomes a dated Gap, never a zero.
 func alignOrdinal(bucket Bucket, current, baseline *Series, curFrom, curTo, baseFrom, baseTo time.Time) {
 	curStarts := bucket.starts(curFrom, curTo)
 	baseStarts := bucket.starts(baseFrom, baseTo)
