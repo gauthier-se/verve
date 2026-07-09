@@ -3,7 +3,7 @@ import { GripVertical, Info, Settings2, Trash2 } from "lucide-react";
 import { useDeletePanel, useUpdatePanel } from "@/hooks/use-dashboards";
 import { useSeries, type BaselineParams } from "@/hooks/use-series";
 import { CHART_TYPE_LABEL, compatibleChartTypes, formatFormula, metricLabel } from "@/lib/metrics";
-import { effectiveBucket, type ResolvedRange } from "@/lib/time-range";
+import type { RangeTokens } from "@/lib/time-range";
 import type { Bucket, ChartType, Metric, Panel } from "@/lib/types";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
@@ -16,19 +16,21 @@ import { CenteredSpinner } from "./spinner";
 interface PanelCardProps {
   panel: Panel;
   metric?: Metric;
-  range: ResolvedRange;
+  range: RangeTokens;
   baseline?: BaselineParams;
   dragHandle?: React.ReactNode;
 }
 
 /** PanelCard renders one Panel: its Metric charted over the Dashboard's range at
- *  the effective bucket — overlaid with the Dashboard's Baseline in comparison
- *  mode — with a settings popover to switch chart type, override the bucket,
- *  resize, or remove it. */
+ *  the server-resolved bucket — overlaid with the Dashboard's Baseline in
+ *  comparison mode — with a settings popover to switch chart type, override the
+ *  bucket, resize, or remove it. */
 export function PanelCard({ panel, metric, range, baseline, dragHandle }: PanelCardProps) {
-  const bucket = effectiveBucket(panel, range);
-  const query = useSeries({ metric: panel.metric, from: range.from, to: range.to, bucket, baseline });
+  const query = useSeries({ metric: panel.metric, range, bucket: panel.bucket, baseline });
   const current = query.data?.series;
+  // The effective bucket comes back on the series (the server auto-derives it from
+  // the span unless the Panel overrides it); the override shows before the fetch.
+  const bucket = current?.bucket ?? panel.bucket;
   // A derived Panel surfaces its Formula on hover of the title (ADR 0014), so the
   // user understands what the number is.
   const formulaTip = metric?.formula ? `Formula: ${formatFormula(metric.formula)}` : undefined;

@@ -223,7 +223,7 @@ func TestSeriesDerivedCalorieBalanceSigned(t *testing.T) {
 		{Metric: "active_energy", Value: 400, OriginalUnit: "kcal", StartAt: "2024-01-02T18:00:00Z", EndAt: "2024-01-02T18:00:00Z", Source: "Watch", ContentKey: "a2"},
 		{Metric: "basal_energy", Value: 1600, OriginalUnit: "kcal", StartAt: "2024-01-02T23:00:00Z", EndAt: "2024-01-02T23:00:00Z", Source: "Watch", ContentKey: "b2"},
 	})
-	res, body := do(t, srv, "/v1/series?metric=calorie_balance&from=2024-01-01&to=2024-01-03&bucket=day", cookie)
+	res, body := do(t, srv, "/v1/series?metric=calorie_balance&range_preset=custom&range_from=2024-01-01&range_to=2024-01-03&bucket=day", cookie)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d body=%s, want 200", res.StatusCode, body["error"])
 	}
@@ -254,7 +254,7 @@ func TestSeriesStepsSummedPerDay(t *testing.T) {
 		{Metric: "steps", Value: 100, OriginalUnit: "count", StartAt: "2024-01-01T08:00:00Z", EndAt: "2024-01-01T08:00:00Z", Source: "Watch", ContentKey: "a"},
 		{Metric: "steps", Value: 200, OriginalUnit: "count", StartAt: "2024-01-01T18:00:00Z", EndAt: "2024-01-01T18:00:00Z", Source: "Watch", ContentKey: "b"},
 	})
-	res, body := do(t, srv, "/v1/series?metric=steps&from=2024-01-01&to=2024-01-02&bucket=day", cookie)
+	res, body := do(t, srv, "/v1/series?metric=steps&range_preset=custom&range_from=2024-01-01&range_to=2024-01-02&bucket=day", cookie)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d body=%s, want 200", res.StatusCode, body["error"])
 	}
@@ -273,7 +273,7 @@ func TestSeriesHeartRateBand(t *testing.T) {
 		{Metric: "heart_rate", Value: 60, OriginalUnit: "count/min", StartAt: "2024-01-01T08:00:00Z", EndAt: "2024-01-01T08:00:00Z", Source: "Watch", ContentKey: "a"},
 		{Metric: "heart_rate", Value: 100, OriginalUnit: "count/min", StartAt: "2024-01-01T09:00:00Z", EndAt: "2024-01-01T09:00:00Z", Source: "Watch", ContentKey: "b"},
 	})
-	_, body := do(t, srv, "/v1/series?metric=heart_rate&from=2024-01-01&to=2024-01-02&bucket=day", cookie)
+	_, body := do(t, srv, "/v1/series?metric=heart_rate&range_preset=custom&range_from=2024-01-01&range_to=2024-01-02&bucket=day", cookie)
 	var series query.Series
 	if err := json.Unmarshal(body["series"], &series); err != nil {
 		t.Fatalf("decode series: %v", err)
@@ -303,7 +303,7 @@ func TestSeriesBaselinePrevious(t *testing.T) {
 		{Metric: "steps", Value: 20, OriginalUnit: "count", StartAt: "2024-01-30T08:00:00Z", EndAt: "2024-01-30T08:00:00Z", Source: "Watch", ContentKey: "b2"},
 		{Metric: "steps", Value: 30, OriginalUnit: "count", StartAt: "2024-01-31T08:00:00Z", EndAt: "2024-01-31T08:00:00Z", Source: "Watch", ContentKey: "b3"},
 	})
-	res, body := do(t, srv, "/v1/series?metric=steps&from=2024-02-01&to=2024-02-04&bucket=day&baseline=previous", cookie)
+	res, body := do(t, srv, "/v1/series?metric=steps&range_preset=custom&range_from=2024-02-01&range_to=2024-02-04&bucket=day&baseline_rule=previous", cookie)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d body=%s, want 200", res.StatusCode, body["error"])
 	}
@@ -336,7 +336,7 @@ func TestSeriesNoBaselineSingleSeries(t *testing.T) {
 	seedSteps(t, models, testEmail, []data.Measurement{
 		{Metric: "steps", Value: 100, OriginalUnit: "count", StartAt: "2024-01-01T08:00:00Z", EndAt: "2024-01-01T08:00:00Z", Source: "Watch", ContentKey: "a"},
 	})
-	res, body := do(t, srv, "/v1/series?metric=steps&from=2024-01-01&to=2024-01-02&bucket=day", cookie)
+	res, body := do(t, srv, "/v1/series?metric=steps&range_preset=custom&range_from=2024-01-01&range_to=2024-01-02&bucket=day", cookie)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", res.StatusCode)
 	}
@@ -356,7 +356,7 @@ func TestSeriesBaselineNoneIsOff(t *testing.T) {
 	seedSteps(t, models, testEmail, []data.Measurement{
 		{Metric: "steps", Value: 100, OriginalUnit: "count", StartAt: "2024-01-01T08:00:00Z", EndAt: "2024-01-01T08:00:00Z", Source: "Watch", ContentKey: "a"},
 	})
-	res, body := do(t, srv, "/v1/series?metric=steps&from=2024-01-01&to=2024-01-02&bucket=day&baseline=none", cookie)
+	res, body := do(t, srv, "/v1/series?metric=steps&range_preset=custom&range_from=2024-01-01&range_to=2024-01-02&bucket=day&baseline_rule=none", cookie)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d body=%s, want 200", res.StatusCode, body["error"])
 	}
@@ -368,7 +368,7 @@ func TestSeriesBaselineNoneIsOff(t *testing.T) {
 // TestSeriesBaselineCustomRequiresBounds rejects a custom baseline missing bounds.
 func TestSeriesBaselineCustomRequiresBounds(t *testing.T) {
 	srv, _, cookie := newTestServer(t)
-	res, body := do(t, srv, "/v1/series?metric=steps&from=2024-02-01&to=2024-02-04&bucket=day&baseline=custom", cookie)
+	res, body := do(t, srv, "/v1/series?metric=steps&range_preset=custom&range_from=2024-02-01&range_to=2024-02-04&bucket=day&baseline_rule=custom", cookie)
 	if res.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("status = %d, want 422", res.StatusCode)
 	}
@@ -388,7 +388,7 @@ func TestSeriesBaselineCustomWindow(t *testing.T) {
 		{Metric: "steps", Value: 42, OriginalUnit: "count", StartAt: "2023-07-01T08:00:00Z", EndAt: "2023-07-01T08:00:00Z", Source: "Watch", ContentKey: "b1"},
 		{Metric: "steps", Value: 43, OriginalUnit: "count", StartAt: "2023-07-02T08:00:00Z", EndAt: "2023-07-02T08:00:00Z", Source: "Watch", ContentKey: "b2"},
 	})
-	res, body := do(t, srv, "/v1/series?metric=steps&from=2024-02-01&to=2024-02-03&bucket=day&baseline=custom&baseline_from=2023-07-01&baseline_to=2023-07-03", cookie)
+	res, body := do(t, srv, "/v1/series?metric=steps&range_preset=custom&range_from=2024-02-01&range_to=2024-02-03&bucket=day&baseline_rule=custom&baseline_from=2023-07-01&baseline_to=2023-07-03", cookie)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d body=%s, want 200", res.StatusCode, body["error"])
 	}
@@ -405,7 +405,7 @@ func TestSeriesBaselineCustomWindow(t *testing.T) {
 // the `all` range, so a baseline param with it is a validation error.
 func TestSeriesBaselineAllRangeRejected(t *testing.T) {
 	srv, _, cookie := newTestServer(t)
-	res, body := do(t, srv, "/v1/series?metric=steps&range=all&bucket=month&baseline=previous", cookie)
+	res, body := do(t, srv, "/v1/series?metric=steps&range_preset=all&bucket=month&baseline_rule=previous", cookie)
 	if res.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("status = %d, want 422", res.StatusCode)
 	}
@@ -419,14 +419,14 @@ func TestSeriesBaselineAllRangeRejected(t *testing.T) {
 // TestSeriesBaselineUnknownRule rejects a baseline rule outside the active set.
 func TestSeriesBaselineUnknownRule(t *testing.T) {
 	srv, _, cookie := newTestServer(t)
-	res, body := do(t, srv, "/v1/series?metric=steps&from=2024-02-01&to=2024-02-04&bucket=day&baseline=weekly", cookie)
+	res, body := do(t, srv, "/v1/series?metric=steps&range_preset=custom&range_from=2024-02-01&range_to=2024-02-04&bucket=day&baseline_rule=weekly", cookie)
 	if res.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("status = %d, want 422", res.StatusCode)
 	}
 	var fields map[string]string
 	_ = json.Unmarshal(body["error"], &fields)
-	if _, ok := fields["baseline"]; !ok {
-		t.Errorf("error = %v, want a baseline error", fields)
+	if _, ok := fields["baseline_rule"]; !ok {
+		t.Errorf("error = %v, want a baseline_rule error", fields)
 	}
 }
 
@@ -444,7 +444,7 @@ func TestSeriesBaselineDerived(t *testing.T) {
 		{Metric: "active_energy", Value: 300, OriginalUnit: "kcal", StartAt: "2024-02-01T18:00:00Z", EndAt: "2024-02-01T18:00:00Z", Source: "Watch", ContentKey: "a0"},
 		{Metric: "basal_energy", Value: 1500, OriginalUnit: "kcal", StartAt: "2024-02-01T23:00:00Z", EndAt: "2024-02-01T23:00:00Z", Source: "Watch", ContentKey: "e0"},
 	})
-	res, body := do(t, srv, "/v1/series?metric=calorie_balance&from=2024-02-02&to=2024-02-03&bucket=day&baseline=previous", cookie)
+	res, body := do(t, srv, "/v1/series?metric=calorie_balance&range_preset=custom&range_from=2024-02-02&range_to=2024-02-03&bucket=day&baseline_rule=previous", cookie)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d body=%s, want 200", res.StatusCode, body["error"])
 	}
@@ -460,10 +460,10 @@ func TestSeriesBaselineDerived(t *testing.T) {
 	}
 }
 
-func TestSeriesRangeShorthand(t *testing.T) {
+func TestSeriesRelativePreset(t *testing.T) {
 	srv, _, cookie := newTestServer(t)
-	// No data, but a valid "1y" range should resolve and return an empty series.
-	res, body := do(t, srv, "/v1/series?metric=steps&range=1y&bucket=day", cookie)
+	// No data, but a valid "1y" preset should resolve and return an empty series.
+	res, body := do(t, srv, "/v1/series?metric=steps&range_preset=1y&bucket=day", cookie)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d body=%s, want 200", res.StatusCode, body["error"])
 	}
@@ -471,7 +471,7 @@ func TestSeriesRangeShorthand(t *testing.T) {
 
 func TestSeriesBucketBelowCapRejected(t *testing.T) {
 	srv, _, cookie := newTestServer(t)
-	res, body := do(t, srv, "/v1/series?metric=steps&range=7d&bucket=hour", cookie)
+	res, body := do(t, srv, "/v1/series?metric=steps&range_preset=7d&bucket=hour", cookie)
 	if res.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("status = %d, want 422", res.StatusCode)
 	}
@@ -490,12 +490,12 @@ func TestSeriesValidationErrors(t *testing.T) {
 		target string
 		field  string
 	}{
-		"missing metric":  {"/v1/series?range=7d", "metric"},
-		"unknown metric":  {"/v1/series?metric=nope&range=7d", "metric"},
-		"missing range":   {"/v1/series?metric=steps", "range"},
-		"bad range":       {"/v1/series?metric=steps&range=xyz", "range"},
-		"bad from":        {"/v1/series?metric=steps&from=nonsense&to=2024-01-02", "from"},
-		"range too large": {"/v1/series?metric=steps&from=2000-01-01&to=2024-01-01&bucket=day", "bucket"},
+		"missing metric":   {"/v1/series?range_preset=7d", "metric"},
+		"unknown metric":   {"/v1/series?metric=nope&range_preset=7d", "metric"},
+		"missing range":    {"/v1/series?metric=steps", "range_preset"},
+		"bad range":        {"/v1/series?metric=steps&range_preset=xyz", "range_preset"},
+		"bad custom bound": {"/v1/series?metric=steps&range_preset=custom&range_from=nonsense&range_to=2024-01-02", "range_from"},
+		"range too large":  {"/v1/series?metric=steps&range_preset=custom&range_from=2000-01-01&range_to=2024-01-01&bucket=day", "bucket"},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {

@@ -394,44 +394,5 @@ func TestUpdatePanelBucketOverrideAndClear(t *testing.T) {
 	}
 }
 
-// TestValidateBaseline exercises the Baseline rules directly (ADR 0015): bounds
-// are required and well-formed only under the custom rule, and forbidden
-// otherwise. The payload wiring that feeds it is issue 03.
-func TestValidateBaseline(t *testing.T) {
-	ptr := func(s string) *string { return &s }
-
-	tests := map[string]struct {
-		rule     string
-		from, to *string
-		wantKey  string // "" means valid
-	}{
-		"none is valid":                 {rule: "none"},
-		"previous is valid":             {rule: "previous"},
-		"same period last year":         {rule: "same_period_last_year"},
-		"custom with ordered bounds":    {rule: "custom", from: ptr("2024-01-01"), to: ptr("2024-02-01")},
-		"unknown rule":                  {rule: "weekly", wantKey: "baseline_rule"},
-		"custom missing both bounds":    {rule: "custom", wantKey: "baseline_from"},
-		"custom missing to":             {rule: "custom", from: ptr("2024-01-01"), wantKey: "baseline_from"},
-		"custom malformed from":         {rule: "custom", from: ptr("Jan 1"), to: ptr("2024-02-01"), wantKey: "baseline_from"},
-		"custom malformed to":           {rule: "custom", from: ptr("2024-01-01"), to: ptr("02/01/2024"), wantKey: "baseline_to"},
-		"custom to not after from":      {rule: "custom", from: ptr("2024-02-01"), to: ptr("2024-02-01"), wantKey: "baseline_to"},
-		"bounds under none":             {rule: "none", from: ptr("2024-01-01"), to: ptr("2024-02-01"), wantKey: "baseline_from"},
-		"stray bound under previous":    {rule: "previous", to: ptr("2024-02-01"), wantKey: "baseline_from"},
-		"bounds under last year's rule": {rule: "same_period_last_year", from: ptr("2024-01-01"), wantKey: "baseline_from"},
-	}
-	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
-			v := NewValidator()
-			validateBaseline(v, tc.rule, tc.from, tc.to)
-			if tc.wantKey == "" {
-				if !v.Valid() {
-					t.Errorf("errors = %v, want none", v.Errors)
-				}
-				return
-			}
-			if _, ok := v.Errors[tc.wantKey]; !ok {
-				t.Errorf("errors = %v, want key %q", v.Errors, tc.wantKey)
-			}
-		})
-	}
-}
+// Baseline/range token validation now lives in internal/timeaxis (Validate) and
+// is exercised there; the dashboard PATCH path feeds it from the stored fields.

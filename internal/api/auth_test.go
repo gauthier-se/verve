@@ -86,7 +86,7 @@ func TestSeriesWithoutSessionRejected(t *testing.T) {
 		{Metric: "steps", Value: 100, OriginalUnit: "count", StartAt: "2024-01-01T08:00:00Z", EndAt: "2024-01-01T08:00:00Z", Source: "Watch", ContentKey: "a"},
 	})
 	// No cookie attached.
-	res, _ := do(t, srv, "/v1/series?metric=steps&from=2024-01-01&to=2024-01-02")
+	res, _ := do(t, srv, "/v1/series?metric=steps&range_preset=custom&range_from=2024-01-01&range_to=2024-01-02")
 	if res.StatusCode != http.StatusUnauthorized {
 		t.Errorf("status = %d, want 401 without a session", res.StatusCode)
 	}
@@ -95,7 +95,7 @@ func TestSeriesWithoutSessionRejected(t *testing.T) {
 func TestSeriesWithStaleCookieRejected(t *testing.T) {
 	srv, _, _ := newTestServer(t)
 	stale := &http.Cookie{Name: sessionCookieName, Value: "not-a-real-token"}
-	res, _ := do(t, srv, "/v1/series?metric=steps&range=7d", stale)
+	res, _ := do(t, srv, "/v1/series?metric=steps&range_preset=7d", stale)
 	if res.StatusCode != http.StatusUnauthorized {
 		t.Errorf("status = %d, want 401 for an unknown token", res.StatusCode)
 	}
@@ -163,7 +163,7 @@ func TestAccountsAreIsolated(t *testing.T) {
 
 	assertOnlyValue := func(cookie *http.Cookie, want float64) {
 		t.Helper()
-		_, body := do(t, srv, "/v1/series?metric=steps&from=2024-01-01&to=2024-01-02", cookie)
+		_, body := do(t, srv, "/v1/series?metric=steps&range_preset=custom&range_from=2024-01-01&range_to=2024-01-02", cookie)
 		var series query.Series
 		if err := json.Unmarshal(body["series"], &series); err != nil {
 			t.Fatalf("decode series: %v", err)

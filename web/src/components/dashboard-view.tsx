@@ -4,7 +4,7 @@ import { MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
 import { useDeleteDashboard, useUpdateDashboard, useDashboards } from "@/hooks/use-dashboards";
 import { useMetricMap } from "@/hooks/use-catalog";
 import type { BaselineParams } from "@/hooks/use-series";
-import { resolveRange } from "@/lib/time-range";
+import { rangeTokens } from "@/lib/time-range";
 import type { Dashboard } from "@/lib/types";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
@@ -40,7 +40,7 @@ export function DashboardView() {
     );
   }
 
-  const range = resolveRange(dashboard);
+  const range = rangeTokens(dashboard);
   const baseline = resolveBaseline(dashboard);
 
   return (
