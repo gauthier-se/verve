@@ -6,10 +6,9 @@ import (
 	"fmt"
 )
 
-// Measurement is a scalar value of a canonical Metric at (or over) a point in
-// time, owned by one Account. Value is already normalized to the Metric's
-// canonical unit; OriginalUnit records what the Source reported. StartAt/EndAt
-// are RFC 3339 strings. ContentKey is the dedup identity (see ADR 0006).
+// Measurement is a scalar value of a canonical Metric over a point in time, owned
+// by one Account. Value is normalized to the Metric's unit; OriginalUnit is what
+// the Source reported. ContentKey is the dedup identity (ADR 0006).
 type Measurement struct {
 	AccountID    int64
 	Metric       string
@@ -21,9 +20,8 @@ type Measurement struct {
 	ContentKey   string
 }
 
-// UnmappedRecord is an incoming record the Connector could not map to a Catalog
-// Metric, kept verbatim in the Unmapped bin (ADR 0002). Value is the raw source
-// text, which may be non-numeric.
+// UnmappedRecord is an incoming record the Connector could not map, kept in the
+// Unmapped bin (ADR 0002); Value is raw source text, possibly non-numeric.
 type UnmappedRecord struct {
 	AccountID  int64
 	SourceType string
@@ -51,11 +49,10 @@ type MeasurementModel struct {
 	DB *sql.DB
 }
 
-// InsertBatch inserts a batch of Measurements in one transaction, skipping any
-// whose (account, content_key) already exists so re-import is idempotent (ADR
-// 0006). It returns a mask parallel to ms: inserted[i] is true iff ms[i] was a
-// new row (false means it was a duplicate and skipped). Batching keeps memory
-// bounded and the WAL from growing without bound during a large import.
+// InsertBatch inserts Measurements in one transaction, skipping existing
+// (account, content_key) so re-import is idempotent (ADR 0006). Returns a mask
+// parallel to ms: inserted[i] is true iff ms[i] was new. Batching bounds memory
+// and the WAL during a large import.
 func (m MeasurementModel) InsertBatch(ctx context.Context, ms []Measurement) ([]bool, error) {
 	inserted := make([]bool, len(ms))
 	if len(ms) == 0 {
@@ -98,9 +95,8 @@ func (m MeasurementModel) InsertBatch(ctx context.Context, ms []Measurement) ([]
 	return inserted, nil
 }
 
-// InsertUnmappedBatch inserts a batch of Unmapped records in one transaction,
-// deduped per account by content key exactly like measurements. It returns a
-// mask parallel to us: inserted[i] is true iff us[i] was newly kept.
+// InsertUnmappedBatch inserts Unmapped records in one transaction, deduped by
+// content key like measurements; returns a mask (inserted[i] true iff newly kept).
 func (m MeasurementModel) InsertUnmappedBatch(ctx context.Context, us []UnmappedRecord) ([]bool, error) {
 	inserted := make([]bool, len(us))
 	if len(us) == 0 {

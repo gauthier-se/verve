@@ -5,8 +5,7 @@ import (
 	"database/sql"
 )
 
-// Models aggregates every DAO-style model, so the rest of the app depends on a
-// single injected value rather than reaching for *sql.DB directly.
+// Models aggregates every DAO model so the app depends on one injected value.
 type Models struct {
 	Accounts     AccountModel
 	AuthSessions AuthSessionModel
@@ -16,9 +15,7 @@ type Models struct {
 	Dashboards   DashboardModel
 	Panels       PanelModel
 
-	// db is retained for cross-cutting concerns (e.g. health checks) that need
-	// the handle itself rather than a specific DAO.
-	db *sql.DB
+	db *sql.DB // for cross-cutting needs (e.g. health checks) that want the handle itself
 }
 
 // NewModels wires the models to a database handle.
@@ -35,8 +32,7 @@ func NewModels(db *sql.DB) Models {
 	}
 }
 
-// Ping verifies the database is reachable, backing liveness checks without
-// callers reaching through a DAO for the underlying handle.
+// Ping verifies the database is reachable, backing liveness checks.
 func (m Models) Ping(ctx context.Context) error {
 	return m.db.PingContext(ctx)
 }

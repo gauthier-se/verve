@@ -7,13 +7,9 @@ import (
 	"fmt"
 )
 
-// Dashboard is a named, user-arranged grid of Panels carrying the active Time
-// range (see CONTEXT.md), owned by exactly one Account (ADR 0007). The range is
-// a preset token (7d/30d/3m/1y/all) or "custom", in which case RangeFrom and
-// RangeTo carry day-granularity bounds (YYYY-MM-DD); both are nil for a preset.
-// The Baseline (ADR 0015) is the second window comparison reads against:
-// BaselineRule is none/previous/same_period_last_year/custom, and only "custom"
-// carries BaselineFrom/BaselineTo, shaped exactly like the range bounds.
+// Dashboard is a named grid of Panels carrying the active Time range and Baseline
+// (CONTEXT.md), owned by one Account (ADR 0007). Range/Baseline bounds are set
+// only for the "custom" preset/rule (ADR 0015).
 type Dashboard struct {
 	ID           int64
 	AccountID    int64
@@ -29,11 +25,9 @@ type Dashboard struct {
 	UpdatedAt    string
 }
 
-// Panel is one card in a Dashboard: a single Catalog Metric rendered as a chart.
-// ChartType is bar/line/area/band/stacked_bar. Bucket is nil to auto-derive from
-// the Dashboard's span, or an override (day/week/month). Width is the column span
-// (1-3). AccountID is denormalized from the owning dashboard so every read filters
-// by the Account directly (strict isolation, ADR 0007).
+// Panel is one card in a Dashboard: a Catalog Metric as a chart. Bucket is nil to
+// auto-derive or an override (day/week/month). AccountID is denormalized for direct
+// Account filtering (strict isolation, ADR 0007).
 type Panel struct {
 	ID          int64
 	DashboardID int64
@@ -52,12 +46,10 @@ type DashboardModel struct {
 	DB *sql.DB
 }
 
-// Insert appends a new dashboard at the end of the Account's list — its position
-// is the next after the Account's current maximum, computed in the same statement
-// so concurrent inserts can't collide. It populates ID, Position, and timestamps.
+// Insert appends a dashboard at the end of the Account's list (position computed
+// in-statement so concurrent inserts can't collide); populates ID, Position, timestamps.
 func (m DashboardModel) Insert(ctx context.Context, d *Dashboard) error {
-	// A caller that says nothing about the Baseline gets comparison off, so a
-	// zero-valued rule never reaches the NOT NULL column as ''.
+	// Default the Baseline to comparison-off so a zero value never hits the NOT NULL column.
 	if d.BaselineRule == "" {
 		d.BaselineRule = "none"
 	}
@@ -101,9 +93,8 @@ func (m DashboardModel) ListByAccount(ctx context.Context, accountID int64) ([]D
 	return dashboards, nil
 }
 
-// GetByID returns the Account's dashboard with the given id, or ErrRecordNotFound
-// — including when the id belongs to another Account, so a cross-Account probe is
-// indistinguishable from a missing row.
+// GetByID returns the Account's dashboard, or ErrRecordNotFound (also for another
+// Account's id, so a probe can't tell missing from forbidden).
 func (m DashboardModel) GetByID(ctx context.Context, accountID, id int64) (*Dashboard, error) {
 	const query = `
 		SELECT id, account_id, name, position, range_preset, range_from, range_to,
@@ -124,9 +115,8 @@ func (m DashboardModel) GetByID(ctx context.Context, accountID, id int64) (*Dash
 	return &d, nil
 }
 
-// Update saves a dashboard's name, Time range, and Baseline, scoped to
-// d.AccountID so one Account can never mutate another's row. It returns
-// ErrRecordNotFound if no such dashboard belongs to the Account.
+// Update saves a dashboard's name, range, and Baseline, scoped to d.AccountID;
+// returns ErrRecordNotFound if none belongs to the Account.
 func (m DashboardModel) Update(ctx context.Context, d *Dashboard) error {
 	const query = `
 		UPDATE dashboards
@@ -151,9 +141,8 @@ type PanelModel struct {
 	DB *sql.DB
 }
 
-// Insert appends a new panel at the end of its dashboard's grid — position is the
-// next after that dashboard's current maximum, computed in the same statement. It
-// populates ID, Position, and timestamps. The caller supplies AccountID from the
+// Insert appends a panel at the end of its dashboard's grid (position computed
+// in-statement); populates ID, Position, timestamps. AccountID comes from the
 // already-authorized owning dashboard.
 func (m PanelModel) Insert(ctx context.Context, p *Panel) error {
 	const query = `
@@ -234,10 +223,8 @@ func (m PanelModel) Delete(ctx context.Context, accountID, id int64) error {
 		`DELETE FROM panels WHERE id = ? AND account_id = ?`, id, accountID)
 }
 
-// Reorder rewrites the panel positions in one transaction so the drag-reordered
-// grid persists. orderedIDs lists the dashboard's panels in their new order;
-// each row is set to its index. Every update is scoped to (dashboard, account),
-// so an id from another dashboard or Account simply matches nothing.
+// Reorder rewrites panel positions in one transaction (each row set to its index in
+// orderedIDs). Scoped to (dashboard, account), so a foreign id matches nothing.
 func (m PanelModel) Reorder(ctx context.Context, accountID, dashboardID int64, orderedIDs []int64) error {
 	tx, err := m.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -266,9 +253,8 @@ func (m PanelModel) Reorder(ctx context.Context, accountID, dashboardID int64, o
 	return nil
 }
 
-// execExpectingRow runs a write that must affect exactly one row (an Account-
-// scoped UPDATE or DELETE) and maps "no row affected" to ErrRecordNotFound, so a
-// missing or cross-Account target is reported the same way everywhere.
+// execExpectingRow runs an Account-scoped UPDATE/DELETE that must affect one row,
+// mapping "no row affected" to ErrRecordNotFound.
 func execExpectingRow(ctx context.Context, db *sql.DB, query string, args ...any) error {
 	res, err := db.ExecContext(ctx, query, args...)
 	if err != nil {

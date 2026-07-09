@@ -1,16 +1,9 @@
-// Package applehealth is the Apple Health export Connector: it reads an Apple
-// Health `export.zip` (or a bare `export.xml`) in streaming and classifies its
-// data into canonical families scoped to one Account — scalar Records into
-// Measurements (mapped to a Catalog Metric and normalized to its canonical
-// unit), sleep/stand category Records into States, and Workouts into Sessions
-// with their GPX Routes copied out as file artifacts (ADR 0004). Records whose
-// type it cannot map go to the Unmapped bin, kept and never discarded (ADR 0002).
-//
-// The parse is a streaming xml.Decoder token loop (ADR 0006): the export is
-// ~750 MB, so it must run in constant memory. High-volume families (Measurements,
-// States) flush to storage in bounded batches; nothing accumulates the whole
-// file. Workouts are few, so each is written on its closing tag — the point at
-// which its Session id is known and its routes can be attached.
+// Package applehealth is the Apple Health export Connector: it streams an
+// export.zip (or bare export.xml) and classifies its data into canonical families
+// scoped to one Account — Records into Measurements or the Unmapped bin (ADR 0002),
+// category Records into States, Workouts into Sessions with GPX Routes as artifacts
+// (ADR 0004). Streaming xml.Decoder in constant memory over a ~750 MB export (ADR
+// 0006); high-volume families flush in bounded batches, Workouts write on close.
 package applehealth
 
 import (
@@ -123,11 +116,10 @@ func findExportXML(zr *zip.Reader) *zip.File {
 	return nil
 }
 
-// importStream is the streaming core: it tokenizes r, routing each top-level
-// Record to a Measurement, a State, or the Unmapped bin, and each Workout
-// subtree to a Session with its routes, flushing the high-volume families in
-// bounded batches and finally recording the Import run. It is separated from
-// Import so tests can feed an in-memory reader and a fake route opener.
+// importStream is the streaming core: it tokenizes r, routing each top-level Record
+// to a Measurement, State, or the Unmapped bin and each Workout to a Session with
+// its routes, flushing in bounded batches. Split from Import so tests can feed an
+// in-memory reader and a fake route opener.
 func importStream(ctx context.Context, store Store, accountID int64, sourceFile string, r io.Reader, artifactsDir string, opener routeOpener) (Report, error) {
 	report := Report{
 		SourceFile:    sourceFile,
@@ -144,10 +136,9 @@ func importStream(ctx context.Context, store Store, accountID int64, sourceFile 
 	unmapped := make([]data.UnmappedRecord, 0, batchSize)
 	states := make([]data.State, 0, batchSize)
 
-	// stack tracks element nesting so we process only top-level Records (direct
-	// children of HealthData). Records nested in a Correlation or Workout are
-	// duplicated at top level per Apple's own note, so skipping them here avoids
-	// re-processing the same reading. wb is non-nil while inside a <Workout>.
+	// stack tracks nesting so we process only top-level Records (children of
+	// HealthData); nested ones are duplicated at top level per Apple's note. wb is
+	// non-nil while inside a <Workout>.
 	var stack []string
 	var wb *workoutBuilder
 
@@ -377,11 +368,9 @@ func buildState(accountID int64, kind string, r recordAttrs) data.State {
 	}
 }
 
-// classifyRecord turns one Record's parsed attributes into either a Measurement
-// (when its type maps to a Catalog Metric and its value normalizes cleanly) or
-// an Unmapped record (otherwise). The returned bool selects which of the two is
-// populated. Nothing is ever dropped: an unmappable type, an unparseable value,
-// or a unit that will not convert all fall back to the Unmapped bin.
+// classifyRecord turns a Record into a Measurement (type maps to a Catalog Metric
+// and value normalizes) or an Unmapped record otherwise; the bool selects which.
+// Nothing is dropped — bad type/value/unit all fall back to the Unmapped bin.
 func classifyRecord(accountID int64, r recordAttrs) (data.Measurement, data.UnmappedRecord, bool) {
 	start := normalizeTime(r.start)
 	end := normalizeTime(r.end)

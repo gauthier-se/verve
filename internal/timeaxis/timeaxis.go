@@ -1,9 +1,6 @@
-// Package timeaxis resolves a Dashboard's time axis — its Time range, optional
-// Baseline, and effective bucket — from the stored tokens, server-side (CONTEXT.md:
-// Time axis; ADR 0015). It is the single home for temporal meaning that used to be
-// split between the SPA (resolveRange, autoBucket) and the server (parseRange,
-// baselineWindow, the range/baseline validators). Pure and DB-free: the one test
-// surface for every preset, rule, and bucket decision.
+// Package timeaxis resolves a Dashboard's time axis — Time range, optional Baseline,
+// effective bucket — from the stored tokens, server-side (CONTEXT.md: Time axis;
+// ADR 0015). Pure and DB-free: one test surface for every preset, rule, and bucket.
 package timeaxis
 
 import (
@@ -66,11 +63,9 @@ var baselineRules = map[string]bool{
 	"none": true, "previous": true, "same_period_last_year": true, "custom": true,
 }
 
-// Validate checks a Tokens set without resolving it (no clock needed) — the shape
-// a Dashboard persists. It mirrors the range and baseline rules exactly: a known
-// preset/rule, an ordered day-granularity window for "custom", no baseline bounds
-// on a non-custom rule, and a day/week/month override bucket. Returns nil or an
-// Invalid carrying every offending field.
+// Validate checks a Tokens set without resolving it (no clock) — the shape a
+// Dashboard persists: known preset/rule, ordered bounds for "custom", no baseline
+// bounds on a non-custom rule, a day/week/month override. Returns nil or an Invalid.
 func Validate(t Tokens) error {
 	v := Invalid{}
 	validateRange(v, t)
@@ -82,10 +77,9 @@ func Validate(t Tokens) error {
 	return v
 }
 
-// Resolve validates the tokens, then turns them into concrete windows and a
-// bucket against now. Presets end at today (UTC midnight); "all" starts at
-// allFloor and carries no Baseline. A baseline rule with the "all" range is a
-// validation error. An override bucket wins over the span-derived one.
+// Resolve validates the tokens, then resolves them against now: presets end at
+// today (UTC midnight), "all" starts at allFloor and carries no Baseline (a rule
+// with "all" is an error), and an override bucket wins over the span-derived one.
 func Resolve(t Tokens, now time.Time) (Resolved, error) {
 	if err := Validate(t); err != nil {
 		return Resolved{}, err
@@ -139,10 +133,9 @@ func rangeWindow(t Tokens, now time.Time) (Window, error) {
 	}
 }
 
-// baselineWindow derives the Baseline [from, to) from the current window and the
-// rule: previous shifts back by the current window's own length, same-period-last-
-// year shifts back one calendar year (AddDate normalizes Feb 29 to Mar 1), custom
-// uses the absolute bounds.
+// baselineWindow derives the Baseline [from, to) from the current window: previous
+// shifts back by its length, same_period_last_year by one year (AddDate normalizes
+// Feb 29 → Mar 1), custom uses the absolute bounds.
 func baselineWindow(t Tokens, cur Window) Window {
 	switch t.BaselineRule {
 	case "previous":

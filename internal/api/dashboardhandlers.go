@@ -161,8 +161,7 @@ func (s *Server) handleUpdateDashboard(w http.ResponseWriter, r *http.Request) {
 	if input.RangePreset != nil {
 		d.RangePreset = *input.RangePreset
 	}
-	// The range bounds only carry meaning for a custom preset; a preset button
-	// clears them so a stale custom window can't linger.
+	// Range bounds carry meaning only for a custom preset; a preset clears them.
 	if d.RangePreset == "custom" {
 		if input.RangeFrom != nil {
 			d.RangeFrom = input.RangeFrom
@@ -177,9 +176,9 @@ func (s *Server) handleUpdateDashboard(w http.ResponseWriter, r *http.Request) {
 	if input.BaselineRule != nil {
 		d.BaselineRule = *input.BaselineRule
 	}
-	// Baseline bounds carry meaning only for the custom rule. Switching to a
-	// relative rule clears any stale frozen window (as the range does), but bounds
-	// sent *with* a non-custom rule are kept so timeaxis.Validate can reject them.
+	// Baseline bounds carry meaning only for the custom rule; a relative rule clears
+	// any stale window, but bounds sent with a non-custom rule are kept so
+	// timeaxis.Validate can reject them.
 	switch {
 	case d.BaselineRule == "custom":
 		if input.BaselineFrom != nil {
@@ -317,9 +316,8 @@ func (s *Server) handleUpdatePanel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Bucket is json.RawMessage so the handler can tell an omitted key (leave the
-	// override unchanged) from an explicit null (clear it back to auto-derive) —
-	// a plain *string collapses both to nil.
+	// Bucket is json.RawMessage to tell an omitted key (leave unchanged) from an
+	// explicit null (clear to auto-derive) — a *string collapses both to nil.
 	var input struct {
 		ChartType *string         `json:"chart_type"`
 		Bucket    json.RawMessage `json:"bucket"`
@@ -444,11 +442,9 @@ func (s *Server) respondRecordError(w http.ResponseWriter, r *http.Request, err 
 	s.serverErrorResponse(w, r, err)
 }
 
-// defaultChartType is the chart a Metric gets when a Panel doesn't specify one.
-// A signed derived Metric (calorie_balance) defaults to a diverging bar around
-// zero (ADR 0014); otherwise the aggregation rule decides (issue 06): sum→bar,
-// average→band, latest→line, duration_by_state→stacked bar. A derived Metric with
-// no signed flag has no rule either, so it falls through to line.
+// defaultChartType is the chart a Metric gets when a Panel specifies none: signed
+// derived → diverging bar (ADR 0014); else by aggregation — sum→bar, average→band,
+// duration_by_state→stacked bar, latest (and unsigned derived)→line.
 func defaultChartType(m catalog.Metric) string {
 	if m.Signed {
 		return "diverging_bar"
@@ -476,10 +472,8 @@ var validChartTypes = map[string]bool{
 	"bar": true, "line": true, "area": true, "band": true, "stacked_bar": true, "diverging_bar": true,
 }
 
-// validateChartType checks a chart type is known and compatible with the Metric:
-// the band variant is only for average Metrics, the stacked-bar variant only for
-// duration_by_state, and the diverging-bar variant only for signed (derived)
-// Metrics; bar/line/area suit any scalar Metric.
+// validateChartType checks a chart type is known and compatible: band→average,
+// stacked_bar→duration_by_state, diverging_bar→signed; bar/line/area suit any Metric.
 func validateChartType(v *Validator, chartType string, m catalog.Metric) {
 	if !validChartTypes[chartType] {
 		v.AddError("chart_type", "must be one of bar, line, area, band, stacked_bar, diverging_bar")
