@@ -2,23 +2,18 @@ package applehealth
 
 import "strings"
 
-// This file holds the Apple Health Connector's declarative mapping for the
-// non-scalar families — States (sleep, stand hours) and Sessions (workouts).
-// Like typeToMetric it is data, not logic (ADR 0009): the code only knows "how
-// to read the source", the maps say "what it means".
+// Declarative mapping for the non-scalar families — States and Sessions — data,
+// not logic (ADR 0009).
 
-// categoryStateKinds maps an Apple HKCategoryType* that Verve models as a State
-// to its neutral kind. Category types absent here (LowHeartRateEvent, audio
-// exposure events…) are Events — out of scope for this slice — and fall through
-// to the Unmapped bin, kept for a later slice, never discarded (ADR 0002).
+// categoryStateKinds maps an Apple category type Verve models as a State to its
+// neutral kind. Absent types fall through to the Unmapped bin (ADR 0002).
 var categoryStateKinds = map[string]string{
 	"HKCategoryTypeIdentifierSleepAnalysis":  "sleep",
 	"HKCategoryTypeIdentifierAppleStandHour": "stand",
 }
 
-// stateValues maps an Apple HKCategoryValue* to its neutral phase slug. A value
-// absent here but under a mapped kind still becomes a State: normalizeStateValue
-// derives a slug from it rather than dropping the row (ADR 0002).
+// stateValues maps an Apple category value to its neutral phase slug; an absent
+// value is derived by normalizeStateValue, not dropped (ADR 0002).
 var stateValues = map[string]string{
 	"HKCategoryValueSleepAnalysisInBed":             "in_bed",
 	"HKCategoryValueSleepAnalysisAsleepUnspecified": "asleep",
@@ -37,9 +32,8 @@ func stateKind(appleType string) (string, bool) {
 	return kind, ok
 }
 
-// normalizeStateValue returns the neutral phase slug for an Apple category
-// value. Known values use the curated table; an unknown value under a mapped
-// kind is derived (prefix trimmed, snake-cased) so it is kept, never dropped.
+// normalizeStateValue returns the neutral phase slug: the curated table, or a
+// derived slug (prefix trimmed, snake-cased) so an unknown value is kept.
 func normalizeStateValue(appleValue string) string {
 	if slug, ok := stateValues[appleValue]; ok {
 		return slug
@@ -47,11 +41,9 @@ func normalizeStateValue(appleValue string) string {
 	return snakeFromCamel(trimKnownPrefix(appleValue, "HKCategoryValue"))
 }
 
-// normalizeActivityType returns the neutral activity slug for an Apple workout
-// activity type, derived by trimming the HKWorkoutActivityType prefix and
-// snake-casing (e.g. TraditionalStrengthTraining → traditional_strength_training).
-// Derivation rather than a table keeps every one of Apple's ~80 activities
-// covered without maintenance.
+// normalizeActivityType derives the neutral activity slug by trimming the
+// HKWorkoutActivityType prefix and snake-casing, covering all of Apple's ~80
+// activities without a table.
 func normalizeActivityType(appleType string) string {
 	return snakeFromCamel(trimKnownPrefix(appleType, "HKWorkoutActivityType"))
 }
@@ -64,10 +56,8 @@ func trimKnownPrefix(s, prefix string) string {
 	return s
 }
 
-// snakeFromCamel lowercases an UpperCamelCase identifier into snake_case,
-// inserting an underscore before each interior capital (Running → running,
-// MixedCardio → mixed_cardio). Runs of capitals are treated one letter at a
-// time, which is fine for the workout/category vocabulary Verve derives from.
+// snakeFromCamel lowercases UpperCamelCase into snake_case (MixedCardio →
+// mixed_cardio); runs of capitals split per letter, fine for this vocabulary.
 func snakeFromCamel(s string) string {
 	var b strings.Builder
 	b.Grow(len(s) + 4)

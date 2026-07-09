@@ -2,10 +2,8 @@ package api
 
 import "net/http"
 
-// errorResponse is the single choke point for error payloads: every failure is
-// a JSON object {"error": message} at the given status, so clients parse errors
-// the same way everywhere. message is any so it can be a string or a field→msg
-// map for validation failures.
+// errorResponse is the single choke point for error payloads: a JSON {"error":
+// message} at the given status. message is a string or a field→msg map (422).
 func (s *Server) errorResponse(w http.ResponseWriter, r *http.Request, status int, message any) {
 	if err := writeJSON(w, status, envelope{"error": message}, nil); err != nil {
 		// The response is already compromised; log and fall back to a bare 500.
