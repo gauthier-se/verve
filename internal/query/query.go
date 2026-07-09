@@ -83,9 +83,9 @@ func ParseBucket(s string) (Bucket, error) {
 	}
 }
 
-// sqlExpr is the SQLite expression that maps a measurement's start_at to its
-// bucket-start date (YYYY-MM-DD). start_at is stored as RFC 3339 UTC, which
-// SQLite's date functions parse directly, so buckets fall on UTC boundaries.
+// sqlExpr maps a row's RFC 3339 start_at to its bucket-start date (YYYY-MM-DD)
+// for GROUP BY. snap is its Go twin; TestBucketBoundaryGoSQLAgree pins that the
+// two produce the same boundary.
 func (b Bucket) sqlExpr() string {
 	switch b {
 	case Week:
@@ -111,9 +111,7 @@ func (b Bucket) approxDuration() time.Duration {
 	}
 }
 
-// snap rounds a time down to the start of its bucket, in UTC — the Go twin of
-// sqlExpr, so an enumerated bucket start matches the date SQL would label a
-// measurement in that bucket. Kept beside sqlExpr because the two must agree.
+// snap rounds t down to the start of its bucket, in UTC.
 func (b Bucket) snap(t time.Time) time.Time {
 	t = t.UTC()
 	y, m, d := t.Date()
@@ -141,10 +139,8 @@ func (b Bucket) next(t time.Time) time.Time {
 	}
 }
 
-// starts enumerates the bucket-start dates (YYYY-MM-DD) covering [from, to), in
-// order — the fixed ordinal sequence of a window, used to align a Baseline to the
-// current series by position rather than date (ADR 0015). Dates match what the
-// aggregation SQL emits, so a bucket's ordinal is the index of its start here.
+// starts enumerates the bucket-start dates covering [from, to), in order — the
+// ordinal sequence used to align a Baseline by position, not date (ADR 0015).
 func (b Bucket) starts(from, to time.Time) []string {
 	out := []string{}
 	for cur := b.snap(from); cur.Before(to.UTC()); cur = b.next(cur) {
