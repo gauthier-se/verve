@@ -95,6 +95,17 @@ its own real date for the tooltip. Computed server-side so both windows are
 provably consistent (see ADR 0015).
 _Avoid_: Index alignment (jargon), Zip, Overlay (the visual result, not the rule).
 
+**Time axis**:
+The Dashboard-wide temporal frame its Panels render against: a **Time range**, its
+optional **Baseline**, and the effective **bucket**, all resolved server-side from
+the Dashboard's stored tokens (`range_preset`, `baseline_rule`, a Panel's bucket
+override…) at read time. The Dashboard owns the time axis; Panels own the metric
+axis (ADR 0015). Resolution — preset→window, rule→window, span→bucket — lives in
+one module (`internal/timeaxis`), so the client forwards tokens instead of
+computing dates.
+_Avoid_: Timeframe (reads as a synonym of Time range), Time window (that's one
+resolved bound pair, not the axis).
+
 ### Cross-cutting
 
 **Metric**:
