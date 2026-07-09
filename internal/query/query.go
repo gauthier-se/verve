@@ -1,17 +1,8 @@
-// Package query is Verve's read engine: it turns a request for one Metric over
-// a time range into server-side aggregated buckets, never a raw series (ADR
-// 0012). A single Metric can hold hundreds of thousands of points, so the
-// per-bucket aggregation SQL here — not the client — is what bounds every graph
-// to a few hundred points.
-//
-// Each request is resolved by the Metric's aggregation rule (sum / average with
-// a min–max band / latest), scoped to the owning Account (ADR 0007), and pinned
-// to a single winning Source so overlapping Sources never double-count (ADR
-// 0003). The bucket resolution is capped so the raw series can never be shipped.
-//
-// A derived Metric has no rule of its own: it is recomputed per bucket from its
-// Formula operands, each resolved as its own aggregated series (own Source, own
-// rule) and combined in Go (seriesDerived, ADR 0014).
+// Package query is Verve's read engine: it turns a request for one Metric over a
+// time range into server-side aggregated buckets, never a raw series (ADR 0012),
+// scoped to the owning Account (ADR 0007) and pinned to one winning Source (ADR
+// 0003). A derived Metric is recomputed per bucket from its Formula operands
+// (seriesDerived, ADR 0014).
 package query
 
 import (
@@ -25,49 +16,37 @@ import (
 	"github.com/gauthier-se/verve/internal/catalog"
 )
 
-// Sentinel errors let the HTTP layer map a failed query to the right status
-// without depending on message text.
+// Sentinel errors let the HTTP layer map a failed query to a status without
+// depending on message text.
 var (
-	// ErrUnknownMetric is returned when the requested slug is not in the Catalog.
 	ErrUnknownMetric = errors.New("query: unknown metric")
-	// ErrUnknownBucket is returned when the bucket name is not recognized.
 	ErrUnknownBucket = errors.New("query: unknown bucket")
-	// ErrBucketTooFine is returned when the bucket is below the resolution cap,
-	// which would risk shipping the raw series (ADR 0012).
+	// ErrBucketTooFine is a recognized bucket below the resolution cap (ADR 0012).
 	ErrBucketTooFine = errors.New("query: bucket below the resolution cap")
-	// ErrInvalidRange is returned when the range is empty or inverted (from ≥ to).
+	// ErrInvalidRange is an empty or inverted range (from ≥ to).
 	ErrInvalidRange = errors.New("query: invalid time range")
-	// ErrRangeTooLarge is returned when range ÷ bucket would exceed maxPoints.
+	// ErrRangeTooLarge is range ÷ bucket exceeding maxPoints.
 	ErrRangeTooLarge = errors.New("query: range too large for bucket")
-	// ErrUnsupportedAggregation is returned for a Metric whose aggregation rule
-	// the engine does not serve yet (duration_by_state). Derived Metrics are
-	// served via the seriesDerived path (ADR 0014), not this rule.
+	// ErrUnsupportedAggregation is a rule the engine does not serve (duration_by_state).
 	ErrUnsupportedAggregation = errors.New("query: unsupported aggregation")
 )
 
-// maxPoints caps how many buckets a single query may span. A finer bucket over
-// a range that would exceed it is rejected, forcing the caller to a coarser
-// bucket — the guarantee that keeps a payload bounded regardless of history.
+// maxPoints caps how many buckets one query may span; a finer bucket over a
+// larger range is rejected, keeping the payload bounded regardless of history.
 const maxPoints = 1000
 
-// Bucket is a supported time-bucket granularity. The set is deliberately coarse:
-// day is the finest resolution the API exposes, so the raw series is never
-// returned (ADR 0012). Finer names (hour, minute) parse to ErrBucketTooFine.
+// Bucket is a supported time-bucket granularity. Day is the finest the API
+// exposes (ADR 0012); finer names parse to ErrBucketTooFine.
 type Bucket string
 
 const (
-	// Day buckets by calendar day (UTC) — the finest resolution the API exposes.
-	Day Bucket = "day"
-	// Week buckets by ISO week, keyed on its Monday.
-	Week Bucket = "week"
-	// Month buckets by calendar month, keyed on its first day.
-	Month Bucket = "month"
+	Day   Bucket = "day"   // calendar day (UTC)
+	Week  Bucket = "week"  // ISO week, keyed on its Monday
+	Month Bucket = "month" // calendar month, keyed on its first day
 )
 
 // ParseBucket maps a query-string bucket name to a Bucket. An empty string is
-// not defaulted here — the caller decides the default. Recognized-but-too-fine
-// names yield ErrBucketTooFine so the API can distinguish "you asked below the
-// cap" from "that is not a bucket".
+// not defaulted (the caller decides); too-fine names yield ErrBucketTooFine.
 func ParseBucket(s string) (Bucket, error) {
 	switch s {
 	case "day":
@@ -159,15 +138,10 @@ type Request struct {
 	Bucket    Bucket
 }
 
-// Point is one aggregated bucket. Bucket is the bucket-start date (YYYY-MM-DD).
-// Value is the aggregate under the Metric's rule (sum, average, or latest). Min
-// and Max carry the band for average Metrics and are nil otherwise.
-//
-// Gap marks an ordinal slot a comparison had to hold open: a Baseline bucket with
-// no data that still needs a position so the baseline stays index-aligned with
-// the current series (ADR 0015). It appears only in an aligned Baseline series —
-// a normal query never emits gaps, it omits empty buckets — and carries the real
-// bucket date (for a tooltip) but no value.
+// Point is one aggregated bucket: Bucket is the start date (YYYY-MM-DD), Value the
+// aggregate under the Metric's rule, Min/Max the band for average Metrics (nil
+// otherwise). Gap marks a dated Baseline slot held open for ordinal alignment
+// (ADR 0015) — no value, and only ever set in an aligned Baseline series.
 type Point struct {
 	Bucket string   `json:"bucket"`
 	Value  float64  `json:"value"`
@@ -192,10 +166,9 @@ type Engine struct {
 	DB *sql.DB
 }
 
-// Series runs one aggregated query. It validates the request, resolves the
-// single winning Source for the range, and returns the Metric's rule applied
-// per bucket in SQL. A range with no data yields an empty (non-nil) Points slice
-// and an empty Source rather than an error.
+// Series runs one aggregated query: it validates the request, resolves the
+// winning Source, and applies the Metric's rule per bucket in SQL. A range with no
+// data yields an empty (non-nil) Points slice and an empty Source, not an error.
 func (e Engine) Series(ctx context.Context, req Request) (Series, error) {
 	metric, ok := catalog.Lookup(req.Metric)
 	if !ok {
@@ -237,13 +210,10 @@ func (e Engine) Series(ctx context.Context, req Request) (Series, error) {
 	return out, nil
 }
 
-// seriesDerived answers a request for a derived Metric by recomputing it per
-// bucket from its Formula operands (ADR 0014). Each operand is resolved as its
-// own aggregated series — its own winning Source, its own rule — then the Formula
-// combines the operands bucket-by-bucket in Go. A bucket is emitted only when
-// every operand has a value and the denominator is non-zero; otherwise it is a
-// gap, never a zero. The derived Series carries no single Source (each operand
-// resolves independently) and its Points carry no min/max band.
+// seriesDerived recomputes a derived Metric per bucket from its Formula operands
+// (ADR 0014): each operand resolves as its own aggregated series, then the Formula
+// combines them per bucket. A bucket with any operand missing (or a zero
+// denominator) is a gap, never a zero. No single Source, no min/max band.
 func (e Engine) seriesDerived(ctx context.Context, req Request, metric catalog.Metric) (Series, error) {
 	if metric.Formula == nil {
 		// A derived Metric always carries a Formula (validated at build time,
@@ -287,11 +257,8 @@ func (e Engine) seriesDerived(ctx context.Context, req Request, metric catalog.M
 	return out, nil
 }
 
-// resolveOperand aggregates one Formula operand as its own series — its own
-// winning Source (ADR 0003), its own Catalog rule — and returns its value keyed
-// by bucket. An operand with no data anywhere in the range yields an empty map,
-// so every bucket is a gap for it. Only the aggregated value is kept; an average
-// operand's min/max band is dropped, so no band leaks into the derived Series.
+// resolveOperand aggregates one Formula operand as its own series (own Source per
+// ADR 0003, own rule) keyed by bucket; no data yields an empty map. The band is dropped.
 func (e Engine) resolveOperand(ctx context.Context, req Request, slug string) (map[string]float64, error) {
 	m, ok := catalog.Lookup(slug)
 	if !ok {
@@ -382,8 +349,7 @@ func (e Engine) aggregate(ctx context.Context, req Request, agg catalog.Aggregat
 			GROUP BY b ORDER BY b`, bucket), args)
 
 	case catalog.Latest:
-		// The most recent point in each bucket; ties broken by row id so the
-		// pick is stable.
+		// Most recent point per bucket; ties broken by row id for a stable pick.
 		return e.scanScalar(ctx, fmt.Sprintf(`
 			SELECT b, value FROM (
 				SELECT %s AS b, value,
@@ -400,14 +366,8 @@ func (e Engine) aggregate(ctx context.Context, req Request, agg catalog.Aggregat
 			GROUP BY b ORDER BY b`, bucket), args)
 
 	default:
-		// duration_by_state aggregates the States family (sleep, stand hours),
-		// which lives in its own table with a state dimension and a different
-		// result shape — not the scalar measurements this engine serves. No
-		// Catalog Metric uses it (catalog.go), so it is unreachable via a metric
-		// slug; it is deferred to the slice that graphs sleep. Derived Metrics
-		// take the seriesDerived path (ADR 0014) and never reach here — an empty
-		// agg would be a mislabeled operand. Guarded rather than assumed
-		// unreachable.
+		// duration_by_state (the States family) is unreachable via a metric slug —
+		// no Catalog Metric uses it — and derived Metrics take seriesDerived. Guarded.
 		return nil, fmt.Errorf("%w: %q", ErrUnsupportedAggregation, agg)
 	}
 }

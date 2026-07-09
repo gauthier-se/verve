@@ -1,70 +1,39 @@
 // Package catalog defines Verve's Catalog: the closed but extensible set of
-// canonical Metrics the system understands (see CONTEXT.md and ADR 0002). Each
-// Metric has a neutral, source-independent slug (heart_rate, never
-// HKQuantityTypeIdentifierHeartRate) and one canonical unit. An imported Metric
-// also carries an aggregation rule that decides how points collapse into a time
-// bucket; a derived Metric carries a Formula over other Metrics instead and is
-// computed per bucket on read (ADR 0014).
-//
-// The Catalog is source-independent: it names *what* Verve stores, not *how*
-// any Source spells it. A Connector owns the mapping from its own vocabulary to
-// these slugs (see internal/connector/applehealth). Per ADR 0011 the Catalog is
-// seeded broadly — nearly every scalar Apple Health type — so an import
-// captures almost everything even though the v1 UI graphs only a subset.
+// canonical Metrics (CONTEXT.md, ADR 0002), each with a neutral slug (heart_rate,
+// never HKQuantityTypeIdentifierHeartRate) and one canonical unit. An imported
+// Metric carries an aggregation rule; a derived Metric carries a Formula computed
+// per bucket on read (ADR 0014). A Connector owns the mapping to these slugs;
+// seeded broadly (ADR 0011).
 package catalog
 
-// Aggregation is a Metric's rule for collapsing many points into one time
-// bucket. The rule, not the user, decides how a series aggregates.
+// Aggregation is a Metric's rule for collapsing many points into one time bucket.
 type Aggregation string
 
 const (
-	// Sum totals the points in a bucket (steps, calories, nutrients).
-	Sum Aggregation = "sum"
-	// Average means the bucket value is the mean, typically shown with a
-	// min/max band (heart rate, speed).
-	Average Aggregation = "average"
-	// Latest takes the most recent point in the bucket (body mass, height).
-	Latest Aggregation = "latest"
-	// DurationByState sums time spent per categorical state (sleep). No scalar
-	// Metric in this slice uses it; it is part of the canonical shape.
-	DurationByState Aggregation = "duration_by_state"
+	Sum             Aggregation = "sum"               // total (steps, calories, nutrients)
+	Average         Aggregation = "average"           // mean, with a min/max band (heart rate)
+	Latest          Aggregation = "latest"            // most recent point (body mass, height)
+	DurationByState Aggregation = "duration_by_state" // time per state (sleep); unused in this slice
 )
 
-// Nature distinguishes Metrics produced by a Connector from those computed on
-// read from other Metrics.
+// Nature distinguishes Metrics produced by a Connector from those computed on read.
 type Nature string
 
 const (
-	// Imported Metrics are produced by a Connector from a Source; each carries
-	// its own aggregation rule.
-	Imported Nature = "imported"
-	// Derived Metrics are defined by a Formula over other Metrics and computed
-	// per bucket on read; they have no aggregation rule of their own (ADR 0014).
-	Derived Nature = "derived"
+	Imported Nature = "imported" // produced by a Connector, carries its own rule
+	Derived  Nature = "derived"  // defined by a Formula, computed on read (ADR 0014)
 )
 
-// Metric is one canonical entry in the Catalog. An Imported Metric carries an
-// Aggregation and no Formula; a Derived Metric carries a Formula and no
-// Aggregation — the two shapes are mutually exclusive, so a derived Metric never
-// fakes a rule it does not have.
+// Metric is one canonical Catalog entry. Imported and Derived are mutually
+// exclusive shapes: an Imported Metric carries an Aggregation and no Formula, a
+// Derived Metric a Formula and no Aggregation (ADR 0014).
 type Metric struct {
-	// Slug is the stable, neutral identifier persisted with every Measurement.
-	Slug string
-	// Unit is the single canonical unit; Connectors normalize to it on import.
-	// For a derived Metric it is the unit its Formula produces.
-	Unit string
-	// Aggregation is how imported points collapse into a time bucket. It is
-	// empty for a derived Metric, which has no rule of its own: each operand
-	// aggregates by its own rule and the Formula combines them per bucket.
-	Aggregation Aggregation
-	// Nature is Imported or Derived.
-	Nature Nature
-	// Formula defines a derived Metric as data; nil for an imported Metric
-	// (ADR 0014).
-	Formula *Formula
-	// Signed marks a derived Metric whose value is meaningfully negative
-	// (calorie_balance), so the API can hint a diverging render around zero.
-	Signed bool
+	Slug        string      // stable neutral identifier, persisted with every Measurement
+	Unit        string      // single canonical unit (for derived, what the Formula produces)
+	Aggregation Aggregation // how imported points collapse; empty for derived
+	Nature      Nature      // Imported or Derived
+	Formula     *Formula    // derived only; nil for imported (ADR 0014)
+	Signed      bool        // derived value meaningfully negative → diverging render
 }
 
 // metrics declares the Catalog as data. Canonical units follow Apple Health's
@@ -236,11 +205,8 @@ func buildMetrics() map[string]Metric {
 	return m
 }
 
-// derivedMetrics declares the seed derived Metrics as data (ADR 0014). Each
-// carries a Formula and a canonical unit but no aggregation rule: its operands
-// aggregate by their own rules and the Formula is applied per bucket. A Catalog
-// test validates every operand slug and the declared unit at build time
-// (formula_test.go).
+// derivedMetrics declares the seed derived Metrics as data (ADR 0014): each a
+// Formula and unit, no aggregation rule. formula_test validates them at build time.
 func derivedMetrics() []Metric {
 	return []Metric{
 		// total_energy_expenditure = active_energy + basal_energy (kcal).

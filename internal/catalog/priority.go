@@ -2,19 +2,11 @@ package catalog
 
 import "strings"
 
-// Source priority resolves the read-time overlap between Sources that report
-// the same Metric (ADR 0003). Verve keeps every Measurement from every Source
-// (non-destructive); when a graph needs one series it must pick a single Source
-// so it never double-counts — e.g. steps recorded by both the Watch and the
-// iPhone worn together.
-//
-// A priority is an ordered list of case-insensitive substrings matched against
-// a Source's name. Substrings (not exact names) because real Source strings are
-// device-specific — "Gauthier's Apple Watch", not a clean "Apple Watch" — so
-// "watch" matches the family without hard-coding every device name.
-//
-// Only Metrics prone to harmful overlap need an entry; everything else resolves
-// deterministically by falling back to alphabetical order (see ResolveSource).
+// sourcePriority resolves read-time Source overlap for a Metric (ADR 0003): an
+// ordered list of case-insensitive substrings matched against Source names
+// (substrings, since real names are device-specific like "Gauthier's Apple Watch").
+// Only Metrics prone to harmful overlap need an entry; the rest fall back to
+// alphabetical order (ResolveSource).
 var sourcePriority = map[string][]string{
 	// Watch and iPhone both count steps when worn together, double-counting the
 	// total; prefer the Watch, which is worn more continuously.
@@ -30,18 +22,10 @@ func SourcePriority(slug string) []string {
 	return sourcePriority[slug]
 }
 
-// ResolveSource picks the single winning Source for a Metric from the Sources
-// that actually have data in the queried range (available). It returns the
-// winner and true, or "" and false when available is empty.
-//
-// Sources are ranked by the index of the first priority pattern their name
-// contains (case-insensitive); a Source matching no pattern ranks after every
-// matched one. Ties — including the common case of a Metric with no configured
-// priority, where every Source is unranked — break alphabetically, so the choice
-// is always deterministic.
-//
-// This resolves the whole range to one Source. Per-bucket resolution and
-// merging complementary Sources are deferred refinements (ADR 0003).
+// ResolveSource picks the winning Source for a Metric from those with data
+// (available), or "" and false when empty. Sources rank by the first priority
+// pattern their name contains; unmatched rank last; ties break alphabetically.
+// Whole-range only — per-bucket resolution is deferred (ADR 0003).
 func ResolveSource(slug string, available []string) (string, bool) {
 	if len(available) == 0 {
 		return "", false
