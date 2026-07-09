@@ -1,9 +1,6 @@
-// Package api is Verve's HTTP layer: a small net/http server that exposes the
-// query engine as a JSON API returning only server-side aggregated buckets,
-// never a raw series (ADR 0012). Every data request is scoped to the
-// authenticated Account (ADR 0007): local login sets an opaque session cookie
-// (ADR 0008), the authenticate middleware resolves it to an Account, and
-// requireAuth rejects unauthenticated access to Account data.
+// Package api is Verve's HTTP layer: a net/http server exposing the query engine
+// as a JSON API of aggregated buckets (ADR 0012), scoped to the authenticated
+// Account (ADR 0007) via an opaque session cookie (ADR 0008).
 package api
 
 import (
@@ -26,9 +23,8 @@ type Config struct {
 	SecureCookies bool
 	// SessionTTL is how long a new session lasts; zero uses defaultSessionTTL.
 	SessionTTL time.Duration
-	// SPA serves the embedded front-end on every non-/v1 path (ADR 0005). It is
-	// injected so the api package stays decoupled from the web-assets package and
-	// tests can run without embedding a build. Nil means API-only (no SPA mount).
+	// SPA serves the embedded front-end on every non-/v1 path (ADR 0005); injected
+	// to decouple from web-assets. Nil means API-only.
 	SPA http.Handler
 }
 
@@ -53,10 +49,8 @@ func New(logger *slog.Logger, models data.Models, engine query.Engine, cfg Confi
 	if ttl <= 0 {
 		ttl = defaultSessionTTL
 	}
-	// decoyHash is verified against on logins for missing accounts, so a failed
-	// login costs an argon2 verify whether or not the email exists. HashPassword
-	// only fails if the RNG does (startup-fatal territory); the empty-string
-	// fallback then verifies fast, but that path is effectively unreachable.
+	// A failed login always costs an argon2 verify against decoyHash, so timing
+	// doesn't reveal whether the email exists.
 	decoy, err := auth.HashPassword("verve-login-timing-decoy")
 	if err != nil {
 		logger.Error("build login timing decoy", "err", err)
@@ -75,11 +69,9 @@ func New(logger *slog.Logger, models data.Models, engine query.Engine, cfg Confi
 	}
 }
 
-// Handler builds the routed, panic-recovering http.Handler for the server. It
-// uses Go 1.22 method+pattern routing so an unknown /v1 path 404s and a wrong
-// method 405s for free. The /v1 mux runs behind authenticate (identity
-// resolution); Account-data routes additionally sit behind requireAuth. Every
-// non-/v1 path is served by the embedded SPA (ADR 0005) when one is configured.
+// Handler builds the routed, panic-recovering http.Handler. Go 1.22 method+pattern
+// routing gives 404/405 for free; /v1 runs behind authenticate, Account-data routes
+// behind requireAuth, and non-/v1 paths hit the embedded SPA (ADR 0005).
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
@@ -106,11 +98,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("PATCH /v1/panels/{id}", s.requireAuth(s.handleUpdatePanel))
 	mux.Handle("DELETE /v1/panels/{id}", s.requireAuth(s.handleDeletePanel))
 
-	// Split the surface: /v1/* is the JSON API (identity-resolved), everything
-	// else is the SPA. The mux's method+pattern routing 404s an unknown /v1 path
-	// and 405s a known one with the wrong method for free; those routing-level
-	// errors keep the stdlib's plain-text body, while every application error is
-	// JSON.
+	// /v1/* is the JSON API (identity-resolved), everything else the SPA. Routing-
+	// level 404/405 keep the stdlib plain-text body; application errors are JSON.
 	root := http.NewServeMux()
 	root.Handle("/v1/", s.authenticate(mux))
 	if s.spa != nil {
