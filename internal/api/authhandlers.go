@@ -27,10 +27,9 @@ func meView(a *data.Account) accountView {
 	}
 }
 
-// handleLogin verifies credentials and, on success, opens a session: it stores a
-// server-side record and hands the client an opaque session cookie. Attempts are
-// rate-limited per IP, and both "no such email" and "wrong password" return the
-// same generic 401 to avoid account enumeration.
+// handleLogin verifies credentials and, on success, opens a session (server-side
+// record + opaque cookie). Rate-limited per IP; a bad email or password returns the
+// same 401 to avoid account enumeration.
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if !s.loginLimiter.allow(clientIP(r)) {
 		s.rateLimitExceededResponse(w, r)
@@ -85,10 +84,8 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// credentialsValid reports whether password authenticates acc. When the account
-// is missing or has no password set, it still runs a verify against a decoy hash
-// so a failed login costs roughly the same time either way — closing the timing
-// side-channel that would otherwise reveal which emails exist.
+// credentialsValid reports whether password authenticates acc. A missing account
+// still runs a verify against a decoy hash, closing the timing side-channel.
 func (s *Server) credentialsValid(acc *data.Account, password string) bool {
 	if acc == nil || acc.PasswordHash == nil {
 		_, _ = auth.VerifyPassword(password, s.decoyHash)
