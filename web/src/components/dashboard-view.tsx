@@ -70,10 +70,8 @@ export function DashboardView() {
   );
 }
 
-/** resolveBaseline is the Baseline the Panels actually query with. Comparison is
- *  disabled for the `all` range (nothing precedes "all", ADR 0015), so it is
- *  forced off there regardless of the stored rule — matching the greyed-out
- *  control. Otherwise it forwards the Dashboard's persisted rule and bounds. */
+/** resolveBaseline forwards the Dashboard's Baseline, forced off for the `all`
+ *  range (nothing precedes "all", ADR 0015) to match the greyed-out control. */
 function resolveBaseline(d: Dashboard): BaselineParams {
   if (d.range_preset === "all") return { rule: "none" };
   return { rule: d.baseline_rule, from: d.baseline_from, to: d.baseline_to };

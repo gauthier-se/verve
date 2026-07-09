@@ -5,9 +5,7 @@ import type { BaselineRule, Dashboard } from "@/lib/types";
 import { DayRangePicker } from "./day-range-picker";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
-/** The Baseline rules the control offers, in display order (ADR 0015). `none` is
- *  comparison off; the two relative rules recompute server-side; `custom` reveals
- *  the date-range picker. */
+/** The Baseline rules the control offers, in display order (ADR 0015). */
 const RULE_OPTIONS: { value: BaselineRule; label: string }[] = [
   { value: "none", label: "No comparison" },
   { value: "previous", label: "Previous period" },
@@ -15,16 +13,13 @@ const RULE_OPTIONS: { value: BaselineRule; label: string }[] = [
   { value: "custom", label: "Custom…" },
 ];
 
-/** ComparisonControl is the Dashboard-global period-comparison control, the
- *  companion to the Time range (ADR 0015). Picking a Baseline rule patches the
- *  Dashboard, which refetches every Panel with the baseline overlaid. It is
- *  disabled when the range is `all` — nothing precedes "all". */
+/** ComparisonControl is the Dashboard-global period-comparison control (ADR 0015):
+ *  picking a rule patches the Dashboard, refetching every Panel. Disabled at `all`. */
 export function ComparisonControl({ dashboard }: { dashboard: Dashboard }) {
   const update = useUpdateDashboard();
   const [open, setOpen] = React.useState(false);
-  // "custom" can be chosen before its bounds exist, but the API rejects a
-  // bound-less custom rule — so we hold that selection locally and only persist it
-  // once a full range is picked. Until then the stored rule is unchanged.
+  // "custom" can be picked before its bounds exist; hold it locally and persist
+  // only once a full range is chosen (the API rejects a bound-less custom rule).
   const [draftCustom, setDraftCustom] = React.useState(false);
 
   const disabled = dashboard.range_preset === "all";
