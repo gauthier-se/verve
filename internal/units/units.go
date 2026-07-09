@@ -1,13 +1,7 @@
-// Package units converts a scalar value between measurement units of the same
-// physical dimension. Connectors use it to normalize source values to a
-// Metric's canonical unit at import time (see ADR 0002): the Catalog fixes one
-// canonical unit per Metric, and whatever unit a Source reports is converted to
-// it, so a series never mixes units.
-//
-// The table is deliberately small — the dimensions Apple Health emits plus the
-// common alternates other Sources use. Units with no meaningful alternate (W,
-// dBASPL, count/min…) are absent: converting such a unit to itself succeeds via
-// the identity fast-path, and converting it to anything else is an error.
+// Package units converts a scalar value between units of the same dimension, so a
+// Connector normalizes source values to a Metric's canonical unit at import (ADR
+// 0002). The table is small; units with no alternate (W, count/min…) convert only
+// to themselves via the identity fast-path.
 package units
 
 import "fmt"
@@ -87,11 +81,9 @@ var table = map[string]unitDef{
 	"count": {dimCount, 1},
 }
 
-// Convert returns value expressed in unit to, given it is currently in unit
-// from. Identical units convert without a table lookup, so opaque units (units
-// with no alternate, e.g. "W" or "count/min") still normalize to themselves.
-// Converting between different units of different dimensions — or between any
-// unknown unit — is an error.
+// Convert returns value (currently in from) expressed in to. Identical units skip
+// the table, so opaque units still normalize to themselves; a cross-dimension or
+// unknown unit is an error.
 func Convert(value float64, from, to string) (float64, error) {
 	if from == to {
 		return value, nil
