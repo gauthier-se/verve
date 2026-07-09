@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "@tanstack/react-router";
 import { MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
 import { useDeleteDashboard, useUpdateDashboard, useDashboards } from "@/hooks/use-dashboards";
 import { useMetricMap } from "@/hooks/use-catalog";
+import type { BaselineParams } from "@/hooks/use-series";
 import { resolveRange } from "@/lib/time-range";
 import type { Dashboard } from "@/lib/types";
 import { Button } from "./ui/button";
@@ -18,6 +19,7 @@ import { Input } from "./ui/input";
 import { AddPanelDialog } from "./add-panel-dialog";
 import { DashboardGrid } from "./dashboard-grid";
 import { CenteredSpinner } from "./spinner";
+import { ComparisonControl } from "./comparison-control";
 import { TimeRangeControl } from "./time-range-control";
 
 /** DashboardView renders one Dashboard: its header (name, controls, global Time
@@ -39,12 +41,14 @@ export function DashboardView() {
   }
 
   const range = resolveRange(dashboard);
+  const baseline = resolveBaseline(dashboard);
 
   return (
     <div className="flex h-full flex-col">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b px-6 py-3">
         <DashboardHeading dashboard={dashboard} />
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <ComparisonControl dashboard={dashboard} />
           <TimeRangeControl dashboard={dashboard} />
         </div>
       </header>
@@ -53,11 +57,26 @@ export function DashboardView() {
         {dashboard.panels.length === 0 ? (
           <EmptyPanels dashboardId={dashboard.id} />
         ) : (
-          <DashboardGrid dashboardId={dashboard.id} panels={dashboard.panels} metrics={metrics.map} range={range} />
+          <DashboardGrid
+            dashboardId={dashboard.id}
+            panels={dashboard.panels}
+            metrics={metrics.map}
+            range={range}
+            baseline={baseline}
+          />
         )}
       </div>
     </div>
   );
+}
+
+/** resolveBaseline is the Baseline the Panels actually query with. Comparison is
+ *  disabled for the `all` range (nothing precedes "all", ADR 0015), so it is
+ *  forced off there regardless of the stored rule — matching the greyed-out
+ *  control. Otherwise it forwards the Dashboard's persisted rule and bounds. */
+function resolveBaseline(d: Dashboard): BaselineParams {
+  if (d.range_preset === "all") return { rule: "none" };
+  return { rule: d.baseline_rule, from: d.baseline_from, to: d.baseline_to };
 }
 
 /** DashboardHeading shows the name, an Add-panel button, and a menu to rename or

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import type { Bucket, ChartType, Dashboard, Panel, RangePreset } from "@/lib/types";
+import type { BaselineRule, Bucket, ChartType, Dashboard, Panel, RangePreset } from "@/lib/types";
 
 const KEY = ["dashboards"];
 
@@ -34,6 +34,9 @@ export interface DashboardPatch {
   range_preset?: RangePreset;
   range_from?: string | null;
   range_to?: string | null;
+  baseline_rule?: BaselineRule;
+  baseline_from?: string | null;
+  baseline_to?: string | null;
 }
 
 export function useUpdateDashboard() {

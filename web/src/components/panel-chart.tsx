@@ -2,14 +2,11 @@ import * as React from "react";
 import { format, parseISO } from "date-fns";
 import {
   Area,
-  AreaChart,
   Bar,
-  BarChart,
   CartesianGrid,
   Cell,
   ComposedChart,
   Line,
-  LineChart,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -23,23 +20,56 @@ const VALUE = "hsl(var(--chart-1))";
 const BAND = "hsl(var(--chart-2))";
 const GRID = "hsl(var(--border))";
 const AXIS = "hsl(var(--muted-foreground))";
+// The Baseline is one recessed reference line, the same muted/dashed treatment on
+// every chart type (ADR 0015) — never colored by sign or metric.
+const BASELINE = "hsl(var(--muted-foreground))";
 // Diverging-bar sign colors: surplus (≥ 0) warm, deficit (< 0) cool (ADR 0014).
 const SURPLUS = "hsl(var(--chart-positive))";
 const DEFICIT = "hsl(var(--chart-negative))";
 
-/** PanelChart renders one Series with the Panel's chosen chart type. Because the
- *  API only ever returns a few hundred bucketed points (ADR 0012), the chart
- *  library's performance is a non-issue and Recharts renders directly. */
-export function PanelChart({ series, chartType }: { series: Series; chartType: ChartType }) {
-  const data = React.useMemo(
+/** ChartDatum is one x-position: the current bucket's value (and band), plus the
+ *  overlaid Baseline bucket's value and its own real date for the tooltip. The
+ *  x-axis is ordinal position within the period, so the Baseline is keyed to the
+ *  current bucket's index, not its date — the two windows' dates differ by
+ *  construction (ADR 0015: Ordinal alignment). */
+interface ChartDatum {
+  bucket: string;
+  value: number;
+  band?: number[];
+  baselineValue?: number;
+  baselineBucket?: string;
+}
+
+/** PanelChart renders one Series with the Panel's chosen chart type, optionally
+ *  overlaid with a Baseline series in comparison mode. Because the API only ever
+ *  returns a few hundred bucketed points (ADR 0012), the chart library's
+ *  performance is a non-issue and Recharts renders directly. */
+export function PanelChart({
+  series,
+  baseline,
+  chartType,
+}: {
+  series: Series;
+  baseline?: Series;
+  chartType: ChartType;
+}) {
+  const data = React.useMemo<ChartDatum[]>(
     () =>
-      series.points.map((p) => ({
-        bucket: p.bucket,
-        value: p.value,
-        // A range-area band needs the [low, high] pair as a single datum value.
-        band: p.min !== undefined && p.max !== undefined ? [p.min, p.max] : undefined,
-      })),
-    [series.points],
+      series.points.map((p, i) => {
+        // The Baseline is equal-length and index-aligned to the current series
+        // (server-side, ADR 0015): baseline.points[i] is the ordinal counterpart
+        // of series.points[i]. A dated gap carries no value, breaking the line.
+        const bp = baseline?.points[i];
+        return {
+          bucket: p.bucket,
+          value: p.value,
+          // A range-area band needs the [low, high] pair as a single datum value.
+          band: p.min !== undefined && p.max !== undefined ? [p.min, p.max] : undefined,
+          baselineValue: bp && !bp.gap ? bp.value : undefined,
+          baselineBucket: bp?.bucket,
+        };
+      }),
+    [series.points, baseline],
   );
 
   if (data.length === 0) {
@@ -63,53 +93,58 @@ export function PanelChart({ series, chartType }: { series: Series; chartType: C
       : undefined;
   const yAxis = <YAxis width={40} domain={yDomain} {...axisProps} tickFormatter={formatValue} />;
   const grid = <CartesianGrid stroke={GRID} strokeDasharray="3 3" vertical={false} />;
-  const tooltip = <Tooltip content={<ChartTooltip unit={series.unit} />} cursor={{ stroke: GRID }} />;
+  const tooltip = (
+    <Tooltip content={<ChartTooltip unit={series.unit} bucket={series.bucket} />} cursor={{ stroke: GRID }} />
+  );
 
   return (
     <ResponsiveContainer width="100%" height="100%">
-      {renderChart(chartType, data, { grid, xAxis, yAxis, tooltip })}
+      <ComposedChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+        {grid}
+        {xAxis}
+        {yAxis}
+        {tooltip}
+        {marks(chartType, data)}
+        {baseline && baselineLine}
+      </ComposedChart>
     </ResponsiveContainer>
   );
 }
 
-type ChartData = { bucket: string; value: number; band?: number[] }[];
-type Axes = { grid: React.ReactElement; xAxis: React.ReactElement; yAxis: React.ReactElement; tooltip: React.ReactElement };
+// baselineLine is the single recessed overlay: a muted dashed line at each
+// ordinal position, broken where the Baseline has no data (connectNulls off) so an
+// empty baseline window simply draws nothing (ADR 0015).
+const baselineLine = (
+  <Line
+    type="monotone"
+    dataKey="baselineValue"
+    stroke={BASELINE}
+    strokeWidth={1.5}
+    strokeDasharray="4 3"
+    strokeOpacity={0.7}
+    dot={false}
+    connectNulls={false}
+    isAnimationActive={false}
+  />
+);
 
-function renderChart(chartType: ChartType, data: ChartData, axes: Axes): React.ReactElement {
-  const { grid, xAxis, yAxis, tooltip } = axes;
-  const margin = { top: 8, right: 8, bottom: 0, left: 0 };
-
+/** marks renders the Panel's native mark(s) for its chart type, to be composed
+ *  under the optional Baseline overlay. All types share one ComposedChart so the
+ *  baseline line lays over any of them identically. */
+function marks(chartType: ChartType, data: ChartDatum[]): React.ReactNode {
   switch (chartType) {
     case "line":
-      return (
-        <LineChart data={data} margin={margin}>
-          {grid}
-          {xAxis}
-          {yAxis}
-          {tooltip}
-          <Line type="monotone" dataKey="value" stroke={VALUE} strokeWidth={2} dot={false} />
-        </LineChart>
-      );
+      return <Line type="monotone" dataKey="value" stroke={VALUE} strokeWidth={2} dot={false} />;
     case "area":
       return (
-        <AreaChart data={data} margin={margin}>
-          {grid}
-          {xAxis}
-          {yAxis}
-          {tooltip}
-          <Area type="monotone" dataKey="value" stroke={VALUE} strokeWidth={2} fill={VALUE} fillOpacity={0.15} />
-        </AreaChart>
+        <Area type="monotone" dataKey="value" stroke={VALUE} strokeWidth={2} fill={VALUE} fillOpacity={0.15} />
       );
     case "band":
       return (
-        <ComposedChart data={data} margin={margin}>
-          {grid}
-          {xAxis}
-          {yAxis}
-          {tooltip}
+        <>
           <Area type="monotone" dataKey="band" stroke="none" fill={BAND} fillOpacity={0.18} />
           <Line type="monotone" dataKey="value" stroke={VALUE} strokeWidth={2} dot={false} />
-        </ComposedChart>
+        </>
       );
     // diverging_bar is the signed-Metric variant (calorie_balance, ADR 0014):
     // bars grow from a zero baseline and are colored by sign — surplus above,
@@ -117,18 +152,14 @@ function renderChart(chartType: ChartType, data: ChartData, axes: Axes): React.R
     // simply draw no bar (never a zero bar). A Cell per datum sets the sign color.
     case "diverging_bar":
       return (
-        <BarChart data={data} margin={margin}>
-          {grid}
-          {xAxis}
-          {yAxis}
-          {tooltip}
+        <>
           <ReferenceLine y={0} stroke={AXIS} strokeWidth={1} />
           <Bar dataKey="value" radius={[3, 3, 0, 0]} isAnimationActive={false}>
             {data.map((d) => (
               <Cell key={d.bucket} fill={d.value < 0 ? DEFICIT : SURPLUS} />
             ))}
           </Bar>
-        </BarChart>
+        </>
       );
     // stacked_bar is the sleep (duration_by_state) variant. That aggregation is
     // not served yet — the query engine defers it and no Catalog Metric uses it
@@ -139,29 +170,25 @@ function renderChart(chartType: ChartType, data: ChartData, axes: Axes): React.R
     case "stacked_bar":
     case "bar":
     default:
-      return (
-        <BarChart data={data} margin={margin}>
-          {grid}
-          {xAxis}
-          {yAxis}
-          {tooltip}
-          <Bar dataKey="value" fill={VALUE} radius={[3, 3, 0, 0]} />
-        </BarChart>
-      );
+      return <Bar dataKey="value" fill={VALUE} radius={[3, 3, 0, 0]} />;
   }
 }
 
 /** formatTick labels the X axis by the bucket granularity: a day/week bucket
  *  shows "Mar 4", a month bucket "Mar ’24". */
 function formatTick(bucket: Series["bucket"]) {
-  return (value: string) => {
-    try {
-      const d = parseISO(value);
-      return bucket === "month" ? format(d, "MMM ''yy") : format(d, "MMM d");
-    } catch {
-      return value;
-    }
-  };
+  return (value: string) => formatBucket(value, bucket);
+}
+
+/** formatBucket renders a bucket date for the given granularity, falling back to
+ *  the raw string if it can't be parsed. Shared by the axis tick and the tooltip. */
+function formatBucket(value: string, bucket: Series["bucket"]): string {
+  try {
+    const d = parseISO(value);
+    return bucket === "month" ? format(d, "MMM ''yy") : format(d, "MMM d");
+  } catch {
+    return value;
+  }
 }
 
 function formatValue(v: number): string {
@@ -171,16 +198,20 @@ function formatValue(v: number): string {
 
 interface TooltipProps {
   active?: boolean;
-  payload?: { payload: { bucket: string; value: number; band?: number[] } }[];
+  payload?: { payload: ChartDatum }[];
   unit: string;
+  bucket: Series["bucket"];
 }
 
-function ChartTooltip({ active, payload, unit }: TooltipProps) {
+function ChartTooltip({ active, payload, unit, bucket }: TooltipProps) {
   if (!active || !payload?.length) return null;
   const d = payload[0].payload;
+  // In comparison mode the tooltip shows both buckets' own real dates side by side
+  // (ADR 0015): the current above, the Baseline below, each with its value.
+  const hasBaseline = d.baselineBucket !== undefined;
   return (
     <div className="rounded-md border bg-popover px-2.5 py-1.5 text-xs shadow-md">
-      <div className="font-medium">{d.bucket}</div>
+      <div className="font-medium">{formatBucket(d.bucket, bucket)}</div>
       <div className="text-muted-foreground">
         {formatValue(d.value)} {unit}
         {d.band && (
@@ -189,6 +220,14 @@ function ChartTooltip({ active, payload, unit }: TooltipProps) {
           </span>
         )}
       </div>
+      {hasBaseline && (
+        <div className="mt-1 border-t pt-1">
+          <div className="font-medium text-muted-foreground">{formatBucket(d.baselineBucket!, bucket)}</div>
+          <div className="text-muted-foreground">
+            {d.baselineValue !== undefined ? `${formatValue(d.baselineValue)} ${unit}` : "no data"}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

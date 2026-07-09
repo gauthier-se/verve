@@ -16,6 +16,8 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useReorderPanels } from "@/hooks/use-dashboards";
+import type { BaselineParams } from "@/hooks/use-series";
+import type { ResolvedRange } from "@/lib/time-range";
 import type { Metric, Panel } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { DragHandle, PanelCard } from "./panel-card";
@@ -36,11 +38,13 @@ export function DashboardGrid({
   panels,
   metrics,
   range,
+  baseline,
 }: {
   dashboardId: number;
   panels: Panel[];
   metrics: Map<string, Metric>;
-  range: { from: string; to: string };
+  range: ResolvedRange;
+  baseline?: BaselineParams;
 }) {
   const reorder = useReorderPanels();
   const sensors = useSensors(
@@ -63,7 +67,13 @@ export function DashboardGrid({
       <SortableContext items={panels.map((p) => p.id)} strategy={rectSortingStrategy}>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {panels.map((panel) => (
-            <SortablePanel key={panel.id} panel={panel} metric={metrics.get(panel.metric)} range={range} />
+            <SortablePanel
+              key={panel.id}
+              panel={panel}
+              metric={metrics.get(panel.metric)}
+              range={range}
+              baseline={baseline}
+            />
           ))}
         </div>
       </SortableContext>
@@ -71,7 +81,17 @@ export function DashboardGrid({
   );
 }
 
-function SortablePanel({ panel, metric, range }: { panel: Panel; metric?: Metric; range: { from: string; to: string } }) {
+function SortablePanel({
+  panel,
+  metric,
+  range,
+  baseline,
+}: {
+  panel: Panel;
+  metric?: Metric;
+  range: ResolvedRange;
+  baseline?: BaselineParams;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: panel.id });
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -82,7 +102,7 @@ function SortablePanel({ panel, metric, range }: { panel: Panel; metric?: Metric
 
   return (
     <div ref={setNodeRef} style={style} className={cn(WIDTH_CLASS[panel.width] ?? WIDTH_CLASS[1])} {...attributes}>
-      <PanelCard panel={panel} metric={metric} range={range} dragHandle={<DragHandle {...listeners} />} />
+      <PanelCard panel={panel} metric={metric} range={range} baseline={baseline} dragHandle={<DragHandle {...listeners} />} />
     </div>
   );
 }

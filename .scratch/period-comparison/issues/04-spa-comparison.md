@@ -1,6 +1,6 @@
 # 04 — SPA: comparison control + baseline overlay
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 03
 
 ## Goal
