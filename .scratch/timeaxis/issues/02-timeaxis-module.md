@@ -1,6 +1,6 @@
 # 02 — internal/timeaxis module
 
-Status: ready-for-agent
+Status: done
 Blocked by: 01
 
 ## Goal
