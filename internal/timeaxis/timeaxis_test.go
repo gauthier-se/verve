@@ -138,6 +138,11 @@ func TestValidate(t *testing.T) {
 		{"custom range unordered", Tokens{RangePreset: "custom", RangeFrom: ptr("2024-02-01"), RangeTo: ptr("2024-01-01")}, "range_to"},
 		{"too-fine override", Tokens{RangePreset: "30d", Bucket: ptr("hour")}, "bucket"},
 		{"unknown override", Tokens{RangePreset: "30d", Bucket: ptr("year")}, "bucket"},
+		{"custom baseline ok", Tokens{RangePreset: "30d", BaselineRule: "custom", BaselineFrom: ptr("2024-01-01"), BaselineTo: ptr("2024-02-01")}, ""},
+		{"custom baseline missing bounds", Tokens{RangePreset: "30d", BaselineRule: "custom"}, "baseline_from"},
+		{"custom baseline unordered", Tokens{RangePreset: "30d", BaselineRule: "custom", BaselineFrom: ptr("2024-02-01"), BaselineTo: ptr("2024-02-01")}, "baseline_to"},
+		{"custom baseline malformed to", Tokens{RangePreset: "30d", BaselineRule: "custom", BaselineFrom: ptr("2024-01-01"), BaselineTo: ptr("02/01/2024")}, "baseline_to"},
+		{"malformed range from", Tokens{RangePreset: "custom", RangeFrom: ptr("Jan 1"), RangeTo: ptr("2024-02-01")}, "range_from"},
 	}
 	for _, c := range cases {
 		err := Validate(c.tok)

@@ -5,11 +5,11 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
-	"strconv"
 	"time"
 
 	"github.com/gauthier-se/verve/internal/catalog"
 	"github.com/gauthier-se/verve/internal/query"
+	"github.com/gauthier-se/verve/internal/timeaxis"
 )
 
 // unknownMetricMsg is the single client-facing message for a slug outside the
@@ -104,11 +104,11 @@ func termsToView(terms []catalog.Term) []termView {
 	return out
 }
 
-// handleSeries answers the aggregated-bucket query: metric + time range +
-// bucket → one point per bucket under the Metric's rule (ADR 0012), scoped to
-// the request's Account.
+// handleSeries answers the aggregated-bucket query: metric + the Dashboard's time
+// axis tokens → one point per bucket under the Metric's rule (ADR 0012), scoped to
+// the request's Account. timeaxis resolves the tokens into the concrete current
+// window, the optional Baseline window, and the bucket.
 func (s *Server) handleSeries(w http.ResponseWriter, r *http.Request) {
-	// requireAuth guarantees an authenticated Account on the context.
 	accountID, _ := s.accountID(r)
 
 	qs := r.URL.Query()
@@ -117,23 +117,41 @@ func (s *Server) handleSeries(w http.ResponseWriter, r *http.Request) {
 	metric := qs.Get("metric")
 	v.Check(metric != "", "metric", "must be provided")
 	if metric != "" {
-		_, ok := catalog.Lookup(metric)
-		v.Check(ok, "metric", unknownMetricMsg)
+		if _, ok := catalog.Lookup(metric); !ok {
+			v.AddError("metric", unknownMetricMsg)
+		}
 	}
 
-	bucket := s.parseBucket(qs.Get("bucket"), v)
-	from, to := s.parseTimeRange(qs, v, time.Now())
-	baseline, comparing := parseSeriesBaseline(qs, v)
+	resolved, err := timeaxis.Resolve(timeaxis.Tokens{
+		RangePreset:  qs.Get("range_preset"),
+		RangeFrom:    optionalParam(qs, "range_from"),
+		RangeTo:      optionalParam(qs, "range_to"),
+		BaselineRule: qs.Get("baseline_rule"),
+		BaselineFrom: optionalParam(qs, "baseline_from"),
+		BaselineTo:   optionalParam(qs, "baseline_to"),
+		Bucket:       optionalParam(qs, "bucket"),
+	}, time.Now())
+	if inv, ok := err.(timeaxis.Invalid); ok {
+		for field, msg := range inv {
+			v.AddError(field, msg)
+		}
+	} else if err != nil {
+		s.serverErrorResponse(w, r, err)
+		return
+	}
 
 	if !v.Valid() {
 		s.failedValidationResponse(w, r, v.Errors)
 		return
 	}
 
-	req := query.Request{AccountID: accountID, Metric: metric, From: from, To: to, Bucket: bucket}
+	req := query.Request{
+		AccountID: accountID, Metric: metric,
+		From: resolved.Current.From, To: resolved.Current.To, Bucket: resolved.Bucket,
+	}
 
 	// Without a baseline the response keeps its pre-comparison single-series shape.
-	if !comparing {
+	if resolved.Baseline == nil {
 		series, err := s.engine.Series(r.Context(), req)
 		if err != nil {
 			s.respondSeriesError(w, r, err)
@@ -145,9 +163,9 @@ func (s *Server) handleSeries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Comparison mode: the current series plus a baseline series, aligned and
-	// equal length by the engine (ADR 0015). Each baseline bucket keeps its date.
-	cmp, err := s.engine.SeriesWithBaseline(r.Context(), req, baseline)
+	// Comparison mode: the current series plus a baseline series over the resolved
+	// baseline window, aligned and equal length by the engine (ADR 0015).
+	cmp, err := s.engine.Compare(r.Context(), req, resolved.Baseline.From, resolved.Baseline.To)
 	if err != nil {
 		s.respondSeriesError(w, r, err)
 		return
@@ -157,122 +175,13 @@ func (s *Server) handleSeries(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// parseSeriesBaseline resolves the optional comparison Baseline from the query
-// string. An absent `baseline` param means no comparison (comparing=false, the
-// single-series response). A present param must name one of the three active
-// rules; `custom` additionally needs well-formed, ordered `baseline_from`/
-// `baseline_to` bounds. Comparison is unavailable for the `all` range — nothing
-// precedes "all" (ADR 0015). Errors are recorded on v; the returned Baseline is
-// only meaningful once v is valid.
-func parseSeriesBaseline(qs url.Values, v *Validator) (query.Baseline, bool) {
-	raw := qs.Get("baseline")
-	// No comparison: an absent param, or the explicit "none" the Dashboard
-	// persists for comparison-off (CONTEXT.md: Baseline rule) — both yield the
-	// single-series response, so the SPA can forward the stored rule verbatim.
-	if raw == "" || raw == "none" {
-		return query.Baseline{}, false
+// optionalParam returns the query value for key, or nil when it is absent or
+// empty — the shape timeaxis.Tokens uses to tell an omitted bound from a set one.
+func optionalParam(qs url.Values, key string) *string {
+	if val := qs.Get(key); val != "" {
+		return &val
 	}
-	if qs.Get("range") == "all" {
-		v.AddError("baseline", "comparison is not available for the all range")
-		return query.Baseline{}, false
-	}
-	switch query.BaselineRule(raw) {
-	case query.BaselinePrevious, query.BaselineSamePeriodLastYear:
-		return query.Baseline{Rule: query.BaselineRule(raw)}, true
-	case query.BaselineCustom:
-		bFrom := parseTimeParam(qs.Get("baseline_from"), "baseline_from", v)
-		bTo := parseTimeParam(qs.Get("baseline_to"), "baseline_to", v)
-		if !bFrom.IsZero() && !bTo.IsZero() && !bTo.After(bFrom) {
-			v.AddError("baseline_to", "must be after baseline_from")
-		}
-		return query.Baseline{Rule: query.BaselineCustom, From: bFrom, To: bTo}, true
-	default:
-		v.AddError("baseline", "must be one of previous, same_period_last_year, custom")
-		return query.Baseline{}, false
-	}
-}
-
-// parseBucket resolves the bucket parameter, defaulting to day. A too-fine or
-// unknown bucket records a validation error rather than reaching the engine.
-func (s *Server) parseBucket(raw string, v *Validator) query.Bucket {
-	if raw == "" {
-		return query.Day
-	}
-	bucket, err := query.ParseBucket(raw)
-	switch {
-	case errors.Is(err, query.ErrBucketTooFine):
-		v.AddError("bucket", "below the resolution cap; use day, week, or month")
-	case err != nil:
-		v.AddError("bucket", "unknown bucket; use day, week, or month")
-	}
-	return bucket
-}
-
-// parseTimeRange resolves the query window from either explicit from/to
-// parameters (RFC 3339 or YYYY-MM-DD) or a range shorthand like "30d"/"1y",
-// recording validation errors for anything malformed.
-func (s *Server) parseTimeRange(qs map[string][]string, v *Validator, now time.Time) (from, to time.Time) {
-	get := func(k string) string {
-		if vs := qs[k]; len(vs) > 0 {
-			return vs[0]
-		}
-		return ""
-	}
-	fromStr, toStr, rangeStr := get("from"), get("to"), get("range")
-
-	switch {
-	case fromStr != "" || toStr != "":
-		from = parseTimeParam(fromStr, "from", v)
-		to = parseTimeParam(toStr, "to", v)
-	case rangeStr != "":
-		f, t, ok := parseRange(rangeStr, now)
-		v.Check(ok, "range", "must be <N>d, <N>w, <N>m, or <N>y (e.g. 30d, 1y)")
-		from, to = f, t
-	default:
-		v.AddError("range", "provide range=<N>[dwmy], or both from and to")
-	}
-	return from, to
-}
-
-// parseTimeParam parses one time parameter as RFC 3339 or a bare date.
-func parseTimeParam(s, field string, v *Validator) time.Time {
-	if s == "" {
-		v.AddError(field, "must be provided alongside the other bound")
-		return time.Time{}
-	}
-	if t, err := time.Parse(time.RFC3339, s); err == nil {
-		return t
-	}
-	if t, err := time.Parse("2006-01-02", s); err == nil {
-		return t.UTC()
-	}
-	v.AddError(field, "must be RFC 3339 or YYYY-MM-DD")
-	return time.Time{}
-}
-
-// parseRange turns a shorthand like "30d" or "1y" into a [from, to=now] window.
-// It reports ok=false for any malformed or non-positive value.
-func parseRange(s string, now time.Time) (from, to time.Time, ok bool) {
-	if len(s) < 2 {
-		return time.Time{}, time.Time{}, false
-	}
-	n, err := strconv.Atoi(s[:len(s)-1])
-	if err != nil || n <= 0 {
-		return time.Time{}, time.Time{}, false
-	}
-	switch s[len(s)-1] {
-	case 'd':
-		from = now.AddDate(0, 0, -n)
-	case 'w':
-		from = now.AddDate(0, 0, -7*n)
-	case 'm':
-		from = now.AddDate(0, -n, 0)
-	case 'y':
-		from = now.AddDate(-n, 0, 0)
-	default:
-		return time.Time{}, time.Time{}, false
-	}
-	return from, now, true
+	return nil
 }
 
 // respondSeriesError maps query-engine errors to HTTP responses. The input
@@ -282,10 +191,7 @@ func (s *Server) respondSeriesError(w http.ResponseWriter, r *http.Request, err 
 	case errors.Is(err, query.ErrUnknownMetric):
 		s.failedValidationResponse(w, r, map[string]string{"metric": unknownMetricMsg})
 	case errors.Is(err, query.ErrInvalidRange):
-		s.failedValidationResponse(w, r, map[string]string{"range": "the range is empty or inverted (from must be before to)"})
-	case errors.Is(err, query.ErrUnknownBaselineRule):
-		// Validated at the edge (parseSeriesBaseline); mapped defensively.
-		s.failedValidationResponse(w, r, map[string]string{"baseline": "unknown baseline rule"})
+		s.failedValidationResponse(w, r, map[string]string{"range_preset": "the range is empty or inverted"})
 	case errors.Is(err, query.ErrRangeTooLarge):
 		s.failedValidationResponse(w, r, map[string]string{"bucket": "too many buckets for this range; use a coarser bucket"})
 	case errors.Is(err, query.ErrUnsupportedAggregation):

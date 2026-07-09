@@ -17,7 +17,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { useReorderPanels } from "@/hooks/use-dashboards";
 import type { BaselineParams } from "@/hooks/use-series";
-import type { ResolvedRange } from "@/lib/time-range";
+import type { RangeTokens } from "@/lib/time-range";
 import type { Metric, Panel } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { DragHandle, PanelCard } from "./panel-card";
@@ -43,7 +43,7 @@ export function DashboardGrid({
   dashboardId: number;
   panels: Panel[];
   metrics: Map<string, Metric>;
-  range: ResolvedRange;
+  range: RangeTokens;
   baseline?: BaselineParams;
 }) {
   const reorder = useReorderPanels();
@@ -89,7 +89,7 @@ function SortablePanel({
 }: {
   panel: Panel;
   metric?: Metric;
-  range: ResolvedRange;
+  range: RangeTokens;
   baseline?: BaselineParams;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: panel.id });

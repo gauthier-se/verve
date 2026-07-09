@@ -5,22 +5,15 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/gauthier-se/verve/internal/catalog"
 	"github.com/gauthier-se/verve/internal/data"
+	"github.com/gauthier-se/verve/internal/query"
+	"github.com/gauthier-se/verve/internal/timeaxis"
 )
 
 // maxNameLen bounds a Dashboard name so a single field can't grow unbounded.
 const maxNameLen = 120
-
-// validRangePresets is the closed set a Dashboard's Time range may take: the
-// preset buttons plus "custom" (which carries range_from/range_to). "3m"/"1y"
-// map to the API's month/year shorthand; "all" is widened to a floor date by the
-// client when it queries /v1/series.
-var validRangePresets = map[string]bool{
-	"7d": true, "30d": true, "3m": true, "1y": true, "all": true, "custom": true,
-}
 
 // panelView is one Panel as the API exposes it. Aggregation is not stored — it is
 // the Metric's Catalog rule — so the client reads it from GET /v1/metrics.
@@ -186,7 +179,7 @@ func (s *Server) handleUpdateDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 	// Baseline bounds carry meaning only for the custom rule. Switching to a
 	// relative rule clears any stale frozen window (as the range does), but bounds
-	// sent *with* a non-custom rule are kept so validateBaseline can reject them.
+	// sent *with* a non-custom rule are kept so timeaxis.Validate can reject them.
 	switch {
 	case d.BaselineRule == "custom":
 		if input.BaselineFrom != nil {
@@ -205,8 +198,14 @@ func (s *Server) handleUpdateDashboard(w http.ResponseWriter, r *http.Request) {
 	if input.Name != nil {
 		validateName(v, d.Name)
 	}
-	validateRange(v, d.RangePreset, d.RangeFrom, d.RangeTo)
-	validateBaseline(v, d.BaselineRule, d.BaselineFrom, d.BaselineTo)
+	if inv, ok := timeaxis.Validate(timeaxis.Tokens{
+		RangePreset: d.RangePreset, RangeFrom: d.RangeFrom, RangeTo: d.RangeTo,
+		BaselineRule: d.BaselineRule, BaselineFrom: d.BaselineFrom, BaselineTo: d.BaselineTo,
+	}).(timeaxis.Invalid); ok {
+		for field, msg := range inv {
+			v.AddError(field, msg)
+		}
+	}
 	if !v.Valid() {
 		s.failedValidationResponse(w, r, v.Errors)
 		return
@@ -472,70 +471,6 @@ func validateName(v *Validator, name string) {
 	v.Check(len(name) <= maxNameLen, "name", "must be at most 120 characters")
 }
 
-// validateRange checks the Time range: a known preset, and — for "custom" — a
-// valid, ordered day-granularity window.
-func validateRange(v *Validator, preset string, from, to *string) {
-	if !validRangePresets[preset] {
-		v.AddError("range_preset", "must be one of 7d, 30d, 3m, 1y, all, custom")
-		return
-	}
-	if preset != "custom" {
-		return
-	}
-	if from == nil || to == nil {
-		v.AddError("range_from", "a custom range needs both range_from and range_to")
-		return
-	}
-	f, okF := parseDay(*from)
-	t, okT := parseDay(*to)
-	if !okF {
-		v.AddError("range_from", "must be YYYY-MM-DD")
-	}
-	if !okT {
-		v.AddError("range_to", "must be YYYY-MM-DD")
-	}
-	if okF && okT && !t.After(f) {
-		v.AddError("range_to", "must be after range_from")
-	}
-}
-
-// validBaselineRules is the closed set a Dashboard's Baseline rule may take
-// (ADR 0015): the two relative rules, an absolute custom window, or none
-// (comparison off).
-var validBaselineRules = map[string]bool{
-	"none": true, "previous": true, "same_period_last_year": true, "custom": true,
-}
-
-// validateBaseline checks the Baseline: a known rule, with a valid, ordered
-// day-granularity window for "custom" — and no bounds at all otherwise, so a
-// stale frozen window can't shadow a relative rule.
-func validateBaseline(v *Validator, rule string, from, to *string) {
-	if !validBaselineRules[rule] {
-		v.AddError("baseline_rule", "must be one of none, previous, same_period_last_year, custom")
-		return
-	}
-	if rule != "custom" {
-		v.Check(from == nil && to == nil, "baseline_from",
-			"baseline bounds are only for the custom rule")
-		return
-	}
-	if from == nil || to == nil {
-		v.AddError("baseline_from", "a custom baseline needs both baseline_from and baseline_to")
-		return
-	}
-	f, okF := parseDay(*from)
-	t, okT := parseDay(*to)
-	if !okF {
-		v.AddError("baseline_from", "must be YYYY-MM-DD")
-	}
-	if !okT {
-		v.AddError("baseline_to", "must be YYYY-MM-DD")
-	}
-	if okF && okT && !t.After(f) {
-		v.AddError("baseline_to", "must be after baseline_from")
-	}
-}
-
 // validChartTypes is the closed set a Panel may take.
 var validChartTypes = map[string]bool{
 	"bar": true, "line": true, "area": true, "band": true, "stacked_bar": true, "diverging_bar": true,
@@ -576,31 +511,20 @@ func parseBucketOverride(raw json.RawMessage, v *Validator) *string {
 }
 
 // validatePanelBucket resolves an optional bucket override: nil (or explicit
-// null) means auto-derive; a value must be day/week/month.
+// null) means auto-derive; a value must be a known bucket (query.ParseBucket, the
+// single bucket vocabulary shared with the read path).
 func validatePanelBucket(v *Validator, raw *string) *string {
 	if raw == nil {
 		return nil
 	}
-	switch *raw {
-	case "day", "week", "month":
-		return raw
-	default:
+	if _, err := query.ParseBucket(*raw); err != nil {
 		v.AddError("bucket", "must be day, week, or month, or omitted to auto-derive")
 		return nil
 	}
+	return raw
 }
 
 // validateWidth checks a Panel's column span is 1, 2, or 3.
 func validateWidth(v *Validator, width int) {
 	v.Check(width >= 1 && width <= 3, "width", "must be between 1 and 3")
-}
-
-// parseDay parses a bare YYYY-MM-DD date (UTC), the day granularity the Time
-// range picker uses (no time-of-day in v1, ADR 0013).
-func parseDay(s string) (time.Time, bool) {
-	t, err := time.Parse("2006-01-02", s)
-	if err != nil {
-		return time.Time{}, false
-	}
-	return t.UTC(), true
 }
