@@ -1,14 +1,8 @@
 package applehealth
 
-// typeToMetric is the Apple Health Connector's declarative mapping: each Apple
-// HKQuantityTypeIdentifier* it understands → the canonical Catalog slug it maps
-// to (see ADR 0009 — the mapping is data, the code is only "how to read the
-// source"). Every target must exist in internal/catalog; a test enforces that
-// this map and the Catalog stay in lock-step.
-//
-// Apple types absent here (sleep and other HKCategoryType* states, events,
-// workouts) are out of scope for this slice and land in the Unmapped bin, kept
-// for a later slice — never discarded (ADR 0002).
+// typeToMetric maps each Apple quantity type to its canonical Catalog slug — data,
+// not logic (ADR 0009). A test keeps it in lock-step with the Catalog; absent types
+// land in the Unmapped bin (ADR 0002).
 var typeToMetric = map[string]string{
 	// Energy
 	"HKQuantityTypeIdentifierActiveEnergyBurned": "active_energy",
