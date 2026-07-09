@@ -27,11 +27,9 @@ const BASELINE = "hsl(var(--muted-foreground))";
 const SURPLUS = "hsl(var(--chart-positive))";
 const DEFICIT = "hsl(var(--chart-negative))";
 
-/** ChartDatum is one x-position: the current bucket's value (and band), plus the
- *  overlaid Baseline bucket's value and its own real date for the tooltip. The
- *  x-axis is ordinal position within the period, so the Baseline is keyed to the
- *  current bucket's index, not its date — the two windows' dates differ by
- *  construction (ADR 0015: Ordinal alignment). */
+/** ChartDatum is one x-position (ordinal within the period): the current bucket's
+ *  value and band, plus the Baseline bucket keyed to that index with its own date
+ *  for the tooltip (ADR 0015). */
 interface ChartDatum {
   bucket: string;
   value: number;
@@ -40,10 +38,8 @@ interface ChartDatum {
   baselineBucket?: string;
 }
 
-/** PanelChart renders one Series with the Panel's chosen chart type, optionally
- *  overlaid with a Baseline series in comparison mode. Because the API only ever
- *  returns a few hundred bucketed points (ADR 0012), the chart library's
- *  performance is a non-issue and Recharts renders directly. */
+/** PanelChart renders one Series with the Panel's chart type, optionally overlaid
+ *  with a Baseline in comparison mode (a few hundred points, ADR 0012). */
 export function PanelChart({
   series,
   baseline,

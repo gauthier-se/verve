@@ -3,8 +3,7 @@
 /** Aggregation is a Metric's Catalog rule for collapsing points into a bucket. */
 export type Aggregation = "sum" | "average" | "latest" | "duration_by_state";
 
-/** ChartType is how a Panel renders its Metric. The diverging-bar variant is the
- *  signed-Metric default: bars from a zero baseline, colored by sign (ADR 0014). */
+/** ChartType is how a Panel renders its Metric (diverging-bar is signed-only, ADR 0014). */
 export type ChartType = "bar" | "line" | "area" | "band" | "stacked_bar" | "diverging_bar";
 
 /** Bucket is a Panel's time granularity; null means auto-derive from the span. */
@@ -13,9 +12,8 @@ export type Bucket = "day" | "week" | "month";
 /** RangePreset is a Dashboard's Time-range choice (custom uses from/to). */
 export type RangePreset = "7d" | "30d" | "3m" | "1y" | "all" | "custom";
 
-/** BaselineRule is how a Dashboard derives its comparison Baseline window from
- *  the current Time range (ADR 0015). `none` is comparison off; the two relative
- *  rules are recomputed server-side; `custom` carries absolute from/to bounds. */
+/** BaselineRule is how a Dashboard derives its Baseline window (ADR 0015): `none`
+ *  is off, the relative rules are recomputed server-side, `custom` carries bounds. */
 export type BaselineRule = "none" | "previous" | "same_period_last_year" | "custom";
 
 /** Term is one Formula operand: a Catalog slug weighted by a coefficient. */
@@ -24,18 +22,16 @@ export interface Term {
   coefficient: number;
 }
 
-/** Formula is a derived Metric's definition: a ratio of two weighted sums times a
- *  constant scale — (scale · Σ numerator) / (Σ denominator), an absent/empty
- *  denominator meaning 1 (ADR 0014). Present only on derived Metrics. */
+/** Formula is a derived Metric's definition: (scale · Σ numerator) / (Σ denominator),
+ *  an empty denominator meaning 1 (ADR 0014). */
 export interface Formula {
   scale: number;
   numerator: Term[];
   denominator?: Term[];
 }
 
-/** Metric is one Catalog entry from GET /v1/metrics. An imported Metric carries an
- *  aggregation rule; a derived Metric instead carries a Formula and a signed flag
- *  and reports no aggregation (ADR 0014). */
+/** Metric is one Catalog entry from GET /v1/metrics; a derived Metric carries a
+ *  Formula and signed flag and no aggregation (ADR 0014). */
 export interface Metric {
   slug: string;
   unit: string;
@@ -63,9 +59,8 @@ export interface Panel {
   position: number;
 }
 
-/** Dashboard is a named grid of Panels carrying the active Time range and, when
- *  period comparison is on, a Baseline (ADR 0015). The baseline bounds mirror the
- *  range bounds: present only for the `custom` rule. */
+/** Dashboard is a named grid of Panels carrying the active Time range and Baseline
+ *  (ADR 0015); bounds are present only for the `custom` preset/rule. */
 export interface Dashboard {
   id: number;
   name: string;
@@ -79,9 +74,8 @@ export interface Dashboard {
   panels: Panel[];
 }
 
-/** Point is one aggregated bucket; min/max carry the band for average Metrics. A
- *  baseline point may instead be a dated gap (`gap: true`, no value) where the
- *  Baseline window has no data at that ordinal position (ADR 0015). */
+/** Point is one aggregated bucket; min/max carry the average band. A baseline point
+ *  may be a dated gap (`gap: true`) where the Baseline has no data (ADR 0015). */
 export interface Point {
   bucket: string;
   value: number;
