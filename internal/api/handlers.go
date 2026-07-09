@@ -27,10 +27,8 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// metricView is one Catalog entry as exposed by the API. An imported Metric
-// carries its aggregation rule; a derived Metric instead reports its Formula and
-// a signed flag and omits aggregation — it has no rule of its own (ADR 0014), so
-// the field is dropped rather than faked.
+// metricView is one Catalog entry as exposed by the API. A derived Metric reports
+// its Formula and signed flag and omits aggregation (ADR 0014).
 type metricView struct {
 	Slug        string       `json:"slug"`
 	Unit        string       `json:"unit"`
@@ -55,9 +53,7 @@ type termView struct {
 	Coefficient float64 `json:"coefficient"`
 }
 
-// handleMetrics exposes the Catalog: every canonical Metric with its unit and
-// nature, imported entries carrying their aggregation rule and derived entries
-// their Formula and signed flag, sorted by slug for a stable listing.
+// handleMetrics exposes the Catalog, sorted by slug for a stable listing.
 func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	all := catalog.All()
 	views := make([]metricView, 0, len(all))
@@ -105,9 +101,8 @@ func termsToView(terms []catalog.Term) []termView {
 }
 
 // handleSeries answers the aggregated-bucket query: metric + the Dashboard's time
-// axis tokens → one point per bucket under the Metric's rule (ADR 0012), scoped to
-// the request's Account. timeaxis resolves the tokens into the concrete current
-// window, the optional Baseline window, and the bucket.
+// axis tokens → one point per bucket (ADR 0012), scoped to the Account. timeaxis
+// resolves the tokens into the current window, optional Baseline window, and bucket.
 func (s *Server) handleSeries(w http.ResponseWriter, r *http.Request) {
 	accountID, _ := s.accountID(r)
 
