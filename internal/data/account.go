@@ -70,6 +70,18 @@ func (m AccountModel) GetByEmail(ctx context.Context, email string) (*Account, e
 	return m.getOne(ctx, query, email)
 }
 
+// Any reports whether the instance has at least one Account. It backs the
+// first-run bootstrap gate (ADR 0017): web signup is open only while this is
+// false, and the create endpoint re-checks it server-side before writing.
+func (m AccountModel) Any(ctx context.Context) (bool, error) {
+	const query = `SELECT EXISTS(SELECT 1 FROM accounts)`
+	var exists bool
+	if err := m.DB.QueryRowContext(ctx, query).Scan(&exists); err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
 // GetByID returns the account with the given id, or ErrRecordNotFound. Used to
 // resolve the authenticated Account from a session's account_id.
 func (m AccountModel) GetByID(ctx context.Context, id int64) (*Account, error) {

@@ -27,6 +27,17 @@ const (
 // the httptest (plain-HTTP) client keeps them.
 func newTestServer(t *testing.T) (*Server, data.Models, *http.Cookie) {
 	t.Helper()
+	srv, models := newEmptyServer(t)
+	seedAccountWithPassword(t, models, testEmail, testPassword)
+	cookie := login(t, srv, testEmail, testPassword)
+	return srv, models, cookie
+}
+
+// newEmptyServer builds a Server over a fresh migrated DB with zero Accounts —
+// the first-run instance state — returning it with its models. Cookies are
+// non-Secure so the httptest (plain-HTTP) client keeps them.
+func newEmptyServer(t *testing.T) (*Server, data.Models) {
+	t.Helper()
 	path := filepath.Join(t.TempDir(), "verve.db")
 	db, err := data.Open(path)
 	if err != nil {
@@ -37,11 +48,8 @@ func newTestServer(t *testing.T) (*Server, data.Models, *http.Cookie) {
 		t.Fatalf("Migrate: %v", err)
 	}
 	models := data.NewModels(db)
-	seedAccountWithPassword(t, models, testEmail, testPassword)
-
 	srv := New(slog.New(slog.NewTextHandler(io.Discard, nil)), models, query.Engine{DB: db}, Config{SecureCookies: false})
-	cookie := login(t, srv, testEmail, testPassword)
-	return srv, models, cookie
+	return srv, models
 }
 
 // seedAccountWithPassword inserts an account and sets its argon2id password hash.

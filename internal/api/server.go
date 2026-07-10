@@ -79,7 +79,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/healthz", s.handleHealthz)
 	mux.HandleFunc("GET /v1/metrics", s.handleMetrics)
 
-	// Auth: login and logout are public entry points; me is protected.
+	// Auth: state, login, and first-run register are public entry points; me is
+	// protected. register is open only while the instance has zero Accounts (ADR 0017).
+	mux.HandleFunc("GET /v1/auth/state", s.handleAuthState)
+	mux.HandleFunc("POST /v1/auth/register", s.handleRegister)
 	mux.HandleFunc("POST /v1/auth/login", s.handleLogin)
 	mux.HandleFunc("POST /v1/auth/logout", s.handleLogout)
 	mux.Handle("GET /v1/auth/me", s.requireAuth(s.handleMe))

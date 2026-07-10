@@ -68,6 +68,31 @@ func TestAccountInsertDuplicateEmail(t *testing.T) {
 	}
 }
 
+func TestAccountAny(t *testing.T) {
+	_, models := openTestDB(t)
+	ctx := context.Background()
+
+	any, err := models.Accounts.Any(ctx)
+	if err != nil {
+		t.Fatalf("Any on empty instance: %v", err)
+	}
+	if any {
+		t.Error("Any = true on a fresh instance, want false")
+	}
+
+	if err := models.Accounts.Insert(ctx, &Account{Email: "first@example.com"}); err != nil {
+		t.Fatalf("Insert: %v", err)
+	}
+
+	any, err = models.Accounts.Any(ctx)
+	if err != nil {
+		t.Fatalf("Any after insert: %v", err)
+	}
+	if !any {
+		t.Error("Any = false after an account exists, want true")
+	}
+}
+
 func TestAccountGetByEmailNotFound(t *testing.T) {
 	_, models := openTestDB(t)
 

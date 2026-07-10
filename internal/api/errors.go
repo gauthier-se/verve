@@ -51,6 +51,13 @@ func (s *Server) invalidCredentialsResponse(w http.ResponseWriter, r *http.Reque
 	s.errorResponse(w, r, http.StatusUnauthorized, "invalid email or password")
 }
 
+// signupClosedResponse returns a 409 when the first-run bootstrap is attempted
+// on an instance that already has an Account (ADR 0017): web signup is closed
+// once initialized. The message reveals nothing beyond that single fact.
+func (s *Server) signupClosedResponse(w http.ResponseWriter, r *http.Request) {
+	s.errorResponse(w, r, http.StatusConflict, "signup is closed — this instance is already initialized")
+}
+
 // rateLimitExceededResponse returns a 429 when a client has made too many
 // login attempts too quickly.
 func (s *Server) rateLimitExceededResponse(w http.ResponseWriter, r *http.Request) {

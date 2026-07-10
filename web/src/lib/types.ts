@@ -41,6 +41,12 @@ export interface Metric {
   formula?: Formula;
 }
 
+/** AuthState is GET /v1/auth/state: whether the instance still needs its first
+ *  Account, so the SPA can pick the create-account vs. login screen (ADR 0017). */
+export interface AuthState {
+  needs_bootstrap: boolean;
+}
+
 /** Account is the logged-in identity and its `Me` profile. */
 export interface Account {
   email: string;
