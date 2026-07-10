@@ -49,6 +49,11 @@ type DashboardModel struct {
 // Insert appends a dashboard at the end of the Account's list (position computed
 // in-statement so concurrent inserts can't collide); populates ID, Position, timestamps.
 func (m DashboardModel) Insert(ctx context.Context, d *Dashboard) error {
+	return insertDashboard(ctx, m.DB, d)
+}
+
+// insertDashboard inserts a dashboard through any querier.
+func insertDashboard(ctx context.Context, q querier, d *Dashboard) error {
 	// Default the Baseline to comparison-off so a zero value never hits the NOT NULL column.
 	if d.BaselineRule == "" {
 		d.BaselineRule = "none"
@@ -59,7 +64,7 @@ func (m DashboardModel) Insert(ctx context.Context, d *Dashboard) error {
 		RETURNING id, position, created_at, updated_at`
 	args := []any{d.AccountID, d.Name, d.AccountID, d.RangePreset, d.RangeFrom, d.RangeTo,
 		d.BaselineRule, d.BaselineFrom, d.BaselineTo}
-	return m.DB.QueryRowContext(ctx, query, args...).
+	return q.QueryRowContext(ctx, query, args...).
 		Scan(&d.ID, &d.Position, &d.CreatedAt, &d.UpdatedAt)
 }
 
@@ -145,12 +150,17 @@ type PanelModel struct {
 // in-statement); populates ID, Position, timestamps. AccountID comes from the
 // already-authorized owning dashboard.
 func (m PanelModel) Insert(ctx context.Context, p *Panel) error {
+	return insertPanel(ctx, m.DB, p)
+}
+
+// insertPanel inserts a panel through any querier.
+func insertPanel(ctx context.Context, q querier, p *Panel) error {
 	const query = `
 		INSERT INTO panels (dashboard_id, account_id, metric, chart_type, bucket, width, position)
 		VALUES (?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(position)+1, 0) FROM panels WHERE dashboard_id = ?))
 		RETURNING id, position, created_at, updated_at`
 	args := []any{p.DashboardID, p.AccountID, p.Metric, p.ChartType, p.Bucket, p.Width, p.DashboardID}
-	return m.DB.QueryRowContext(ctx, query, args...).
+	return q.QueryRowContext(ctx, query, args...).
 		Scan(&p.ID, &p.Position, &p.CreatedAt, &p.UpdatedAt)
 }
 

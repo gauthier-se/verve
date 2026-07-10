@@ -4,6 +4,7 @@
 package data
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"strings"
@@ -13,6 +14,13 @@ import (
 
 // ErrRecordNotFound is returned by model getters when no row matches.
 var ErrRecordNotFound = errors.New("data: record not found")
+
+// querier is the subset of *sql.DB and *sql.Tx that the insert helpers use, so
+// one insert path serves both a direct write and a shared transaction (e.g.
+// CreateAccount seeding a Dashboard alongside the Account).
+type querier interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
 
 // pragmas are applied to every pooled SQLite connection via the DSN, so they
 // hold regardless of which connection the pool hands out.

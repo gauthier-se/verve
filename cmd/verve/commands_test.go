@@ -92,6 +92,16 @@ func TestAccountCreate(t *testing.T) {
 	if ok, err := auth.VerifyPassword(testPassword, *got.PasswordHash); err != nil || !ok {
 		t.Errorf("VerifyPassword = %v, %v; want true, nil", ok, err)
 	}
+
+	// Creation seeds the default "Aperçu" dashboard through the shared path, so a
+	// fresh account never faces an empty app (ADR 0018).
+	dashboards, err := app.models.Dashboards.ListByAccount(ctx, got.ID)
+	if err != nil {
+		t.Fatalf("ListByAccount: %v", err)
+	}
+	if len(dashboards) != 1 || dashboards[0].Name != "Aperçu" {
+		t.Fatalf("seeded dashboards = %+v, want one named Aperçu", dashboards)
+	}
 }
 
 func TestAccountCreateRejectsShortPassword(t *testing.T) {
