@@ -103,7 +103,7 @@ func (app *application) accountCreate(ctx context.Context, args []string) error 
 	}
 
 	acc := &data.Account{Email: *email, PasswordHash: &hash}
-	if err := app.models.Accounts.Insert(ctx, acc); err != nil {
+	if err := app.models.CreateAccount(ctx, acc); err != nil {
 		if errors.Is(err, data.ErrDuplicateEmail) {
 			return fmt.Errorf("an account with email %q already exists", *email)
 		}

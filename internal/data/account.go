@@ -36,13 +36,18 @@ type AccountModel struct {
 // Insert creates the account and populates its generated ID and timestamps.
 // A taken email yields ErrDuplicateEmail.
 func (m AccountModel) Insert(ctx context.Context, a *Account) error {
+	return insertAccount(ctx, m.DB, a)
+}
+
+// insertAccount inserts an account through any querier.
+func insertAccount(ctx context.Context, q querier, a *Account) error {
 	const query = `
 		INSERT INTO accounts (email, password_hash, date_of_birth, biological_sex, blood_type)
 		VALUES (?, ?, ?, ?, ?)
 		RETURNING id, created_at, updated_at`
 
 	args := []any{a.Email, a.PasswordHash, a.DateOfBirth, a.BiologicalSex, a.BloodType}
-	err := m.DB.QueryRowContext(ctx, query, args...).Scan(&a.ID, &a.CreatedAt, &a.UpdatedAt)
+	err := q.QueryRowContext(ctx, query, args...).Scan(&a.ID, &a.CreatedAt, &a.UpdatedAt)
 	if err != nil {
 		// email is the only UNIQUE column, so any unique-constraint violation is
 		// a duplicate email. Matching the driver's error code is more robust than
