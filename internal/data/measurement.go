@@ -139,6 +139,18 @@ func (m MeasurementModel) InsertUnmappedBatch(ctx context.Context, us []Unmapped
 	return inserted, nil
 }
 
+// HasAny reports whether accountID has any Measurement — the signal the web
+// empty-state uses to decide between "import your data" and the filled Panels
+// (ADR 0016, ADR 0018).
+func (m MeasurementModel) HasAny(ctx context.Context, accountID int64) (bool, error) {
+	const query = `SELECT EXISTS(SELECT 1 FROM measurements WHERE account_id = ?)`
+	var exists bool
+	if err := m.DB.QueryRowContext(ctx, query, accountID).Scan(&exists); err != nil {
+		return false, fmt.Errorf("data: measurement HasAny: %w", err)
+	}
+	return exists, nil
+}
+
 // RecordImport writes the summary row for one Import run and populates its
 // generated ID and timestamp.
 func (m MeasurementModel) RecordImport(ctx context.Context, imp *Import) error {

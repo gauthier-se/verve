@@ -54,6 +54,15 @@ A named, user-arranged grid of Panels — e.g. "Training", "Sleep", "Nutrition".
 Users create several and switch between them. Carries the active Time range.
 _Avoid_: View (too vague — informal synonym at most), Page, Board.
 
+**Dashboard template**:
+The curated default content — one Dashboard named "Aperçu" with a fixed set of
+Panels over universal Metrics (mass, active energy, steps, resting heart rate,
+exercise time) — **seeded at Account creation** so no Account ever faces an empty
+app. Defined in Verve, not user input, like the closed Catalog; the seeded
+Dashboard is thereafter an ordinary Dashboard the owner can edit or delete
+(ADR 0018).
+_Avoid_: Preset, Starter, Default view.
+
 **Panel**:
 A single card in a Dashboard: one or more Metrics × a chart type × an
 aggregation × a time bucket — e.g. "Steps — daily — sum — bars".
@@ -162,6 +171,16 @@ A single run of a Connector over a source file (e.g. one Apple Health export
 Imports are idempotent: re-importing a full Apple snapshot adds only new data.
 _Avoid_: Sync, Ingest (the act), Load.
 
+**Import job**:
+A single web import *in flight*: the background run of the Connector over an
+uploaded export, tracked by a status (`pending → running → done | failed`) and a
+two-phase progress percentage (upload, then decode). Held in an in-memory
+registry, one per Account at a time; on success it carries the same report as a
+CLI import. Distinct from the **Import** — the persisted record of a *finished*
+run with its counts. A crash loses the job, not data: re-upload is idempotent
+(ADR 0016).
+_Avoid_: Task, Upload (that's one phase), Import (the finished record).
+
 **Content key**:
 The deduplication identity of a Measurement, derived by hashing
 `(metric, source, startDate, endDate, value, unit)` — because Apple records
@@ -187,6 +206,15 @@ attributes from Apple's `Me` (date of birth, biological sex, blood type…), use
 to normalize some Metrics (e.g. age-based heart-rate zones).
 _Avoid_: User, Owner (use "owns"/"owner" only as the relationship), Profile,
 Tenant.
+
+**Bootstrap**:
+The creation of the *first* Account on a fresh instance, done from the web (email
++ password) with no shell. Web signup is open **only while zero Accounts exist**;
+once the first Account is created it **closes** — enforced server-side — and
+further Accounts are created via the CLI. The first Account is auto-logged-in and
+lands on its seeded Dashboard (ADR 0017).
+_Avoid_: Signup, Registration (web signup is closed after this), Onboarding (the
+broader flow), Setup.
 
 **Connector**:
 A component that reads data from an external system and maps it into the

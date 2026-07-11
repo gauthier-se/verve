@@ -1,7 +1,8 @@
 import * as React from "react";
-import { useNavigate, useParams } from "@tanstack/react-router";
-import { MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
+import { Link, useNavigate, useParams } from "@tanstack/react-router";
+import { Download, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
 import { useDeleteDashboard, useUpdateDashboard, useDashboards } from "@/hooks/use-dashboards";
+import { useImportStatus } from "@/hooks/use-import";
 import { useMetricMap } from "@/hooks/use-catalog";
 import type { BaselineParams } from "@/hooks/use-series";
 import { rangeTokens } from "@/lib/time-range";
@@ -54,6 +55,7 @@ export function DashboardView() {
       </header>
 
       <div className="flex-1 overflow-y-auto p-6">
+        <ImportCta />
         {dashboard.panels.length === 0 ? (
           <EmptyPanels dashboardId={dashboard.id} />
         ) : (
@@ -157,6 +159,30 @@ function RenameDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** ImportCta is the onboarding banner shown while the Account has no data yet: the
+ *  seeded Panels render empty, so it points straight at the Import page (ADR 0018).
+ *  It retires the moment the first import lands data. */
+function ImportCta() {
+  const status = useImportStatus();
+  if (status.data === undefined || status.data.has_data) return null;
+
+  return (
+    <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed bg-card/40 px-5 py-4">
+      <div>
+        <p className="font-medium">No data yet</p>
+        <p className="text-sm text-muted-foreground">
+          Import your Apple Health export to fill these panels.
+        </p>
+      </div>
+      <Button asChild>
+        <Link to="/import">
+          <Download className="size-4" /> Import data
+        </Link>
+      </Button>
+    </div>
   );
 }
 

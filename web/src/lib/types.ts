@@ -90,6 +90,31 @@ export interface Point {
   gap?: boolean;
 }
 
+/** ImportReport is the compact outcome of a finished web import (ADR 0016). */
+export interface ImportReport {
+  source_file: string;
+  added: number;
+  skipped: number;
+  unmapped: number;
+}
+
+/** ImportJob is one web import in flight or settled: its lifecycle status, the
+ *  active phase, a single 0–100 percent, and the report or failure message (ADR 0016). */
+export interface ImportJob {
+  status: "pending" | "running" | "done" | "failed";
+  phase: "upload" | "import";
+  percent: number;
+  report?: ImportReport;
+  error?: string;
+}
+
+/** ImportStatus is GET /v1/imports: the Account's current job (or null) plus
+ *  whether it has any data yet, which drives the dashboard's empty-state CTA. */
+export interface ImportStatus {
+  job: ImportJob | null;
+  has_data: boolean;
+}
+
 /** Series is the result of GET /v1/series: metadata plus ordered buckets. */
 export interface Series {
   metric: string;

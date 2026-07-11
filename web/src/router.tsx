@@ -2,6 +2,7 @@ import { createRootRoute, createRoute, createRouter, Outlet } from "@tanstack/re
 import { AppShell } from "./components/app-shell";
 import { DashboardIndex } from "./components/dashboard-index";
 import { DashboardView } from "./components/dashboard-view";
+import { ImportPage } from "./components/import-page";
 
 // Code-based routes (no file router / codegen) keep the build a plain Vite SPA
 // (ADR 0013). The Go server serves index.html on every non-/v1 path, so a deep
@@ -26,7 +27,13 @@ const dashboardRoute = createRoute({
   component: DashboardView,
 });
 
-const routeTree = rootRoute.addChildren([indexRoute, dashboardRoute]);
+const importRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/import",
+  component: ImportPage,
+});
+
+const routeTree = rootRoute.addChildren([indexRoute, dashboardRoute, importRoute]);
 
 export const router = createRouter({ routeTree, defaultPreload: "intent" });
 

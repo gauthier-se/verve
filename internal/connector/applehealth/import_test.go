@@ -1,12 +1,15 @@
 package applehealth
 
 import (
+	"archive/zip"
 	"context"
 	"database/sql"
 	"io"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/gauthier-se/verve/internal/catalog"
@@ -182,6 +185,63 @@ func TestImportStreamNormalizesUnits(t *testing.T) {
 	}
 	if unit != "g" {
 		t.Errorf("original_unit = %q, want g", unit)
+	}
+}
+
+// TestImportWithProgressReportsDecodeBytes verifies the web import's honest second
+// phase: reading a real .zip drives the Progress hook up to the export.xml entry's
+// declared uncompressed size (ADR 0016).
+func TestImportWithProgressReportsDecodeBytes(t *testing.T) {
+	store, _, acc := openStore(t)
+	ctx := context.Background()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "export.zip")
+	writeExportZip(t, path, sampleXML)
+
+	var lastDecoded, gotTotal atomic.Int64
+	var calls atomic.Int64
+	progress := func(decoded, total int64) {
+		lastDecoded.Store(decoded)
+		gotTotal.Store(total)
+		calls.Add(1)
+	}
+
+	if _, err := ImportWithProgress(ctx, store, acc, path, dir, progress); err != nil {
+		t.Fatalf("ImportWithProgress: %v", err)
+	}
+
+	wantTotal := int64(len(sampleXML))
+	if gotTotal.Load() != wantTotal {
+		t.Errorf("progress total = %d, want %d (uncompressed export.xml size)", gotTotal.Load(), wantTotal)
+	}
+	if lastDecoded.Load() != wantTotal {
+		t.Errorf("final decoded = %d, want %d (whole entry read)", lastDecoded.Load(), wantTotal)
+	}
+	if calls.Load() == 0 {
+		t.Error("progress was never called")
+	}
+}
+
+// writeExportZip writes a .zip holding xml at apple_health_export/export.xml, the
+// nesting Apple uses, so findExportXML resolves it by base name.
+func writeExportZip(t *testing.T, path, xml string) {
+	t.Helper()
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("create zip: %v", err)
+	}
+	defer f.Close()
+	zw := zip.NewWriter(f)
+	w, err := zw.Create("apple_health_export/export.xml")
+	if err != nil {
+		t.Fatalf("zip create entry: %v", err)
+	}
+	if _, err := io.WriteString(w, xml); err != nil {
+		t.Fatalf("zip write: %v", err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("zip close: %v", err)
 	}
 }
 
