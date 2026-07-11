@@ -48,6 +48,22 @@ export async function api<T = unknown>(
   return payload as T;
 }
 
+/** upload POSTs a raw file body (not JSON) to path, unwrapping the envelope and
+ *  errors like `api`. The import upload's body is the binary .zip itself; the
+ *  server streams it and tracks progress, which the caller polls separately. */
+export async function upload<T = unknown>(path: string, file: File): Promise<T> {
+  const res = await fetch(path, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/zip" },
+    body: file,
+  });
+  const text = await res.text();
+  const payload = text ? JSON.parse(text) : {};
+  if (!res.ok) throw toError(res.status, payload.error);
+  return payload as T;
+}
+
 function toError(status: number, error: unknown): ApiError {
   // A validation failure is a field→message map; everything else is a string.
   if (error && typeof error === "object") {

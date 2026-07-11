@@ -36,3 +36,18 @@ func NewModels(db *sql.DB) Models {
 func (m Models) Ping(ctx context.Context) error {
 	return m.db.PingContext(ctx)
 }
+
+// ImportStore bundles the family models a Connector import writes through; its
+// embedded methods together satisfy applehealth.Store (kept here, not in that
+// package, to avoid an import cycle). Both the CLI and web import use it, so a new
+// family is a one-place edit.
+type ImportStore struct {
+	MeasurementModel
+	StateModel
+	SessionModel
+}
+
+// ImportStore returns the family models bundled for a Connector import.
+func (m Models) ImportStore() ImportStore {
+	return ImportStore{m.Measurements, m.States, m.Sessions}
+}

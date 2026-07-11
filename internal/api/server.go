@@ -26,6 +26,13 @@ type Config struct {
 	// SPA serves the embedded front-end on every non-/v1 path (ADR 0005); injected
 	// to decouple from web-assets. Nil means API-only.
 	SPA http.Handler
+	// DataDir is the data root; web import uploads stream through DataDir/tmp and
+	// orphans there are swept at startup (ADR 0016).
+	DataDir string
+	// ArtifactsDir is where a web import copies GPX route artifacts (ADR 0004).
+	ArtifactsDir string
+	// MaxUploadBytes caps a web import upload; zero uses defaultMaxUploadBytes.
+	MaxUploadBytes int64
 }
 
 // Server holds the HTTP layer's dependencies. It owns no global state.
@@ -38,13 +45,16 @@ type Server struct {
 	secureCookies bool
 	sessionTTL    time.Duration
 	spa           http.Handler
+	imports       *importRegistry
 	// decoyHash is verified against on logins for missing accounts so timing does
 	// not reveal which emails exist. It is a hash of an unguessable value.
 	decoyHash string
 }
 
-// New builds a Server. cfg tunes cookie security and session lifetime.
-func New(logger *slog.Logger, models data.Models, engine query.Engine, cfg Config) *Server {
+// New builds a Server. cfg tunes cookie security, session lifetime, and the web
+// import (data dir, artifacts dir, upload cap). Building the import registry
+// prepares its temp dir and sweeps orphan uploads, so it can fail (ADR 0016).
+func New(logger *slog.Logger, models data.Models, engine query.Engine, cfg Config) (*Server, error) {
 	ttl := cfg.SessionTTL
 	if ttl <= 0 {
 		ttl = defaultSessionTTL
@@ -56,6 +66,11 @@ func New(logger *slog.Logger, models data.Models, engine query.Engine, cfg Confi
 		logger.Error("build login timing decoy", "err", err)
 	}
 
+	imports, err := newImportRegistry(logger, models.ImportStore(), cfg.DataDir, cfg.ArtifactsDir, cfg.MaxUploadBytes)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Server{
 		logger:        logger,
 		models:        models,
@@ -65,8 +80,9 @@ func New(logger *slog.Logger, models data.Models, engine query.Engine, cfg Confi
 		secureCookies: cfg.SecureCookies,
 		sessionTTL:    ttl,
 		spa:           cfg.SPA,
+		imports:       imports,
 		decoyHash:     decoy,
-	}
+	}, nil
 }
 
 // Handler builds the routed, panic-recovering http.Handler. Go 1.22 method+pattern
@@ -89,6 +105,10 @@ func (s *Server) Handler() http.Handler {
 
 	// Account data: only the authenticated Account's own series.
 	mux.Handle("GET /v1/series", s.requireAuth(s.handleSeries))
+
+	// Web self-service import: upload a .zip, then poll the job (ADR 0016).
+	mux.Handle("POST /v1/imports", s.requireAuth(s.handleCreateImport))
+	mux.Handle("GET /v1/imports", s.requireAuth(s.handleImportStatus))
 
 	// Dashboards and their Panels: Account-scoped CRUD backing the SPA.
 	mux.Handle("GET /v1/dashboards", s.requireAuth(s.handleListDashboards))

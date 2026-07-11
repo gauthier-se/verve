@@ -1,7 +1,7 @@
 import * as React from "react";
-import { Link, useParams } from "@tanstack/react-router";
+import { Link, useLocation, useParams } from "@tanstack/react-router";
 import { useHotkeys } from "react-hotkeys-hook";
-import { Activity, LogOut, Plus } from "lucide-react";
+import { Activity, Download, LogOut, Plus } from "lucide-react";
 import { useLogout, useMe } from "@/hooks/use-auth";
 import { useDashboards } from "@/hooks/use-dashboards";
 import { cn } from "@/lib/utils";
@@ -18,6 +18,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [createOpen, setCreateOpen] = React.useState(false);
   const params = useParams({ strict: false }) as { dashboardId?: string };
   const activeId = params.dashboardId;
+  const onImportPage = useLocation({ select: (l) => l.pathname === "/import" });
 
   // Hotkey: "n" opens the new-dashboard dialog (react-hotkeys-hook, ADR 0013).
   useHotkeys("n", () => setCreateOpen(true), { preventDefault: true });
@@ -57,6 +58,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </Link>
           ))}
         </nav>
+
+        <div className="border-t px-2 py-2">
+          <Link
+            to="/import"
+            className={cn(
+              "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-accent",
+              onImportPage ? "bg-accent font-medium text-accent-foreground" : "text-muted-foreground",
+            )}
+          >
+            <Download className="size-4" /> Import data
+          </Link>
+        </div>
 
         <div className="flex items-center justify-between border-t px-3 py-3">
           <span className="truncate text-xs text-muted-foreground" title={me.data?.email}>

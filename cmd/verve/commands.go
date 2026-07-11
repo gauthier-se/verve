@@ -175,23 +175,12 @@ func (app *application) importCommand(ctx context.Context, args []string) error 
 	// The artifacts dir (where GPX routes are copied) is created at startup in
 	// run(), so it already exists here.
 	app.logger.Info("import started", "account", acc.Email, "file", path)
-	report, err := applehealth.Import(ctx, importStore{
-		app.models.Measurements, app.models.States, app.models.Sessions,
-	}, acc.ID, path, app.config.artifactsDir())
+	report, err := applehealth.Import(ctx, app.models.ImportStore(), acc.ID, path, app.config.artifactsDir())
 	if err != nil {
 		return err
 	}
 	renderReport(os.Stdout, report)
 	return nil
-}
-
-// importStore satisfies applehealth.Store by embedding the family models, whose
-// promoted methods (InsertBatch, InsertStateBatch, InsertSession, …) together
-// cover the interface — so the Connector writes through one value.
-type importStore struct {
-	data.MeasurementModel
-	data.StateModel
-	data.SessionModel
 }
 
 // renderReport writes a human-readable import summary: one line per Metric with

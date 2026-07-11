@@ -70,12 +70,26 @@ type Report struct {
 	PerActivity     map[string]Tally // Session activity type → tally
 }
 
+// Progress reports decode progress during an import: decoded is how many bytes of
+// the export.xml entry have been read, total its declared uncompressed size. It is
+// called frequently, so an implementation must be cheap and non-blocking.
+type Progress func(decoded, total int64)
+
 // Import reads the Apple Health export at path and writes it to store, scoped to
 // accountID; GPX route artifacts are copied into artifactsDir (ADR 0004). A
 // ".zip" path is opened as an archive and its export.xml entry streamed, with
 // routes resolved to entries in the same archive; any other path is streamed
 // directly as XML, with routes resolved as files beside it.
 func Import(ctx context.Context, store Store, accountID int64, path, artifactsDir string) (Report, error) {
+	return ImportWithProgress(ctx, store, accountID, path, artifactsDir, nil)
+}
+
+// ImportWithProgress is Import with a decode-progress hook (ADR 0016). progress,
+// when non-nil, is called as the export.xml entry is read, against its declared
+// uncompressed size — the web import's honest second phase, at no cost to the CLI
+// path (which passes nil). Only the ".zip" path reports progress; a bare XML path
+// has no declared size, so progress stays nil there.
+func ImportWithProgress(ctx context.Context, store Store, accountID int64, path, artifactsDir string, progress Progress) (Report, error) {
 	sourceFile := filepath.Base(path)
 
 	if strings.EqualFold(filepath.Ext(path), ".zip") {
@@ -94,7 +108,12 @@ func Import(ctx context.Context, store Store, accountID int64, path, artifactsDi
 			return Report{}, fmt.Errorf("applehealth: open %s in zip: %w", entry.Name, err)
 		}
 		defer rc.Close()
-		return importStream(ctx, store, accountID, sourceFile, rc, artifactsDir, zipRouteOpener{&zr.Reader})
+
+		var r io.Reader = rc
+		if progress != nil {
+			r = &countingReader{r: rc, total: int64(entry.UncompressedSize64), progress: progress}
+		}
+		return importStream(ctx, store, accountID, sourceFile, r, artifactsDir, zipRouteOpener{&zr.Reader})
 	}
 
 	f, err := os.Open(path)
@@ -103,6 +122,22 @@ func Import(ctx context.Context, store Store, accountID int64, path, artifactsDi
 	}
 	defer f.Close()
 	return importStream(ctx, store, accountID, sourceFile, f, artifactsDir, dirRouteOpener{filepath.Dir(path)})
+}
+
+// countingReader wraps the export.xml reader to report decode progress on every
+// Read against the entry's declared uncompressed size (no pre-count pass, ADR 0016).
+type countingReader struct {
+	r        io.Reader
+	n        int64
+	total    int64
+	progress Progress
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.n += int64(n)
+	c.progress(c.n, c.total)
+	return n, err
 }
 
 // findExportXML returns the archive entry for the export's XML (Apple nests it

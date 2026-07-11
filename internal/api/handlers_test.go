@@ -38,8 +38,8 @@ func newTestServer(t *testing.T) (*Server, data.Models, *http.Cookie) {
 // non-Secure so the httptest (plain-HTTP) client keeps them.
 func newEmptyServer(t *testing.T) (*Server, data.Models) {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "verve.db")
-	db, err := data.Open(path)
+	dir := t.TempDir()
+	db, err := data.Open(filepath.Join(dir, "verve.db"))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -48,7 +48,11 @@ func newEmptyServer(t *testing.T) (*Server, data.Models) {
 		t.Fatalf("Migrate: %v", err)
 	}
 	models := data.NewModels(db)
-	srv := New(slog.New(slog.NewTextHandler(io.Discard, nil)), models, query.Engine{DB: db}, Config{SecureCookies: false})
+	srv, err := New(slog.New(slog.NewTextHandler(io.Discard, nil)), models, query.Engine{DB: db},
+		Config{SecureCookies: false, DataDir: dir, ArtifactsDir: filepath.Join(dir, "artifacts")})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
 	return srv, models
 }
 

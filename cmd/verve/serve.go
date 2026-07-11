@@ -21,20 +21,30 @@ func (app *application) serveCommand(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	addr := fs.String("addr", ":8080", "address to listen on")
 	secureCookie := fs.Bool("secure-cookie", true, "set the Secure attribute on the session cookie (disable only for plain-HTTP local dev)")
+	maxUploadMB := fs.Int64("max-upload-mb", 0, "reject a web import upload larger than this many MiB (0 uses the built-in default)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
-	server := api.New(app.logger, app.models, query.Engine{DB: app.db}, api.Config{
-		SecureCookies: *secureCookie,
-		SPA:           web.Handler(),
+	server, err := api.New(app.logger, app.models, query.Engine{DB: app.db}, api.Config{
+		SecureCookies:  *secureCookie,
+		SPA:            web.Handler(),
+		DataDir:        app.config.dataDir,
+		ArtifactsDir:   app.config.artifactsDir(),
+		MaxUploadBytes: *maxUploadMB << 20,
 	})
+	if err != nil {
+		return err
+	}
 	srv := &http.Server{
-		Addr:         *addr,
-		Handler:      server.Handler(),
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  time.Minute,
+		Addr:    *addr,
+		Handler: server.Handler(),
+		// A web import streams a multi-hundred-MB upload through the request body,
+		// so a whole-request read/write deadline would abort it (ADR 0016); the
+		// header deadline still guards slowloris. Import runs in the background, off
+		// the response.
+		ReadHeaderTimeout: 5 * time.Second,
+		IdleTimeout:       time.Minute,
 	}
 
 	// Surface a listen failure (e.g. port in use) through this channel so the
