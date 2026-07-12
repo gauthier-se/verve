@@ -151,7 +151,8 @@ type Point struct {
 }
 
 // Series is the result of a query: the resolved Metric metadata, the single
-// winning Source (empty when the range holds no data), and the ordered buckets.
+// winning Source (empty when the range holds no data), the ordered buckets, and the
+// Panel summary — the whole window folded into one value (ADR 0019).
 type Series struct {
 	Metric      string              `json:"metric"`
 	Unit        string              `json:"unit"`
@@ -159,6 +160,11 @@ type Series struct {
 	Bucket      Bucket              `json:"bucket"`
 	Source      string              `json:"source"`
 	Points      []Point             `json:"points"`
+	// Summary is the Panel summary: the Metric aggregated over the whole window as a
+	// single bucket (ADR 0019), so an average is a true count-weighted mean and not a
+	// mean of per-bucket means. Nil is a gap ("—"): no data, or a derived Metric
+	// missing a required operand over the window. Never re-derived client-side.
+	Summary *Point `json:"summary,omitempty"`
 }
 
 // Engine answers aggregated-series queries against the measurements table.
@@ -207,6 +213,12 @@ func (e Engine) Series(ctx context.Context, req Request) (Series, error) {
 		return Series{}, err
 	}
 	out.Points = points
+
+	summary, err := e.summarize(ctx, req, metric.Aggregation, source)
+	if err != nil {
+		return Series{}, err
+	}
+	out.Summary = summary
 	return out, nil
 }
 
@@ -254,6 +266,12 @@ func (e Engine) seriesDerived(ctx context.Context, req Request, metric catalog.M
 			out.Points = append(out.Points, Point{Bucket: bucket, Value: v})
 		}
 	}
+
+	summary, err := e.summarizeDerived(ctx, req, metric)
+	if err != nil {
+		return Series{}, err
+	}
+	out.Summary = summary
 	return out, nil
 }
 
@@ -417,6 +435,112 @@ func (e Engine) scanBand(ctx context.Context, q string, args []any) ([]Point, er
 		return nil, fmt.Errorf("query: iterate points: %w", err)
 	}
 	return points, nil
+}
+
+// summarize folds the whole window into one value under the Metric's rule — the
+// Panel summary, "a single bucket spanning the range" (ADR 0019). It is the same
+// aggregation as a bucket but with no GROUP BY, so an average runs over the raw rows
+// and is a true count-weighted mean, never a mean of per-bucket means. Returns nil
+// when the window holds no value (a gap: "—", never a zero). The Point's Bucket
+// carries the window start for completeness; the client reads only the value/band.
+func (e Engine) summarize(ctx context.Context, req Request, agg catalog.Aggregation, source string) (*Point, error) {
+	args := []any{req.AccountID, req.Metric, source, rfc3339(req.From), rfc3339(req.To)}
+	label := req.From.UTC().Format("2006-01-02")
+	const where = `WHERE account_id = ? AND metric = ? AND source = ? AND start_at >= ? AND start_at < ?`
+	switch agg {
+	case catalog.Sum:
+		return e.scanSummaryScalar(ctx, `SELECT SUM(value) FROM measurements `+where, args, label)
+	case catalog.Latest:
+		return e.scanSummaryScalar(ctx, `SELECT value FROM measurements `+where+
+			` ORDER BY start_at DESC, id DESC LIMIT 1`, args, label)
+	case catalog.Average:
+		return e.scanSummaryBand(ctx, `SELECT AVG(value), MIN(value), MAX(value) FROM measurements `+where, args, label)
+	default:
+		return nil, fmt.Errorf("%w: %q", ErrUnsupportedAggregation, agg)
+	}
+}
+
+// scanSummaryScalar reads a single window value for the sum and latest rules. A
+// NULL aggregate or no row means an empty window: a nil summary (gap).
+func (e Engine) scanSummaryScalar(ctx context.Context, q string, args []any, label string) (*Point, error) {
+	var v sql.NullFloat64
+	err := e.DB.QueryRowContext(ctx, q, args...).Scan(&v)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query: summarize: %w", err)
+	}
+	if !v.Valid {
+		return nil, nil
+	}
+	return &Point{Bucket: label, Value: v.Float64}, nil
+}
+
+// scanSummaryBand reads the window mean with its min–max band for the average rule.
+func (e Engine) scanSummaryBand(ctx context.Context, q string, args []any, label string) (*Point, error) {
+	var avg, lo, hi sql.NullFloat64
+	err := e.DB.QueryRowContext(ctx, q, args...).Scan(&avg, &lo, &hi)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query: summarize band: %w", err)
+	}
+	if !avg.Valid {
+		return nil, nil
+	}
+	l, h := lo.Float64, hi.Float64
+	return &Point{Bucket: label, Value: avg.Float64, Min: &l, Max: &h}, nil
+}
+
+// summarizeDerived folds a derived Metric over the whole window: each operand is
+// aggregated over the window as a single value (its own rule), then the Formula is
+// applied once (ADR 0019) — so a ratio is the period's real ratio, not a mean of
+// per-bucket ratios. A missing required operand (or a zero denominator) yields nil,
+// the ADR 0014 gap rule at window scope.
+func (e Engine) summarizeDerived(ctx context.Context, req Request, metric catalog.Metric) (*Point, error) {
+	values := make(map[string]float64, len(metric.Formula.Operands()))
+	for _, slug := range metric.Formula.Operands() {
+		v, ok, err := e.summarizeOperand(ctx, req, slug)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			values[slug] = v
+		}
+	}
+	v, ok := metric.Formula.Evaluate(values)
+	if !ok {
+		return nil, nil // a required operand absent over the window: a gap
+	}
+	return &Point{Bucket: req.From.UTC().Format("2006-01-02"), Value: v}, nil
+}
+
+// summarizeOperand folds one Formula operand over the whole window (its own Source
+// per ADR 0003, its own rule) into a single value; no data yields ok=false.
+func (e Engine) summarizeOperand(ctx context.Context, req Request, slug string) (float64, bool, error) {
+	m, ok := catalog.Lookup(slug)
+	if !ok {
+		return 0, false, fmt.Errorf("%w: derived operand %q", ErrUnknownMetric, slug)
+	}
+	opReq := req
+	opReq.Metric = slug
+	source, ok, err := e.resolveSource(ctx, opReq)
+	if err != nil {
+		return 0, false, err
+	}
+	if !ok {
+		return 0, false, nil // no data for this operand in the window
+	}
+	p, err := e.summarize(ctx, opReq, m.Aggregation, source)
+	if err != nil {
+		return 0, false, err
+	}
+	if p == nil {
+		return 0, false, nil
+	}
+	return p.Value, true, nil
 }
 
 // rfc3339 formats a time as the UTC RFC 3339 string measurements are stored in,
