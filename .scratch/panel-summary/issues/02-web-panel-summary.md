@@ -1,6 +1,6 @@
 # 02 — Web: the Panel summary band
 
-Status: ready-for-agent
+Status: done
 Blocked by: 01
 
 ## Goal

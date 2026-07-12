@@ -11,6 +11,7 @@ import { Label } from "./ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { PanelChart } from "./panel-chart";
+import { PanelSummary } from "./panel-summary";
 import { CenteredSpinner } from "./spinner";
 
 interface PanelCardProps {
@@ -50,13 +51,15 @@ export function PanelCard({ panel, metric, range, baseline, dragHandle }: PanelC
               {metric?.formula && <Info className="size-3.5 shrink-0 text-muted-foreground/70" />}
             </div>
             <div className="text-xs text-muted-foreground">
-              {current?.unit ?? metric?.unit ?? ""} · {bucket}
+              {bucket}
               {panel.bucket ? "" : " (auto)"}
             </div>
           </div>
         </div>
         <PanelSettings panel={panel} metric={metric} />
       </div>
+
+      {current && <PanelSummary series={current} baseline={query.data?.baseline} metric={metric} />}
 
       <div className="min-h-0 flex-1 p-2">
         {query.isLoading ? (

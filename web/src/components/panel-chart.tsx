@@ -177,8 +177,9 @@ function formatTick(bucket: Series["bucket"]) {
 }
 
 /** formatBucket renders a bucket date for the given granularity, falling back to
- *  the raw string if it can't be parsed. Shared by the axis tick and the tooltip. */
-function formatBucket(value: string, bucket: Series["bucket"]): string {
+ *  the raw string if it can't be parsed. Shared by the axis tick, the tooltip, and
+ *  the Panel summary's secondary figure. */
+export function formatBucket(value: string, bucket: Series["bucket"]): string {
   try {
     const d = parseISO(value);
     return bucket === "month" ? format(d, "MMM ''yy") : format(d, "MMM d");

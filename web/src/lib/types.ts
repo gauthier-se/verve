@@ -115,7 +115,8 @@ export interface ImportStatus {
   has_data: boolean;
 }
 
-/** Series is the result of GET /v1/series: metadata plus ordered buckets. */
+/** Series is the result of GET /v1/series: metadata, ordered buckets, and the
+ *  Panel summary — the whole window folded into one value server-side (ADR 0019). */
 export interface Series {
   metric: string;
   unit: string;
@@ -123,4 +124,8 @@ export interface Series {
   bucket: Bucket;
   source: string;
   points: Point[];
+  /** summary is the Panel summary: the Metric aggregated over the whole window as a
+   *  single bucket (ADR 0019). Absent is a gap ("—") — no data, or a derived Metric
+   *  missing a required operand. Never re-derived client-side. */
+  summary?: Point;
 }
