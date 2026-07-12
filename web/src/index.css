@@ -73,3 +73,15 @@
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
+
+/* The summary band is a query container so it degrades by its own width — a narrow
+   card, not the viewport (ADR 0019) — and containment stays off the chart. On a
+   narrow band the secondary figure drops first; the primary and delta stay. */
+.panel-summary {
+  container-type: inline-size;
+}
+@container (max-width: 15rem) {
+  .panel-summary-secondary {
+    display: none;
+  }
+}

@@ -68,6 +68,23 @@ A single card in a Dashboard: one or more Metrics × a chart type × an
 aggregation × a time bucket — e.g. "Steps — daily — sum — bars".
 _Avoid_: Widget, Card, Chart, Tile, View.
 
+**Panel summary**:
+The headline figure a Panel shows above its curve so **magnitude** — not just the
+shape of the trend — is legible at a glance, since the curve alone never reveals a
+total or a mean. It is the Metric folded over the whole Time range, defined as **a
+single bucket spanning the range**: one rule, no special case — an `average` is a
+true count-weighted mean (never a biased mean of daily means), a `latest` Metric's
+summary is simply its last value, and a derived Metric aggregates each operand over
+the window *then* applies its Formula once (so a ratio is the period's real ratio).
+An all-empty window is a **gap** ("—"), never a zero, following the same gap rule as
+any bucket (ADR 0014). Rendered large, with the most recent bucket's value beside it
+small; in **period comparison** it also carries a neutral **delta** against the
+Baseline's own summary — direction and magnitude only, **never colored good/bad**,
+because Verve does not know which direction is good for a given Metric. Computed
+server-side and carried on the Series, never re-derived client-side (ADR 0019).
+Universal on every Panel, not a per-Panel option.
+_Avoid_: KPI, Stat, Big number, Headline, Total (only one aggregation's shape).
+
 **Time range**:
 The window a Dashboard shows (last 7 days, month, year, custom), applied to all
 its Panels. A Panel may override its own bucket (day/week/month) but not the
