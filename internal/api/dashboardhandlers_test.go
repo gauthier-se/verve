@@ -396,3 +396,120 @@ func TestUpdatePanelBucketOverrideAndClear(t *testing.T) {
 
 // Baseline/range token validation now lives in internal/timeaxis (Validate) and
 // is exercised there; the dashboard PATCH path feeds it from the stored fields.
+
+// TestCreatePanelWithMetricsList pins the ADR 0020 contract: a metrics list with
+// per-Metric chart types (defaulted from each aggregation rule when omitted),
+// two kcal Metrics sharing an axis plus a kg one — three Metrics, two units.
+func TestCreatePanelWithMetricsList(t *testing.T) {
+	srv, _, cookie := newTestServer(t)
+	d := createDashboard(t, srv, cookie, "Nutrition")
+
+	res, body := doReq(t, srv, http.MethodPost, "/v1/dashboards/"+itoa(d.ID)+"/panels",
+		`{"metrics":[{"metric":"dietary_energy"},{"metric":"active_energy","chart_type":"line"},{"metric":"body_mass"}]}`, cookie)
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want 201 (%s)", res.StatusCode, body["error"])
+	}
+	var p panelView
+	if err := json.Unmarshal(body["panel"], &p); err != nil {
+		t.Fatalf("decode panel: %v", err)
+	}
+	want := []panelMetricView{
+		{Metric: "dietary_energy", ChartType: "bar"}, // sum → bar default
+		{Metric: "active_energy", ChartType: "line"}, // explicit override
+		{Metric: "body_mass", ChartType: "line"},     // latest → line default
+	}
+	if len(p.Metrics) != len(want) {
+		t.Fatalf("metrics = %+v, want %d entries", p.Metrics, len(want))
+	}
+	for i, w := range want {
+		if p.Metrics[i] != w {
+			t.Errorf("metrics[%d] = %+v, want %+v", i, p.Metrics[i], w)
+		}
+	}
+	// The legacy scalar fields mirror the first entry until the SPA cutover.
+	if p.Metric != "dietary_energy" || p.ChartType != "bar" {
+		t.Errorf("legacy fields = %s/%s, want dietary_energy/bar", p.Metric, p.ChartType)
+	}
+}
+
+// TestCreatePanelMixesDerivedAndImported: derived Metrics join a list like any
+// other (calorie_balance is kcal and signed → diverging_bar default).
+func TestCreatePanelMixesDerivedAndImported(t *testing.T) {
+	srv, _, cookie := newTestServer(t)
+	d := createDashboard(t, srv, cookie, "Balance")
+
+	res, body := doReq(t, srv, http.MethodPost, "/v1/dashboards/"+itoa(d.ID)+"/panels",
+		`{"metrics":[{"metric":"calorie_balance"},{"metric":"dietary_energy"}]}`, cookie)
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want 201 (%s)", res.StatusCode, body["error"])
+	}
+	var p panelView
+	_ = json.Unmarshal(body["panel"], &p)
+	if len(p.Metrics) != 2 || p.Metrics[0].ChartType != "diverging_bar" {
+		t.Errorf("metrics = %+v, want calorie_balance defaulting to diverging_bar", p.Metrics)
+	}
+}
+
+func TestCreatePanelMetricsListRejections(t *testing.T) {
+	srv, _, cookie := newTestServer(t)
+	d := createDashboard(t, srv, cookie, "D")
+	base := "/v1/dashboards/" + itoa(d.ID) + "/panels"
+
+	tests := map[string]struct {
+		body  string
+		field string
+	}{
+		"five metrics": {`{"metrics":[{"metric":"steps"},{"metric":"active_energy"},{"metric":"dietary_energy"},{"metric":"body_mass"},{"metric":"heart_rate"}]}`, "metrics"},
+		// steps (count) + body_mass (kg) + heart_rate (count/min) = three units.
+		"three units":    {`{"metrics":[{"metric":"steps"},{"metric":"body_mass"},{"metric":"heart_rate"}]}`, "metrics"},
+		"unknown slug":   {`{"metrics":[{"metric":"steps"},{"metric":"nope"}]}`, "metrics"},
+		"empty list":     {`{"metrics":[]}`, "metrics"},
+		"bad chart type": {`{"metrics":[{"metric":"steps","chart_type":"band"}]}`, "chart_type"},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			res, body := doReq(t, srv, http.MethodPost, base, tc.body, cookie)
+			if res.StatusCode != http.StatusUnprocessableEntity {
+				t.Fatalf("status = %d, want 422 (%s)", res.StatusCode, body["error"])
+			}
+			var fields map[string]string
+			_ = json.Unmarshal(body["error"], &fields)
+			if _, ok := fields[tc.field]; !ok {
+				t.Errorf("error = %v, want field %q", fields, tc.field)
+			}
+		})
+	}
+}
+
+// TestUpdatePanelReplacesMetricsList: a PATCH with a metrics list replaces the
+// Panel's whole list; the same caps apply.
+func TestUpdatePanelReplacesMetricsList(t *testing.T) {
+	srv, _, cookie := newTestServer(t)
+	d := createDashboard(t, srv, cookie, "D")
+	_, body := doReq(t, srv, http.MethodPost, "/v1/dashboards/"+itoa(d.ID)+"/panels", `{"metric":"steps"}`, cookie)
+	var p panelView
+	_ = json.Unmarshal(body["panel"], &p)
+
+	res, body := doReq(t, srv, http.MethodPatch, "/v1/panels/"+itoa(p.ID),
+		`{"metrics":[{"metric":"active_energy"},{"metric":"body_mass","chart_type":"area"}]}`, cookie)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (%s)", res.StatusCode, body["error"])
+	}
+	var got panelView
+	_ = json.Unmarshal(body["panel"], &got)
+	if len(got.Metrics) != 2 || got.Metrics[0].Metric != "active_energy" || got.Metrics[1].ChartType != "area" {
+		t.Errorf("metrics = %+v, want active_energy + body_mass/area", got.Metrics)
+	}
+
+	// The caps hold on update too: a third unit is rejected.
+	res, body = doReq(t, srv, http.MethodPatch, "/v1/panels/"+itoa(p.ID),
+		`{"metrics":[{"metric":"steps"},{"metric":"body_mass"},{"metric":"heart_rate"}]}`, cookie)
+	if res.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("three-unit patch status = %d, want 422", res.StatusCode)
+	}
+	var fields map[string]string
+	_ = json.Unmarshal(body["error"], &fields)
+	if _, ok := fields["metrics"]; !ok {
+		t.Errorf("error = %v, want field metrics", fields)
+	}
+}

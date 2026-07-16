@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -15,15 +16,32 @@ import (
 // maxNameLen bounds a Dashboard name so a single field can't grow unbounded.
 const maxNameLen = 120
 
+// A Panel carries one to four Metrics spanning at most two canonical units —
+// two Y axes — so every curve keeps its true scale (ADR 0020). The metric cap
+// also bounds a /v1/series request, which serves at most one Panel's worth.
+const (
+	maxPanelMetrics = 4
+	maxPanelUnits   = 2
+)
+
+// panelMetricView is one Metric of a Panel with its chart type, in display order.
+type panelMetricView struct {
+	Metric    string `json:"metric"`
+	ChartType string `json:"chart_type"`
+}
+
 // panelView is one Panel as the API exposes it. Aggregation is not stored — it is
-// the Metric's Catalog rule — so the client reads it from GET /v1/metrics.
+// the Metric's Catalog rule — so the client reads it from GET /v1/metrics. The
+// scalar metric/chart_type mirror the first Metrics entry for the pre-ADR-0020
+// client; they go away with the SPA cutover (issue 03).
 type panelView struct {
-	ID        int64   `json:"id"`
-	Metric    string  `json:"metric"`
-	ChartType string  `json:"chart_type"`
-	Bucket    *string `json:"bucket"`
-	Width     int     `json:"width"`
-	Position  int     `json:"position"`
+	ID        int64             `json:"id"`
+	Metric    string            `json:"metric"`
+	ChartType string            `json:"chart_type"`
+	Metrics   []panelMetricView `json:"metrics"`
+	Bucket    *string           `json:"bucket"`
+	Width     int               `json:"width"`
+	Position  int               `json:"position"`
 }
 
 // dashboardView is one Dashboard with its ordered Panels, so a client loads a
@@ -42,10 +60,14 @@ type dashboardView struct {
 	Panels       []panelView `json:"panels"`
 }
 
-// panelToView keeps the single-metric API contract until the multi-Series
-// contract lands (issue 02): it exposes the Panel's first Metric.
 func panelToView(p data.Panel) panelView {
-	view := panelView{ID: p.ID, Bucket: p.Bucket, Width: p.Width, Position: p.Position}
+	view := panelView{
+		ID: p.ID, Metrics: make([]panelMetricView, 0, len(p.Metrics)),
+		Bucket: p.Bucket, Width: p.Width, Position: p.Position,
+	}
+	for _, pm := range p.Metrics {
+		view.Metrics = append(view.Metrics, panelMetricView{Metric: pm.Metric, ChartType: pm.ChartType})
+	}
 	if len(p.Metrics) > 0 {
 		view.Metric = p.Metrics[0].Metric
 		view.ChartType = p.Metrics[0].ChartType
@@ -253,10 +275,11 @@ func (s *Server) handleCreatePanel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var input struct {
-		Metric    string  `json:"metric"`
-		ChartType *string `json:"chart_type"`
-		Bucket    *string `json:"bucket"`
-		Width     *int    `json:"width"`
+		Metric    string             `json:"metric"`
+		ChartType *string            `json:"chart_type"`
+		Metrics   []panelMetricInput `json:"metrics"`
+		Bucket    *string            `json:"bucket"`
+		Width     *int               `json:"width"`
 	}
 	if err := readJSON(w, r, &input); err != nil {
 		s.badRequestResponse(w, r, err)
@@ -264,22 +287,17 @@ func (s *Server) handleCreatePanel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	v := NewValidator()
-	metric, known := catalog.Lookup(input.Metric)
-	v.Check(input.Metric != "", "metric", "must be provided")
-	if input.Metric != "" {
-		v.Check(known, "metric", unknownMetricMsg)
+	// A nil Metrics means the key was absent — the legacy scalar shape, one entry
+	// under its historical error key (dropped with the SPA cutover, issue 03). An
+	// explicit empty list is the list shape, and errors as such.
+	field, entries := "metrics", input.Metrics
+	if input.Metrics == nil {
+		field = "metric"
+		if input.Metric != "" {
+			entries = []panelMetricInput{{Metric: input.Metric, ChartType: input.ChartType}}
+		}
 	}
-
-	chartType := ""
-	if known {
-		chartType = defaultChartType(metric)
-	}
-	if input.ChartType != nil {
-		chartType = *input.ChartType
-	}
-	if known {
-		validateChartType(v, chartType, metric)
-	}
+	metrics := validatePanelMetrics(v, field, entries)
 
 	bucket := validatePanelBucket(v, input.Bucket)
 	width := 1
@@ -295,7 +313,7 @@ func (s *Server) handleCreatePanel(w http.ResponseWriter, r *http.Request) {
 
 	p := &data.Panel{
 		DashboardID: d.ID, AccountID: accountID,
-		Metrics: []data.PanelMetric{{Metric: input.Metric, ChartType: chartType}},
+		Metrics: metrics,
 		Bucket:  bucket, Width: width,
 	}
 	if err := s.models.Panels.Insert(r.Context(), p); err != nil {
@@ -324,9 +342,10 @@ func (s *Server) handleUpdatePanel(w http.ResponseWriter, r *http.Request) {
 	// Bucket is json.RawMessage to tell an omitted key (leave unchanged) from an
 	// explicit null (clear to auto-derive) — a *string collapses both to nil.
 	var input struct {
-		ChartType *string         `json:"chart_type"`
-		Bucket    json.RawMessage `json:"bucket"`
-		Width     *int            `json:"width"`
+		ChartType *string            `json:"chart_type"`
+		Metrics   []panelMetricInput `json:"metrics"`
+		Bucket    json.RawMessage    `json:"bucket"`
+		Width     *int               `json:"width"`
 	}
 	if err := readJSON(w, r, &input); err != nil {
 		s.badRequestResponse(w, r, err)
@@ -338,10 +357,16 @@ func (s *Server) handleUpdatePanel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	v := NewValidator()
-	if input.ChartType != nil && len(p.Metrics) > 0 {
+	switch {
+	case input.Metrics != nil:
+		// A metrics list replaces the Panel's whole list (ADR 0020); an explicit
+		// empty list is a validation error, not a fall-through to the legacy shape.
+		p.Metrics = validatePanelMetrics(v, "metrics", input.Metrics)
+	case input.ChartType != nil && len(p.Metrics) > 0:
+		// Legacy scalar shape: the chart type applies to the first (only) Metric,
+		// whose slug is known (the panel exists), so compatibility is enforced
+		// against its aggregation rule.
 		p.Metrics[0].ChartType = *input.ChartType
-		// The Metric is known (the panel exists), so chart-type compatibility can be
-		// enforced against its aggregation rule.
 		if metric, known := catalog.Lookup(p.Metrics[0].Metric); known {
 			validateChartType(v, p.Metrics[0].ChartType, metric)
 		}
@@ -445,6 +470,51 @@ func (s *Server) respondRecordError(w http.ResponseWriter, r *http.Request, err 
 		return
 	}
 	s.serverErrorResponse(w, r, err)
+}
+
+// panelMetricInput is one entry of a Panel's metrics list as the client sends
+// it; a nil chart type means "default from the Metric's aggregation rule".
+type panelMetricInput struct {
+	Metric    string  `json:"metric"`
+	ChartType *string `json:"chart_type"`
+}
+
+// validatePanelMetrics resolves a Panel's metric list against the Catalog
+// (ADR 0020): 1–4 entries spanning at most two canonical units, each chart type
+// compatible with its Metric and defaulted from its aggregation rule when
+// omitted. field is the input key errors attach to — "metric" for the legacy
+// scalar shape, "metrics" for the list.
+func validatePanelMetrics(v *Validator, field string, entries []panelMetricInput) []data.PanelMetric {
+	if len(entries) == 0 {
+		v.AddError(field, "must be provided")
+		return nil
+	}
+	v.Check(len(entries) <= maxPanelMetrics, field,
+		fmt.Sprintf("a panel carries at most %d metrics", maxPanelMetrics))
+
+	units := make(map[string]bool)
+	metrics := make([]data.PanelMetric, 0, len(entries))
+	for _, e := range entries {
+		if e.Metric == "" {
+			v.AddError(field, "must be provided")
+			continue
+		}
+		m, known := catalog.Lookup(e.Metric)
+		if !known {
+			v.AddError(field, unknownMetricMsg)
+			continue
+		}
+		units[m.Unit] = true
+		chartType := defaultChartType(m)
+		if e.ChartType != nil {
+			chartType = *e.ChartType
+		}
+		validateChartType(v, chartType, m)
+		metrics = append(metrics, data.PanelMetric{Metric: e.Metric, ChartType: chartType})
+	}
+	v.Check(len(units) <= maxPanelUnits, field,
+		fmt.Sprintf("a panel spans at most %d units — metrics sharing a unit share an axis", maxPanelUnits))
+	return metrics
 }
 
 // defaultChartType is the chart a Metric gets when a Panel specifies none: signed
