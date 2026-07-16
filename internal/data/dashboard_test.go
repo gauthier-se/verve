@@ -6,6 +6,11 @@ import (
 	"testing"
 )
 
+// singleMetric builds the one-Metric list most panel tests need.
+func singleMetric(metric, chartType string) []PanelMetric {
+	return []PanelMetric{{Metric: metric, ChartType: chartType}}
+}
+
 // seedNamedAccount inserts a bare account with the given email and returns its
 // id, for the cross-Account isolation tests that need two distinct owners.
 func seedNamedAccount(t *testing.T, models Models, email string) int64 {
@@ -225,7 +230,7 @@ func TestDashboardDeleteCascadesPanels(t *testing.T) {
 	if err := models.Dashboards.Insert(ctx, d); err != nil {
 		t.Fatalf("Insert dashboard: %v", err)
 	}
-	p := &Panel{DashboardID: d.ID, AccountID: acc, Metric: "steps", ChartType: "bar", Width: 1}
+	p := &Panel{DashboardID: d.ID, AccountID: acc, Metrics: singleMetric("steps", "bar"), Width: 1}
 	if err := models.Panels.Insert(ctx, p); err != nil {
 		t.Fatalf("Insert panel: %v", err)
 	}
@@ -269,14 +274,14 @@ func TestPanelInsertAppendsWithinDashboard(t *testing.T) {
 		t.Fatalf("Insert dashboard: %v", err)
 	}
 
-	first := &Panel{DashboardID: d.ID, AccountID: acc, Metric: "steps", ChartType: "bar", Width: 1}
+	first := &Panel{DashboardID: d.ID, AccountID: acc, Metrics: singleMetric("steps", "bar"), Width: 1}
 	if err := models.Panels.Insert(ctx, first); err != nil {
 		t.Fatalf("Insert first panel: %v", err)
 	}
 	if first.ID == 0 || first.Position != 0 {
 		t.Errorf("first panel = %+v, want id set, position 0", first)
 	}
-	second := &Panel{DashboardID: d.ID, AccountID: acc, Metric: "heart_rate", ChartType: "line", Width: 2, Bucket: ptr("week")}
+	second := &Panel{DashboardID: d.ID, AccountID: acc, Metrics: singleMetric("heart_rate", "line"), Width: 2, Bucket: ptr("week")}
 	if err := models.Panels.Insert(ctx, second); err != nil {
 		t.Fatalf("Insert second panel: %v", err)
 	}
@@ -288,11 +293,156 @@ func TestPanelInsertAppendsWithinDashboard(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListByDashboard: %v", err)
 	}
-	if len(panels) != 2 || panels[0].Metric != "steps" || panels[1].Metric != "heart_rate" {
+	if len(panels) != 2 || panels[0].Metrics[0].Metric != "steps" || panels[1].Metrics[0].Metric != "heart_rate" {
 		t.Errorf("panels = %+v, want steps then heart_rate", panels)
 	}
 	if panels[1].Bucket == nil || *panels[1].Bucket != "week" {
 		t.Errorf("panel bucket = %v, want week", panels[1].Bucket)
+	}
+}
+
+func TestPanelMultiMetricRoundTrip(t *testing.T) {
+	_, models := openTestDB(t)
+	ctx := context.Background()
+	acc := seedNamedAccount(t, models, "a@example.com")
+	d := &Dashboard{AccountID: acc, Name: "Nutrition", RangePreset: "30d"}
+	if err := models.Dashboards.Insert(ctx, d); err != nil {
+		t.Fatalf("Insert dashboard: %v", err)
+	}
+
+	want := []PanelMetric{
+		{Metric: "dietary_energy", ChartType: "bar"},
+		{Metric: "total_energy_expenditure", ChartType: "line"},
+		{Metric: "body_mass", ChartType: "line"},
+	}
+	p := &Panel{DashboardID: d.ID, AccountID: acc, Metrics: want, Width: 2}
+	if err := models.Panels.Insert(ctx, p); err != nil {
+		t.Fatalf("Insert panel: %v", err)
+	}
+
+	got, err := models.Panels.GetByID(ctx, acc, p.ID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if len(got.Metrics) != len(want) {
+		t.Fatalf("metrics = %d, want %d", len(got.Metrics), len(want))
+	}
+	for i, w := range want {
+		if got.Metrics[i] != w {
+			t.Errorf("metric %d = %+v, want %+v", i, got.Metrics[i], w)
+		}
+	}
+
+	// ListByDashboard must carry the same ordered list.
+	panels, err := models.Panels.ListByDashboard(ctx, acc, d.ID)
+	if err != nil {
+		t.Fatalf("ListByDashboard: %v", err)
+	}
+	if len(panels) != 1 || len(panels[0].Metrics) != len(want) || panels[0].Metrics[0] != want[0] {
+		t.Errorf("listed panel metrics = %+v, want %+v", panels[0].Metrics, want)
+	}
+}
+
+func TestPanelUpdateReplacesMetricsWithoutOrphans(t *testing.T) {
+	db, models := openTestDB(t)
+	ctx := context.Background()
+	acc := seedNamedAccount(t, models, "a@example.com")
+	d := &Dashboard{AccountID: acc, Name: "D", RangePreset: "30d"}
+	if err := models.Dashboards.Insert(ctx, d); err != nil {
+		t.Fatalf("Insert dashboard: %v", err)
+	}
+	p := &Panel{DashboardID: d.ID, AccountID: acc, Metrics: []PanelMetric{
+		{Metric: "steps", ChartType: "bar"},
+		{Metric: "heart_rate", ChartType: "line"},
+		{Metric: "body_mass", ChartType: "line"},
+	}, Width: 1}
+	if err := models.Panels.Insert(ctx, p); err != nil {
+		t.Fatalf("Insert panel: %v", err)
+	}
+
+	p.Metrics = []PanelMetric{
+		{Metric: "active_energy", ChartType: "bar"},
+		{Metric: "body_mass", ChartType: "area"},
+	}
+	if err := models.Panels.Update(ctx, p); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	got, err := models.Panels.GetByID(ctx, acc, p.ID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if len(got.Metrics) != 2 || got.Metrics[0].Metric != "active_energy" || got.Metrics[1].ChartType != "area" {
+		t.Errorf("metrics after replace = %+v", got.Metrics)
+	}
+
+	// The replace must leave exactly the new rows — no orphans of the old list.
+	var rows int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM panel_metrics WHERE panel_id = ?`, p.ID).Scan(&rows); err != nil {
+		t.Fatalf("count panel_metrics: %v", err)
+	}
+	if rows != 2 {
+		t.Errorf("panel_metrics rows = %d, want 2", rows)
+	}
+}
+
+func TestPanelDeleteCascadesMetricRows(t *testing.T) {
+	db, models := openTestDB(t)
+	ctx := context.Background()
+	acc := seedNamedAccount(t, models, "a@example.com")
+	d := &Dashboard{AccountID: acc, Name: "D", RangePreset: "30d"}
+	if err := models.Dashboards.Insert(ctx, d); err != nil {
+		t.Fatalf("Insert dashboard: %v", err)
+	}
+	p := &Panel{DashboardID: d.ID, AccountID: acc, Metrics: singleMetric("steps", "bar"), Width: 1}
+	if err := models.Panels.Insert(ctx, p); err != nil {
+		t.Fatalf("Insert panel: %v", err)
+	}
+
+	if err := models.Panels.Delete(ctx, acc, p.ID); err != nil {
+		t.Fatalf("Delete panel: %v", err)
+	}
+	var rows int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM panel_metrics`).Scan(&rows); err != nil {
+		t.Fatalf("count panel_metrics: %v", err)
+	}
+	if rows != 0 {
+		t.Errorf("panel_metrics rows after panel delete = %d, want 0", rows)
+	}
+
+	// A dashboard delete cascades through panels down to the metric rows.
+	p2 := &Panel{DashboardID: d.ID, AccountID: acc, Metrics: singleMetric("steps", "bar"), Width: 1}
+	if err := models.Panels.Insert(ctx, p2); err != nil {
+		t.Fatalf("Insert second panel: %v", err)
+	}
+	if err := models.Dashboards.Delete(ctx, acc, d.ID); err != nil {
+		t.Fatalf("Delete dashboard: %v", err)
+	}
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM panel_metrics`).Scan(&rows); err != nil {
+		t.Fatalf("count panel_metrics: %v", err)
+	}
+	if rows != 0 {
+		t.Errorf("panel_metrics rows after dashboard delete = %d, want 0", rows)
+	}
+
+	// An Account deletion cascades through dashboards and panels down to the
+	// metric rows.
+	d2 := &Dashboard{AccountID: acc, Name: "D2", RangePreset: "30d"}
+	if err := models.Dashboards.Insert(ctx, d2); err != nil {
+		t.Fatalf("Insert second dashboard: %v", err)
+	}
+	p3 := &Panel{DashboardID: d2.ID, AccountID: acc, Metrics: singleMetric("steps", "bar"), Width: 1}
+	if err := models.Panels.Insert(ctx, p3); err != nil {
+		t.Fatalf("Insert third panel: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `DELETE FROM accounts WHERE id = ?`, acc); err != nil {
+		t.Fatalf("delete account: %v", err)
+	}
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM panel_metrics`).Scan(&rows); err != nil {
+		t.Fatalf("count panel_metrics: %v", err)
+	}
+	if rows != 0 {
+		t.Errorf("panel_metrics rows after account delete = %d, want 0", rows)
 	}
 }
 
@@ -305,12 +455,12 @@ func TestPanelUpdateAndScoping(t *testing.T) {
 	if err := models.Dashboards.Insert(ctx, d); err != nil {
 		t.Fatalf("Insert dashboard: %v", err)
 	}
-	p := &Panel{DashboardID: d.ID, AccountID: alice, Metric: "steps", ChartType: "bar", Width: 1}
+	p := &Panel{DashboardID: d.ID, AccountID: alice, Metrics: singleMetric("steps", "bar"), Width: 1}
 	if err := models.Panels.Insert(ctx, p); err != nil {
 		t.Fatalf("Insert panel: %v", err)
 	}
 
-	p.ChartType = "area"
+	p.Metrics[0].ChartType = "area"
 	p.Width = 3
 	p.Bucket = ptr("month")
 	if err := models.Panels.Update(ctx, p); err != nil {
@@ -320,12 +470,12 @@ func TestPanelUpdateAndScoping(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetByID: %v", err)
 	}
-	if got.ChartType != "area" || got.Width != 3 || got.Bucket == nil || *got.Bucket != "month" {
+	if got.Metrics[0].ChartType != "area" || got.Width != 3 || got.Bucket == nil || *got.Bucket != "month" {
 		t.Errorf("panel update not persisted: %+v", got)
 	}
 
 	// Bob cannot update Alice's panel.
-	intruder := &Panel{ID: p.ID, AccountID: bob, Metric: "steps", ChartType: "line", Width: 1}
+	intruder := &Panel{ID: p.ID, AccountID: bob, Metrics: singleMetric("steps", "line"), Width: 1}
 	if err := models.Panels.Update(ctx, intruder); !errors.Is(err, ErrRecordNotFound) {
 		t.Errorf("cross-account panel Update = %v, want ErrRecordNotFound", err)
 	}
@@ -341,7 +491,7 @@ func TestPanelReorderSetsPositions(t *testing.T) {
 	}
 	var ids []int64
 	for _, metric := range []string{"steps", "heart_rate", "body_mass"} {
-		p := &Panel{DashboardID: d.ID, AccountID: acc, Metric: metric, ChartType: "bar", Width: 1}
+		p := &Panel{DashboardID: d.ID, AccountID: acc, Metrics: singleMetric(metric, "bar"), Width: 1}
 		if err := models.Panels.Insert(ctx, p); err != nil {
 			t.Fatalf("Insert panel %s: %v", metric, err)
 		}
@@ -358,8 +508,8 @@ func TestPanelReorderSetsPositions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListByDashboard: %v", err)
 	}
-	if panels[0].Metric != "body_mass" || panels[2].Metric != "steps" {
-		t.Errorf("reorder not applied: %q .. %q", panels[0].Metric, panels[2].Metric)
+	if panels[0].Metrics[0].Metric != "body_mass" || panels[2].Metrics[0].Metric != "steps" {
+		t.Errorf("reorder not applied: %q .. %q", panels[0].Metrics[0].Metric, panels[2].Metrics[0].Metric)
 	}
 }
 
@@ -372,7 +522,7 @@ func TestPanelDeleteScoped(t *testing.T) {
 	if err := models.Dashboards.Insert(ctx, d); err != nil {
 		t.Fatalf("Insert dashboard: %v", err)
 	}
-	p := &Panel{DashboardID: d.ID, AccountID: alice, Metric: "steps", ChartType: "bar", Width: 1}
+	p := &Panel{DashboardID: d.ID, AccountID: alice, Metrics: singleMetric("steps", "bar"), Width: 1}
 	if err := models.Panels.Insert(ctx, p); err != nil {
 		t.Fatalf("Insert panel: %v", err)
 	}

@@ -58,7 +58,8 @@ func seedDefaultDashboard(ctx context.Context, q querier, accountID int64) error
 	for _, tp := range defaultPanels {
 		p := &Panel{
 			DashboardID: d.ID, AccountID: accountID,
-			Metric: tp.metric, ChartType: tp.chartType, Width: 1,
+			Metrics: []PanelMetric{{Metric: tp.metric, ChartType: tp.chartType}},
+			Width:   1,
 		}
 		if err := insertPanel(ctx, q, p); err != nil {
 			return fmt.Errorf("data: seed panel %s: %w", tp.metric, err)
