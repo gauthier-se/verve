@@ -543,3 +543,118 @@ func TestUnknownRouteAndMethod(t *testing.T) {
 		t.Errorf("wrong method status = %d, want 405", code)
 	}
 }
+
+// TestSeriesMultiMetricSharedBuckets pins the ADR 0020 read contract: repeated
+// metric params yield a series array — one Series per metric, in request order,
+// each with its own unit and summary — over identical buckets, because the time
+// axis is resolved once.
+func TestSeriesMultiMetricSharedBuckets(t *testing.T) {
+	srv, models, cookie := newTestServer(t)
+	seedSteps(t, models, testEmail, []data.Measurement{
+		{Metric: "steps", Value: 100, OriginalUnit: "count", StartAt: "2024-01-01T08:00:00Z", EndAt: "2024-01-01T08:00:00Z", Source: "Watch", ContentKey: "a"},
+		{Metric: "steps", Value: 200, OriginalUnit: "count", StartAt: "2024-01-02T08:00:00Z", EndAt: "2024-01-02T08:00:00Z", Source: "Watch", ContentKey: "b"},
+		{Metric: "body_mass", Value: 75, OriginalUnit: "kg", StartAt: "2024-01-01T07:00:00Z", EndAt: "2024-01-01T07:00:00Z", Source: "Scale", ContentKey: "m1"},
+	})
+	res, body := do(t, srv, "/v1/series?metric=steps&metric=body_mass&range_preset=custom&range_from=2024-01-01&range_to=2024-01-03&bucket=day", cookie)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", res.StatusCode, body["error"])
+	}
+	var list []query.Series
+	if err := json.Unmarshal(body["series"], &list); err != nil {
+		t.Fatalf("decode series array: %v", err)
+	}
+	if len(list) != 2 || list[0].Metric != "steps" || list[1].Metric != "body_mass" {
+		t.Fatalf("series = %+v, want steps then body_mass", list)
+	}
+	if list[0].Unit != "count" || list[1].Unit != "kg" {
+		t.Errorf("units = %s/%s, want count/kg", list[0].Unit, list[1].Unit)
+	}
+	// Points are sparse (a data-less bucket is a gap, ADR 0014) but both Series
+	// draw their bucket dates from the one resolved grid: same bucket size, so a
+	// date present in both names the same bucket.
+	if list[0].Bucket != list[1].Bucket {
+		t.Errorf("bucket sizes differ: %s vs %s", list[0].Bucket, list[1].Bucket)
+	}
+	if len(list[0].Points) != 2 || list[0].Points[0].Bucket != "2024-01-01" || list[0].Points[1].Bucket != "2024-01-02" {
+		t.Errorf("steps points = %+v, want 2024-01-01 and 2024-01-02", list[0].Points)
+	}
+	if len(list[1].Points) != 1 || list[1].Points[0].Bucket != "2024-01-01" {
+		t.Errorf("body_mass points = %+v, want the shared 2024-01-01 bucket", list[1].Points)
+	}
+	if list[0].Summary == nil || list[0].Summary.Value != 300 {
+		t.Errorf("steps summary = %+v, want 300", list[0].Summary)
+	}
+	if list[1].Summary == nil || list[1].Summary.Value != 75 {
+		t.Errorf("body_mass summary = %+v, want 75", list[1].Summary)
+	}
+}
+
+// TestSeriesMultiMetricCutsBaseline: with more than one metric the Baseline is
+// cut server-side even when comparison is requested (ADR 0020) — co-variation
+// and period comparison are not superposed. One metric keeps its baseline.
+func TestSeriesMultiMetricCutsBaseline(t *testing.T) {
+	srv, models, cookie := newTestServer(t)
+	seedSteps(t, models, testEmail, []data.Measurement{
+		{Metric: "steps", Value: 100, OriginalUnit: "count", StartAt: "2024-02-01T08:00:00Z", EndAt: "2024-02-01T08:00:00Z", Source: "Watch", ContentKey: "a"},
+	})
+	target := "/v1/series?range_preset=custom&range_from=2024-02-01&range_to=2024-02-03&bucket=day&baseline_rule=previous"
+
+	res, body := do(t, srv, target+"&metric=steps&metric=body_mass", cookie)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", res.StatusCode, body["error"])
+	}
+	if _, ok := body["baseline"]; ok {
+		t.Errorf("multi-metric response carries a baseline, want it cut")
+	}
+	var list []query.Series
+	if err := json.Unmarshal(body["series"], &list); err != nil {
+		t.Fatalf("decode series array: %v", err)
+	}
+	if len(list) != 2 {
+		t.Fatalf("series = %d, want 2", len(list))
+	}
+
+	// The single-metric shape keeps its baseline untouched.
+	_, body = do(t, srv, target+"&metric=steps", cookie)
+	if _, ok := body["baseline"]; !ok {
+		t.Errorf("single-metric comparison response lacks a baseline")
+	}
+}
+
+// TestSeriesRejectsTooManyMetrics mirrors the Panel cap on the read path.
+func TestSeriesRejectsTooManyMetrics(t *testing.T) {
+	srv, _, cookie := newTestServer(t)
+	res, body := do(t, srv,
+		"/v1/series?metric=steps&metric=body_mass&metric=heart_rate&metric=active_energy&metric=dietary_energy&range_preset=7d", cookie)
+	if res.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422 (%s)", res.StatusCode, body["error"])
+	}
+	var fields map[string]string
+	_ = json.Unmarshal(body["error"], &fields)
+	if _, ok := fields["metric"]; !ok {
+		t.Errorf("error = %v, want field metric", fields)
+	}
+}
+
+// TestSeriesMultiMetricMixesDerivedAndImported: the fan-out is nature-agnostic —
+// a derived Metric resolves through its own path and joins the array.
+func TestSeriesMultiMetricMixesDerivedAndImported(t *testing.T) {
+	srv, models, cookie := newTestServer(t)
+	seedSteps(t, models, testEmail, []data.Measurement{
+		{Metric: "dietary_energy", Value: 1800, OriginalUnit: "kcal", StartAt: "2024-01-01T12:00:00Z", EndAt: "2024-01-01T12:00:00Z", Source: "Food", ContentKey: "d1"},
+		{Metric: "active_energy", Value: 500, OriginalUnit: "kcal", StartAt: "2024-01-01T18:00:00Z", EndAt: "2024-01-01T18:00:00Z", Source: "Watch", ContentKey: "a1"},
+		{Metric: "basal_energy", Value: 1600, OriginalUnit: "kcal", StartAt: "2024-01-01T23:00:00Z", EndAt: "2024-01-01T23:00:00Z", Source: "Watch", ContentKey: "b1"},
+	})
+	res, body := do(t, srv, "/v1/series?metric=calorie_balance&metric=dietary_energy&range_preset=custom&range_from=2024-01-01&range_to=2024-01-02&bucket=day", cookie)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", res.StatusCode, body["error"])
+	}
+	var list []query.Series
+	if err := json.Unmarshal(body["series"], &list); err != nil {
+		t.Fatalf("decode series array: %v", err)
+	}
+	// calorie_balance = 1800 − 500 − 1600 = −300 (ADR 0014).
+	if len(list) != 2 || len(list[0].Points) != 1 || list[0].Points[0].Value != -300 {
+		t.Errorf("series = %+v, want derived −300 alongside dietary_energy", list)
+	}
+}

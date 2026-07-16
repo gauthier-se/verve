@@ -1,6 +1,6 @@
 # 02 — API: multi-Series /v1/series + Panel metrics contract
 
-Status: ready-for-agent
+Status: done
 Blocked by: 01
 
 ## Goal
@@ -52,3 +52,36 @@ make the Panel save/read contract carry the Metric list with its constraints
 ADR 0020, ADR 0015, ADR 0012. CONTEXT.md: Panel, Time axis.
 `internal/api/handlers.go` (`handleSeries`), `internal/api/dashboardhandlers*.go`,
 `internal/timeaxis`, `internal/catalog` (units, rules).
+
+## Comments
+
+Implemented on branch `feat/panel-metrics`.
+
+- `/v1/series` takes 1–4 `metric` params; >1 → `series` is an **array** (one
+  `query.Series` per metric, request order), the time axis resolved once.
+  Exactly one metric keeps today's envelope byte-for-byte (object, baseline as
+  before) — no version bump needed.
+- **Baseline cut** server-side for >1 metric even when `baseline_rule` is set
+  (`TestSeriesMultiMetricCutsBaseline`).
+- **Bucket alignment nuance vs the acceptance text**: Series stay *sparse* (a
+  data-less bucket is a gap, ADR 0014 — never a padded zero), so the guarantee
+  is "one shared bucket grid", not "equal-length point lists"; a date present
+  in two Series names the same bucket. Pinned by
+  `TestSeriesMultiMetricSharedBuckets`.
+- Panel contract: `metrics: [{metric, chart_type?}]` on create and update
+  (update replaces the whole list); `validatePanelMetrics` enforces 1–4
+  entries, Catalog membership, ≤2 canonical units, chart-type compatibility,
+  with defaults from each aggregation rule. The legacy scalar `metric`/
+  `chart_type` shape still works and keeps its historical error keys;
+  `panelView` exposes both the `metrics` list and the legacy scalar mirror of
+  the first entry until the SPA cutover (issue 03, where the scalars drop).
+- Read path (`/v1/series`) enforces only the cap of 4, not the unit cap — the
+  unit constraint is about rendering axes, and the editor needs free preview.
+- Review fixes applied: cap error messages derive from the constants; an
+  explicit `{"metrics":[]}` errors under `metrics` (nil = legacy shape, empty =
+  list shape) on create and update.
+- Review judgements left as-is: duplicate slugs are accepted (harmless, spec
+  silent); `Validator` keeps one message per key so multi-entry errors surface
+  one at a time; a co-sent legacy `chart_type` is ignored when `metrics` is
+  present (list wins, commented in the handler); the three fetch/write blocks
+  in `handleSeries` stay separate — the envelope shapes genuinely differ.

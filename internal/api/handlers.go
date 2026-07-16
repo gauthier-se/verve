@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"sort"
@@ -100,18 +101,26 @@ func termsToView(terms []catalog.Term) []termView {
 	return out
 }
 
-// handleSeries answers the aggregated-bucket query: metric + the Dashboard's time
-// axis tokens → one point per bucket (ADR 0012), scoped to the Account. timeaxis
-// resolves the tokens into the current window, optional Baseline window, and bucket.
+// handleSeries answers the aggregated-bucket query: one or more metrics + the
+// Dashboard's time axis tokens → one Series per metric, one point per bucket
+// (ADR 0012, ADR 0020), scoped to the Account. timeaxis resolves the tokens
+// once into the current window, optional Baseline window, and bucket, so every
+// Series shares identical buckets.
 func (s *Server) handleSeries(w http.ResponseWriter, r *http.Request) {
 	accountID, _ := s.accountID(r)
 
 	qs := r.URL.Query()
 	v := NewValidator()
 
-	metric := qs.Get("metric")
-	v.Check(metric != "", "metric", "must be provided")
-	if metric != "" {
+	metrics := qs["metric"]
+	v.Check(len(metrics) > 0, "metric", "must be provided")
+	v.Check(len(metrics) <= maxPanelMetrics, "metric",
+		fmt.Sprintf("at most %d metrics per request", maxPanelMetrics))
+	for _, metric := range metrics {
+		if metric == "" {
+			v.AddError("metric", "must be provided")
+			continue
+		}
 		if _, ok := catalog.Lookup(metric); !ok {
 			v.AddError("metric", unknownMetricMsg)
 		}
@@ -141,8 +150,29 @@ func (s *Server) handleSeries(w http.ResponseWriter, r *http.Request) {
 	}
 
 	req := query.Request{
-		AccountID: accountID, Metric: metric,
+		AccountID: accountID, Metric: metrics[0],
 		From: resolved.Current.From, To: resolved.Current.To, Bucket: resolved.Bucket,
+	}
+
+	// Multi-metric (ADR 0020): the shared window and bucket are resolved once
+	// above, so the Series are provably aligned. The response is a series array,
+	// and the Baseline is cut even when comparison is on — co-variation between
+	// Metrics and comparison between periods are not superposed.
+	if len(metrics) > 1 {
+		list := make([]query.Series, 0, len(metrics))
+		for _, metric := range metrics {
+			req.Metric = metric
+			series, err := s.engine.Series(r.Context(), req)
+			if err != nil {
+				s.respondSeriesError(w, r, err)
+				return
+			}
+			list = append(list, series)
+		}
+		if err := writeJSON(w, http.StatusOK, envelope{"series": list}, nil); err != nil {
+			s.serverErrorResponse(w, r, err)
+		}
+		return
 	}
 
 	// Without a baseline the response keeps its pre-comparison single-series shape.
