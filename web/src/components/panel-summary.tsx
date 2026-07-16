@@ -1,6 +1,7 @@
 import { computeDelta, formatExact, formatSummaryValue } from "@/lib/format";
+import { metricLabel } from "@/lib/metrics";
 import type { Metric, Series } from "@/lib/types";
-import { formatBucket } from "./panel-chart";
+import { Swatch, formatBucket } from "./panel-chart";
 
 /** PanelSummary is the headline band above a Panel's curve (ADR 0019): the large
  *  primary figure (the Metric folded over the whole range), the small most-recent
@@ -55,6 +56,40 @@ export function PanelSummary({
         <span className="panel-summary-secondary ml-auto whitespace-nowrap text-xs tabular-nums text-muted-foreground">
           <span className="opacity-70">{formatBucket(last.bucket, bucket)}</span>{" "}
           {formatSummaryValue(last.value, aggregation)}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** PanelLegend is the multi-Metric counterpart of the summary band (ADR 0020):
+ *  one entry per Series — its position color, name, and Panel summary folded over
+ *  the window ("—" for a gap) — doubling as the chart's color key. The summary
+ *  stays universal (ADR 0019); only the single-Metric rendering keeps the large
+ *  headline figure. In comparison mode a muted hint says why there is no Baseline
+ *  here rather than leaving the control looking broken. */
+export function PanelLegend({ list, comparing }: { list: Series[]; comparing?: boolean }) {
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 px-3 pt-1.5 text-xs">
+      {list.map((s, i) => (
+        <span key={s.metric} className="flex items-center gap-1.5">
+          <Swatch i={i} />
+          <span className="text-muted-foreground">{metricLabel(s.metric)}</span>
+          <span
+            className="font-medium tabular-nums"
+            title={s.summary ? `${formatExact(s.summary.value)} ${s.unit}`.trim() : undefined}
+          >
+            {s.summary ? formatSummaryValue(s.summary.value, s.aggregation) : "—"}
+          </span>
+          {s.summary && s.unit && <span className="text-muted-foreground">{s.unit}</span>}
+        </span>
+      ))}
+      {comparing && (
+        <span
+          className="ml-auto text-muted-foreground/70"
+          title="Period comparison overlays a Baseline on single-metric panels only — co-variation and comparison don't stack."
+        >
+          no baseline
         </span>
       )}
     </div>

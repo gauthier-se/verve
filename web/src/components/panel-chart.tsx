@@ -14,9 +14,29 @@ import {
   YAxis,
 } from "recharts";
 import type { AxisDomain } from "recharts/types/util/types";
-import type { ChartType, Series } from "@/lib/types";
+import { metricLabel } from "@/lib/metrics";
+import type { ChartType, PanelMetric, Series } from "@/lib/types";
 
-const VALUE = "hsl(var(--chart-1))";
+/** SERIES_COLORS is the fixed categorical order, assigned by position in the
+ *  Panel (ADR 0020) — the legend swatches use the same array. */
+export const SERIES_COLORS = [
+  "hsl(var(--chart-1))",
+  "hsl(var(--chart-2))",
+  "hsl(var(--chart-3))",
+  "hsl(var(--chart-4))",
+];
+
+/** Swatch is the small square color key for series i, shared by the legend and
+ *  the tooltip so identity reads the same everywhere. */
+export function Swatch({ i }: { i: number }) {
+  return (
+    <span
+      className="inline-block size-2 shrink-0 rounded-[2px]"
+      style={{ background: SERIES_COLORS[i] ?? SERIES_COLORS[0] }}
+    />
+  );
+}
+
 const BAND = "hsl(var(--chart-2))";
 const GRID = "hsl(var(--border))";
 const AXIS = "hsl(var(--muted-foreground))";
@@ -27,46 +47,32 @@ const BASELINE = "hsl(var(--muted-foreground))";
 const SURPLUS = "hsl(var(--chart-positive))";
 const DEFICIT = "hsl(var(--chart-negative))";
 
-/** ChartDatum is one x-position (ordinal within the period): the current bucket's
- *  value and band, plus the Baseline bucket keyed to that index with its own date
- *  for the tooltip (ADR 0015). */
+/** ChartDatum is one x-position: per-series values keyed v0…v3 (band0… for the
+ *  min/max band), sparse — a Series without data in that bucket has no key (a gap,
+ *  ADR 0014). Single-Metric comparison adds the Baseline bucket keyed to the same
+ *  ordinal index with its own date for the tooltip (ADR 0015). */
 interface ChartDatum {
   bucket: string;
-  value: number;
-  band?: number[];
   baselineValue?: number;
   baselineBucket?: string;
+  [seriesKey: `v${number}` | `band${number}`]: number | number[] | undefined;
 }
 
-/** PanelChart renders one Series with the Panel's chart type, optionally overlaid
- *  with a Baseline in comparison mode (a few hundred points, ADR 0012). */
+/** PanelChart renders a Panel's Series as one combo chart: each Series with its
+ *  own mark and color by position, on the Y axis of its unit group — the first
+ *  Metric's unit takes the left axis, the other (if any) the right, so every curve
+ *  keeps its true scale (ADR 0020). Single-Metric Panels may carry a Baseline
+ *  overlay in comparison mode (ADR 0015); the server never sends one for more. */
 export function PanelChart({
-  series,
+  list,
+  metrics,
   baseline,
-  chartType,
 }: {
-  series: Series;
+  list: Series[];
+  metrics: PanelMetric[];
   baseline?: Series;
-  chartType: ChartType;
 }) {
-  const data = React.useMemo<ChartDatum[]>(
-    () =>
-      series.points.map((p, i) => {
-        // The Baseline is equal-length and index-aligned to the current series
-        // (server-side, ADR 0015): baseline.points[i] is the ordinal counterpart
-        // of series.points[i]. A dated gap carries no value, breaking the line.
-        const bp = baseline?.points[i];
-        return {
-          bucket: p.bucket,
-          value: p.value,
-          // A range-area band needs the [low, high] pair as a single datum value.
-          band: p.min !== undefined && p.max !== undefined ? [p.min, p.max] : undefined,
-          baselineValue: bp && !bp.gap ? bp.value : undefined,
-          baselineBucket: bp?.bucket,
-        };
-      }),
-    [series.points, baseline],
-  );
+  const data = React.useMemo<ChartDatum[]>(() => mergeSeries(list, baseline), [list, baseline]);
 
   if (data.length === 0) {
     return (
@@ -76,35 +82,101 @@ export function PanelChart({
     );
   }
 
+  const leftUnit = list[0]?.unit ?? "";
+  const rightUnit = list.find((s) => s.unit !== leftUnit)?.unit;
+  const axisOf = (s: Series) => (s.unit === leftUnit ? "left" : "right");
+
   const axisProps = { stroke: AXIS, fontSize: 11, tickLine: false, axisLine: false } as const;
   const xAxis = (
-    <XAxis dataKey="bucket" tickFormatter={formatTick(series.bucket)} minTickGap={24} {...axisProps} />
+    <XAxis dataKey="bucket" tickFormatter={formatTick(list[0].bucket)} minTickGap={24} {...axisProps} />
   );
-  // A diverging bar reads against a zero baseline, so the Y domain must span zero
-  // even when every value shares a sign (ADR 0014); otherwise Recharts fits the
-  // axis to the data and the "balance around zero" is lost.
-  const yDomain: AxisDomain | undefined =
-    chartType === "diverging_bar"
-      ? [(min: number) => Math.min(0, min), (max: number) => Math.max(0, max)]
-      : undefined;
-  const yAxis = <YAxis width={40} domain={yDomain} {...axisProps} tickFormatter={formatValue} />;
   const grid = <CartesianGrid stroke={GRID} strokeDasharray="3 3" vertical={false} />;
   const tooltip = (
-    <Tooltip content={<ChartTooltip unit={series.unit} bucket={series.bucket} />} cursor={{ stroke: GRID }} />
+    <Tooltip
+      content={<ChartTooltip list={list} bucket={list[0].bucket} />}
+      cursor={{ stroke: GRID }}
+    />
   );
 
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <ComposedChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+      <ComposedChart data={data} margin={{ top: 8, right: rightUnit ? 0 : 8, bottom: 0, left: 0 }}>
         {grid}
         {xAxis}
-        {yAxis}
+        <YAxis
+          yAxisId="left"
+          width={40}
+          domain={axisDomain(list, metrics, "left", axisOf)}
+          {...axisProps}
+          tickFormatter={formatValue}
+        />
+        {rightUnit && (
+          <YAxis
+            yAxisId="right"
+            orientation="right"
+            width={40}
+            domain={axisDomain(list, metrics, "right", axisOf)}
+            {...axisProps}
+            tickFormatter={formatValue}
+          />
+        )}
         {tooltip}
-        {marks(chartType, data)}
+        {list.map((s, i) =>
+          marks(metrics[i]?.chart_type ?? "line", i, axisOf(s), data, list.length > 1),
+        )}
         {baseline && baselineLine}
       </ComposedChart>
     </ResponsiveContainer>
   );
+}
+
+/** mergeSeries folds sparse Series into per-bucket rows, keyed by the shared
+ *  bucket grid's dates (the server resolves the time axis once, ADR 0020). With a
+ *  single Series the rows are its points in order, so the Baseline stays
+ *  index-aligned exactly as the server built it (ADR 0015). */
+function mergeSeries(list: Series[], baseline?: Series): ChartDatum[] {
+  if (list.length === 1) {
+    return list[0].points.map((p, i) => {
+      const bp = baseline?.points[i];
+      const d: ChartDatum = { bucket: p.bucket, v0: p.value };
+      if (p.min !== undefined && p.max !== undefined) d.band0 = [p.min, p.max];
+      if (bp) {
+        d.baselineBucket = bp.bucket;
+        if (!bp.gap) d.baselineValue = bp.value;
+      }
+      return d;
+    });
+  }
+
+  const rows = new Map<string, ChartDatum>();
+  list.forEach((s, i) => {
+    for (const p of s.points) {
+      let row = rows.get(p.bucket);
+      if (!row) {
+        row = { bucket: p.bucket };
+        rows.set(p.bucket, row);
+      }
+      row[`v${i}`] = p.value;
+      if (p.min !== undefined && p.max !== undefined) row[`band${i}`] = [p.min, p.max];
+    }
+  });
+  // Bucket dates are YYYY-MM-DD, so lexical order is chronological.
+  return [...rows.values()].sort((a, b) => (a.bucket < b.bucket ? -1 : 1));
+}
+
+/** axisDomain spans zero for an axis carrying a diverging bar, whose "balance
+ *  around zero" reading is lost if Recharts fits the axis to same-sign data
+ *  (ADR 0014). Other axes auto-fit. */
+function axisDomain(
+  list: Series[],
+  metrics: PanelMetric[],
+  axis: "left" | "right",
+  axisOf: (s: Series) => "left" | "right",
+): AxisDomain | undefined {
+  const diverging = list.some((s, i) => axisOf(s) === axis && metrics[i]?.chart_type === "diverging_bar");
+  return diverging
+    ? [(min: number) => Math.min(0, min), (max: number) => Math.max(0, max)]
+    : undefined;
 }
 
 // baselineLine is the single recessed overlay: a muted dashed line at each
@@ -112,6 +184,7 @@ export function PanelChart({
 // empty baseline window simply draws nothing (ADR 0015).
 const baselineLine = (
   <Line
+    yAxisId="left"
     type="monotone"
     dataKey="baselineValue"
     stroke={BASELINE}
@@ -124,38 +197,66 @@ const baselineLine = (
   />
 );
 
-/** marks renders the Panel's native mark(s) for its chart type, to be composed
- *  under the optional Baseline overlay. All types share one ComposedChart so the
- *  baseline line lays over any of them identically. */
-function marks(chartType: ChartType, data: ChartDatum[]): React.ReactNode {
+/** marks renders one Series' mark(s) for its chart type at its position color,
+ *  on its unit group's axis. On a multi-Metric Panel identity wins over polarity:
+ *  a diverging bar keeps its zero line but wears the series color, since sign
+ *  colors would collide with the other curves' identities. */
+function marks(
+  chartType: ChartType,
+  i: number,
+  yAxisId: "left" | "right",
+  data: ChartDatum[],
+  multi: boolean,
+): React.ReactNode {
+  const color = SERIES_COLORS[i] ?? SERIES_COLORS[0];
+  const key: `v${number}` = `v${i}`;
   switch (chartType) {
     case "line":
-      return <Line type="monotone" dataKey="value" stroke={VALUE} strokeWidth={2} dot={false} />;
+      return (
+        <Line key={key} yAxisId={yAxisId} type="monotone" dataKey={key} stroke={color} strokeWidth={2} dot={false} />
+      );
     case "area":
       return (
-        <Area type="monotone" dataKey="value" stroke={VALUE} strokeWidth={2} fill={VALUE} fillOpacity={0.15} />
+        <Area
+          key={key}
+          yAxisId={yAxisId}
+          type="monotone"
+          dataKey={key}
+          stroke={color}
+          strokeWidth={2}
+          fill={color}
+          fillOpacity={0.15}
+        />
       );
     case "band":
       return (
-        <>
-          <Area type="monotone" dataKey="band" stroke="none" fill={BAND} fillOpacity={0.18} />
-          <Line type="monotone" dataKey="value" stroke={VALUE} strokeWidth={2} dot={false} />
-        </>
+        <React.Fragment key={key}>
+          <Area
+            yAxisId={yAxisId}
+            type="monotone"
+            dataKey={`band${i}`}
+            stroke="none"
+            fill={multi ? color : BAND}
+            fillOpacity={0.18}
+          />
+          <Line yAxisId={yAxisId} type="monotone" dataKey={key} stroke={color} strokeWidth={2} dot={false} />
+        </React.Fragment>
       );
     // diverging_bar is the signed-Metric variant (calorie_balance, ADR 0014):
-    // bars grow from a zero baseline and are colored by sign — surplus above,
-    // deficit below. Gap buckets are already absent from the Series, so they
-    // simply draw no bar (never a zero bar). A Cell per datum sets the sign color.
+    // bars grow from a zero baseline. Alone, they are colored by sign — surplus
+    // above, deficit below; in a combo the series color carries identity. Gap
+    // buckets are already absent from the Series, so they draw no bar.
     case "diverging_bar":
       return (
-        <>
-          <ReferenceLine y={0} stroke={AXIS} strokeWidth={1} />
-          <Bar dataKey="value" radius={[3, 3, 0, 0]} isAnimationActive={false}>
-            {data.map((d) => (
-              <Cell key={d.bucket} fill={d.value < 0 ? DEFICIT : SURPLUS} />
-            ))}
+        <React.Fragment key={key}>
+          <ReferenceLine yAxisId={yAxisId} y={0} stroke={AXIS} strokeWidth={1} />
+          <Bar yAxisId={yAxisId} dataKey={key} fill={color} radius={[3, 3, 0, 0]} isAnimationActive={false}>
+            {!multi &&
+              data.map((d) => (
+                <Cell key={d.bucket} fill={typeof d[key] === "number" && (d[key] as number) < 0 ? DEFICIT : SURPLUS} />
+              ))}
           </Bar>
-        </>
+        </React.Fragment>
       );
     // stacked_bar is the sleep (duration_by_state) variant. That aggregation is
     // not served yet — the query engine defers it and no Catalog Metric uses it
@@ -166,7 +267,7 @@ function marks(chartType: ChartType, data: ChartDatum[]): React.ReactNode {
     case "stacked_bar":
     case "bar":
     default:
-      return <Bar dataKey="value" fill={VALUE} radius={[3, 3, 0, 0]} />;
+      return <Bar key={key} yAxisId={yAxisId} dataKey={key} fill={color} radius={[3, 3, 0, 0]} />;
   }
 }
 
@@ -196,32 +297,46 @@ function formatValue(v: number): string {
 interface TooltipProps {
   active?: boolean;
   payload?: { payload: ChartDatum }[];
-  unit: string;
+  list: Series[];
   bucket: Series["bucket"];
 }
 
-function ChartTooltip({ active, payload, unit, bucket }: TooltipProps) {
+/** ChartTooltip lists every Series' value (with its unit and color swatch) for
+ *  the hovered bucket; a Series without data there shows nothing — a gap is never
+ *  a zero (ADR 0014). Single-Metric comparison keeps both windows' own real dates
+ *  side by side (ADR 0015). */
+function ChartTooltip({ active, payload, list, bucket }: TooltipProps) {
   if (!active || !payload?.length) return null;
   const d = payload[0].payload;
-  // In comparison mode the tooltip shows both buckets' own real dates side by side
-  // (ADR 0015): the current above, the Baseline below, each with its value.
   const hasBaseline = d.baselineBucket !== undefined;
+  const multi = list.length > 1;
   return (
     <div className="rounded-md border bg-popover px-2.5 py-1.5 text-xs shadow-md">
       <div className="font-medium">{formatBucket(d.bucket, bucket)}</div>
-      <div className="text-muted-foreground">
-        {formatValue(d.value)} {unit}
-        {d.band && (
-          <span className="ml-1 opacity-70">
-            ({formatValue(d.band[0])}–{formatValue(d.band[1])})
-          </span>
-        )}
-      </div>
+      {list.map((s, i) => {
+        const value = d[`v${i}`];
+        if (typeof value !== "number") return null;
+        const band = d[`band${i}`];
+        return (
+          <div key={s.metric} className="flex items-center gap-1.5 text-muted-foreground">
+            {multi && <Swatch i={i} />}
+            {multi && <span className="truncate">{metricLabel(s.metric)}</span>}
+            <span className="tabular-nums">
+              {formatValue(value)} {s.unit}
+            </span>
+            {Array.isArray(band) && (
+              <span className="opacity-70">
+                ({formatValue(band[0])}–{formatValue(band[1])})
+              </span>
+            )}
+          </div>
+        );
+      })}
       {hasBaseline && (
         <div className="mt-1 border-t pt-1">
           <div className="font-medium text-muted-foreground">{formatBucket(d.baselineBucket!, bucket)}</div>
           <div className="text-muted-foreground">
-            {d.baselineValue !== undefined ? `${formatValue(d.baselineValue)} ${unit}` : "no data"}
+            {d.baselineValue !== undefined ? `${formatValue(d.baselineValue)} ${list[0].unit}` : "no data"}
           </div>
         </div>
       )}

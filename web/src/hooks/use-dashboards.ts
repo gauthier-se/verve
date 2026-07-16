@@ -56,9 +56,15 @@ export function useDeleteDashboard() {
   });
 }
 
-export interface PanelInput {
+/** PanelMetricInput is one entry of a Panel's metrics list; an omitted chart
+ *  type takes the Metric's aggregation-derived default server-side. */
+export interface PanelMetricInput {
   metric: string;
   chart_type?: ChartType;
+}
+
+export interface PanelInput {
+  metrics: PanelMetricInput[];
   bucket?: Bucket | null;
   width?: number;
 }
@@ -72,8 +78,10 @@ export function useCreatePanel() {
   });
 }
 
+/** PanelPatch edits a Panel's presentation; a metrics list replaces the whole
+ *  ordered list (ADR 0020). */
 export interface PanelPatch {
-  chart_type?: ChartType;
+  metrics?: PanelMetricInput[];
   bucket?: Bucket | null;
   width?: number;
 }
