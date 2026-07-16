@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"io/fs"
+	"path"
 	"path/filepath"
+	"sort"
 	"testing"
 )
 
@@ -87,5 +89,70 @@ func TestMigrateIsIdempotent(t *testing.T) {
 	ctx := context.Background()
 	if _, err := db.ExecContext(ctx, `SELECT id FROM accounts LIMIT 0`); err != nil {
 		t.Errorf("accounts table not usable: %v", err)
+	}
+}
+
+// TestMigrationBackfillsPanelMetrics pins the 0007 data copy: a Panel written
+// under the pre-0007 schema (scalar metric/chart_type columns) must come out of
+// the migration as one panel_metrics row at position 0, with the old columns
+// gone.
+func TestMigrationBackfillsPanelMetrics(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "verve.db")
+	db, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+
+	// Apply everything before 0007 so a legacy single-metric panel can exist.
+	if err := ensureMigrationsTable(ctx, db); err != nil {
+		t.Fatalf("ensureMigrationsTable: %v", err)
+	}
+	versions, err := fs.Glob(migrationsFS, migrationsDir+"/*.sql")
+	if err != nil {
+		t.Fatalf("glob migrations: %v", err)
+	}
+	sort.Strings(versions)
+	for _, v := range versions {
+		version := path.Base(v)
+		if version >= "0007" {
+			break
+		}
+		if err := applyMigration(ctx, db, version); err != nil {
+			t.Fatalf("apply %s: %v", version, err)
+		}
+	}
+
+	// A legacy account, dashboard, and single-metric panel.
+	if _, err := db.ExecContext(ctx, `INSERT INTO accounts (id, email) VALUES (1, 'legacy@example.com')`); err != nil {
+		t.Fatalf("insert legacy account: %v", err)
+	}
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO dashboards (id, account_id, name, range_preset) VALUES (1, 1, 'Legacy', '30d')`); err != nil {
+		t.Fatalf("insert legacy dashboard: %v", err)
+	}
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO panels (id, dashboard_id, account_id, metric, chart_type, width, position)
+		 VALUES (1, 1, 1, 'steps', 'bar', 1, 0)`); err != nil {
+		t.Fatalf("insert legacy panel: %v", err)
+	}
+
+	// Completing the migrations must copy the panel into panel_metrics.
+	if err := Migrate(ctx, db, testLogger()); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+
+	got, err := NewModels(db).Panels.GetByID(ctx, 1, 1)
+	if err != nil {
+		t.Fatalf("GetByID after migration: %v", err)
+	}
+	if len(got.Metrics) != 1 || got.Metrics[0] != (PanelMetric{Metric: "steps", ChartType: "bar"}) {
+		t.Errorf("migrated panel metrics = %+v, want steps/bar", got.Metrics)
+	}
+
+	// The scalar columns are gone — one representation only.
+	if _, err := db.ExecContext(ctx, `SELECT metric FROM panels LIMIT 0`); err == nil {
+		t.Errorf("panels.metric still exists after 0007")
 	}
 }

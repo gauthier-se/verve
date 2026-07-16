@@ -42,11 +42,15 @@ type dashboardView struct {
 	Panels       []panelView `json:"panels"`
 }
 
+// panelToView keeps the single-metric API contract until the multi-Series
+// contract lands (issue 02): it exposes the Panel's first Metric.
 func panelToView(p data.Panel) panelView {
-	return panelView{
-		ID: p.ID, Metric: p.Metric, ChartType: p.ChartType,
-		Bucket: p.Bucket, Width: p.Width, Position: p.Position,
+	view := panelView{ID: p.ID, Bucket: p.Bucket, Width: p.Width, Position: p.Position}
+	if len(p.Metrics) > 0 {
+		view.Metric = p.Metrics[0].Metric
+		view.ChartType = p.Metrics[0].ChartType
 	}
+	return view
 }
 
 func dashboardToView(d data.Dashboard, panels []data.Panel) dashboardView {
@@ -290,8 +294,9 @@ func (s *Server) handleCreatePanel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	p := &data.Panel{
-		DashboardID: d.ID, AccountID: accountID, Metric: input.Metric,
-		ChartType: chartType, Bucket: bucket, Width: width,
+		DashboardID: d.ID, AccountID: accountID,
+		Metrics: []data.PanelMetric{{Metric: input.Metric, ChartType: chartType}},
+		Bucket:  bucket, Width: width,
 	}
 	if err := s.models.Panels.Insert(r.Context(), p); err != nil {
 		s.serverErrorResponse(w, r, err)
@@ -328,18 +333,18 @@ func (s *Server) handleUpdatePanel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if input.ChartType != nil {
-		p.ChartType = *input.ChartType
-	}
 	if input.Width != nil {
 		p.Width = *input.Width
 	}
 
 	v := NewValidator()
-	// The Metric is known (the panel exists), so chart-type compatibility can be
-	// enforced against its aggregation rule.
-	if metric, known := catalog.Lookup(p.Metric); known && input.ChartType != nil {
-		validateChartType(v, p.ChartType, metric)
+	if input.ChartType != nil && len(p.Metrics) > 0 {
+		p.Metrics[0].ChartType = *input.ChartType
+		// The Metric is known (the panel exists), so chart-type compatibility can be
+		// enforced against its aggregation rule.
+		if metric, known := catalog.Lookup(p.Metrics[0].Metric); known {
+			validateChartType(v, p.Metrics[0].ChartType, metric)
+		}
 	}
 	if input.Bucket != nil { // key present in the body
 		p.Bucket = parseBucketOverride(input.Bucket, v)

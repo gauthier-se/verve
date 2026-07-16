@@ -64,9 +64,18 @@ Dashboard is thereafter an ordinary Dashboard the owner can edit or delete
 _Avoid_: Preset, Starter, Default view.
 
 **Panel**:
-A single card in a Dashboard: one or more Metrics × a chart type × an
-aggregation × a time bucket — e.g. "Steps — daily — sum — bars".
-_Avoid_: Widget, Card, Chart, Tile, View.
+A single card in a Dashboard: one to four Metrics, each rendered with its own
+chart type (defaulted by its aggregation rule), over the Dashboard's time axis —
+e.g. "Steps — daily — sum — bars", or a combo "dietary energy (bars) vs body
+mass (line)". Metrics sharing a unit share a Y axis and a Panel spans at most
+**two units** — hence at most two axes — so every curve keeps its true magnitude
+(never normalized). A multi-Metric Panel does not render the Baseline —
+co-variation between Metrics and comparison between periods are different
+questions, not superposed (the same exclusion mechanic as the `all` range) — and
+shows one Panel summary per Series in its legend rather than a single headline
+figure (ADR 0020).
+_Avoid_: Widget, Card, Chart, Tile, View, Overlay (the rendering, never a
+concept).
 
 **Panel summary**:
 The headline figure a Panel shows above its curve so **magnitude** — not just the

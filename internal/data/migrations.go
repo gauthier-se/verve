@@ -21,11 +21,8 @@ const migrationsDir = "migrations"
 // idempotent: already-applied migrations are skipped, so it is safe to run on
 // every startup and via `verve migrate`.
 func Migrate(ctx context.Context, db *sql.DB, logger *slog.Logger) error {
-	if _, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
-		version    TEXT PRIMARY KEY,
-		applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-	) STRICT`); err != nil {
-		return fmt.Errorf("data: create schema_migrations: %w", err)
+	if err := ensureMigrationsTable(ctx, db); err != nil {
+		return err
 	}
 
 	applied, err := appliedVersions(ctx, db)
@@ -52,6 +49,18 @@ func Migrate(ctx context.Context, db *sql.DB, logger *slog.Logger) error {
 			return err
 		}
 		logger.Info("applied migration", "version", version)
+	}
+	return nil
+}
+
+// ensureMigrationsTable creates the version ledger if absent, so both Migrate
+// and partial-application (tests) share one definition.
+func ensureMigrationsTable(ctx context.Context, db *sql.DB) error {
+	if _, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
+		version    TEXT PRIMARY KEY,
+		applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+	) STRICT`); err != nil {
+		return fmt.Errorf("data: create schema_migrations: %w", err)
 	}
 	return nil
 }

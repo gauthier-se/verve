@@ -47,9 +47,12 @@ func TestCreateAccountSeedsDefaultDashboard(t *testing.T) {
 		t.Fatalf("seeded panels = %d, want %d", len(panels), len(want))
 	}
 	for i, w := range want {
-		if panels[i].Metric != w.metric || panels[i].ChartType != w.chartType {
+		if len(panels[i].Metrics) != 1 {
+			t.Fatalf("panel %d metrics = %d, want 1", i, len(panels[i].Metrics))
+		}
+		if panels[i].Metrics[0].Metric != w.metric || panels[i].Metrics[0].ChartType != w.chartType {
 			t.Errorf("panel %d = %s/%s, want %s/%s",
-				i, panels[i].Metric, panels[i].ChartType, w.metric, w.chartType)
+				i, panels[i].Metrics[0].Metric, panels[i].Metrics[0].ChartType, w.metric, w.chartType)
 		}
 		if panels[i].Position != i {
 			t.Errorf("panel %d position = %d, want %d", i, panels[i].Position, i)
