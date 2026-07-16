@@ -55,11 +55,18 @@ export interface Account {
   blood_type: string | null;
 }
 
-/** Panel is one card in a Dashboard. */
-export interface Panel {
-  id: number;
+/** PanelMetric is one Metric on a Panel with its own chart type (ADR 0020);
+ *  the list order is the display order. */
+export interface PanelMetric {
   metric: string;
   chart_type: ChartType;
+}
+
+/** Panel is one card in a Dashboard: one to four Metrics spanning at most two
+ *  units — two Y axes — rendered as one combo chart (ADR 0020). */
+export interface Panel {
+  id: number;
+  metrics: PanelMetric[];
   bucket: Bucket | null;
   width: number;
   position: number;

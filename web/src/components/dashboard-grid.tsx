@@ -70,7 +70,7 @@ export function DashboardGrid({
             <SortablePanel
               key={panel.id}
               panel={panel}
-              metric={metrics.get(panel.metric)}
+              catalog={metrics}
               range={range}
               baseline={baseline}
             />
@@ -83,12 +83,12 @@ export function DashboardGrid({
 
 function SortablePanel({
   panel,
-  metric,
+  catalog,
   range,
   baseline,
 }: {
   panel: Panel;
-  metric?: Metric;
+  catalog: Map<string, Metric>;
   range: RangeTokens;
   baseline?: BaselineParams;
 }) {
@@ -102,7 +102,7 @@ function SortablePanel({
 
   return (
     <div ref={setNodeRef} style={style} className={cn(WIDTH_CLASS[panel.width] ?? WIDTH_CLASS[1])} {...attributes}>
-      <PanelCard panel={panel} metric={metric} range={range} baseline={baseline} dragHandle={<DragHandle {...listeners} />} />
+      <PanelCard panel={panel} catalog={catalog} range={range} baseline={baseline} dragHandle={<DragHandle {...listeners} />} />
     </div>
   );
 }

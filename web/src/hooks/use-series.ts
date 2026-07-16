@@ -11,32 +11,35 @@ export interface BaselineParams {
   to?: string | null;
 }
 
-/** SeriesResult is one Panel's data: the current series and, in comparison mode,
- *  the equal-length index-aligned Baseline series the server overlays (ADR 0015). */
+/** SeriesResult is one Panel's data: one Series per Panel Metric in Panel order,
+ *  and — single-Metric comparison mode only — the equal-length index-aligned
+ *  Baseline series the server overlays (ADR 0015). On a multi-Metric Panel the
+ *  server cuts the Baseline (ADR 0020), so it is never present here. */
 export interface SeriesResult {
-  series: Series;
+  series: Series[];
   baseline?: Series;
 }
 
-/** useSeries fetches one Panel's aggregated buckets (GET /v1/series). It forwards
- *  the Dashboard's range tokens, the comparison Baseline, and the Panel's optional
- *  bucket override; the server (timeaxis) resolves them into windows and a bucket.
- *  The query key spans every token, so a Panel refetches when the range, comparison
- *  rule, or its bucket changes — the mechanism behind "range and comparison update
+/** useSeries fetches one Panel's aggregated buckets (GET /v1/series), one
+ *  repeated `metric` param per Panel Metric so the server resolves the time axis
+ *  once for all of them (ADR 0020). It forwards the Dashboard's range tokens,
+ *  the comparison Baseline, and the Panel's optional bucket override; the query
+ *  key spans every token, so a Panel refetches when the range, comparison rule,
+ *  or its bucket changes — the mechanism behind "range and comparison update
  *  all Panels". */
 export function useSeries(params: {
-  metric: string;
+  metrics: string[];
   range: RangeTokens;
   bucket: Bucket | null;
   baseline?: BaselineParams;
 }) {
-  const { metric, range, bucket, baseline } = params;
+  const { metrics, range, bucket, baseline } = params;
   const comparing = baseline !== undefined && baseline.rule !== "none";
 
   return useQuery({
     queryKey: [
       "series",
-      metric,
+      metrics.join(","),
       range.preset,
       range.from,
       range.to,
@@ -46,7 +49,8 @@ export function useSeries(params: {
       comparing && baseline.to ? baseline.to : null,
     ],
     queryFn: async (): Promise<SeriesResult> => {
-      const qs = new URLSearchParams({ metric, range_preset: range.preset });
+      const qs = new URLSearchParams({ range_preset: range.preset });
+      for (const metric of metrics) qs.append("metric", metric);
       // Only a custom range carries bounds; relative presets resolve server-side.
       if (range.preset === "custom") {
         if (range.from) qs.set("range_from", range.from);
@@ -60,7 +64,14 @@ export function useSeries(params: {
           if (baseline.to) qs.set("baseline_to", baseline.to);
         }
       }
-      return api<SeriesResult>(`/v1/series?${qs.toString()}`);
+      // One metric keeps the scalar envelope; several come back as an array
+      // (ADR 0020). Normalize to a list either way.
+      const raw = await api<{ series: Series | Series[]; baseline?: Series }>(
+        `/v1/series?${qs.toString()}`,
+      );
+      return Array.isArray(raw.series)
+        ? { series: raw.series }
+        : { series: [raw.series], baseline: raw.baseline };
     },
   });
 }

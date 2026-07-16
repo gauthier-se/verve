@@ -40,7 +40,7 @@ export function AddPanelDialog({
 
   const add = (metric: Metric) => {
     create.mutate(
-      { dashboardId, panel: { metric: metric.slug } },
+      { dashboardId, panel: { metrics: [{ metric: metric.slug }] } },
       { onSuccess: () => onOpenChange(false) },
     );
   };
