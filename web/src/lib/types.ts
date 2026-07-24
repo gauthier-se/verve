@@ -122,6 +122,27 @@ export interface ImportStatus {
   has_data: boolean;
 }
 
+/** LedgerValue is a Metric's most recent daily value with the day it fell on. */
+export interface LedgerValue {
+  value: number;
+  date: string;
+}
+
+/** LedgerRow is one Metric's line in the Ledger overview (GET /v1/ledger, ADR 0021):
+ *  its latest value and window figures folded server-side, plus a week-over-week
+ *  delta. An absent figure is a gap ("—"). For a `sum` Metric `week`/`month` are daily
+ *  averages (the window fold ÷ its day count), so steps/calories read per-day. */
+export interface LedgerRow {
+  metric: string;
+  unit: string;
+  aggregation: Aggregation | "";
+  latest?: LedgerValue;
+  week?: number;
+  month?: number;
+  delta_abs?: number;
+  delta_pct?: number;
+}
+
 /** Series is the result of GET /v1/series: metadata, ordered buckets, and the
  *  Panel summary — the whole window folded into one value server-side (ADR 0019). */
 export interface Series {
@@ -135,4 +156,12 @@ export interface Series {
    *  single bucket (ADR 0019). Absent is a gap ("—") — no data, or a derived Metric
    *  missing a required operand. Never re-derived client-side. */
   summary?: Point;
+  /** days is the whole-day span of the window — the honest denominator for a per-day
+   *  average of a `sum` summary (summary.value ÷ days), including a Baseline window of
+   *  a different length. Server-provided so the client divides, never re-aggregates. */
+  days?: number;
+  /** mean is the window average of a `latest` Metric's readings (e.g. mean body mass),
+   *  shown instead of the last reading when summaries render as period averages — the
+   *  better trend view. Server-computed; absent for non-latest Metrics or an empty window. */
+  mean?: number;
 }

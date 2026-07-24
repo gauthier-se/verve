@@ -3,6 +3,7 @@ import { Search } from "lucide-react";
 import { useCreatePanel } from "@/hooks/use-dashboards";
 import { useMetrics } from "@/hooks/use-catalog";
 import { metricLabel } from "@/lib/metrics";
+import { MetricIcon } from "./metric-icon";
 import type { Metric } from "@/lib/types";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Input } from "./ui/input";
@@ -76,7 +77,10 @@ export function AddPanelDialog({
                     onClick={() => add(m)}
                     className="flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-accent disabled:opacity-50"
                   >
-                    <span>{metricLabel(m.slug)}</span>
+                    <span className="flex items-center gap-2">
+                      <MetricIcon slug={m.slug} />
+                      {metricLabel(m.slug)}
+                    </span>
                     <span className="text-xs text-muted-foreground">{m.unit}</span>
                   </button>
                 ))}

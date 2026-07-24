@@ -1,12 +1,57 @@
 import { computeDelta, formatExact, formatSummaryValue } from "@/lib/format";
 import { metricLabel } from "@/lib/metrics";
 import type { Metric, Series } from "@/lib/types";
+import { FormulaHint } from "./formula-hint";
+import { MetricIcon } from "./metric-icon";
+import { useSummaryPrefs } from "./panel-prefs";
 import { Swatch, formatBucket } from "./panel-chart";
+
+/** isExtensive reports whether a Metric's value scales with the window length — a
+ *  `sum`, or a derived Metric that is a plain weighted sum (no denominator, e.g. total
+ *  energy = active + basal, calorie balance) — so a per-day average is meaningful. A
+ *  ratio (a Formula with a denominator) and the `average`/`latest` rules are intensive
+ *  and keep their value. */
+function isExtensive(aggregation: Series["aggregation"], metric?: Metric): boolean {
+  if (aggregation === "sum") return true;
+  const formula = metric?.formula;
+  return formula !== undefined && (formula.denominator?.length ?? 0) === 0;
+}
+
+/** SummaryMode is how a Series summary is shown: the plain window total, an extensive
+ *  Metric's per-day average, or a `latest` Metric's window mean. */
+type SummaryMode = "total" | "per_day" | "mean";
+
+/** summaryMode picks the mode from the global "average" toggle: an extensive Metric
+ *  averages per day, a `latest` Metric shows its window mean, and an intensive Metric
+ *  (an `average` rate, a ratio) has no meaningful average and stays as its total. */
+function summaryMode(aggregation: Series["aggregation"], metric: Metric | undefined, average: boolean): SummaryMode {
+  if (!average) return "total";
+  if (isExtensive(aggregation, metric)) return "per_day";
+  if (aggregation === "latest") return "mean";
+  return "total";
+}
+
+/** summaryFigureValue is the number a Series shows in a mode: the per-day average
+ *  (total ÷ its own window days), the window mean, or the plain summary total.
+ *  Undefined is a gap — no data, or a missing figure. */
+function summaryFigureValue(s: Series, mode: SummaryMode): number | undefined {
+  switch (mode) {
+    case "per_day":
+      return s.summary && (s.days ?? 0) > 0 ? s.summary.value / (s.days as number) : undefined;
+    case "mean":
+      return s.mean;
+    default:
+      return s.summary?.value;
+  }
+}
 
 /** PanelSummary is the headline band above a Panel's curve (ADR 0019): the large
  *  primary figure (the Metric folded over the whole range), the small most-recent
  *  bucket beside it, and — in comparison mode — a neutral delta against the Baseline.
- *  Universal on every Panel; the summary itself is computed server-side. */
+ *  Universal on every Panel; the summary itself is computed server-side. The global
+ *  summary prefs (per-day average for `sum`, exact vs compact numbers) only change how
+ *  the server figure is *shown* — a `sum` total is divided by the window's own day
+ *  count (server-provided), so nothing is re-aggregated client-side. */
 export function PanelSummary({
   series,
   baseline,
@@ -16,23 +61,45 @@ export function PanelSummary({
   baseline?: Series;
   metric?: Metric;
 }) {
-  const { summary, points, unit, aggregation, bucket } = series;
+  const { prefs } = useSummaryPrefs();
+  const { points, unit, aggregation, bucket } = series;
 
-  // The primary figure; a gap (no summary) shows "—". Its exact value goes in a tooltip.
-  const primary = summary ? formatSummaryValue(summary.value, aggregation) : "—";
-  const primaryTitle = summary ? `${formatExact(summary.value)} ${unit}`.trim() : undefined;
+  // Average mode shows each Metric as its period average, the better trend view:
+  //  - extensive (a `sum`, or a derived plain weighted sum like total energy / calorie
+  //    balance) → the server total ÷ its own window days (a per-day average);
+  //  - `latest` (body mass) → the server window mean, not the last reading;
+  //  - everything else (an `average` rate, a ratio) is already intensive — unchanged.
+  // Nothing is re-aggregated client-side: both the total and the mean come from the
+  // server, per window (so a Baseline of a different length compares fairly).
+  const mode = summaryMode(aggregation, metric, prefs.average);
+  const figure = (s: Series) => summaryFigureValue(s, mode);
+  const fmt = (value: number) => (prefs.exact ? formatExact(value) : formatSummaryValue(value, aggregation));
 
-  // The secondary is the most recent bucket — a plain read, not a summary. It is
-  // hidden for a `latest` Metric, where it coincides with the summary.
+  // The primary figure; a gap (no value) shows "—". Its exact value goes in a tooltip.
+  const primaryValue = figure(series);
+  const primary = primaryValue !== undefined ? fmt(primaryValue) : "—";
+  const noteLabel = mode === "per_day" ? " per day" : mode === "mean" ? " average" : "";
+  const primaryTitle =
+    primaryValue !== undefined ? `${formatExact(primaryValue)} ${unit}${noteLabel}`.trim() : undefined;
+
+  // The secondary is the most recent bucket — a plain read. It is hidden for a `latest`
+  // Metric in total mode (it coincides with the summary), but shown in mean mode where
+  // the primary is the window mean, so the latest reading is extra information.
   const last = points.length > 0 ? points[points.length - 1] : undefined;
-  const showSecondary = last !== undefined && aggregation !== "latest";
+  const showSecondary = last !== undefined && (aggregation !== "latest" || mode === "mean");
 
-  // The delta exists only in comparison mode, and only when both sides are real —
-  // a gap on either window has nothing to compare.
-  const delta =
-    summary && baseline?.summary
-      ? computeDelta(summary.value, baseline.summary.value, aggregation, metric?.signed ?? false)
-      : undefined;
+  // The delta exists only in comparison mode, and only when both sides are real. Each
+  // period is folded on the same basis, so the comparison is average-vs-average (or
+  // total-vs-total). The compared period's own figure is always shown beside the delta.
+  let delta: ReturnType<typeof computeDelta> | undefined;
+  let baselineShown: string | undefined;
+  const baseValue = baseline ? figure(baseline) : undefined;
+  if (primaryValue !== undefined && baseValue !== undefined) {
+    delta = computeDelta(primaryValue, baseValue, aggregation, metric?.signed ?? false);
+    // Show both numbers, so "↓ 18 %" / "→ 0 %" is legible — not a bare percentage
+    // against an invisible reference.
+    baselineShown = fmt(baseValue);
+  }
 
   return (
     // panel-summary is a query container (index.css) so the secondary figure drops by
@@ -41,21 +108,27 @@ export function PanelSummary({
       <span className="text-2xl font-semibold leading-none tabular-nums" title={primaryTitle}>
         {primary}
       </span>
-      {summary && unit && <span className="text-xs text-muted-foreground">{unit}</span>}
+      {primaryValue !== undefined && unit && (
+        <span className="text-xs text-muted-foreground">
+          {unit}
+          {mode === "per_day" && <span className="opacity-70">/day</span>}
+          {mode === "mean" && <span className="opacity-70"> avg</span>}
+        </span>
+      )}
       {delta && (
         <span
           className="text-xs tabular-nums text-muted-foreground"
-          title={`${delta.arrow} ${delta.exact} ${unit} vs baseline`.trim()}
+          title={`${delta.arrow} ${delta.exact} ${unit} vs the compared period`.trim()}
         >
           {delta.arrow} {delta.label}
+          {baselineShown && <span className="opacity-70"> (vs {baselineShown})</span>}
         </span>
       )}
       {showSecondary && (
         // panel-summary-secondary is dropped on a narrow card by a container query
         // (index.css) — the first thing to go when space is tight (ADR 0019).
         <span className="panel-summary-secondary ml-auto whitespace-nowrap text-xs tabular-nums text-muted-foreground">
-          <span className="opacity-70">{formatBucket(last.bucket, bucket)}</span>{" "}
-          {formatSummaryValue(last.value, aggregation)}
+          <span className="opacity-70">{formatBucket(last.bucket, bucket)}</span> {fmt(last.value)}
         </span>
       )}
     </div>
@@ -68,22 +141,48 @@ export function PanelSummary({
  *  stays universal (ADR 0019); only the single-Metric rendering keeps the large
  *  headline figure. In comparison mode a muted hint says why there is no Baseline
  *  here rather than leaving the control looking broken. */
-export function PanelLegend({ list, comparing }: { list: Series[]; comparing?: boolean }) {
+export function PanelLegend({
+  list,
+  comparing,
+  catalog,
+}: {
+  list: Series[];
+  comparing?: boolean;
+  catalog?: Map<string, Metric>;
+}) {
+  const { prefs } = useSummaryPrefs();
   return (
     <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 px-3 pt-1.5 text-xs">
-      {list.map((s, i) => (
+      {list.map((s, i) => {
+        const m = catalog?.get(s.metric);
+        const formula = m?.formula;
+        const mode = summaryMode(s.aggregation, m, prefs.average);
+        const value = summaryFigureValue(s, mode);
+        const shown =
+          value === undefined ? "—" : prefs.exact ? formatExact(value) : formatSummaryValue(value, s.aggregation);
+        const note = mode === "per_day" ? " per day" : mode === "mean" ? " average" : "";
+        return (
         <span key={s.metric} className="flex items-center gap-1.5">
           <Swatch i={i} />
+          <MetricIcon slug={s.metric} className="size-3.5" />
           <span className="text-muted-foreground">{metricLabel(s.metric)}</span>
+          {formula && <FormulaHint formula={formula} />}
           <span
             className="font-medium tabular-nums"
-            title={s.summary ? `${formatExact(s.summary.value)} ${s.unit}`.trim() : undefined}
+            title={value !== undefined ? `${formatExact(value)} ${s.unit}${note}`.trim() : undefined}
           >
-            {s.summary ? formatSummaryValue(s.summary.value, s.aggregation) : "—"}
+            {shown}
           </span>
-          {s.summary && s.unit && <span className="text-muted-foreground">{s.unit}</span>}
+          {value !== undefined && s.unit && (
+            <span className="text-muted-foreground">
+              {s.unit}
+              {mode === "per_day" && <span className="opacity-70">/day</span>}
+              {mode === "mean" && <span className="opacity-70"> avg</span>}
+            </span>
+          )}
         </span>
-      ))}
+        );
+      })}
       {comparing && (
         <span
           className="ml-auto text-muted-foreground/70"

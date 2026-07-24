@@ -2,6 +2,7 @@ import { createRootRoute, createRoute, createRouter, Outlet } from "@tanstack/re
 import { AppShell } from "./components/app-shell";
 import { DashboardIndex } from "./components/dashboard-index";
 import { DashboardView } from "./components/dashboard-view";
+import { DataPage } from "./components/data-page";
 import { ImportPage } from "./components/import-page";
 
 // Code-based routes (no file router / codegen) keep the build a plain Vite SPA
@@ -27,13 +28,19 @@ const dashboardRoute = createRoute({
   component: DashboardView,
 });
 
+const dataRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/data",
+  component: DataPage,
+});
+
 const importRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/import",
   component: ImportPage,
 });
 
-const routeTree = rootRoute.addChildren([indexRoute, dashboardRoute, importRoute]);
+const routeTree = rootRoute.addChildren([indexRoute, dashboardRoute, dataRoute, importRoute]);
 
 export const router = createRouter({ routeTree, defaultPreload: "intent" });
 

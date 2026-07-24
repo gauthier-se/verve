@@ -33,7 +33,9 @@ export interface Delta {
 
 /** computeDelta compares a summary to its Baseline summary: a percentage by default,
  *  but the absolute difference for a signed Metric (a percentage around zero is
- *  meaningless) or when the Baseline is zero (no percentage base). */
+ *  meaningless) or when the Baseline is zero (no percentage base). The arrow follows
+ *  the *shown* magnitude, so a change that rounds to zero reads as neutral ("→ 0 %")
+ *  rather than a misleading "↑ 0 %". */
 export function computeDelta(
   current: number,
   baseline: number,
@@ -41,10 +43,20 @@ export function computeDelta(
   signed: boolean,
 ): Delta {
   const diff = current - baseline;
-  const arrow = diff > 0 ? "↑" : diff < 0 ? "↓" : "→";
   const usePercent = !signed && baseline !== 0;
-  const label = usePercent
-    ? `${nf({ maximumFractionDigits: 0 }).format(Math.abs((diff / baseline) * 100))} %`
-    : formatSummaryValue(Math.abs(diff), aggregation);
+
+  let label: string;
+  let shownZero: boolean;
+  if (usePercent) {
+    const rounded = Math.round(Math.abs((diff / baseline) * 100));
+    label = `${nf({ maximumFractionDigits: 0 }).format(rounded)} %`;
+    shownZero = rounded === 0;
+  } else {
+    const magnitude = Math.abs(diff);
+    label = formatSummaryValue(magnitude, aggregation);
+    shownZero = magnitude === 0 || label === "0";
+  }
+
+  const arrow = shownZero ? "→" : diff > 0 ? "↑" : "↓";
   return { arrow, label, exact: formatExact(Math.abs(diff)) };
 }

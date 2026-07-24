@@ -48,10 +48,10 @@ export function metricLabel(slug: string): string {
 
 /** formatFormula renders a Formula as a readable expression for a tooltip, e.g.
  *  "4·dietary_protein / dietary_energy × 100". */
-export function formatFormula(formula: Formula): string {
-  let expr = weightedSum(formula.numerator);
+export function formatFormula(formula: Formula, label: (slug: string) => string = (s) => s): string {
+  let expr = weightedSum(formula.numerator, label);
   if (formula.denominator && formula.denominator.length > 0) {
-    expr = `${expr} / ${weightedSum(formula.denominator)}`;
+    expr = `${expr} / ${weightedSum(formula.denominator, label)}`;
   }
   if (formula.scale !== 1) {
     expr = `${expr} × ${formula.scale}`;
@@ -59,12 +59,14 @@ export function formatFormula(formula: Formula): string {
   return expr;
 }
 
-/** weightedSum joins Formula terms into "a·x + b·y − c·z". */
-function weightedSum(terms: Formula["numerator"]): string {
+/** weightedSum joins Formula terms into "a·x + b·y − c·z", naming each operand via
+ *  `label` (identity by default, or metricLabel for a human-readable tooltip). */
+function weightedSum(terms: Formula["numerator"], label: (slug: string) => string): string {
   return terms
     .map((term, i) => {
       const coeff = Math.abs(term.coefficient);
-      const factor = coeff === 1 ? term.metric : `${coeff}·${term.metric}`;
+      const name = label(term.metric);
+      const factor = coeff === 1 ? name : `${coeff}·${name}`;
       if (i === 0) return term.coefficient < 0 ? `−${factor}` : factor;
       return term.coefficient < 0 ? ` − ${factor}` : ` + ${factor}`;
     })
