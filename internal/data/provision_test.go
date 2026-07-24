@@ -25,8 +25,8 @@ func TestCreateAccountSeedsDefaultDashboard(t *testing.T) {
 	if len(dashboards) != 1 {
 		t.Fatalf("seeded dashboards = %d, want 1", len(dashboards))
 	}
-	if dashboards[0].Name != "Aperçu" {
-		t.Errorf("dashboard name = %q, want %q", dashboards[0].Name, "Aperçu")
+	if dashboards[0].Name != "Overview" {
+		t.Errorf("dashboard name = %q, want %q", dashboards[0].Name, "Overview")
 	}
 
 	panels, err := models.Panels.ListByDashboard(ctx, acc.ID, dashboards[0].ID)

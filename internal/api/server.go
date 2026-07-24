@@ -106,6 +106,9 @@ func (s *Server) Handler() http.Handler {
 	// Account data: only the authenticated Account's own series.
 	mux.Handle("GET /v1/series", s.requireAuth(s.handleSeries))
 
+	// The Ledger overview: one folded row per Metric with data (ADR 0021).
+	mux.Handle("GET /v1/ledger", s.requireAuth(s.handleLedger))
+
 	// Web self-service import: upload a .zip, then poll the job (ADR 0016).
 	mux.Handle("POST /v1/imports", s.requireAuth(s.handleCreateImport))
 	mux.Handle("GET /v1/imports", s.requireAuth(s.handleImportStatus))

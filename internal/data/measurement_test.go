@@ -33,6 +33,40 @@ func TestInsertBatchReportsNewRows(t *testing.T) {
 	}
 }
 
+// TestDistinctMetrics lists an Account's Metrics-with-data, sorted and
+// de-duplicated, and never another Account's — the Ledger overview's row set.
+func TestDistinctMetrics(t *testing.T) {
+	_, models := openTestDB(t)
+	ctx := context.Background()
+	acc := seedAccount(t, models)
+
+	other := &Account{Email: "other@example.com"}
+	if err := models.Accounts.Insert(ctx, other); err != nil {
+		t.Fatalf("seed other account: %v", err)
+	}
+
+	batch := []Measurement{
+		{AccountID: acc, Metric: "steps", Value: 100, OriginalUnit: "count", StartAt: "2024-01-01T00:00:00Z", EndAt: "2024-01-01T01:00:00Z", Source: "Watch", ContentKey: "k1"},
+		{AccountID: acc, Metric: "steps", Value: 200, OriginalUnit: "count", StartAt: "2024-01-02T00:00:00Z", EndAt: "2024-01-02T01:00:00Z", Source: "Watch", ContentKey: "k2"},
+		{AccountID: acc, Metric: "heart_rate", Value: 62, OriginalUnit: "count/min", StartAt: "2024-01-01T00:00:00Z", EndAt: "2024-01-01T00:00:00Z", Source: "Watch", ContentKey: "k3"},
+		{AccountID: other.ID, Metric: "body_mass", Value: 70, OriginalUnit: "kg", StartAt: "2024-01-01T00:00:00Z", EndAt: "2024-01-01T00:00:00Z", Source: "Health", ContentKey: "k4"},
+	}
+	if _, err := models.Measurements.InsertBatch(ctx, batch); err != nil {
+		t.Fatalf("InsertBatch: %v", err)
+	}
+
+	got, err := models.Measurements.DistinctMetrics(ctx, acc)
+	if err != nil {
+		t.Fatalf("DistinctMetrics: %v", err)
+	}
+	// De-duplicated (two steps rows → one slug), sorted, and body_mass excluded (it
+	// belongs to the other Account).
+	want := []string{"heart_rate", "steps"}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("DistinctMetrics = %v, want %v", got, want)
+	}
+}
+
 // TestInsertBatchIsIdempotent is the core acceptance guard: re-inserting the
 // same content keys adds nothing and reports every row as skipped.
 func TestInsertBatchIsIdempotent(t *testing.T) {

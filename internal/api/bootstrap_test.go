@@ -68,7 +68,7 @@ func TestRegisterCreatesFirstAccountAndAutoLogsIn(t *testing.T) {
 		t.Errorf("post-register /me status = %d, want 200 (auto-login)", resMe.StatusCode)
 	}
 
-	// The account is seeded through the shared path (ADR 0018): one "Aperçu" board.
+	// The account is seeded through the shared path (ADR 0018): one "Overview" board.
 	acc, err := models.Accounts.GetByEmail(context.Background(), "admin@example.com")
 	if err != nil {
 		t.Fatalf("GetByEmail: %v", err)
@@ -77,8 +77,8 @@ func TestRegisterCreatesFirstAccountAndAutoLogsIn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListByAccount: %v", err)
 	}
-	if len(dashboards) != 1 || dashboards[0].Name != "Aperçu" {
-		t.Errorf("seeded dashboards = %+v, want one named Aperçu", dashboards)
+	if len(dashboards) != 1 || dashboards[0].Name != "Overview" {
+		t.Errorf("seeded dashboards = %+v, want one named Overview", dashboards)
 	}
 }
 

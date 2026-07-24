@@ -9,7 +9,7 @@ is missing is a populated starting point and a path to importing data.
 
 ## Decision
 
-At **Account creation**, seed one Dashboard named **"Aperçu"** ("Overview") from a
+At **Account creation**, seed one Dashboard named **"Overview"** from a
 **dashboard template** — its content defined in Verve, not free-form. The Account
 therefore always has a Dashboard on first login. Seeding happens in one place, at
 creation, for both the bootstrap and CLI paths.
@@ -62,7 +62,7 @@ empty state shows a **CTA to the Import page** (ADR 0016).
 
 ## Consequences
 
-- Account creation seeds the "Aperçu" Dashboard and its five Panels from a
+- Account creation seeds the "Overview" Dashboard and its five Panels from a
   template defined in Verve, for both the bootstrap and CLI paths.
 - The SPA's empty state (no data yet) shows a CTA to the Import page; Panels use
   the existing "no data" rendering until the first import lands.

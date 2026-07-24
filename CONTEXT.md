@@ -55,7 +55,7 @@ Users create several and switch between them. Carries the active Time range.
 _Avoid_: View (too vague — informal synonym at most), Page, Board.
 
 **Dashboard template**:
-The curated default content — one Dashboard named "Aperçu" with a fixed set of
+The curated default content — one Dashboard named "Overview" with a fixed set of
 Panels over universal Metrics (mass, active energy, steps, resting heart rate,
 exercise time) — **seeded at Account creation** so no Account ever faces an empty
 app. Defined in Verve, not user input, like the closed Catalog; the seeded
@@ -140,6 +140,18 @@ one module (`internal/timeaxis`), so the client forwards tokens instead of
 computing dates.
 _Avoid_: Timeframe (reads as a synonym of Time range), Time window (that's one
 resolved bound pair, not the axis).
+
+**Ledger**:
+The tabular read-view of the same data the Panels graph — the numbers *behind* the
+curves, so a value can be read exactly, sorted, and copied out. It is **not** the raw
+Measurement rows (Verve never serves those — ADR 0012): a Ledger shows the same
+server-aggregated **Series** the graphs use. Two faces on one page: an **overview**
+(one row per Metric that has data, with its latest value and folded window figures) and
+a **detail** table (one Metric's Points as chronological rows at a chosen bucket). It
+reuses `GET /v1/series` and adds one small overview endpoint (`/v1/ledger`); every
+figure is still folded server-side (ADR 0021). Surfaced as the "Data" page.
+_Avoid_: Raw data (it is aggregated, not raw), Table (the rendering, not the concept),
+Grid (that's the Panel layout), Spreadsheet.
 
 ### Cross-cutting
 

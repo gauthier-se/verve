@@ -10,6 +10,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"time"
 
@@ -165,6 +166,24 @@ type Series struct {
 	// mean of per-bucket means. Nil is a gap ("—"): no data, or a derived Metric
 	// missing a required operand over the window. Never re-derived client-side.
 	Summary *Point `json:"summary,omitempty"`
+	// Days is the whole-day span of the query window [From, To). It is the honest
+	// denominator for a per-day average of a `sum` summary (total ÷ Days) — including
+	// a Baseline window of a different length — so the client divides a server total
+	// by a server day-count rather than guessing from the (gap-pruned) points.
+	Days int `json:"days"`
+	// Mean is the arithmetic mean of the Metric's values over the window, set only for
+	// a `latest` Metric — its "average over the period" (e.g. mean body mass). The
+	// summary of a `latest` Metric is its last reading; Mean is what the client shows
+	// instead when summaries are rendered as period averages, so a trend (this period's
+	// mean vs the compared period's mean) is legible. Nil is a gap (no data).
+	Mean *float64 `json:"mean,omitempty"`
+}
+
+// windowDays is the whole-day span of a query window [from, to), rounded to the
+// nearest day (windows are day-aligned by timeaxis, so this is exact in practice).
+// It is the per-day denominator carried on the Series.
+func windowDays(from, to time.Time) int {
+	return int(math.Round(to.Sub(from).Hours() / 24))
 }
 
 // Engine answers aggregated-series queries against the measurements table.
@@ -197,6 +216,7 @@ func (e Engine) Series(ctx context.Context, req Request) (Series, error) {
 		Aggregation: metric.Aggregation,
 		Bucket:      req.Bucket,
 		Points:      []Point{},
+		Days:        windowDays(req.From, req.To),
 	}
 
 	source, ok, err := e.resolveSource(ctx, req)
@@ -219,7 +239,34 @@ func (e Engine) Series(ctx context.Context, req Request) (Series, error) {
 		return Series{}, err
 	}
 	out.Summary = summary
+
+	// A `latest` Metric also carries its window mean, so it can be shown as a period
+	// average (mean body mass) rather than the last reading — the better trend view.
+	if metric.Aggregation == catalog.Latest && summary != nil {
+		mean, err := e.summaryMean(ctx, req, source)
+		if err != nil {
+			return Series{}, err
+		}
+		out.Mean = mean
+	}
 	return out, nil
+}
+
+// summaryMean is the arithmetic mean of a Metric's values over the window, from the
+// winning Source — the period average behind a `latest` Metric's trend. A NULL mean
+// (empty window) is a nil gap.
+func (e Engine) summaryMean(ctx context.Context, req Request, source string) (*float64, error) {
+	const q = `SELECT AVG(value) FROM measurements
+		WHERE account_id = ? AND metric = ? AND source = ? AND start_at >= ? AND start_at < ?`
+	var v sql.NullFloat64
+	err := e.DB.QueryRowContext(ctx, q, req.AccountID, req.Metric, source, rfc3339(req.From), rfc3339(req.To)).Scan(&v)
+	if err != nil {
+		return nil, fmt.Errorf("query: summary mean: %w", err)
+	}
+	if !v.Valid {
+		return nil, nil
+	}
+	return &v.Float64, nil
 }
 
 // seriesDerived recomputes a derived Metric per bucket from its Formula operands
@@ -239,6 +286,7 @@ func (e Engine) seriesDerived(ctx context.Context, req Request, metric catalog.M
 		Aggregation: metric.Aggregation, // empty: a derived Metric has no rule
 		Bucket:      req.Bucket,
 		Points:      []Point{},
+		Days:        windowDays(req.From, req.To),
 	}
 
 	// Resolve each distinct operand into its own per-bucket aggregated values.
