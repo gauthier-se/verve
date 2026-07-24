@@ -88,6 +88,62 @@ func TestSeriesSumPerDay(t *testing.T) {
 	if len(s.Points) != 2 || s.Points[0] != want[0] || s.Points[1] != want[1] {
 		t.Errorf("points = %+v, want %+v", s.Points, want)
 	}
+	// Days is the window's whole-day span (Jan 1 → Jan 3), the per-day denominator:
+	// 350 total ÷ 2 days = 175/day (ADR 0019).
+	if s.Days != 2 {
+		t.Errorf("days = %d, want 2 (the window span)", s.Days)
+	}
+}
+
+// TestSeriesLatestCarriesWindowMean locks that a `latest` Metric reports both its
+// last reading (the summary) and its window mean (the period-average trend view).
+func TestSeriesLatestCarriesWindowMean(t *testing.T) {
+	e, models, acc := setup(t)
+	seed(t, e.DB, models, acc, []meas{
+		{"body_mass", 80, "2024-01-01T08:00:00Z", "Health"},
+		{"body_mass", 82, "2024-01-02T08:00:00Z", "Health"},
+		{"body_mass", 90, "2024-01-03T08:00:00Z", "Health"},
+	})
+
+	s, err := e.Series(context.Background(), Request{
+		AccountID: acc, Metric: "body_mass", Bucket: Day,
+		From: mustTime(t, "2024-01-01T00:00:00Z"), To: mustTime(t, "2024-01-04T00:00:00Z"),
+	})
+	if err != nil {
+		t.Fatalf("Series: %v", err)
+	}
+	if s.Summary == nil || s.Summary.Value != 90 {
+		t.Errorf("summary = %+v, want the last reading 90", s.Summary)
+	}
+	if s.Mean == nil || *s.Mean != 84 { // (80 + 82 + 90) / 3
+		t.Errorf("mean = %v, want 84", s.Mean)
+	}
+}
+
+// TestCompareCarriesPerWindowDays locks that the current and Baseline series each
+// carry their own day span, so a per-day average divides each period by its own length
+// even when the windows differ (ADR 0019).
+func TestCompareCarriesPerWindowDays(t *testing.T) {
+	e, models, acc := setup(t)
+	seed(t, e.DB, models, acc, []meas{
+		{"steps", 100, "2024-01-10T08:00:00Z", "Watch"},
+		{"steps", 100, "2024-01-02T08:00:00Z", "Watch"},
+	})
+
+	// Current window is 3 days; the Baseline window is 7 days.
+	cmp, err := e.Compare(context.Background(), Request{
+		AccountID: acc, Metric: "steps", Bucket: Day,
+		From: mustTime(t, "2024-01-10T00:00:00Z"), To: mustTime(t, "2024-01-13T00:00:00Z"),
+	}, mustTime(t, "2024-01-01T00:00:00Z"), mustTime(t, "2024-01-08T00:00:00Z"))
+	if err != nil {
+		t.Fatalf("Compare: %v", err)
+	}
+	if cmp.Current.Days != 3 {
+		t.Errorf("current days = %d, want 3", cmp.Current.Days)
+	}
+	if cmp.Baseline.Days != 7 {
+		t.Errorf("baseline days = %d, want 7", cmp.Baseline.Days)
+	}
 }
 
 func TestSeriesAverageBand(t *testing.T) {

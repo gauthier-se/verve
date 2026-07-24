@@ -151,6 +151,32 @@ func (m MeasurementModel) HasAny(ctx context.Context, accountID int64) (bool, er
 	return exists, nil
 }
 
+// DistinctMetrics lists the Catalog slugs the Account has at least one Measurement
+// for, sorted for a stable listing. It is the row set of the Ledger overview
+// (ADR 0021) — only Metrics with data, so the scoreboard shows no empty rows. Uses
+// the measurements_account_metric_start index.
+func (m MeasurementModel) DistinctMetrics(ctx context.Context, accountID int64) ([]string, error) {
+	const query = `SELECT DISTINCT metric FROM measurements WHERE account_id = ? ORDER BY metric`
+	rows, err := m.DB.QueryContext(ctx, query, accountID)
+	if err != nil {
+		return nil, fmt.Errorf("data: measurement DistinctMetrics: %w", err)
+	}
+	defer rows.Close()
+
+	var metrics []string
+	for rows.Next() {
+		var metric string
+		if err := rows.Scan(&metric); err != nil {
+			return nil, fmt.Errorf("data: measurement DistinctMetrics scan: %w", err)
+		}
+		metrics = append(metrics, metric)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("data: measurement DistinctMetrics: %w", err)
+	}
+	return metrics, nil
+}
+
 // RecordImport writes the summary row for one Import run and populates its
 // generated ID and timestamp.
 func (m MeasurementModel) RecordImport(ctx context.Context, imp *Import) error {

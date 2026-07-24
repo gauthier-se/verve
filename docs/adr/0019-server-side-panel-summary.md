@@ -32,3 +32,25 @@ over the whole Time range, and it is computed **server-side** and returned on th
   is meaningless.
 - The summary is universal and carries no per-Panel toggle, so a Panel never has to
   be configured into showing its number.
+- **Average rendering (follow-up).** A global display preference (localStorage, like the
+  theme — not per-Panel, not server state) can show each summary as its **period
+  average** instead of the window total, since an average reads better for trends. Per
+  Metric shape:
+  - **extensive** (a `sum`, or a derived plain weighted sum with no denominator — total
+    energy = active + basal, calorie balance) → **per-day average** (total ÷ window
+    days), so "≈13 k steps/day" beats "94 k this week" and a derived total stays
+    consistent with its per-day components;
+  - **`latest`** (body mass) → the **window mean** of its readings, not the last one, so
+    the trend (this period's mean vs the compared period's mean) is legible;
+  - **intensive** (an `average` rate, a ratio) → unchanged; it is already a mean.
+
+  Nothing is re-aggregated client-side: the total, its day count, and the mean all come
+  from the server. The `Series` therefore carries `days` (the window's whole-day span,
+  the per-day denominator — right even for a Baseline of a different length) and, for a
+  `latest` Metric, `mean` (the window average). A second preference toggles compact
+  ("94,1 k") vs exact ("94 100") numbers.
+- **Legible delta.** In comparison the summary shows the **compared period's own figure**
+  beside the delta ("↓ 18 % (vs 1 166,82)") — a bare percentage against an invisible
+  reference was not understood. The arrow follows the *shown* magnitude, so a change that
+  rounds to zero reads neutral ("→ 0 %") rather than a contradictory "↑ 0 %". Still never
+  colored good/bad (ADR 0015).

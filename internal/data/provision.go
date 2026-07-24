@@ -5,8 +5,8 @@ import (
 	"fmt"
 )
 
-// defaultDashboardName is the seeded starter board (ADR 0018): "Aperçu" ("Overview").
-const defaultDashboardName = "Aperçu"
+// defaultDashboardName is the seeded starter board (ADR 0018): "Overview".
+const defaultDashboardName = "Overview"
 
 // defaultPanels is the curated template seeded into every new Account's starter
 // board (ADR 0018), in this order. The Metrics are iPhone-universal (no Watch
@@ -25,7 +25,7 @@ var defaultPanels = []struct {
 
 // CreateAccount is the one account-creation path every caller shares (the CLI
 // today, the web bootstrap next): it inserts the Account and seeds its default
-// "Aperçu" Dashboard in a single transaction, so no Account is ever created
+// "Overview" Dashboard in a single transaction, so no Account is ever created
 // without a starting board and seeding cannot be forgotten by a caller (ADR
 // 0018). A taken email yields ErrDuplicateEmail and nothing is written.
 func (m Models) CreateAccount(ctx context.Context, a *Account) error {
@@ -47,7 +47,7 @@ func (m Models) CreateAccount(ctx context.Context, a *Account) error {
 	return nil
 }
 
-// seedDefaultDashboard inserts the "Aperçu" Dashboard and its template Panels for
+// seedDefaultDashboard inserts the "Overview" Dashboard and its template Panels for
 // accountID, in template order, reusing the ordinary Dashboard/Panel insert path
 // (ADR 0012) so a seeded board is an ordinary, editable Dashboard afterward.
 func seedDefaultDashboard(ctx context.Context, q querier, accountID int64) error {
