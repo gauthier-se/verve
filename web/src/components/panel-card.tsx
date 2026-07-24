@@ -1,8 +1,8 @@
 import * as React from "react";
-import { ChevronDown, ChevronUp, GripVertical, Info, Plus, Settings2, Trash2, X } from "lucide-react";
+import { ChevronDown, ChevronUp, GripVertical, Plus, Settings2, Trash2, X } from "lucide-react";
 import { useDeletePanel, useUpdatePanel } from "@/hooks/use-dashboards";
 import { useSeries, type BaselineParams } from "@/hooks/use-series";
-import { CHART_TYPE_LABEL, compatibleChartTypes, formatFormula, metricLabel } from "@/lib/metrics";
+import { CHART_TYPE_LABEL, compatibleChartTypes, metricLabel } from "@/lib/metrics";
 import type { RangeTokens } from "@/lib/time-range";
 import type { Bucket, ChartType, Metric, Panel, PanelMetric } from "@/lib/types";
 import { Button } from "./ui/button";
@@ -10,6 +10,8 @@ import { Card } from "./ui/card";
 import { Label } from "./ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { FormulaHint } from "./formula-hint";
+import { MetricIcon } from "./metric-icon";
 import { PanelChart } from "./panel-chart";
 import { PanelLegend, PanelSummary } from "./panel-summary";
 import { CenteredSpinner } from "./spinner";
@@ -41,10 +43,9 @@ export function PanelCard({ panel, catalog, range, baseline, dragHandle }: Panel
   // The effective bucket comes back on the series (the server auto-derives it from
   // the span unless the Panel overrides it); the override shows before the fetch.
   const bucket = list?.[0]?.bucket ?? panel.bucket;
-  // A single derived Panel surfaces its Formula on hover of the title (ADR 0014),
-  // so the user understands what the number is.
+  // A single derived Panel surfaces its Formula in a tooltip on the info icon
+  // (ADR 0014), so the user understands how the number is computed.
   const metric = multi ? undefined : catalog.get(slugs[0] ?? "");
-  const formulaTip = metric?.formula ? `Formula: ${formatFormula(metric.formula)}` : undefined;
   const title = slugs.map(metricLabel).join(" · ");
 
   return (
@@ -53,13 +54,12 @@ export function PanelCard({ panel, catalog, range, baseline, dragHandle }: Panel
         <div className="flex min-w-0 items-center gap-1">
           {dragHandle}
           <div className="min-w-0">
-            <div
-              className="flex items-center gap-1"
-              title={formulaTip ?? (multi ? title : undefined)}
-              aria-label={formulaTip}
-            >
-              <span className="truncate text-sm font-medium">{title}</span>
-              {metric?.formula && <Info className="size-3.5 shrink-0 text-muted-foreground/70" />}
+            <div className="flex items-center gap-1.5">
+              {!multi && slugs[0] && <MetricIcon slug={slugs[0]} className="size-4" />}
+              <span className="truncate text-sm font-medium" title={multi ? title : undefined}>
+                {title}
+              </span>
+              {metric?.formula && <FormulaHint formula={metric.formula} />}
             </div>
             <div className="text-xs text-muted-foreground">
               {bucket}
@@ -72,7 +72,7 @@ export function PanelCard({ panel, catalog, range, baseline, dragHandle }: Panel
 
       {list &&
         (multi ? (
-          <PanelLegend list={list} comparing={comparing} />
+          <PanelLegend list={list} comparing={comparing} catalog={catalog} />
         ) : (
           list[0] && <PanelSummary series={list[0]} baseline={query.data?.baseline} metric={metric} />
         ))}

@@ -1,12 +1,13 @@
 import * as React from "react";
 import { Link, useLocation, useParams } from "@tanstack/react-router";
 import { useHotkeys } from "react-hotkeys-hook";
-import { Activity, Download, LogOut, Plus } from "lucide-react";
+import { Activity, Download, LogOut, Plus, Table2 } from "lucide-react";
 import { useLogout, useMe } from "@/hooks/use-auth";
 import { useDashboards } from "@/hooks/use-dashboards";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { NewDashboardDialog } from "./new-dashboard-dialog";
+import { SummaryPrefsMenu } from "./panel-prefs";
 import { ThemeToggle } from "./theme";
 
 /** AppShell is the persistent frame: a sidebar listing the Account's dashboards
@@ -19,12 +20,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const params = useParams({ strict: false }) as { dashboardId?: string };
   const activeId = params.dashboardId;
   const onImportPage = useLocation({ select: (l) => l.pathname === "/import" });
+  const onDataPage = useLocation({ select: (l) => l.pathname === "/data" });
 
   // Hotkey: "n" opens the new-dashboard dialog (react-hotkeys-hook, ADR 0013).
   useHotkeys("n", () => setCreateOpen(true), { preventDefault: true });
 
   return (
-    <div className="flex min-h-screen">
+    // h-screen + overflow-hidden pins the shell to the viewport so the sidebar and the
+    // routed content each own their scroll — the page itself never scrolls as one block.
+    <div className="flex h-screen overflow-hidden">
       <aside className="flex w-60 shrink-0 flex-col border-r bg-card/40">
         <div className="flex items-center gap-2 px-4 py-4">
           <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
@@ -59,7 +63,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           ))}
         </nav>
 
-        <div className="border-t px-2 py-2">
+        <div className="space-y-0.5 border-t px-2 py-2">
+          <Link
+            to="/data"
+            className={cn(
+              "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-accent",
+              onDataPage ? "bg-accent font-medium text-accent-foreground" : "text-muted-foreground",
+            )}
+          >
+            <Table2 className="size-4" /> Data
+          </Link>
           <Link
             to="/import"
             className={cn(
@@ -76,6 +89,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             {me.data?.email}
           </span>
           <div className="flex items-center">
+            <SummaryPrefsMenu />
             <ThemeToggle />
             <Button variant="ghost" size="icon" onClick={() => logout.mutate()} aria-label="Sign out">
               <LogOut className="size-4" />
