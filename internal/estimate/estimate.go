@@ -279,6 +279,7 @@ const (
 	metricBodyFat   = "body_fat_percentage"
 	metricHeight    = "height"
 	metricIntake    = "dietary_energy"
+	metricProtein   = "dietary_protein"
 	metricTotalBurn = "total_energy_expenditure"
 )
 

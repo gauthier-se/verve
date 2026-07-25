@@ -10,6 +10,7 @@ import (
 
 	"github.com/gauthier-se/verve/internal/auth"
 	"github.com/gauthier-se/verve/internal/data"
+	"github.com/gauthier-se/verve/internal/estimate"
 	"github.com/gauthier-se/verve/internal/query"
 )
 
@@ -40,6 +41,7 @@ type Server struct {
 	logger        *slog.Logger
 	models        data.Models
 	engine        query.Engine
+	estimates     estimate.Engine
 	resolver      authResolver
 	loginLimiter  *loginLimiter
 	secureCookies bool
@@ -75,6 +77,7 @@ func New(logger *slog.Logger, models data.Models, engine query.Engine, cfg Confi
 		logger:        logger,
 		models:        models,
 		engine:        engine,
+		estimates:     estimate.Engine{Query: engine},
 		resolver:      sessionResolver{sessions: models.AuthSessions},
 		loginLimiter:  newLoginLimiter(),
 		secureCookies: cfg.SecureCookies,
@@ -114,6 +117,19 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /v1/measurements", s.requireAuth(s.handleCreateMeasurement))
 	mux.Handle("GET /v1/measurements", s.requireAuth(s.handleListMeasurements))
 	mux.Handle("DELETE /v1/measurements/{id}", s.requireAuth(s.handleDeleteMeasurement))
+
+	// The Plan: Estimates, Targets and Phases (ADR 0023). GET /v1/plan answers the whole
+	// page in one call, deriving the targets server-side so the client never re-computes.
+	mux.Handle("GET /v1/plan", s.requireAuth(s.handlePlan))
+	mux.Handle("GET /v1/phases", s.requireAuth(s.handleListPhases))
+	mux.Handle("POST /v1/phases", s.requireAuth(s.handleOpenPhase))
+	mux.Handle("PATCH /v1/phases/{id}", s.requireAuth(s.handleClosePhase))
+	mux.Handle("DELETE /v1/phases/{id}", s.requireAuth(s.handleDeletePhase))
+
+	// Profile: the Account attributes that are not Measurements (date of birth,
+	// biological sex, body-composition trust).
+	mux.Handle("GET /v1/profile", s.requireAuth(s.handleGetProfile))
+	mux.Handle("PATCH /v1/profile", s.requireAuth(s.handleUpdateProfile))
 
 	// Web self-service import: upload a .zip, then poll the job (ADR 0016).
 	mux.Handle("POST /v1/imports", s.requireAuth(s.handleCreateImport))

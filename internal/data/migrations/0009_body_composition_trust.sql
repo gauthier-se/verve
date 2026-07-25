@@ -1,0 +1,12 @@
+-- 0009_body_composition_trust: how much the Account trusts its body-composition data.
+--
+-- The lean-mass equations (Katch-McArdle, Cunningham) are the more accurate ones *when
+-- the composition input is real*. A cheap bioimpedance scale can report a body fat that
+-- is essentially a function of body weight — on the reference export, body fat tracks
+-- body mass at r = 0.99 over 474 days — in which case those equations are weight
+-- equations in disguise and preferring them is actively misleading.
+--
+-- Verve holds that evidence and still asks, rather than inferring: the Account knows
+-- whether the figure came from a DEXA scan or a bathroom scale, and that is a judgement,
+-- not a statistic. NULL means unset, and the API reports a derived suggestion instead.
+ALTER TABLE accounts ADD COLUMN body_composition_trust TEXT;

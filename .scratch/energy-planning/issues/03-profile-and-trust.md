@@ -65,3 +65,32 @@ ADR 0022 (Manual entry, and why height is not a column), ADR 0023.
 CONTEXT.md: **Account**, **Basal equation**, **Manual entry**.
 `internal/data/account.go`, `internal/data/migrations/`,
 `internal/api/authhandlers.go` (`handleMe`).
+
+## Comments
+
+Server side implemented on branch `feat/manual-entry`, **folded into issue 02** — see that
+issue's comments for why (preselection needs the trust column, so shipping 02 first would
+have meant writing a stub).
+
+Delivered here: migration `0009_body_composition_trust`, `AccountModel.UpdateProfile` with
+a partial `ProfilePatch`, `GET` / `PATCH /v1/profile`, and `estimate.Preselect` /
+`estimate.DerivedTrust`.
+
+- `ProfilePatch` uses double pointers so a partial update can distinguish the three cases
+  that matter: absent (leave alone), null (clear), and a value (set). A client sending one
+  field cannot blank the others by omission — pinned by
+  `TestUpdateProfilePatchesNamedFieldsOnly`.
+- Preselection **demotes, never hides**: with trust `estimated` or `unknown`, Mifflin-St
+  Jeor leads and the lean-mass equations follow, but they stay selectable and their figures
+  stay on screen. `TestPreselectFallsBackToWhatIsComputable` covers the reference Account's
+  real case — age and sex absent, so even distrust leaves Katch-McArdle as the only thing
+  that can run.
+- The derived trust suggestion treats a **Manual** entry as measured and a Connector as
+  estimated: typing a value already expresses a judgement, whereas a scale expresses only
+  that a scale was stood on. Verve still asks rather than inferring from the r = 0.99
+  correlation it can see (PRD, "does NOT do").
+- `biological_sex` is validated with a message stating what it is for — an input to two of
+  the four equations, nothing more — so the field does not read as Verve modelling gender.
+
+**Remaining for issue 04:** the profile UI. It was always specified to live on the Plan
+page, so it lands with the page rather than as a separate surface.
