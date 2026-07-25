@@ -1,6 +1,6 @@
 # 02 — API: create, list and delete manual Measurements
 
-Status: ready-for-agent
+Status: done
 Blocked by: 01
 
 ## Goal
@@ -65,3 +65,38 @@ ADR 0022, ADR 0002 (closed Catalog), ADR 0003.
 `internal/api/server.go`, `internal/api/handlers.go`, `internal/api/validator.go`,
 `internal/api/errors.go`. Follow the shape of `ledgerhandlers.go` for a small
 handler + its test file.
+
+## Comments
+
+Implemented on branch `feat/manual-entry`, in `internal/api/measurementhandlers.go`.
+
+- **`InsertOne` now returns `(created bool, err error)`.** The handler needs 201-vs-200
+  and the draft resolved it with a `GetByContentKey` lookup before every insert — an
+  extra round trip on the common path to learn something the insert already knows.
+  Signature changed instead; issue 01's tests now assert the flag, which makes the
+  idempotence contract explicit rather than inferred from a row count.
+- `forbiddenResponse` is new: the codebase had no 403 anywhere. Its comment records why
+  this case is not a 404 — the row exists and belongs to the Account, it is the
+  *operation* that is refused, and answering "not found" would be a lie the client
+  cannot act on.
+- The raw value fed to the content key is formatted with
+  `strconv.FormatFloat(v, 'f', -1, 64)`, so the key cannot depend on how a client
+  happened to spell the number (`91.2` vs `91.20`).
+- `value` is `*float64` in the input struct: absent must be distinguishable from zero,
+  since a zero step count is a legitimate entry.
+- `GET` accepts only `source=manual` and 422s otherwise, rather than silently listing
+  everything — an unrecognized filter must not hand back a different resource than was
+  asked for.
+- 9 tests, including `TestManualEntryOverridesSeriesValue`, which goes end to end:
+  POST a correction, then read `/v1/series` and assert the corrected day changed, the
+  two neighbouring days did not, and `source` still reports "Zepp Life" — one corrected
+  day does not rename the whole curve.
+- Full suite green.
+
+### Deviation from the acceptance list
+
+The acceptance criteria asked for a distinguishable 422 on a `duration_by_state` Metric.
+The guard is implemented, but it is **unreachable through a Catalog slug**: no Catalog
+Metric carries that rule today (`internal/catalog/catalog.go`), which is why
+`internal/query` guards it the same defensive way. Untestable as specified, kept as a
+guard rather than dropped.

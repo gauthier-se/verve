@@ -109,6 +109,12 @@ func (s *Server) Handler() http.Handler {
 	// The Ledger overview: one folded row per Metric with data (ADR 0021).
 	mux.Handle("GET /v1/ledger", s.requireAuth(s.handleLedger))
 
+	// Manual entries: the Account's own write path into the measurement store
+	// (ADR 0022). DELETE refuses anything but a Manual row.
+	mux.Handle("POST /v1/measurements", s.requireAuth(s.handleCreateMeasurement))
+	mux.Handle("GET /v1/measurements", s.requireAuth(s.handleListMeasurements))
+	mux.Handle("DELETE /v1/measurements/{id}", s.requireAuth(s.handleDeleteMeasurement))
+
 	// Web self-service import: upload a .zip, then poll the job (ADR 0016).
 	mux.Handle("POST /v1/imports", s.requireAuth(s.handleCreateImport))
 	mux.Handle("GET /v1/imports", s.requireAuth(s.handleImportStatus))

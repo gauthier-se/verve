@@ -30,6 +30,15 @@ func (s *Server) notFoundResponse(w http.ResponseWriter, r *http.Request, messag
 	s.errorResponse(w, r, http.StatusNotFound, message)
 }
 
+// forbiddenResponse returns a 403 for a request the Account is authenticated for but
+// not allowed to make. It is deliberately distinct from a 404: the resource exists and
+// is the Account's own, the *operation* is refused — which is exactly the shape of
+// deleting an imported Measurement (ADR 0022), where saying "not found" would be a lie
+// the client could not act on.
+func (s *Server) forbiddenResponse(w http.ResponseWriter, r *http.Request, message string) {
+	s.errorResponse(w, r, http.StatusForbidden, message)
+}
+
 // failedValidationResponse returns a 422 carrying the per-field validation
 // errors, so a client can point at exactly which parameter was wrong.
 func (s *Server) failedValidationResponse(w http.ResponseWriter, r *http.Request, errors map[string]string) {
