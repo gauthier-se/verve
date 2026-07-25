@@ -8,6 +8,7 @@ import {
   useProfile,
   useUpdateProfile,
 } from "@/hooks/use-plan";
+import { ApiError } from "@/lib/api";
 import { formatExact } from "@/lib/format";
 import type {
   Adherence,
@@ -466,11 +467,15 @@ function ProfileCard({ onEnter }: { onEnter: () => void }) {
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor="dob">Date of birth</Label>
+          {/* Saved on `change`, not on blur. A native date input commits its value when a
+              date is picked or fully typed, and the user has no reason to click elsewhere
+              afterwards — on blur, picking a date and reloading discarded it silently
+              while the field went on displaying it as though it had been kept. */}
           <Input
             id="dob"
             type="date"
             defaultValue={profile.data?.date_of_birth ?? ""}
-            onBlur={(e) => {
+            onChange={(e) => {
               const value = e.target.value;
               if (value && value !== profile.data?.date_of_birth) {
                 update.mutate({ date_of_birth: value });
@@ -525,7 +530,19 @@ function ProfileCard({ onEnter }: { onEnter: () => void }) {
         </p>
       </div>
 
-      <p className="mt-5 text-xs text-muted-foreground">
+      {/* A silent save is indistinguishable from no save at all — the failure that made
+          this card look broken even while it worked. */}
+      <p className="mt-4 h-4 text-xs" aria-live="polite">
+        {update.isPending && <span className="text-muted-foreground">Saving…</span>}
+        {update.isError && (
+          <span className="text-destructive">
+            {update.error instanceof ApiError ? update.error.message : "Could not save."}
+          </span>
+        )}
+        {update.isSuccess && !update.isPending && <span className="text-muted-foreground">Saved.</span>}
+      </p>
+
+      <p className="mt-1 text-xs text-muted-foreground">
         Height, body mass and body fat are measurements, not profile fields —{" "}
         <button type="button" className="underline underline-offset-2" onClick={onEnter}>
           enter one by hand

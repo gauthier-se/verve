@@ -458,3 +458,103 @@ func TestPlanAndProfileRequireAuth(t *testing.T) {
 		}
 	}
 }
+
+// TestProfileNullClearsAField goes through the HTTP layer on purpose. The data-layer test
+// built a ProfilePatch in Go directly, so it proved the model and never exercised the JSON
+// contract — which is how `{"date_of_birth": null}` shipped as a silent no-op. A `**string`
+// field cannot express the difference: encoding/json decodes null by nilling the outer
+// pointer, giving byte-for-byte the same result as an absent key.
+func TestProfileNullClearsAField(t *testing.T) {
+	srv, _, cookie := newTestServer(t)
+
+	res, _ := send(t, srv, http.MethodPatch, "/v1/profile", map[string]any{
+		"date_of_birth": "1996-11-10", "biological_sex": "male",
+	}, cookie)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("set status = %d, want 200", res.StatusCode)
+	}
+
+	res, body := send(t, srv, http.MethodPatch, "/v1/profile", map[string]any{
+		"date_of_birth": nil,
+	}, cookie)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("clear status = %d, want 200", res.StatusCode)
+	}
+	var profile profileView
+	if err := json.Unmarshal(body["profile"], &profile); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if profile.DateOfBirth != nil {
+		t.Errorf("date_of_birth = %q, want cleared by an explicit null", *profile.DateOfBirth)
+	}
+	if profile.BiologicalSex == nil || *profile.BiologicalSex != "male" {
+		t.Errorf("biological_sex = %v; clearing one field must not touch another", profile.BiologicalSex)
+	}
+}
+
+// TestProfileOmittedFieldIsUntouched is the other half of the contract: absent must remain
+// distinguishable from null now that both are representable.
+func TestProfileOmittedFieldIsUntouched(t *testing.T) {
+	srv, _, cookie := newTestServer(t)
+
+	send(t, srv, http.MethodPatch, "/v1/profile", map[string]any{
+		"date_of_birth": "1996-11-10", "biological_sex": "male",
+	}, cookie)
+	_, body := send(t, srv, http.MethodPatch, "/v1/profile", map[string]any{
+		"body_composition_trust": "measured",
+	}, cookie)
+
+	var profile profileView
+	if err := json.Unmarshal(body["profile"], &profile); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if profile.DateOfBirth == nil || *profile.DateOfBirth != "1996-11-10" {
+		t.Errorf("date_of_birth = %v, want untouched by an unrelated patch", profile.DateOfBirth)
+	}
+	if profile.BiologicalSex == nil || *profile.BiologicalSex != "male" {
+		t.Errorf("biological_sex = %v, want untouched", profile.BiologicalSex)
+	}
+}
+
+func TestProfileRejectsMalformedField(t *testing.T) {
+	srv, _, cookie := newTestServer(t)
+
+	res, _ := send(t, srv, http.MethodPatch, "/v1/profile", map[string]any{"date_of_birth": 1996}, cookie)
+	if res.StatusCode != http.StatusBadRequest {
+		t.Errorf("numeric date status = %d, want 400", res.StatusCode)
+	}
+	res, _ = send(t, srv, http.MethodPatch, "/v1/profile", map[string]any{"favourite_colour": "blue"}, cookie)
+	if res.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("unknown field status = %d, want 422", res.StatusCode)
+	}
+}
+
+// TestProfileClearingRemovesAnEquation closes the loop: clearing the date of birth must
+// make the anthropometric equations uncomputable again, not leave a stale figure behind.
+func TestProfileClearingRemovesAnEquation(t *testing.T) {
+	srv, models, cookie := newTestServer(t)
+	seedPlanData(t, models, 28)
+
+	send(t, srv, http.MethodPatch, "/v1/profile", map[string]any{
+		"date_of_birth": "1996-11-10", "biological_sex": "male",
+	}, cookie)
+	plan := getPlan(t, srv, "/v1/plan", cookie)
+	if kcalFor(plan, "mifflin_st_jeor") == nil {
+		t.Fatal("Mifflin-St Jeor uncomputable with a date of birth and a sex set")
+	}
+
+	send(t, srv, http.MethodPatch, "/v1/profile", map[string]any{"date_of_birth": nil}, cookie)
+	plan = getPlan(t, srv, "/v1/plan", cookie)
+	if kcalFor(plan, "mifflin_st_jeor") != nil {
+		t.Error("Mifflin-St Jeor still computable after the date of birth was cleared")
+	}
+}
+
+func kcalFor(plan planPayload, equation string) *float64 {
+	for _, b := range plan.Basal {
+		if b.Equation == equation {
+			return b.Kcal
+		}
+	}
+	return nil
+}
