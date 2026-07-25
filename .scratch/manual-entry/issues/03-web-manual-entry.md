@@ -1,6 +1,6 @@
 # 03 — Web: the manual-entry surface
 
-Status: ready-for-agent
+Status: done
 Blocked by: 02
 
 ## Goal
@@ -58,3 +58,41 @@ CONTEXT.md: **Manual entry**, **Catalog**. ADR 0022, ADR 0013 (client SPA).
 `web/src/components/data-page.tsx` (host), `web/src/lib/metrics.ts` (Catalog
 metadata on the client), `web/src/components/ui/` (shadcn primitives),
 `web/src/components/day-range-picker.tsx` (date control to reuse).
+
+## Comments
+
+Implemented on branch `feat/manual-entry`.
+
+- `web/src/components/manual-entry-dialog.tsx` — searchable Catalog picker (same shape as
+  `add-panel-dialog.tsx`, deliberately), value field labelled with the canonical unit,
+  `datetime-local` defaulting to now, and the entries list with delete underneath. Hosted
+  from the Data page header ("Enter a value"), where the numbers already live.
+- `web/src/hooks/use-measurements.ts` — list/create/delete, following the
+  `useInvalidate` shape of `use-dashboards.ts`.
+- **Invalidation covers `series` and `ledger`, not just the entry list.** A Manual entry
+  changes the resolved row set behind the graphs (the overlay), so refreshing only the
+  list would leave the charts displaying the very value that was just corrected.
+- **The percent rescale lives in exactly one place**, keyed off the Catalog unit:
+  `toStored` / `toDisplay` in the dialog. A second copy of that rule is how a 26-point
+  error that still looks plausible gets shipped.
+- The picker excludes derived Metrics (computed, never entered — ADR 0014) and
+  `duration_by_state`; offering either would be an invitation to a 422.
+- `tsc --noEmit` and `vite build` clean. No lint script exists in this project.
+
+### Deviations from the issue
+
+- **The date control was not reused.** `day-range-picker.tsx` is a range picker built on
+  the calendar popover; a single instant with an optional time is a different control,
+  and bending it would have cost more than the native `datetime-local` it replaced.
+  Noted rather than silently skipped.
+- **Reached from the Data page header rather than a section below the form.** Same page,
+  one dialog holding both the form and the deletable list, which keeps entry and undo in
+  the same glance.
+
+### End-to-end verification
+
+Against the real binary on a throwaway DB, not fixtures: register → POST an entry (201)
+→ replay it (200, idempotent) → derived Metric refused (422 with its message) → the
+series shows 0.27 / **0.22** / 0.27 across three days with `source` still "Zepp Life" →
+DELETE (204) → the series reverts to 0.27 throughout and `mean` moves 0.2533 → 0.27,
+confirming `summaryMean` goes through the shared filter too.

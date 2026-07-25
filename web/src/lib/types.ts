@@ -165,3 +165,17 @@ export interface Series {
    *  better trend view. Server-computed; absent for non-latest Metrics or an empty window. */
   mean?: number;
 }
+
+/** ManualMeasurement is one Manual entry: a Measurement the Account typed rather than
+ *  a Connector imported (ADR 0022). Unlike a Series point it carries an `id`, because
+ *  it is the only kind of Measurement Verve will delete and deleting needs an address.
+ *  `value` is the canonical stored value — for a `%` Metric that is a fraction (0.27,
+ *  not 27); rescaling for display is the client's job. */
+export interface ManualMeasurement {
+  id: number;
+  metric: string;
+  value: number;
+  unit: string;
+  measured_at: string;
+  source: string;
+}

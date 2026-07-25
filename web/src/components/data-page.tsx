@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Link } from "@tanstack/react-router";
-import { Check, ChevronDown, ChevronRight, Copy, Download } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Copy, Download, Pencil } from "lucide-react";
 import { useLedger } from "@/hooks/use-ledger";
 import { formatExact, formatSummaryValue } from "@/lib/format";
 import { metricLabel } from "@/lib/metrics";
@@ -12,6 +12,7 @@ import { Button } from "./ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { CenteredSpinner } from "./spinner";
 import { LedgerDetailTable } from "./ledger-detail-table";
+import { ManualEntryDialog } from "./manual-entry-dialog";
 import { MetricIcon } from "./metric-icon";
 import { formatBucket } from "./panel-chart";
 
@@ -25,6 +26,7 @@ export function DataPage() {
   const ledger = useLedger();
   const [expanded, setExpanded] = React.useState<string | null>(null);
   const [preset, setPreset] = React.useState<Preset>("1y");
+  const [entryOpen, setEntryOpen] = React.useState(false);
   const range: RangeTokens = { preset, from: null, to: null };
 
   return (
@@ -32,6 +34,9 @@ export function DataPage() {
       <header className="flex flex-wrap items-center justify-between gap-3 border-b px-6 py-3">
         <h1 className="text-xl font-semibold">Data</h1>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" className="h-7" onClick={() => setEntryOpen(true)}>
+            <Pencil className="size-3.5" /> Enter a value
+          </Button>
           <span className="text-xs text-muted-foreground">Detail range</span>
           <div className="flex items-center rounded-md border p-0.5">
             {RANGE_PRESETS.map((p) => (
@@ -58,6 +63,8 @@ export function DataPage() {
           <Scoreboard rows={ledger.data ?? []} expanded={expanded} onToggle={setExpanded} range={range} />
         )}
       </div>
+
+      <ManualEntryDialog open={entryOpen} onOpenChange={setEntryOpen} />
     </div>
   );
 }
