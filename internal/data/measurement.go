@@ -110,8 +110,9 @@ func (m MeasurementModel) InsertBatch(ctx context.Context, ms []Measurement) ([]
 // A content-key collision is not an error: it means this exact value at this exact
 // time is already stored, so the existing row's id is returned and the write is a
 // no-op. That is the same idempotence a re-import gets (ADR 0006) — typing a value
-// twice should be as harmless as importing the same export twice.
-func (m MeasurementModel) InsertOne(ctx context.Context, row *Measurement) error {
+// twice should be as harmless as importing the same export twice. The returned bool
+// reports which happened, so a handler can answer 201 or 200 without a second query.
+func (m MeasurementModel) InsertOne(ctx context.Context, row *Measurement) (bool, error) {
 	const insert = `
 		INSERT INTO measurements
 			(account_id, metric, value, original_unit, start_at, end_at, source, content_key)
@@ -124,19 +125,19 @@ func (m MeasurementModel) InsertOne(ctx context.Context, row *Measurement) error
 		row.StartAt, row.EndAt, row.Source, row.ContentKey,
 	).Scan(&row.ID)
 	if err == nil {
-		return nil
+		return true, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("data: insert measurement: %w", err)
+		return false, fmt.Errorf("data: insert measurement: %w", err)
 	}
 
 	// DO NOTHING suppressed the insert, so RETURNING yielded no row: the content
 	// key already exists. Resolve the existing id rather than failing.
 	const existing = `SELECT id FROM measurements WHERE account_id = ? AND content_key = ?`
 	if err := m.DB.QueryRowContext(ctx, existing, row.AccountID, row.ContentKey).Scan(&row.ID); err != nil {
-		return fmt.Errorf("data: resolve existing measurement: %w", err)
+		return false, fmt.Errorf("data: resolve existing measurement: %w", err)
 	}
-	return nil
+	return false, nil
 }
 
 // Delete removes one Manual entry. The `source` predicate is part of the statement,

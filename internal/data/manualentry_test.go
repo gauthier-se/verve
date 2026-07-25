@@ -29,7 +29,7 @@ func TestInsertOnePopulatesID(t *testing.T) {
 	acc := seedAccount(t, models)
 
 	row := manual(acc, "body_mass", 91, "kg", "2026-07-25T08:00:00Z")
-	if err := models.Measurements.InsertOne(ctx, &row); err != nil {
+	if _, err := models.Measurements.InsertOne(ctx, &row); err != nil {
 		t.Fatalf("InsertOne: %v", err)
 	}
 	if row.ID == 0 {
@@ -53,13 +53,21 @@ func TestInsertOneIsIdempotent(t *testing.T) {
 	acc := seedAccount(t, models)
 
 	first := manual(acc, "height", 184, "cm", "2026-07-25T08:00:00Z")
-	if err := models.Measurements.InsertOne(ctx, &first); err != nil {
+	created, err := models.Measurements.InsertOne(ctx, &first)
+	if err != nil {
 		t.Fatalf("InsertOne first: %v", err)
+	}
+	if !created {
+		t.Error("first insert reported not-created")
 	}
 
 	second := manual(acc, "height", 184, "cm", "2026-07-25T08:00:00Z")
-	if err := models.Measurements.InsertOne(ctx, &second); err != nil {
+	created, err = models.Measurements.InsertOne(ctx, &second)
+	if err != nil {
 		t.Fatalf("InsertOne second: %v", err)
+	}
+	if created {
+		t.Error("second insert reported created — the handler would answer 201 for a no-op")
 	}
 
 	if second.ID != first.ID {
@@ -111,7 +119,7 @@ func TestDeleteRemovesManualRow(t *testing.T) {
 	acc := seedAccount(t, models)
 
 	row := manual(acc, "body_fat_percentage", 0.22, "%", "2026-07-25T08:00:00Z")
-	if err := models.Measurements.InsertOne(ctx, &row); err != nil {
+	if _, err := models.Measurements.InsertOne(ctx, &row); err != nil {
 		t.Fatalf("InsertOne: %v", err)
 	}
 	if err := models.Measurements.Delete(ctx, acc, row.ID); err != nil {
@@ -135,7 +143,7 @@ func TestDeleteIsAccountScoped(t *testing.T) {
 	}
 
 	row := manual(owner, "body_mass", 91, "kg", "2026-07-25T08:00:00Z")
-	if err := models.Measurements.InsertOne(ctx, &row); err != nil {
+	if _, err := models.Measurements.InsertOne(ctx, &row); err != nil {
 		t.Fatalf("InsertOne: %v", err)
 	}
 
@@ -165,7 +173,7 @@ func TestListManualExcludesImportedAndFilters(t *testing.T) {
 	older := manual(acc, "height", 184, "cm", "2026-07-21T08:00:00Z")
 	newer := manual(acc, "body_mass", 90, "kg", "2026-07-24T08:00:00Z")
 	for _, row := range []*Measurement{&older, &newer} {
-		if err := models.Measurements.InsertOne(ctx, row); err != nil {
+		if _, err := models.Measurements.InsertOne(ctx, row); err != nil {
 			t.Fatalf("InsertOne: %v", err)
 		}
 	}
