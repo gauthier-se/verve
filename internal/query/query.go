@@ -219,22 +219,22 @@ func (e Engine) Series(ctx context.Context, req Request) (Series, error) {
 		Days:        windowDays(req.From, req.To),
 	}
 
-	source, ok, err := e.resolveSource(ctx, req)
+	filter, err := e.resolveSource(ctx, req)
 	if err != nil {
 		return Series{}, err
 	}
-	if !ok {
+	if !filter.any() {
 		return out, nil // no data in range: empty series, no Source
 	}
-	out.Source = source
+	out.Source = filter.reported()
 
-	points, err := e.aggregate(ctx, req, metric.Aggregation, source)
+	points, err := e.aggregate(ctx, req, metric.Aggregation, filter)
 	if err != nil {
 		return Series{}, err
 	}
 	out.Points = points
 
-	summary, err := e.summarize(ctx, req, metric.Aggregation, source)
+	summary, err := e.summarize(ctx, req, metric.Aggregation, filter)
 	if err != nil {
 		return Series{}, err
 	}
@@ -243,7 +243,7 @@ func (e Engine) Series(ctx context.Context, req Request) (Series, error) {
 	// A `latest` Metric also carries its window mean, so it can be shown as a period
 	// average (mean body mass) rather than the last reading — the better trend view.
 	if metric.Aggregation == catalog.Latest && summary != nil {
-		mean, err := e.summaryMean(ctx, req, source)
+		mean, err := e.summaryMean(ctx, req, filter)
 		if err != nil {
 			return Series{}, err
 		}
@@ -255,11 +255,11 @@ func (e Engine) Series(ctx context.Context, req Request) (Series, error) {
 // summaryMean is the arithmetic mean of a Metric's values over the window, from the
 // winning Source — the period average behind a `latest` Metric's trend. A NULL mean
 // (empty window) is a nil gap.
-func (e Engine) summaryMean(ctx context.Context, req Request, source string) (*float64, error) {
-	const q = `SELECT AVG(value) FROM measurements
-		WHERE account_id = ? AND metric = ? AND source = ? AND start_at >= ? AND start_at < ?`
+func (e Engine) summaryMean(ctx context.Context, req Request, f sourceFilter) (*float64, error) {
+	pred, args := f.where(req)
+	q := `SELECT AVG(value) FROM measurements WHERE ` + pred
 	var v sql.NullFloat64
-	err := e.DB.QueryRowContext(ctx, q, req.AccountID, req.Metric, source, rfc3339(req.From), rfc3339(req.To)).Scan(&v)
+	err := e.DB.QueryRowContext(ctx, q, args...).Scan(&v)
 	if err != nil {
 		return nil, fmt.Errorf("query: summary mean: %w", err)
 	}
@@ -335,15 +335,15 @@ func (e Engine) resolveOperand(ctx context.Context, req Request, slug string) (m
 
 	opReq := req
 	opReq.Metric = slug
-	source, ok, err := e.resolveSource(ctx, opReq)
+	filter, err := e.resolveSource(ctx, opReq)
 	if err != nil {
 		return nil, err
 	}
-	if !ok {
+	if !filter.any() {
 		return map[string]float64{}, nil // no data for this operand in the range
 	}
 
-	points, err := e.aggregate(ctx, opReq, m.Aggregation, source)
+	points, err := e.aggregate(ctx, opReq, m.Aggregation, filter)
 	if err != nil {
 		return nil, err
 	}
@@ -371,48 +371,128 @@ func unionBuckets(byOperand map[string]map[string]float64) []string {
 	return buckets
 }
 
-// resolveSource finds the Sources with data for the Metric in the range and
-// picks the single winner by the Metric's Source priority (ADR 0003).
-func (e Engine) resolveSource(ctx context.Context, req Request) (string, bool, error) {
+// sourceFilter is the resolved row set for one Metric over one window: the winning
+// imported Source (ADR 0003) plus, when the Account has typed values for this Metric,
+// the Manual overlay (ADR 0022).
+//
+// The two mechanics are deliberately different shapes. Source priority elects one
+// winner for the *whole range* and every read then filters on it, which suits devices
+// producing continuous streams. A human corrects isolated days, so a Manual entry
+// cannot compete as a Source — ranking it first would make one typed value the winner
+// of the entire window and hide every device reading around it. It overlays at **day**
+// grain instead: on a day the Account typed a value, that day's Manual rows replace
+// the winner's rows; every other day is untouched.
+//
+// Day grain, rather than the caller's bucket grain, is what keeps the resolved row set
+// independent of how the caller happens to be bucketing — so a daily chart, a monthly
+// chart and a window summary can never disagree about which rows are in play.
+type sourceFilter struct {
+	source    string // winning imported Source; "" when only Manual rows exist
+	hasManual bool   // the Account has Manual rows for this Metric in the window
+}
+
+// any reports whether the filter selects anything at all: an imported winner, Manual
+// rows, or both. False means no data in the range.
+func (f sourceFilter) any() bool { return f.source != "" || f.hasManual }
+
+// reported is the Source name carried on the Series. An active overlay does not change
+// it: the imported Source is still what the bulk of the curve comes from, and calling
+// the whole series "Manual" because one day was corrected would misdescribe it.
+func (f sourceFilter) reported() string {
+	if f.source != "" {
+		return f.source
+	}
+	return catalog.SourceManual
+}
+
+// where renders the row-set predicate shared by every read path, and its args. It is a
+// drop-in replacement for the plain `source = ?` filter this engine used before the
+// overlay existed.
+//
+// With no Manual rows — every Metric of every Account that has never typed one — it
+// emits exactly that original predicate, so nothing existing can change behaviour.
+func (f sourceFilter) where(req Request) (string, []any) {
+	const base = `account_id = ? AND metric = ? AND source = ? AND start_at >= ? AND start_at < ?`
+	from, to := rfc3339(req.From), rfc3339(req.To)
+
+	if !f.hasManual {
+		return base, []any{req.AccountID, req.Metric, f.source, from, to}
+	}
+	if f.source == "" {
+		// Manual rows only: the base predicate, pinned to the Manual Source.
+		return base, []any{req.AccountID, req.Metric, catalog.SourceManual, from, to}
+	}
+
+	// The overlay. The manual-days subquery is deliberately *not* range-filtered: a
+	// window boundary that splits a day would otherwise let the device's rows for that
+	// day survive alongside the correction. Manual rows are few by nature (a person
+	// types them), so scanning them all is cheaper than getting this subtly wrong.
+	const overlay = `account_id = ? AND metric = ? AND start_at >= ? AND start_at < ?
+		AND (source = ? OR source = ?)
+		AND (source = ? OR date(start_at) NOT IN (
+			SELECT date(mo.start_at) FROM measurements mo
+			WHERE mo.account_id = ? AND mo.metric = ? AND mo.source = ?))`
+	return overlay, []any{
+		req.AccountID, req.Metric, from, to,
+		f.source, catalog.SourceManual,
+		catalog.SourceManual,
+		req.AccountID, req.Metric, catalog.SourceManual,
+	}
+}
+
+// resolveSource finds the Sources with data for the Metric in the range, elects the
+// single imported winner by the Metric's Source priority (ADR 0003), and notes
+// separately whether the Account has Manual rows to overlay (ADR 0022). Manual is
+// split out *before* the election so it never competes as a Source.
+func (e Engine) resolveSource(ctx context.Context, req Request) (sourceFilter, error) {
 	const q = `
 		SELECT DISTINCT source
 		FROM measurements
 		WHERE account_id = ? AND metric = ? AND start_at >= ? AND start_at < ?`
 	rows, err := e.DB.QueryContext(ctx, q, req.AccountID, req.Metric, rfc3339(req.From), rfc3339(req.To))
 	if err != nil {
-		return "", false, fmt.Errorf("query: distinct sources: %w", err)
+		return sourceFilter{}, fmt.Errorf("query: distinct sources: %w", err)
 	}
 	defer rows.Close()
 
+	var f sourceFilter
 	var available []string
 	for rows.Next() {
 		var s string
 		if err := rows.Scan(&s); err != nil {
-			return "", false, fmt.Errorf("query: scan source: %w", err)
+			return sourceFilter{}, fmt.Errorf("query: scan source: %w", err)
+		}
+		if s == catalog.SourceManual {
+			f.hasManual = true
+			continue
 		}
 		available = append(available, s)
 	}
 	if err := rows.Err(); err != nil {
-		return "", false, fmt.Errorf("query: iterate sources: %w", err)
+		return sourceFilter{}, fmt.Errorf("query: iterate sources: %w", err)
 	}
 
-	source, ok := catalog.ResolveSource(req.Metric, available)
-	return source, ok, nil
+	if source, ok := catalog.ResolveSource(req.Metric, available); ok {
+		f.source = source
+	}
+	return f, nil
 }
 
-// aggregate runs the per-bucket SQL for the Metric's rule against the resolved
-// Source and returns the ordered buckets.
-func (e Engine) aggregate(ctx context.Context, req Request, agg catalog.Aggregation, source string) ([]Point, error) {
+// aggregate runs the per-bucket SQL for the Metric's rule against the resolved row
+// set and returns the ordered buckets. The filter has already settled which rows are
+// in play (winning Source, Manual overlay), so every rule below is unchanged by the
+// overlay's existence — that separation is the point of resolving at day grain.
+func (e Engine) aggregate(ctx context.Context, req Request, agg catalog.Aggregation, f sourceFilter) ([]Point, error) {
 	bucket := req.Bucket.sqlExpr()
-	args := []any{req.AccountID, req.Metric, source, rfc3339(req.From), rfc3339(req.To)}
+	where, args := f.where(req)
 
 	switch agg {
 	case catalog.Sum:
 		return e.scanScalar(ctx, fmt.Sprintf(`
 			SELECT %s AS b, SUM(value) AS v
 			FROM measurements
-			WHERE account_id = ? AND metric = ? AND source = ? AND start_at >= ? AND start_at < ?
-			GROUP BY b ORDER BY b`, bucket), args)
+			WHERE %s
+			GROUP BY b ORDER BY b`, bucket, where), args)
 
 	case catalog.Latest:
 		// Most recent point per bucket; ties broken by row id for a stable pick.
@@ -421,15 +501,15 @@ func (e Engine) aggregate(ctx context.Context, req Request, agg catalog.Aggregat
 				SELECT %s AS b, value,
 				       ROW_NUMBER() OVER (PARTITION BY %s ORDER BY start_at DESC, id DESC) AS rn
 				FROM measurements
-				WHERE account_id = ? AND metric = ? AND source = ? AND start_at >= ? AND start_at < ?
-			) WHERE rn = 1 ORDER BY b`, bucket, bucket), args)
+				WHERE %s
+			) WHERE rn = 1 ORDER BY b`, bucket, bucket, where), args)
 
 	case catalog.Average:
 		return e.scanBand(ctx, fmt.Sprintf(`
 			SELECT %s AS b, AVG(value) AS v, MIN(value) AS lo, MAX(value) AS hi
 			FROM measurements
-			WHERE account_id = ? AND metric = ? AND source = ? AND start_at >= ? AND start_at < ?
-			GROUP BY b ORDER BY b`, bucket), args)
+			WHERE %s
+			GROUP BY b ORDER BY b`, bucket, where), args)
 
 	default:
 		// duration_by_state (the States family) is unreachable via a metric slug —
@@ -491,10 +571,10 @@ func (e Engine) scanBand(ctx context.Context, q string, args []any) ([]Point, er
 // and is a true count-weighted mean, never a mean of per-bucket means. Returns nil
 // when the window holds no value (a gap: "—", never a zero). The Point's Bucket
 // carries the window start for completeness; the client reads only the value/band.
-func (e Engine) summarize(ctx context.Context, req Request, agg catalog.Aggregation, source string) (*Point, error) {
-	args := []any{req.AccountID, req.Metric, source, rfc3339(req.From), rfc3339(req.To)}
+func (e Engine) summarize(ctx context.Context, req Request, agg catalog.Aggregation, f sourceFilter) (*Point, error) {
+	pred, args := f.where(req)
 	label := req.From.UTC().Format("2006-01-02")
-	const where = `WHERE account_id = ? AND metric = ? AND source = ? AND start_at >= ? AND start_at < ?`
+	where := `WHERE ` + pred
 	switch agg {
 	case catalog.Sum:
 		return e.scanSummaryScalar(ctx, `SELECT SUM(value) FROM measurements `+where, args, label)
@@ -574,14 +654,14 @@ func (e Engine) summarizeOperand(ctx context.Context, req Request, slug string) 
 	}
 	opReq := req
 	opReq.Metric = slug
-	source, ok, err := e.resolveSource(ctx, opReq)
+	filter, err := e.resolveSource(ctx, opReq)
 	if err != nil {
 		return 0, false, err
 	}
-	if !ok {
+	if !filter.any() {
 		return 0, false, nil // no data for this operand in the window
 	}
-	p, err := e.summarize(ctx, opReq, m.Aggregation, source)
+	p, err := e.summarize(ctx, opReq, m.Aggregation, filter)
 	if err != nil {
 		return 0, false, err
 	}

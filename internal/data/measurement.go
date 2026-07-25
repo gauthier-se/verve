@@ -3,13 +3,21 @@ package data
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+
+	"github.com/gauthier-se/verve/internal/catalog"
 )
 
 // Measurement is a scalar value of a canonical Metric over a point in time, owned
 // by one Account. Value is normalized to the Metric's unit; OriginalUnit is what
 // the Source reported. ContentKey is the dedup identity (ADR 0006).
+//
+// ID is populated by InsertOne and by reads that need to address a single row
+// (ListManual). The bulk import path leaves it zero: it writes hundreds of
+// thousands of rows and nothing downstream addresses them individually.
 type Measurement struct {
+	ID           int64
 	AccountID    int64
 	Metric       string
 	Value        float64
@@ -93,6 +101,120 @@ func (m MeasurementModel) InsertBatch(ctx context.Context, ms []Measurement) ([]
 		return nil, fmt.Errorf("data: commit measurement batch: %w", err)
 	}
 	return inserted, nil
+}
+
+// InsertOne inserts a single Measurement — the Manual entry path (ADR 0022) — and
+// populates its ID. Unlike InsertBatch it must tell the caller *which* row it landed
+// on, so an HTTP client can address and later delete it.
+//
+// A content-key collision is not an error: it means this exact value at this exact
+// time is already stored, so the existing row's id is returned and the write is a
+// no-op. That is the same idempotence a re-import gets (ADR 0006) — typing a value
+// twice should be as harmless as importing the same export twice.
+func (m MeasurementModel) InsertOne(ctx context.Context, row *Measurement) error {
+	const insert = `
+		INSERT INTO measurements
+			(account_id, metric, value, original_unit, start_at, end_at, source, content_key)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT (account_id, content_key) DO NOTHING
+		RETURNING id`
+
+	err := m.DB.QueryRowContext(ctx, insert,
+		row.AccountID, row.Metric, row.Value, row.OriginalUnit,
+		row.StartAt, row.EndAt, row.Source, row.ContentKey,
+	).Scan(&row.ID)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("data: insert measurement: %w", err)
+	}
+
+	// DO NOTHING suppressed the insert, so RETURNING yielded no row: the content
+	// key already exists. Resolve the existing id rather than failing.
+	const existing = `SELECT id FROM measurements WHERE account_id = ? AND content_key = ?`
+	if err := m.DB.QueryRowContext(ctx, existing, row.AccountID, row.ContentKey).Scan(&row.ID); err != nil {
+		return fmt.Errorf("data: resolve existing measurement: %w", err)
+	}
+	return nil
+}
+
+// Delete removes one Manual entry. The `source` predicate is part of the statement,
+// not a check in the caller, so no future call site can delete imported data however
+// it invokes this: removing an imported row would drop its content key and the next
+// Import would silently restore it (ADR 0022). Returns ErrRecordNotFound when no row
+// matches — absent, owned by another Account, or not a Manual entry.
+func (m MeasurementModel) Delete(ctx context.Context, accountID, id int64) error {
+	const query = `DELETE FROM measurements WHERE id = ? AND account_id = ? AND source = ?`
+	res, err := m.DB.ExecContext(ctx, query, id, accountID, catalog.SourceManual)
+	if err != nil {
+		return fmt.Errorf("data: delete measurement: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("data: delete measurement rows affected: %w", err)
+	}
+	if n == 0 {
+		return ErrRecordNotFound
+	}
+	return nil
+}
+
+// GetByID returns one Measurement of the Account, or ErrRecordNotFound. The delete
+// handler reads the row first so it can tell "not yours / absent" (404) from "yours
+// but imported" (403) — a distinction Delete alone cannot express, since both cases
+// simply match no row.
+func (m MeasurementModel) GetByID(ctx context.Context, accountID, id int64) (*Measurement, error) {
+	const query = `
+		SELECT id, account_id, metric, value, original_unit, start_at, end_at, source, content_key
+		FROM measurements
+		WHERE id = ? AND account_id = ?`
+	var row Measurement
+	err := m.DB.QueryRowContext(ctx, query, id, accountID).Scan(
+		&row.ID, &row.AccountID, &row.Metric, &row.Value, &row.OriginalUnit,
+		&row.StartAt, &row.EndAt, &row.Source, &row.ContentKey,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrRecordNotFound
+		}
+		return nil, fmt.Errorf("data: get measurement: %w", err)
+	}
+	return &row, nil
+}
+
+// ListManual returns the Account's Manual entries, newest first, optionally for one
+// Metric. It exists because the Ledger serves aggregated Series rows (ADR 0021),
+// which carry no row id — and an entry that cannot be addressed cannot be deleted.
+func (m MeasurementModel) ListManual(ctx context.Context, accountID int64, metric string, limit int) ([]Measurement, error) {
+	const query = `
+		SELECT id, account_id, metric, value, original_unit, start_at, end_at, source, content_key
+		FROM measurements
+		WHERE account_id = ? AND source = ? AND (? = '' OR metric = ?)
+		ORDER BY start_at DESC, id DESC
+		LIMIT ?`
+
+	rows, err := m.DB.QueryContext(ctx, query, accountID, catalog.SourceManual, metric, metric, limit)
+	if err != nil {
+		return nil, fmt.Errorf("data: list manual measurements: %w", err)
+	}
+	defer rows.Close()
+
+	out := []Measurement{}
+	for rows.Next() {
+		var row Measurement
+		if err := rows.Scan(
+			&row.ID, &row.AccountID, &row.Metric, &row.Value, &row.OriginalUnit,
+			&row.StartAt, &row.EndAt, &row.Source, &row.ContentKey,
+		); err != nil {
+			return nil, fmt.Errorf("data: scan manual measurement: %w", err)
+		}
+		out = append(out, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("data: iterate manual measurements: %w", err)
+	}
+	return out, nil
 }
 
 // InsertUnmappedBatch inserts Unmapped records in one transaction, deduped by

@@ -164,6 +164,6 @@ func (b *workoutBuilder) session(accountID int64) data.Session {
 		TotalDistance: b.distance,
 		TotalEnergy:   b.energy,
 		Source:        b.source,
-		ContentKey:    sessionContentKey(b.activityType, b.source, b.start, b.end),
+		ContentKey:    data.SessionContentKey(b.activityType, b.source, b.start, b.end),
 	}
 }

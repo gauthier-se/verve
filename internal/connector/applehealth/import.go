@@ -399,7 +399,7 @@ func buildState(accountID int64, kind string, r recordAttrs) data.State {
 		StartAt:    start,
 		EndAt:      end,
 		Source:     r.source,
-		ContentKey: stateContentKey(kind, value, r.source, start, end),
+		ContentKey: data.StateContentKey(kind, value, r.source, start, end),
 	}
 }
 
@@ -418,7 +418,7 @@ func classifyRecord(accountID int64, r recordAttrs) (data.Measurement, data.Unma
 		StartAt:    start,
 		EndAt:      end,
 		Source:     r.source,
-		ContentKey: contentKey(r.typ, r.source, start, end, r.value, r.unit),
+		ContentKey: data.ContentKey(r.typ, r.source, start, end, r.value, r.unit),
 	}
 
 	slug, ok := typeToMetric[r.typ]
@@ -446,7 +446,7 @@ func classifyRecord(accountID int64, r recordAttrs) (data.Measurement, data.Unma
 		StartAt:      start,
 		EndAt:        end,
 		Source:       r.source,
-		ContentKey:   contentKey(slug, r.source, start, end, r.value, r.unit),
+		ContentKey:   data.ContentKey(slug, r.source, start, end, r.value, r.unit),
 	}, data.UnmappedRecord{}, true
 }
 
