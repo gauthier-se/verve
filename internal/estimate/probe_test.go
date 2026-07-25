@@ -32,10 +32,37 @@ func TestProbeRealDatabase(t *testing.T) {
 	defer db.Close()
 
 	e := Engine{Query: query.Engine{DB: db}}
-	now := time.Date(2026, 7, 25, 0, 0, 0, 0, time.UTC)
+	now := time.Now().UTC()
 	ctx := context.Background()
 
-	in, err := e.ResolveInputs(ctx, 1, Profile{}, now)
+	// Read the real Account columns rather than passing an empty Profile. The whole point
+	// of this probe is to answer "what will the app actually show", and the two
+	// anthropometric equations depend entirely on these two fields — an empty Profile
+	// reports them uncomputable even when the Account has them filled in.
+	account, err := data.NewModels(db).Accounts.GetByID(ctx, 1)
+	if err != nil {
+		t.Fatalf("get account: %v", err)
+	}
+	profile := Profile{}
+	if account.DateOfBirth != nil {
+		if dob, err := time.Parse("2006-01-02", *account.DateOfBirth); err == nil {
+			profile.DateOfBirth = &dob
+		}
+	}
+	if account.BiologicalSex != nil {
+		profile.Sex = Sex(*account.BiologicalSex)
+	}
+	trust := TrustUnknown
+	if account.BodyCompositionTrust != nil {
+		trust = Trust(*account.BodyCompositionTrust)
+	}
+	dobLabel := "absent"
+	if account.DateOfBirth != nil {
+		dobLabel = *account.DateOfBirth
+	}
+	t.Logf("PROFILE      dob=%s sex=%q trust=%s", dobLabel, profile.Sex, trust)
+
+	in, err := e.ResolveInputs(ctx, 1, profile, now)
 	if err != nil {
 		t.Fatalf("ResolveInputs: %v", err)
 	}
@@ -52,9 +79,11 @@ func TestProbeRealDatabase(t *testing.T) {
 	show("lean kg", in.LeanMassKg)
 	t.Logf("  lean derived? %v", in.LeanMassDerived)
 
+	basals := Basal(in)
+	t.Logf("PRESELECTED  %s", Preselect(basals, trust))
 	t.Log("BASAL")
 	var katch *float64
-	for _, b := range Basal(in) {
+	for _, b := range basals {
 		if b.Kcal == nil {
 			t.Logf("  %-16s uncomputable, missing %v", b.Name, b.Missing)
 			continue
