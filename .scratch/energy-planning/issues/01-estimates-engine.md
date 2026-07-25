@@ -1,6 +1,6 @@
 # 01 — Server: the Estimates engine
 
-Status: ready-for-agent
+Status: done
 Blocked by: —
 
 ## Goal
@@ -86,3 +86,64 @@ CONTEXT.md: **Estimate**, **Basal estimate**, **Basal equation**, **Expenditure
 estimate**, **Estimate basis**.
 `internal/timeaxis/` (package shape to follow), `internal/query/query.go`,
 `internal/catalog/catalog.go`.
+
+## Comments
+
+Implemented on branch `feat/manual-entry`, in `internal/estimate`. 19 tests plus a
+skipped-by-default probe.
+
+- Equations are data (`Equations`, with `Needs` and a `compute` func), so `Basal` returns
+  a per-equation result carrying either a figure or the list of inputs that would unlock
+  it. The client never hardcodes which equation wants what.
+- **`Basal` is pure and does not rank.** Preselection depends on the Account's declared
+  trust in its body-composition data, which is issue 03's business; this package refuses
+  to decide it, and the comment on `Equations` says why.
+- Body inputs are **averaged over 28 days** rather than read as a single value — a scale
+  swings more than a kilogram between mornings. Height uses a 30-year month-bucketed
+  window, because it is measured once and never again and the engine caps a request at
+  1000 points.
+- The percent-fraction trap is pinned by `TestBodyFatIsAFractionNotAPercent`: dividing by
+  100 would give a lean mass of 90.75 kg and ≈2330 kcal — wrong, and plausible-looking.
+- `TestSlopeIsRegressionNotEndpoints` asserts both halves: the regression barely moves
+  under a spiked final reading, *and* endpoint differencing is badly wrong on the same
+  data. The second assertion is what stops someone "simplifying" the fit later.
+- `ErrInsufficientData` rather than a zero. Zero is a number, and it would flow straight
+  into a calorie target.
+
+### Change from the spec
+
+**`defaultActivityFactor` is 1.375, not 1.4.** The PRD's 1.4 was calibrated on the
+reference Account's own observed ratio — but the predicted basis exists precisely for
+Accounts with *no* history, so tuning it against somebody who has one is fitting a
+default to a sample of one. 1.375 is the standard "lightly active" multiplier from the
+literature. This closes the open question flagged when the PRD was written.
+
+### Probe against the real 310k-row export
+
+`probe_test.go`, skipped unless `VERVE_PROBE_DB` points at a **copy**. Run on the
+reference export:
+
+```
+mass 91.64 kg · height 185 cm · lean 66.79 kg (measured, not derived)
+Katch-McArdle 1813 · Cunningham 1969
+Mifflin-St Jeor, Harris-Benedict: uncomputable, missing [age sex]
+EXPENDITURE 2390 kcal, basis=observed
+  mean intake 2068 kcal over 25 days · slope −0.0418 kg/day over 19 mass days
+ACTUAL RATE −0.319 %/week (−0.293 kg/week) · TDEE/basal = 1.32
+```
+
+Two things worth recording.
+
+**The observed figure is 2390, not the ≈2559 quoted in the PRD.** That earlier number came
+from differencing the window's endpoints (92.75 → 91.00). The regression finds a shallower
+true slope, so the endpoint method had overstated the deficit by roughly 160 kcal/day. The
+engine is right and the PRD's illustration was optimistic — which is precisely the failure
+`TestSlopeIsRegressionNotEndpoints` guards against. The ratio of 1.32 remains physiologically
+ordinary, and still nowhere near the devices' 1.96.
+
+**Height resolves to 185 cm, not the newest reading of 184 cm.** Not a bug in this package:
+`height` has no Source-priority entry, so `ResolveSource` falls back to alphabetical order,
+"Health" beats "iPhone de Gauthier", and the winning Source's latest value is the 2023 one.
+Consistent with ADR 0003 and with every chart in the app, but it means "latest" means
+"latest from the winning Source", not "newest overall". Worth knowing before it is reported
+as a defect — and a Manual entry is the remedy, since it outranks both.
