@@ -14,6 +14,7 @@ type Models struct {
 	Sessions     SessionModel
 	Dashboards   DashboardModel
 	Panels       PanelModel
+	Phases       PhaseModel
 
 	db *sql.DB // for cross-cutting needs (e.g. health checks) that want the handle itself
 }
@@ -28,6 +29,7 @@ func NewModels(db *sql.DB) Models {
 		Sessions:     SessionModel{DB: db},
 		Dashboards:   DashboardModel{DB: db},
 		Panels:       PanelModel{DB: db},
+		Phases:       PhaseModel{DB: db},
 		db:           db,
 	}
 }

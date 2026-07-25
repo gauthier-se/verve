@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 
 	"modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
@@ -24,8 +25,12 @@ type Account struct {
 	DateOfBirth   *string
 	BiologicalSex *string
 	BloodType     *string
-	CreatedAt     string
-	UpdatedAt     string
+	// BodyCompositionTrust is the Account's own judgement of its lean-mass and body-fat
+	// data: "measured" (DEXA, hydrostatic), "estimated" (a bioimpedance scale), or
+	// "unknown". Nil means unset, and the API answers with a derived suggestion.
+	BodyCompositionTrust *string
+	CreatedAt            string
+	UpdatedAt            string
 }
 
 // AccountModel is the DAO for accounts.
@@ -64,7 +69,7 @@ func insertAccount(ctx context.Context, q querier, a *Account) error {
 // GetByEmail returns the account with the given email, or ErrRecordNotFound.
 func (m AccountModel) GetByEmail(ctx context.Context, email string) (*Account, error) {
 	const query = `
-		SELECT id, email, password_hash, date_of_birth, biological_sex, blood_type, created_at, updated_at
+		SELECT id, email, password_hash, date_of_birth, biological_sex, blood_type, body_composition_trust, created_at, updated_at
 		FROM accounts
 		WHERE email = ?`
 	return m.getOne(ctx, query, email)
@@ -86,7 +91,7 @@ func (m AccountModel) Any(ctx context.Context) (bool, error) {
 // resolve the authenticated Account from a session's account_id.
 func (m AccountModel) GetByID(ctx context.Context, id int64) (*Account, error) {
 	const query = `
-		SELECT id, email, password_hash, date_of_birth, biological_sex, blood_type, created_at, updated_at
+		SELECT id, email, password_hash, date_of_birth, biological_sex, blood_type, body_composition_trust, created_at, updated_at
 		FROM accounts
 		WHERE id = ?`
 	return m.getOne(ctx, query, id)
@@ -114,6 +119,48 @@ func (m AccountModel) SetPassword(ctx context.Context, id int64, passwordHash st
 	return nil
 }
 
+// ProfilePatch is a partial update of the Account's profile attributes. A nil field is
+// left untouched; a non-nil pointer to nil clears the column. Email and password are
+// deliberately absent — those have their own paths, with their own rules.
+type ProfilePatch struct {
+	DateOfBirth          **string
+	BiologicalSex        **string
+	BodyCompositionTrust **string
+}
+
+// UpdateProfile applies a partial profile update, bumping updated_at. Each column is
+// written only when the patch names it, so a client sending one field cannot blank the
+// others by omission.
+func (m AccountModel) UpdateProfile(ctx context.Context, id int64, patch ProfilePatch) error {
+	sets := []string{}
+	args := []any{}
+	if patch.DateOfBirth != nil {
+		sets = append(sets, "date_of_birth = ?")
+		args = append(args, *patch.DateOfBirth)
+	}
+	if patch.BiologicalSex != nil {
+		sets = append(sets, "biological_sex = ?")
+		args = append(args, *patch.BiologicalSex)
+	}
+	if patch.BodyCompositionTrust != nil {
+		sets = append(sets, "body_composition_trust = ?")
+		args = append(args, *patch.BodyCompositionTrust)
+	}
+	if len(sets) == 0 {
+		return nil // nothing named: a no-op, not an error
+	}
+
+	query := "UPDATE accounts SET " + strings.Join(sets, ", ") +
+		", updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?"
+	args = append(args, id)
+
+	res, err := m.DB.ExecContext(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+	return affectedOne(res, "update profile")
+}
+
 // getOne runs a single-row account SELECT and scans it, mapping no-rows to
 // ErrRecordNotFound. Shared by GetByEmail and GetByID.
 func (m AccountModel) getOne(ctx context.Context, query string, arg any) (*Account, error) {
@@ -125,6 +172,7 @@ func (m AccountModel) getOne(ctx context.Context, query string, arg any) (*Accou
 		&a.DateOfBirth,
 		&a.BiologicalSex,
 		&a.BloodType,
+		&a.BodyCompositionTrust,
 		&a.CreatedAt,
 		&a.UpdatedAt,
 	)
