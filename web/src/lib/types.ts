@@ -179,3 +179,117 @@ export interface ManualMeasurement {
   measured_at: string;
   source: string;
 }
+
+// --- The Plan (ADR 0023) ---
+
+/** BasalEquation is one published resting-expenditure equation. */
+export type BasalEquation = "katch_mcardle" | "cunningham" | "mifflin_st_jeor" | "harris_benedict";
+
+/** EstimateInput is a datum an equation needs; it names what is missing when one cannot run. */
+export type EstimateInput = "lean_mass" | "mass" | "height" | "age" | "sex";
+
+/** EstimateBasis is the evidence behind an Expenditure estimate, best first: `observed`
+ *  back-computes from intake against the body-mass trend, `recorded` is what the devices
+ *  claim, `predicted` is an equation times an activity factor. */
+export type EstimateBasis = "observed" | "recorded" | "predicted";
+
+/** BodyCompositionTrust is the Account's declared judgement of its lean-mass data. */
+export type BodyCompositionTrust = "measured" | "estimated" | "unknown";
+
+/** BasalEstimate is one equation's result. `kcal` absent means it cannot run, and
+ *  `missing` names the inputs that would unlock it — never a value from a guessed input. */
+export interface BasalEstimate {
+  equation: BasalEquation;
+  name: string;
+  kcal?: number;
+  missing?: EstimateInput[];
+}
+
+/** Expenditure is the Expenditure estimate with the evidence that produced it. The detail
+ *  fields are set only for the basis in force, so the page can show the arithmetic. */
+export interface Expenditure {
+  kcal: number;
+  basis: EstimateBasis;
+  window_days: number;
+  mean_intake_kcal?: number;
+  mass_slope_kg_per_day?: number;
+  intake_days?: number;
+  mass_days?: number;
+  activity_factor?: number;
+  basal_kcal?: number;
+}
+
+/** MeasuredRate is the Account's measured speed of body-mass change, in the same units a
+ *  Target rate uses so the two are directly comparable. */
+export interface MeasuredRate {
+  pct_per_week: number;
+  kg_per_week: number;
+  window_days: number;
+  mass_days: number;
+}
+
+/** Phase is a bounded stretch pursuing one Target rate. `ended_at` absent means open. */
+export interface Phase {
+  id: number;
+  rate_pct_per_week: number;
+  started_at: string;
+  ended_at?: string;
+}
+
+/** Targets is what a Target rate implies. Protein is a floor with evidence behind it;
+ *  `conventional_split` marks fat and carbohydrate as a stated convention, because past a
+ *  hormonal fat floor the split has no demonstrated effect at equal calories and protein. */
+export interface Targets {
+  kcal: number;
+  kg_per_week: number;
+  protein_g: number;
+  fat_g: number;
+  carb_g: number;
+  protein_g_per_kg_lean: number;
+  protein_from_body_mass?: boolean;
+  conventional_split: boolean;
+}
+
+/** Adherence compares intent to outcome over the open Phase's own window. It deliberately
+ *  carries no lean-mass figure: on a bioimpedance scale a cut mechanically renders
+ *  lean-mass "loss" whether or not any muscle was lost. */
+export interface Adherence {
+  window_days: number;
+  thin?: boolean;
+  target_rate_pct_per_week: number;
+  actual_rate_pct_per_week?: number;
+  target_kcal: number;
+  actual_kcal?: number;
+  target_protein_g: number;
+  actual_protein_g?: number;
+}
+
+/** Guardrail is one advisory warning. Verve warns and never blocks — it does not know the
+ *  Account's medical context (the same rule as the uncoloured Baseline delta, ADR 0015). */
+export interface Guardrail {
+  code: string;
+  message: string;
+}
+
+/** Plan is the whole Plan page in one payload; every figure is derived server-side. */
+export interface Plan {
+  basal: BasalEstimate[];
+  preselected_equation?: BasalEquation;
+  expenditure?: Expenditure;
+  actual_rate?: MeasuredRate;
+  phase?: Phase;
+  rate_pct_per_week: number;
+  targets?: Targets;
+  adherence?: Adherence;
+  guardrails: Guardrail[];
+  insufficient?: boolean;
+}
+
+/** Profile is the Account data that is not a Measurement. `derived_trust` is a suggestion
+ *  to show when nothing is declared, not a stored choice. */
+export interface Profile {
+  date_of_birth?: string;
+  biological_sex?: "male" | "female";
+  body_composition_trust?: BodyCompositionTrust;
+  derived_trust: BodyCompositionTrust;
+}

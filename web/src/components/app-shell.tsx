@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Link, useLocation, useParams } from "@tanstack/react-router";
 import { useHotkeys } from "react-hotkeys-hook";
-import { Activity, Download, LogOut, Plus, Table2 } from "lucide-react";
+import { Activity, Download, LogOut, Plus, Table2, Target } from "lucide-react";
 import { useLogout, useMe } from "@/hooks/use-auth";
 import { useDashboards } from "@/hooks/use-dashboards";
 import { cn } from "@/lib/utils";
@@ -21,6 +21,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const activeId = params.dashboardId;
   const onImportPage = useLocation({ select: (l) => l.pathname === "/import" });
   const onDataPage = useLocation({ select: (l) => l.pathname === "/data" });
+  const onPlanPage = useLocation({ select: (l) => l.pathname === "/plan" });
 
   // Hotkey: "n" opens the new-dashboard dialog (react-hotkeys-hook, ADR 0013).
   useHotkeys("n", () => setCreateOpen(true), { preventDefault: true });
@@ -72,6 +73,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             )}
           >
             <Table2 className="size-4" /> Data
+          </Link>
+          <Link
+            to="/plan"
+            className={cn(
+              "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-accent",
+              onPlanPage ? "bg-accent font-medium text-accent-foreground" : "text-muted-foreground",
+            )}
+          >
+            <Target className="size-4" /> Plan
           </Link>
           <Link
             to="/import"

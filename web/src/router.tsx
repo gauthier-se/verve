@@ -4,6 +4,7 @@ import { DashboardIndex } from "./components/dashboard-index";
 import { DashboardView } from "./components/dashboard-view";
 import { DataPage } from "./components/data-page";
 import { ImportPage } from "./components/import-page";
+import { PlanPage } from "./components/plan-page";
 
 // Code-based routes (no file router / codegen) keep the build a plain Vite SPA
 // (ADR 0013). The Go server serves index.html on every non-/v1 path, so a deep
@@ -34,13 +35,19 @@ const dataRoute = createRoute({
   component: DataPage,
 });
 
+const planRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/plan",
+  component: PlanPage,
+});
+
 const importRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/import",
   component: ImportPage,
 });
 
-const routeTree = rootRoute.addChildren([indexRoute, dashboardRoute, dataRoute, importRoute]);
+const routeTree = rootRoute.addChildren([indexRoute, dashboardRoute, dataRoute, planRoute, importRoute]);
 
 export const router = createRouter({ routeTree, defaultPreload: "intent" });
 

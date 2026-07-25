@@ -1,6 +1,6 @@
 # 04 — Web: the Plan page
 
-Status: ready-for-agent
+Status: done
 Blocked by: 02, 03
 
 ## Goal
@@ -79,3 +79,58 @@ CONTEXT.md: section **Planning**.
 `web/src/components/panel-summary.tsx` (headline-figure pattern),
 `web/src/components/formula-hint.tsx` (explanatory tooltip),
 `web/src/lib/format.ts`, `web/src/components/ui/`.
+
+## Comments
+
+Implemented on branch `feat/manual-entry`.
+
+- `web/src/components/plan-page.tsx`, `web/src/hooks/use-plan.ts`, route `/plan`, sidebar
+  entry beside Data. Includes issue 03's profile UI, which was always specified to live
+  here.
+- **The basis is a sentence, not a badge.** Each of the three gets its own explanation, and
+  `recorded` carries the caution that devices overstate — the page says so at the moment it
+  shows the number, not in a help article.
+- The slider is **uncontrolled until touched**: until then the server decides the rate (the
+  open Phase's, else the measured actual), so the page opens by stating what the Account is
+  already doing. `placeholderData` keeps the previous payload on screen while a new rate is
+  in flight, so dragging updates figures instead of flashing a spinner over them.
+- Protein is rendered as a solid card, fat and carbohydrate as dashed and muted, with the
+  convention stated underneath. Three equal-looking numbers would claim an authority the
+  split does not have.
+- Guardrails render as advisories; nothing is ever disabled. Adherence is neutral — no red,
+  no green (ADR 0015).
+
+### Three defects only the browser found
+
+`tsc --noEmit`, `vite build` and the whole Go suite were green while the page **crashed on
+load**. Caught by screenshotting it.
+
+1. **`plan.guardrails` arrived as `null`, not `[]`.** Go's `Guardrails()` returned a nil
+   slice when nothing fired, which marshals to `null`, and the client reads `.length`. So
+   the page broke on the *happy path* — the one case where nothing is worth warning about.
+   Fixed server-side (the contract declares an array) and pinned by
+   `TestGuardrailsAreNeverNil`.
+2. **The zone labels claimed positions they did not occupy.** Spaced with
+   `justify-between`, "Maintenance" sat at the centre of the track while the maintenance
+   zone is nowhere near it. Each label is now sized to its own zone's span, with dividers.
+3. **kg/week was being back-computed on the client** from the calorie gap — arithmetic on
+   the client is arithmetic nobody tests (ADR 0019). `Targets` now carries `kg_per_week`
+   from the server, which has the body mass to convert with.
+
+Also moved the adherence Target/Actual legend above the rows it labels rather than below.
+
+### Verification
+
+Screenshots plus a scripted interaction on a throwaway DB with 28 seeded days:
+
+```
+slider → −1.1 %   both guardrails shown (below-basal, unsustainable), nothing disabled
+start a phase     phase opens, adherence appears, short window flagged, history appears
+profile dob+sex   all four equations become computable (1804 / 1961 / 1922 / 2030)
+trust estimated   Mifflin-St Jeor preselected, Katch-McArdle still shown with its figure
+runtime errors    none
+```
+
+Note on the scripted checks: several early "absent" results were false negatives from
+case-sensitive regexes against `innerText`, which returns CSS-uppercased headings. Worth
+knowing before trusting a similar script.

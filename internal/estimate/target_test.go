@@ -280,3 +280,17 @@ func TestAdherenceOnAJustOpenedPhaseHasNoActuals(t *testing.T) {
 		t.Errorf("actual intake = %v, want absent", *got.ActualKcal)
 	}
 }
+
+// TestGuardrailsAreNeverNil pins the JSON contract: the field is declared an array, so a
+// nil slice would marshal as null and crash any client reading `.length` — on the happy
+// path, the one case where nothing is worth warning about.
+func TestGuardrailsAreNeverNil(t *testing.T) {
+	targets, _ := DeriveTargets(2500, 0, Inputs{MassKg: ptr(91.0), LeanMassKg: ptr(66.4)})
+	rails := Guardrails(targets, 0, ptr(1500.0), nil)
+	if rails == nil {
+		t.Fatal("Guardrails returned nil; it must be an empty slice")
+	}
+	if len(rails) != 0 {
+		t.Errorf("rails = %+v, want none at maintenance", rails)
+	}
+}

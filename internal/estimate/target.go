@@ -41,7 +41,12 @@ const (
 // it. ConventionalSplit exists so the UI can say which is which instead of presenting
 // three numbers of equal authority.
 type Targets struct {
-	Kcal              float64 `json:"kcal"`
+	Kcal float64 `json:"kcal"`
+	// KgPerWeek is the same Target rate in kilograms — the intuitive reading of a figure
+	// the Account otherwise only sees as a percentage. Server-side because the client has
+	// no body mass to convert with, and would otherwise back it out of the calorie gap:
+	// arithmetic on the client is arithmetic nobody tests (ADR 0019).
+	KgPerWeek         float64 `json:"kg_per_week"`
 	ProteinG          float64 `json:"protein_g"`
 	FatG              float64 `json:"fat_g"`
 	CarbG             float64 `json:"carb_g"`
@@ -93,6 +98,7 @@ func DeriveTargets(expenditureKcal, ratePctPerWeek float64, in Inputs) (Targets,
 
 	return Targets{
 		Kcal:                kcal,
+		KgPerWeek:           ratePctPerWeek / 100 * mass,
 		ProteinG:            proteinG,
 		FatG:                fatG,
 		CarbG:               carbG,
@@ -208,7 +214,10 @@ const (
 // Guardrails reports what is worth warning about for this rate and these targets. It
 // returns advice, never an error: every caller renders these beside a usable control.
 func Guardrails(targets Targets, ratePctPerWeek float64, basalKcal *float64, adherence *Adherence) []Guardrail {
-	var out []Guardrail
+	// Non-nil so the field marshals as [] rather than null: the contract says array, and a
+	// client that trusts it (`guardrails.length`) would otherwise crash on the happy path —
+	// the one case where nothing is worth warning about.
+	out := []Guardrail{}
 
 	if basalKcal != nil && targets.Kcal < *basalKcal {
 		out = append(out, Guardrail{
