@@ -2,9 +2,25 @@ package catalog
 
 import "strings"
 
+// SourceManual is the reserved Source of a Manual entry — a Measurement the
+// Account typed rather than a Connector imported (ADR 0022). It deliberately does
+// **not** appear in sourcePriority: priority elects one winning Source for the whole
+// range, so ranking a hand-typed value first would make one entry the winner of the
+// entire window and hide every device reading around it. A Manual entry displaces
+// imported data through the Manual overlay instead — day by day, in the query
+// engine's source predicate.
+const SourceManual = "Manual"
+
 // sourcePriority resolves read-time Source overlap for a Metric (ADR 0003): an
 // ordered list of case-insensitive substrings matched against Source names
 // (substrings, since real names are device-specific like "Gauthier's Apple Watch").
+//
+// The substring match is not laziness, it is load-bearing: Apple exports device
+// names containing a **non-breaking space** (U+00A0, bytes C2 A0), so the real stored
+// Source is "Apple Watch de Gauthier" and an exact comparison against a
+// hand-typed "Apple Watch …" silently matches nothing. Matching lowercase substrings
+// like "watch" sidesteps the whole class of whitespace and localization surprises in
+// vendor-supplied names.
 // Only Metrics prone to harmful overlap need an entry; the rest fall back to
 // alphabetical order (ResolveSource).
 var sourcePriority = map[string][]string{

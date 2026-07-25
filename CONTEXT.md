@@ -153,6 +153,76 @@ figure is still folded server-side (ADR 0021). Surfaced as the "Data" page.
 _Avoid_: Raw data (it is aggregated, not raw), Table (the rendering, not the concept),
 Grid (that's the Panel layout), Spreadsheet.
 
+### Planning
+
+**Estimate**:
+A quantity Verve *infers* about the Account rather than one a Source *recorded* —
+the load-bearing distinction of this section. A Metric answers "what was measured";
+an Estimate answers "what is true", which the measurement may approximate poorly.
+Estimates are computed on read, never stored as Measurements, and never enter the
+Catalog: they are not observations and must never be graphable beside one.
+_Avoid_: Calculation, Prediction (only one basis is predictive), Derived value
+(a derived Metric is a different, Catalog-level thing).
+
+**Basal estimate**:
+The Account's resting energy expenditure as produced by a **basal equation** —
+what the body spends at rest, inferred from body composition or anthropometry.
+Deliberately **not** `basal_energy`, the imported Metric holding Apple's own
+figure: the two routinely disagree by hundreds of kcal, and conflating them would
+make the disagreement invisible.
+_Avoid_: BMR (acronym; fine in prose, never as the canonical term), Basal energy
+(that's the Metric), Resting metabolism, Metabolism.
+
+**Basal equation**:
+One of the published formulas producing a **Basal estimate** — Katch-McArdle and
+Cunningham (from lean mass), Mifflin-St Jeor and Harris-Benedict (from mass,
+height, age, sex). The Account chooses; Verve preselects the most accurate the
+available data supports and greys out those whose inputs are missing. An equation
+is data, not a branch in code.
+_Avoid_: Formula (that's the derived-Metric language — a different thing),
+Method, Model.
+
+**Expenditure estimate**:
+The Account's total daily energy expenditure — the figure a calorie target is
+built on. Deliberately **not** the `total_energy_expenditure` derived Metric
+(`active_energy + basal_energy`), which is what Apple *recorded* and which can
+overstate the truth by a third. Every Expenditure estimate carries the
+**Estimate basis** that produced it, because a figure whose provenance is unknown
+cannot be trusted or argued with.
+_Avoid_: TDEE (acronym; and it reads as a synonym of the Metric it must not be
+confused with), Total energy expenditure (that *is* the Metric), Maintenance
+(that's the target at rate zero, not the estimate).
+
+**Estimate basis**:
+Which evidence produced an **Expenditure estimate**, best first: `observed`
+(back-computed from logged intake against the body-mass trend — what the body
+actually did), `recorded` (the mean of `total_energy_expenditure` — what the
+devices claim), or `predicted` (**Basal estimate** times a chosen activity
+factor — what an equation guesses). Verve picks the best basis the data supports
+and always names it; the basis is part of the answer, not an implementation
+detail.
+_Avoid_: Source (that's the origin of a Measurement — a different concept),
+Method, Confidence, Tier.
+
+**Phase**:
+A bounded stretch of time over which the Account pursues one **target rate** —
+a cut, a bulk, a maintenance stretch. Phases are kept as a history, never
+overwritten, so each is judged against the window it actually ran over and the
+question "was I doing what I meant to be doing?" stays answerable about the past.
+A new Phase closes the current one; at most one is open.
+_Avoid_: Goal (a goal has no end), Plan (that's the page), Cycle, Period (that's
+the time-axis vocabulary), Program.
+
+**Target rate**:
+The speed of body-mass change a **Phase** aims at, expressed as a percentage of
+body mass per week — signed, so a bulk is positive and a cut negative. A rate,
+not a calorie figure, because the same deficit is trivial at one body size and
+dangerous at another; the calorie target is *derived* from it against the
+**Expenditure estimate**. Named zones (aggressive cut, moderate cut, maintenance,
+lean bulk) label regions of the scale; they are vocabulary, not discrete options.
+_Avoid_: Deficit / Surplus (only one sign each, and both name the calorie figure),
+Goal, Pace, Intensity.
+
 ### Cross-cutting
 
 **Metric**:
@@ -202,6 +272,30 @@ The origin that produced a piece of data — e.g. "Apple Watch", "Yazio",
 "Nike Run Club". Apple Health is itself only an aggregator of upstream
 sources, never the canonical owner. Every family carries its Source.
 _Avoid_: Provider, Device, Origin (Device is narrower — the physical hardware).
+
+**Manual entry**:
+A Measurement the Account typed rather than a Connector imported, carrying the
+reserved Source `Manual`. It is an ordinary Measurement in the store — same table,
+same content key — but it does **not** compete in Source priority: a human corrects
+individual days, whereas a device produces a continuous stream, so ranking one
+against the other whole-range would let a single typed value blank out a year of
+readings. Instead a Manual entry **overlays**: see **Manual overlay**. Manual
+entries are the **only** Measurements Verve will delete — a human typo must be
+undoable, whereas deleting an imported row would not stick (its content key would
+vanish with it and the next Import would restore it).
+_Avoid_: Manual measurement (verbose), Custom data, User data.
+
+**Manual overlay**:
+How a **Manual entry** displaces imported data: on any **day** where the Account has
+typed a value for a Metric, that day's Manual rows replace the winning Source's rows
+for that day, and every other day is untouched. The day is the grain because that is
+the grain at which a person corrects a record. The overlay applies before any
+aggregation, so bucketing, summaries and Formula operands all see one already-resolved
+row set and need no special case — and it is skipped entirely for a Metric with no
+Manual rows, which is every Metric on an Account that has never typed one.
+_Avoid_: Override (suggests the device row is hidden or lost — it is neither),
+Source priority (that ranks whole Sources over a range; this is a different, finer
+mechanic), Merge.
 
 **Import**:
 A single run of a Connector over a source file (e.g. one Apple Health export
