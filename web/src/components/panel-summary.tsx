@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { computeDelta, formatExact, formatSummaryValue } from "@/lib/format";
 import { metricLabel } from "@/lib/metrics";
 import type { Metric, Series } from "@/lib/types";
@@ -165,7 +166,9 @@ export function PanelLegend({
         <span key={s.metric} className="flex items-center gap-1.5">
           <Swatch i={i} />
           <MetricIcon slug={s.metric} className="size-3.5" />
-          <span className="text-muted-foreground">{metricLabel(s.metric)}</span>
+          <Link to="/data/$metric" params={{ metric: s.metric }} className="text-muted-foreground hover:text-foreground hover:underline">
+            {metricLabel(s.metric)}
+          </Link>
           {formula && <FormulaHint formula={formula} />}
           <span
             className="font-medium tabular-nums"

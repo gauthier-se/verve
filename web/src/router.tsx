@@ -4,6 +4,7 @@ import { DashboardIndex } from "./components/dashboard-index";
 import { DashboardView } from "./components/dashboard-view";
 import { DataPage } from "./components/data-page";
 import { ImportPage } from "./components/import-page";
+import { MetricPage } from "./components/metric-page";
 import { PlanPage } from "./components/plan-page";
 
 // Code-based routes (no file router / codegen) keep the build a plain Vite SPA
@@ -35,6 +36,12 @@ const dataRoute = createRoute({
   component: DataPage,
 });
 
+const metricRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/data/$metric",
+  component: MetricPage,
+});
+
 const planRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/plan",
@@ -47,7 +54,14 @@ const importRoute = createRoute({
   component: ImportPage,
 });
 
-const routeTree = rootRoute.addChildren([indexRoute, dashboardRoute, dataRoute, planRoute, importRoute]);
+const routeTree = rootRoute.addChildren([
+  indexRoute,
+  dashboardRoute,
+  dataRoute,
+  metricRoute,
+  planRoute,
+  importRoute,
+]);
 
 export const router = createRouter({ routeTree, defaultPreload: "intent" });
 
