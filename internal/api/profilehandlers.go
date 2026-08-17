@@ -1,6 +1,8 @@
 package api
 
 import (
+	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -58,29 +60,52 @@ func (s *Server) handleUpdateProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Double pointers distinguish the three cases a partial update needs: absent
-	// (leave alone), null (clear), and a value (set).
-	var input struct {
-		DateOfBirth          **string `json:"date_of_birth"`
-		BiologicalSex        **string `json:"biological_sex"`
-		BodyCompositionTrust **string `json:"body_composition_trust"`
-	}
-	if err := readJSON(w, r, &input); err != nil {
+	// A partial update needs three states per field: absent (leave alone), null (clear)
+	// and a value (set). A `**string` cannot express them: encoding/json decodes `null`
+	// by nilling the outer pointer, which is byte-for-byte the same result as the key
+	// being missing — so `{"date_of_birth": null}` silently did nothing. Decoding into
+	// raw messages keyed by name is what makes presence observable.
+	var raw map[string]json.RawMessage
+	if err := readJSON(w, r, &raw); err != nil {
 		s.badRequestResponse(w, r, err)
 		return
 	}
 
 	v := NewValidator()
-	if input.DateOfBirth != nil && *input.DateOfBirth != nil {
-		validateDateOfBirth(v, **input.DateOfBirth, time.Now().UTC())
+	for key := range raw {
+		switch key {
+		case "date_of_birth", "biological_sex", "body_composition_trust":
+		default:
+			v.AddError(key, "is not a profile field")
+		}
 	}
-	if input.BiologicalSex != nil && *input.BiologicalSex != nil {
-		sex := estimate.Sex(**input.BiologicalSex)
+
+	dateOfBirth, ok := patchField(v, raw, "date_of_birth")
+	if !ok {
+		s.badRequestResponse(w, r, errMalformedProfileField)
+		return
+	}
+	biologicalSex, ok := patchField(v, raw, "biological_sex")
+	if !ok {
+		s.badRequestResponse(w, r, errMalformedProfileField)
+		return
+	}
+	trust, ok := patchField(v, raw, "body_composition_trust")
+	if !ok {
+		s.badRequestResponse(w, r, errMalformedProfileField)
+		return
+	}
+
+	if dateOfBirth != nil && *dateOfBirth != nil {
+		validateDateOfBirth(v, **dateOfBirth, time.Now().UTC())
+	}
+	if biologicalSex != nil && *biologicalSex != nil {
+		sex := estimate.Sex(**biologicalSex)
 		v.Check(sex == estimate.SexMale || sex == estimate.SexFemale,
 			"biological_sex", `must be "male" or "female" — it is an input to two of the basal equations, nothing more`)
 	}
-	if input.BodyCompositionTrust != nil && *input.BodyCompositionTrust != nil {
-		t := estimate.Trust(**input.BodyCompositionTrust)
+	if trust != nil && *trust != nil {
+		t := estimate.Trust(**trust)
 		v.Check(t == estimate.TrustMeasured || t == estimate.TrustEstimated || t == estimate.TrustUnknown,
 			"body_composition_trust", `must be "measured", "estimated" or "unknown"`)
 	}
@@ -90,9 +115,9 @@ func (s *Server) handleUpdateProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	patch := data.ProfilePatch{
-		DateOfBirth:          input.DateOfBirth,
-		BiologicalSex:        input.BiologicalSex,
-		BodyCompositionTrust: input.BodyCompositionTrust,
+		DateOfBirth:          dateOfBirth,
+		BiologicalSex:        biologicalSex,
+		BodyCompositionTrust: trust,
 	}
 	if err := s.models.Accounts.UpdateProfile(r.Context(), account.ID, patch); err != nil {
 		s.respondRecordError(w, r, err, "account")
@@ -112,6 +137,26 @@ func (s *Server) handleUpdateProfile(w http.ResponseWriter, r *http.Request) {
 	if err := writeJSON(w, http.StatusOK, envelope{"profile": view}, nil); err != nil {
 		s.serverErrorResponse(w, r, err)
 	}
+}
+
+// errMalformedProfileField is returned when a present key holds something that is neither
+// a string nor null — a shape error rather than a validation failure, hence a 400.
+var errMalformedProfileField = errors.New("api: a profile field must be a string or null")
+
+// patchField reads one key of a partial update, distinguishing the three states the
+// caller needs: nil (key absent, leave the column alone), a pointer to nil (explicit
+// null, clear it) and a pointer to a value (set it). ok=false means the key was present
+// but held the wrong shape.
+func patchField(v *Validator, raw map[string]json.RawMessage, key string) (**string, bool) {
+	msg, present := raw[key]
+	if !present {
+		return nil, true
+	}
+	var value *string
+	if err := json.Unmarshal(msg, &value); err != nil {
+		return nil, false
+	}
+	return &value, true
 }
 
 // profileView renders an Account's profile, resolving the trust suggestion from where its
