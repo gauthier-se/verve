@@ -1,57 +1,34 @@
 import * as React from "react";
-import { Link } from "@tanstack/react-router";
-import { Check, ChevronDown, ChevronRight, Copy, Download, Pencil } from "lucide-react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { Check, ChevronRight, Copy, Download, Pencil } from "lucide-react";
 import { useLedger } from "@/hooks/use-ledger";
 import { formatExact, formatSummaryValue } from "@/lib/format";
 import { metricLabel } from "@/lib/metrics";
 import { copyTsv, tsvNumber } from "@/lib/clipboard";
-import { RANGE_PRESETS, type RangeTokens } from "@/lib/time-range";
 import type { LedgerRow } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { CenteredSpinner } from "./spinner";
-import { LedgerDetailTable } from "./ledger-detail-table";
 import { ManualEntryDialog } from "./manual-entry-dialog";
 import { MetricIcon } from "./metric-icon";
 import { formatBucket } from "./panel-chart";
 
-type Preset = (typeof RANGE_PRESETS)[number]["value"];
-
 /** DataPage is the Ledger (ADR 0021): the numbers behind the graphs as tables. A
  *  scoreboard lists every Metric with data — latest value, ~7-day and ~30-day figures,
- *  and a week-over-week delta — and expanding a row reveals that Metric's chronological
- *  detail table at a chosen granularity, over a page-wide date range. */
+ *  and a week-over-week delta — and a row opens that Metric's own page (chart, highs
+ *  and lows, and the chronological detail table). */
 export function DataPage() {
   const ledger = useLedger();
-  const [expanded, setExpanded] = React.useState<string | null>(null);
-  const [preset, setPreset] = React.useState<Preset>("1y");
   const [entryOpen, setEntryOpen] = React.useState(false);
-  const range: RangeTokens = { preset, from: null, to: null };
 
   return (
     <div className="flex h-full flex-col">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b px-6 py-3">
         <h1 className="text-xl font-semibold">Data</h1>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="h-7" onClick={() => setEntryOpen(true)}>
-            <Pencil className="size-3.5" /> Enter a value
-          </Button>
-          <span className="text-xs text-muted-foreground">Detail range</span>
-          <div className="flex items-center rounded-md border p-0.5">
-            {RANGE_PRESETS.map((p) => (
-              <Button
-                key={p.value}
-                variant={preset === p.value ? "secondary" : "ghost"}
-                size="sm"
-                className="h-7 px-2.5"
-                onClick={() => setPreset(p.value)}
-              >
-                {p.label}
-              </Button>
-            ))}
-          </div>
-        </div>
+        <Button variant="outline" size="sm" className="h-7" onClick={() => setEntryOpen(true)}>
+          <Pencil className="size-3.5" /> Enter a value
+        </Button>
       </header>
 
       <div className="flex-1 overflow-y-auto p-6">
@@ -60,7 +37,7 @@ export function DataPage() {
         ) : (ledger.data?.length ?? 0) === 0 ? (
           <EmptyState />
         ) : (
-          <Scoreboard rows={ledger.data ?? []} expanded={expanded} onToggle={setExpanded} range={range} />
+          <Scoreboard rows={ledger.data ?? []} />
         )}
       </div>
 
@@ -69,18 +46,9 @@ export function DataPage() {
   );
 }
 
-/** Scoreboard is the overview table: one row per Metric, expandable into its detail. */
-function Scoreboard({
-  rows,
-  expanded,
-  onToggle,
-  range,
-}: {
-  rows: LedgerRow[];
-  expanded: string | null;
-  onToggle: (metric: string | null) => void;
-  range: RangeTokens;
-}) {
+/** Scoreboard is the overview table: one row per Metric, linking to its own page. */
+function Scoreboard({ rows }: { rows: LedgerRow[] }) {
+  const navigate = useNavigate();
   const [copied, setCopied] = React.useState(false);
 
   const onCopy = async () => {
@@ -117,58 +85,44 @@ function Scoreboard({
               <TableHead className="text-right">~7 days</TableHead>
               <TableHead className="text-right">~30 days</TableHead>
               <TableHead className="text-right">vs last week</TableHead>
+              <TableHead className="w-6" />
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.map((r) => {
-              const isOpen = expanded === r.metric;
-              return (
-                <React.Fragment key={r.metric}>
-                  <TableRow className="cursor-pointer" onClick={() => onToggle(isOpen ? null : r.metric)}>
-                    <TableCell className="font-medium">
-                      <span className="inline-flex items-center gap-1.5">
-                        {isOpen ? (
-                          <ChevronDown className="size-4 text-muted-foreground" />
-                        ) : (
-                          <ChevronRight className="size-4 text-muted-foreground" />
-                        )}
-                        <MetricIcon slug={r.metric} className="size-4" />
-                        {metricLabel(r.metric)}
+            {rows.map((r) => (
+              <TableRow
+                key={r.metric}
+                className="cursor-pointer"
+                onClick={() => navigate({ to: "/data/$metric", params: { metric: r.metric } })}
+              >
+                <TableCell className="font-medium">
+                  <span className="inline-flex items-center gap-1.5">
+                    <MetricIcon slug={r.metric} className="size-4" />
+                    {metricLabel(r.metric)}
+                  </span>
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {r.latest ? (
+                    <span title={`${formatExact(r.latest.value)} ${r.unit}`.trim()}>
+                      {formatSummaryValue(r.latest.value, r.aggregation)}
+                      <span className="ml-1.5 text-xs text-muted-foreground">
+                        {formatBucket(r.latest.date, "day")}
                       </span>
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {r.latest ? (
-                        <span title={`${formatExact(r.latest.value)} ${r.unit}`.trim()}>
-                          {formatSummaryValue(r.latest.value, r.aggregation)}
-                          <span className="ml-1.5 text-xs text-muted-foreground">
-                            {formatBucket(r.latest.date, "day")}
-                          </span>
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                    <WindowCell value={r.week} aggregation={r.aggregation} />
-                    <WindowCell value={r.month} aggregation={r.aggregation} />
-                    <TableCell className="text-right tabular-nums text-muted-foreground">
-                      <DeltaLabel row={r} />
-                    </TableCell>
-                  </TableRow>
-                  {isOpen && (
-                    <TableRow className="hover:bg-transparent">
-                      <TableCell colSpan={5} className="bg-muted/30 p-3">
-                        <LedgerDetailTable
-                          metric={r.metric}
-                          unit={r.unit}
-                          aggregation={r.aggregation}
-                          range={range}
-                        />
-                      </TableCell>
-                    </TableRow>
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
                   )}
-                </React.Fragment>
-              );
-            })}
+                </TableCell>
+                <WindowCell value={r.week} aggregation={r.aggregation} />
+                <WindowCell value={r.month} aggregation={r.aggregation} />
+                <TableCell className="text-right tabular-nums text-muted-foreground">
+                  <DeltaLabel row={r} />
+                </TableCell>
+                <TableCell className="w-6 pl-0">
+                  <ChevronRight className="size-4 text-muted-foreground" />
+                </TableCell>
+              </TableRow>
+            ))}
           </TableBody>
         </Table>
       </div>
