@@ -153,6 +153,35 @@ figure is still folded server-side (ADR 0021). Surfaced as the "Data" page.
 _Avoid_: Raw data (it is aggregated, not raw), Table (the rendering, not the concept),
 Grid (that's the Panel layout), Spreadsheet.
 
+### Appearance
+
+**Appearance**:
+How Verve is painted, as a pair of **orthogonal** choices: a **Mode** and a
+**Palette**. Orthogonal is the whole point — every Palette ships both a light and a
+dark variant, so picking one never decides the other, and the Account is never asked
+to choose between "Nord" and "dark". A display choice, held per device, that touches
+no stored data (ADR 0024).
+_Avoid_: Theme (it names the pair *and* each half, which is exactly the ambiguity
+this term exists to remove), Skin, Look.
+
+**Mode**:
+How light or dark the surfaces are: `light`, `dark`, or `system` — the last
+following the operating system and changing with it, mid-session, without asking.
+_Avoid_: Dark mode (that is one value, not the axis), Color scheme, Appearance
+(that is the pair).
+
+**Palette**:
+The named color set a Mode is painted in — Verve, Slate, Nord, Ember, Forest, Rose.
+A Palette owns the chrome (surfaces, text, borders, the accent) **and** the
+categorical chart ramp, so a Panel's curves belong to the same world as the page
+around them. It deliberately does **not** own the colors that carry meaning rather
+than style — the destructive action, and the diverging surplus/deficit pair of a
+signed Metric — which are identical in every Palette (ADR 0024). Like the Catalog,
+the set is **closed**: Verve defines the Palettes, the Account picks one; there is no
+custom color, because a hand-picked hue cannot be checked for contrast or for
+color-vision separation across four series.
+_Avoid_: Theme, Color scheme, Skin, Preset (that is the Time range's word).
+
 ### Planning
 
 **Estimate**:
