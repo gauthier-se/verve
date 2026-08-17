@@ -1,4 +1,5 @@
 import * as React from "react";
+import { Link } from "@tanstack/react-router";
 import { ChevronDown, ChevronUp, GripVertical, Plus, Settings2, Trash2, X } from "lucide-react";
 import { useDeletePanel, useUpdatePanel } from "@/hooks/use-dashboards";
 import { useSeries, type BaselineParams } from "@/hooks/use-series";
@@ -56,9 +57,19 @@ export function PanelCard({ panel, catalog, range, baseline, dragHandle }: Panel
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
               {!multi && slugs[0] && <MetricIcon slug={slugs[0]} className="size-4" />}
-              <span className="truncate text-sm font-medium" title={multi ? title : undefined}>
-                {title}
-              </span>
+              {!multi && slugs[0] ? (
+                <Link
+                  to="/data/$metric"
+                  params={{ metric: slugs[0] }}
+                  className="truncate text-sm font-medium hover:underline"
+                >
+                  {title}
+                </Link>
+              ) : (
+                <span className="truncate text-sm font-medium" title={multi ? title : undefined}>
+                  {title}
+                </span>
+              )}
               {metric?.formula && <FormulaHint formula={metric.formula} />}
             </div>
             <div className="text-xs text-muted-foreground">
