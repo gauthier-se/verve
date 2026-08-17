@@ -1,15 +1,15 @@
 import * as React from "react";
 import { Settings2 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { Segment } from "./ui/segmented";
 
 const STORAGE_KEY = "verve-summary-prefs";
 
 /** SummaryPrefs are the global, per-Account display choices for a Panel summary: show
  *  figures as **period averages** (a `sum`/extensive total ÷ its window days, a `latest`
  *  Metric's window mean) instead of the window total, and show numbers exact ("94 100")
- *  vs compact ("94,1 k"). Kept in localStorage like the theme — a display preference,
+ *  vs compact ("94,1 k"). Kept in localStorage like the Appearance — a display preference,
  *  not server data. */
 export interface SummaryPrefs {
   average: boolean;
@@ -85,45 +85,5 @@ export function SummaryPrefsMenu() {
         />
       </PopoverContent>
     </Popover>
-  );
-}
-
-/** Segment is a small labelled two-option segmented control, matching the range and
- *  bucket toggles elsewhere. */
-function Segment({
-  label,
-  hint,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  hint: string;
-  value: string;
-  options: { value: string; label: string }[];
-  onChange: (value: string) => void;
-}) {
-  return (
-    <div className="space-y-1">
-      <p className="text-xs font-medium">{label}</p>
-      <div className="flex items-center rounded-md border p-0.5">
-        {options.map((o) => (
-          <button
-            key={o.value}
-            type="button"
-            onClick={() => onChange(o.value)}
-            className={cn(
-              "flex-1 rounded px-2 py-1 text-xs transition-colors",
-              value === o.value
-                ? "bg-secondary font-medium text-secondary-foreground"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {o.label}
-          </button>
-        ))}
-      </div>
-      <p className="text-[11px] leading-tight text-muted-foreground">{hint}</p>
-    </div>
   );
 }

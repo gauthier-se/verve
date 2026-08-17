@@ -8,10 +8,10 @@ import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { NewDashboardDialog } from "./new-dashboard-dialog";
 import { SummaryPrefsMenu } from "./panel-prefs";
-import { ThemeToggle } from "./theme";
+import { AppearanceMenu } from "./appearance";
 
 /** AppShell is the persistent frame: a sidebar listing the Account's dashboards
- *  (the switcher) with create / theme / logout controls, and the routed content. */
+ *  (the switcher) with create / appearance / logout controls, and the routed content. */
 export function AppShell({ children }: { children: React.ReactNode }) {
   const me = useMe();
   const dashboards = useDashboards();
@@ -100,7 +100,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </span>
           <div className="flex items-center">
             <SummaryPrefsMenu />
-            <ThemeToggle />
+            <AppearanceMenu />
             <Button variant="ghost" size="icon" onClick={() => logout.mutate()} aria-label="Sign out">
               <LogOut className="size-4" />
             </Button>
