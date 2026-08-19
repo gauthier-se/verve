@@ -146,6 +146,12 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("PATCH /v1/panels/{id}", s.requireAuth(s.handleUpdatePanel))
 	mux.Handle("DELETE /v1/panels/{id}", s.requireAuth(s.handleDeletePanel))
 
+	// Pins: the Metrics the Account keeps in the sidebar. A Pin is a shortcut to a
+	// Metric page, so its identity is the Catalog slug and both writes are idempotent.
+	mux.Handle("GET /v1/pins", s.requireAuth(s.handleListPins))
+	mux.Handle("POST /v1/pins", s.requireAuth(s.handleCreatePin))
+	mux.Handle("DELETE /v1/pins/{metric}", s.requireAuth(s.handleDeletePin))
+
 	// /v1/* is the JSON API (identity-resolved), everything else the SPA. Routing-
 	// level 404/405 keep the stdlib plain-text body; application errors are JSON.
 	root := http.NewServeMux()
