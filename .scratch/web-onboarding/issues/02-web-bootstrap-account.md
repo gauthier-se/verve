@@ -1,6 +1,6 @@
 # 02 — Web first-run bootstrap account
 
-Status: ready-for-agent
+Status: done
 Blocked by: 01 (shared account-creation path + seeded dashboard)
 
 ## Goal

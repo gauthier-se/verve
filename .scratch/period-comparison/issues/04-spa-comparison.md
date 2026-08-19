@@ -1,6 +1,6 @@
 # 04 — SPA: comparison control + baseline overlay
 
-Status: resolved
+Status: done
 Blocked by: 03
 
 ## Goal

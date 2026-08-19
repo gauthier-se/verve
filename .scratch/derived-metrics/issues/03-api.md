@@ -1,6 +1,6 @@
 # 03 — API: expose derived Metrics
 
-Status: resolved
+Status: done
 Blocked by: 02
 
 ## Goal

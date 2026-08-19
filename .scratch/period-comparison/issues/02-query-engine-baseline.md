@@ -1,6 +1,6 @@
 # 02 — Query engine: baseline window + ordinal alignment
 
-Status: ready-for-agent
+Status: done
 Blocked by: —
 
 ## Goal

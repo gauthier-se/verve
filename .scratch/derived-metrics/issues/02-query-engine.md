@@ -1,6 +1,6 @@
 # 02 — Query engine: derived Metric resolution
 
-Status: ready-for-agent
+Status: done
 Blocked by: 01
 
 ## Goal

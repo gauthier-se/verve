@@ -1,6 +1,6 @@
 # 04 — SPA: derived Metrics in Panels
 
-Status: resolved
+Status: done
 Blocked by: 03
 
 ## Goal

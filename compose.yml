@@ -1,12 +1,17 @@
 # Minimal homelab deployment of Verve: one service, one volume, one port.
 #
-#   docker compose up -d                 # start the server
-#   docker compose run --rm verve \
-#       account create --email=you@x.dev  # create your first account (once)
-#   docker compose run --rm verve \
-#       import --account=you@x.dev /import/export.zip   # import a snapshot
+#   docker compose up -d
 #
-# Then open http://localhost:8080 and sign in.
+# Then open http://localhost:8080 and create the first account on the first
+# screen; the import runs from the browser too.
+#
+# The CLI path below is the only way to create further accounts, and the only
+# way to import an already unzipped export:
+#
+#   docker compose run --rm verve \
+#       account create --email=you@x.dev
+#   docker compose run --rm verve \
+#       import --account=you@x.dev /import/export.zip
 name: verve
 
 services:
