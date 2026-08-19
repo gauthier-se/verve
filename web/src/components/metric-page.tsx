@@ -1,7 +1,8 @@
 import * as React from "react";
 import { Link, useParams } from "@tanstack/react-router";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Pin, PinOff } from "lucide-react";
 import { useMetricMap } from "@/hooks/use-catalog";
+import { usePins, useAddPin, useRemovePin } from "@/hooks/use-pins";
 import { useSeries } from "@/hooks/use-series";
 import { defaultChartType, metricLabel } from "@/lib/metrics";
 import { formatExact, formatSummaryValue } from "@/lib/format";
@@ -63,6 +64,7 @@ export function MetricPage() {
           <MetricIcon slug={metric} className="size-5" />
           <h1 className="text-xl font-semibold">{metricLabel(metric)}</h1>
           {meta?.formula && <FormulaHint formula={meta.formula} />}
+          <PinToggle metric={metric} />
         </div>
         <div className="flex items-center rounded-md border p-0.5">
           {RANGE_PRESETS.map((p) => (
@@ -159,5 +161,30 @@ function Stat({
       </div>
       <div className="text-xs text-muted-foreground">{formatBucket(date, bucket)}</div>
     </Card>
+  );
+}
+
+/** PinToggle keeps this Metric in the sidebar, or takes it out (ADR 0025). It is
+ *  the only place a Metric gets pinned, because the gesture is "pin this page";
+ *  unpinning has a second entry point on the sidebar row itself, which is where
+ *  you notice you no longer want it. */
+function PinToggle({ metric }: { metric: string }) {
+  const pins = usePins();
+  const addPin = useAddPin();
+  const removePin = useRemovePin();
+  const pinned = (pins.data ?? []).some((p) => p.metric === metric);
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="size-7"
+      aria-pressed={pinned}
+      aria-label={pinned ? "Unpin from sidebar" : "Pin to sidebar"}
+      title={pinned ? "Unpin from sidebar" : "Pin to sidebar"}
+      onClick={() => (pinned ? removePin.mutate(metric) : addPin.mutate(metric))}
+    >
+      {pinned ? <PinOff className="size-4" /> : <Pin className="size-4" />}
+    </Button>
   );
 }
