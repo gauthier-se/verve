@@ -1,6 +1,6 @@
 # 01 — Dashboard schema + model: the Baseline fields
 
-Status: resolved
+Status: done
 Blocked by: —
 
 ## Goal

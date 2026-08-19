@@ -1,7 +1,6 @@
 # 03 — Profile: date of birth, biological sex, body-composition trust
 
-Status: ready-for-agent
-Blocked by: `.scratch/manual-entry/` issue 02
+Status: done
 
 ## Goal
 

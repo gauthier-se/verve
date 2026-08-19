@@ -1,6 +1,6 @@
 # 03 — Web self-service import
 
-Status: ready-for-agent
+Status: done
 Blocked by: 02 (authenticated web session; empty-state CTA lives on the seeded dashboard)
 
 ## Goal

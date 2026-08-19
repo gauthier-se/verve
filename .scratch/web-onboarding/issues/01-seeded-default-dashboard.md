@@ -1,6 +1,6 @@
 # 01 — Seeded default dashboard + shared account-creation path
 
-Status: ready-for-agent
+Status: done
 Blocked by: —
 
 ## Goal

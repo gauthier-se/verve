@@ -1,6 +1,6 @@
 # 01 — Catalog: Formula type + seed derived Metrics
 
-Status: resolved
+Status: done
 Blocked by: —
 
 ## Goal
