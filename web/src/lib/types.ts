@@ -293,3 +293,11 @@ export interface Profile {
   body_composition_trust?: BodyCompositionTrust;
   derived_trust: BodyCompositionTrust;
 }
+
+/** Pin is a Catalog Metric the Account keeps in the sidebar (ADR 0025). It holds
+ *  the slug and its place in the list, and deliberately nothing else: a Pin that
+ *  carried a Time range would be a one-Panel Dashboard under another name. */
+export interface Pin {
+  metric: string;
+  position: number;
+}

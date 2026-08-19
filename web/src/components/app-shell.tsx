@@ -9,6 +9,7 @@ import { Button } from "./ui/button";
 import { NewDashboardDialog } from "./new-dashboard-dialog";
 import { SummaryPrefsMenu } from "./panel-prefs";
 import { AppearanceMenu } from "./appearance";
+import { PinnedNav } from "./pinned-nav";
 
 /** AppShell is the persistent frame: a sidebar listing the Account's dashboards
  *  (the switcher) with create / appearance / logout controls, and the routed content. */
@@ -63,6 +64,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </Link>
           ))}
         </nav>
+
+        <PinnedNav />
 
         <div className="space-y-0.5 border-t px-2 py-2">
           <Link
