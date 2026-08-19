@@ -13,17 +13,35 @@ import { Segment } from "./ui/segmented";
  *  one never disturbs the other. Both are display preferences, kept in localStorage
  *  like the summary prefs — per device, never server data. */
 export type Mode = "light" | "dark" | "system";
-export type PaletteId = "verve" | "slate" | "nord" | "ember" | "forest" | "rose";
+export type PaletteId =
+  | "verve"
+  | "catppuccin"
+  | "dracula"
+  | "github"
+  | "gruvbox"
+  | "nord"
+  | "rosepine"
+  | "solarized"
+  | "tokyonight";
 
-/** PALETTES is the closed, curated set (ADR 0024): Verve defines them, the Account
- *  chooses one. The ids are the `data-palette` values index.css keys off. */
+/** PALETTES is the closed, curated set (ADR 0024, ADR 0026): Verve defines them, the
+ *  Account chooses one. The ids are the `data-palette` values index.css keys off.
+ *
+ *  All but Verve are named after themes people already live in elsewhere, which is the
+ *  point: recognition, not variety (ADR 0026). Verve leads as the default; the rest are
+ *  alphabetical, so a grid of nine can be scanned rather than searched. A stored id that
+ *  is not in this list falls back to Verve, which is what makes retiring a palette free.
+ */
 export const PALETTES: { id: PaletteId; label: string }[] = [
   { id: "verve", label: "Verve" },
-  { id: "slate", label: "Slate" },
+  { id: "catppuccin", label: "Catppuccin" },
+  { id: "dracula", label: "Dracula" },
+  { id: "github", label: "GitHub" },
+  { id: "gruvbox", label: "Gruvbox" },
   { id: "nord", label: "Nord" },
-  { id: "ember", label: "Ember" },
-  { id: "forest", label: "Forest" },
-  { id: "rose", label: "Rose" },
+  { id: "rosepine", label: "Rosé Pine" },
+  { id: "solarized", label: "Solarized" },
+  { id: "tokyonight", label: "Tokyo Night" },
 ];
 
 const MODE_KEY = "verve-mode";
@@ -133,7 +151,7 @@ export function AppearanceMenu() {
           <Palette className="size-4" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-64 space-y-3">
+      <PopoverContent align="end" className="w-72 space-y-3">
         <Segment
           label="Mode"
           hint="System follows your operating system."
@@ -162,7 +180,7 @@ export function AppearanceMenu() {
                 )}
               >
                 <PaletteSwatch id={p.id} resolved={resolved} />
-                {p.label}
+                <span className="truncate">{p.label}</span>
               </button>
             ))}
           </div>

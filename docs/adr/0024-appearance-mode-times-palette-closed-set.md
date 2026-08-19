@@ -1,5 +1,9 @@
 # Appearance is Mode × Palette; the Palette set is closed and semantic colors are immune
 
+_Extended by ADR 0026, which replaces the roster this ADR shipped and states what
+naming a Palette after an existing theme commits Verve to. The mechanism below is
+unchanged._
+
 ## Context
 
 Verve shipped with a dark/light toggle: a `dark` class on `<html>`, one shadcn token
