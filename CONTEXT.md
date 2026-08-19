@@ -153,6 +153,19 @@ figure is still folded server-side (ADR 0021). Surfaced as the "Data" page.
 _Avoid_: Raw data (it is aggregated, not raw), Table (the rendering, not the concept),
 Grid (that's the Panel layout), Spreadsheet.
 
+**Pin**:
+A Catalog **Metric** the Account keeps in the sidebar, beside its Dashboards, as a
+shortcut to that Metric's page. A Pin carries **no time axis**, no Time range, no
+Baseline, no bucket, no second Metric, and that exclusion *is* the concept: a Pin
+that remembered a range would be a one-Panel **Dashboard** under another name, and
+would owe an answer to every question already settled for Dashboards (ADR 0025).
+Server data, per Account, like a Dashboard and unlike the **Appearance**, because a
+Pin asserts "this matters to me" about the data rather than about this device.
+Pinning and unpinning are idempotent, nothing is seeded, and a Pin whose Metric has
+left the Catalog is hidden at render rather than deleted.
+_Avoid_: Favorite (implies a judgement Verve does not make), Bookmark (a browser
+concept), Shortcut (too generic), Watchlist (implies alerting Verve does not do).
+
 ### Appearance
 
 **Appearance**:
