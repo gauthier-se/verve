@@ -184,7 +184,8 @@ _Avoid_: Dark mode (that is one value, not the axis), Color scheme, Appearance
 (that is the pair).
 
 **Palette**:
-The named color set a Mode is painted in — Verve, Slate, Nord, Ember, Forest, Rose.
+The named color set a Mode is painted in: Verve, Catppuccin, Dracula, GitHub,
+Gruvbox, Nord, Rosé Pine, Solarized, Tokyo Night.
 A Palette owns the chrome (surfaces, text, borders, the accent) **and** the
 categorical chart ramp, so a Panel's curves belong to the same world as the page
 around them. It deliberately does **not** own the colors that carry meaning rather
@@ -192,7 +193,12 @@ than style — the destructive action, and the diverging surplus/deficit pair of
 signed Metric — which are identical in every Palette (ADR 0024). Like the Catalog,
 the set is **closed**: Verve defines the Palettes, the Account picks one; there is no
 custom color, because a hand-picked hue cannot be checked for contrast or for
-color-vision separation across four series.
+color-vision separation across four series. All but Verve are named after themes
+people already use elsewhere, because the criterion is **recognition**, not variety
+(ADR 0026); a named Palette is a *verified adaptation* of that theme, never a
+certified reproduction, since Verve requires a light and a dark variant of every
+Palette and holds both to AA contrast and to chart separation, which the upstream
+themes were not designed against.
 _Avoid_: Theme, Color scheme, Skin, Preset (that is the Time range's word).
 
 ### Planning

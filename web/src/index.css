@@ -36,7 +36,7 @@
     --chart-negative: 199 89% 60%;
   }
 
-  /* ---- Verve — violet. The default palette; also the fallback for a stored
+  /* ---- Verve: violet, the default palette, and the fallback for a stored
          palette id that no longer exists. ---- */
   :root,
   [data-palette="verve"] {
@@ -58,8 +58,8 @@
     --input: 240 5.9% 90%;
     --ring: 262 83% 58%;
     --chart-1: 262 83% 58%;
-    --chart-2: 199 89% 48%;
-    --chart-3: 160 84% 39%;
+    --chart-2: 199 89% 46%;
+    --chart-3: 160 84% 35%;
     --chart-4: 347 77% 50%;
   }
 
@@ -88,56 +88,209 @@
     --chart-4: 347 79% 62%;
   }
 
-  /* ---- Slate — blue on cool grey. The sober one. ---- */
-  [data-palette="slate"] {
-    --background: 0 0% 100%;
-    --foreground: 222 47% 11%;
+  /* ---- Catppuccin: Latte (light) / Mocha (dark).
+     https://github.com/catppuccin/catppuccin, MIT. ---- */
+  [data-palette="catppuccin"] {
+    --background: 220 23.1% 94.9%;
+    --foreground: 234 16% 35.5%;
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card-foreground: 234 16% 35.5%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
-    --primary: 221 83% 53%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222 47% 11%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 44%;
-    --accent: 210 40% 96%;
-    --accent-foreground: 222 47% 11%;
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 221 83% 53%;
-    --chart-1: 221 83% 53%;
-    --chart-2: 173 80% 33%;
-    --chart-3: 43 96% 45%;
-    --chart-4: 330 81% 55%;
+    --popover-foreground: 234 16% 35.5%;
+    --primary: 266 85% 58%;
+    --primary-foreground: 220 23.1% 94.9%;
+    --secondary: 220 22% 92%;
+    --secondary-foreground: 234 16% 35.5%;
+    --muted: 220 22% 92%;
+    --muted-foreground: 233 12.8% 41.4%;
+    --accent: 220 22% 92%;
+    --accent-foreground: 234 16% 35.5%;
+    --border: 223 15.9% 82.7%;
+    --input: 223 15.9% 82.7%;
+    --ring: 266 85% 58%;
+    --chart-1: 266 85% 58%;
+    --chart-2: 191 87.4% 31.2%;
+    --chart-3: 109 57.6% 39.8%;
+    --chart-4: 27 92.2% 45.1%;
   }
 
-  .dark[data-palette="slate"] {
-    --background: 222 47% 7%;
-    --foreground: 210 40% 98%;
-    --card: 222 44% 10%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222 44% 10%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 217 91% 65%;
-    --primary-foreground: 222 47% 11%;
-    --secondary: 217 33% 17%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217 33% 17%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 217 33% 17%;
-    --accent-foreground: 210 40% 98%;
-    --border: 217 33% 19%;
-    --input: 217 33% 19%;
-    --ring: 217 91% 65%;
-    --chart-1: 217 91% 65%;
-    --chart-2: 173 70% 50%;
-    --chart-3: 43 96% 58%;
-    --chart-4: 330 81% 66%;
+  .dark[data-palette="catppuccin"] {
+    --background: 240 21.3% 12%;
+    --foreground: 226 63.9% 88%;
+    --card: 240 21.1% 14.9%;
+    --card-foreground: 226 63.9% 88%;
+    --popover: 240 21.1% 14.9%;
+    --popover-foreground: 226 63.9% 88%;
+    --primary: 267 83.5% 81%;
+    --primary-foreground: 240 21.1% 14.9%;
+    --secondary: 237 16.2% 22.9%;
+    --secondary-foreground: 226 63.9% 88%;
+    --muted: 237 16.2% 22.9%;
+    --muted-foreground: 228 23.6% 71.8%;
+    --accent: 237 16.2% 22.9%;
+    --accent-foreground: 226 63.9% 88%;
+    --border: 234 13.2% 31.2%;
+    --input: 234 13.2% 31.2%;
+    --ring: 267 83.5% 81%;
+    --chart-1: 267 83.5% 81%;
+    --chart-2: 189 71% 72.9%;
+    --chart-3: 115 54.1% 76.1%;
+    --chart-4: 23 92% 75.5%;
   }
 
-  /* ---- Nord — arctic blue on desaturated blue-grey. The quiet one. ---- */
+  /* ---- Dracula: dark from the free palette; the light variant is Verve's
+     own derivation, NOT Alucard (Dracula PRO, paid). https://draculatheme.com, MIT.
+     ---- */
+  [data-palette="dracula"] {
+    --background: 257 46.7% 97.1%;
+    --foreground: 231 14.9% 18.4%;
+    --card: 0 0% 100%;
+    --card-foreground: 231 14.9% 18.4%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 231 14.9% 18.4%;
+    --primary: 261 67.9% 53.5%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 257 41.2% 93.3%;
+    --secondary-foreground: 231 14.9% 18.4%;
+    --muted: 257 41.2% 93.3%;
+    --muted-foreground: 245 13.1% 37.5%;
+    --accent: 257 41.2% 93.3%;
+    --accent-foreground: 231 14.9% 18.4%;
+    --border: 257 35.6% 88.4%;
+    --input: 257 35.6% 88.4%;
+    --ring: 261 67.9% 53.5%;
+    --chart-1: 261 67.9% 53.5%;
+    --chart-2: 193 82.7% 33.9%;
+    --chart-3: 141 63.3% 33.1%;
+    --chart-4: 26 92.1% 39.6%;
+  }
+
+  .dark[data-palette="dracula"] {
+    --background: 235 14.3% 15.1%;
+    --foreground: 60 30% 96.1%;
+    --card: 231 14.9% 18.4%;
+    --card-foreground: 60 30% 96.1%;
+    --popover: 231 14.9% 18.4%;
+    --popover-foreground: 60 30% 96.1%;
+    --primary: 265 89.5% 77.6%;
+    --primary-foreground: 231 14.9% 18.4%;
+    --secondary: 232 13.9% 31%;
+    --secondary-foreground: 60 30% 96.1%;
+    --muted: 232 13.9% 31%;
+    --muted-foreground: 228 38.9% 67.3%;
+    --accent: 232 13.9% 31%;
+    --accent-foreground: 60 30% 96.1%;
+    --border: 234 14.4% 39.4%;
+    --input: 234 14.4% 39.4%;
+    --ring: 265 89.5% 77.6%;
+    --chart-1: 265 89.5% 77.6%;
+    --chart-2: 191 96.6% 76.9%;
+    --chart-3: 135 94.4% 64.7%;
+    --chart-4: 31 100% 71.2%;
+  }
+
+  /* ---- GitHub: Primer Light / Dark (not Dimmed).
+     https://github.com/primer/primitives, MIT. ---- */
+  [data-palette="github"] {
+    --background: 210 28.6% 97.3%;
+    --foreground: 213 12.7% 13.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 213 12.7% 13.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 213 12.7% 13.9%;
+    --primary: 212 92.1% 44.5%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 23.5% 93.3%;
+    --secondary-foreground: 213 12.7% 13.9%;
+    --muted: 210 23.5% 93.3%;
+    --muted-foreground: 211 10.6% 39%;
+    --accent: 210 23.5% 93.3%;
+    --accent-foreground: 213 12.7% 13.9%;
+    --border: 210 17.5% 84.3%;
+    --input: 210 17.5% 84.3%;
+    --ring: 212 92.1% 44.5%;
+    --chart-1: 212 92.1% 44.5%;
+    --chart-2: 261 69.1% 59.4%;
+    --chart-3: 137 66% 30%;
+    --chart-4: 40 100% 30.2%;
+  }
+
+  .dark[data-palette="github"] {
+    --background: 216 27.8% 7.1%;
+    --foreground: 208 35.1% 92.7%;
+    --card: 215 21.4% 11%;
+    --card-foreground: 208 35.1% 92.7%;
+    --popover: 215 21.4% 11%;
+    --popover-foreground: 208 35.1% 92.7%;
+    --primary: 216 83.6% 52.2%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 215 15.4% 15.3%;
+    --secondary-foreground: 208 35.1% 92.7%;
+    --muted: 215 15.4% 15.3%;
+    --muted-foreground: 214 7.8% 60%;
+    --accent: 215 15.4% 15.3%;
+    --accent-foreground: 208 35.1% 92.7%;
+    --border: 212 11.9% 21.4%;
+    --input: 212 11.9% 21.4%;
+    --ring: 216 83.6% 52.2%;
+    --chart-1: 215 92.6% 57.6%;
+    --chart-2: 262 89.3% 70.6%;
+    --chart-3: 128 49.2% 48.6%;
+    --chart-4: 41 72.1% 47.8%;
+  }
+
+  /* ---- Gruvbox: light medium / dark medium.
+     https://github.com/morhetz/gruvbox, MIT. ---- */
+  [data-palette="gruvbox"] {
+    --background: 43 58.8% 81%;
+    --foreground: 20 5.3% 22.4%;
+    --card: 48 86.7% 88.2%;
+    --card-foreground: 20 5.3% 22.4%;
+    --popover: 48 86.7% 88.2%;
+    --popover-foreground: 20 5.3% 22.4%;
+    --primary: 190 89% 24.9%;
+    --primary-foreground: 48 86.7% 88.2%;
+    --secondary: 40 38.2% 73.3%;
+    --secondary-foreground: 20 5.3% 22.4%;
+    --muted: 40 38.2% 73.3%;
+    --muted-foreground: 28 8.6% 34.3%;
+    --accent: 40 38.2% 73.3%;
+    --accent-foreground: 20 5.3% 22.4%;
+    --border: 39 24.1% 65.9%;
+    --input: 39 24.1% 65.9%;
+    --ring: 190 89% 24.9%;
+    --chart-1: 190 89% 24.9%;
+    --chart-2: 323 38.8% 40.4%;
+    --chart-3: 19 96.6% 34.9%;
+    --chart-4: 57 79.3% 26.5%;
+  }
+
+  .dark[data-palette="gruvbox"] {
+    --background: 195 6.5% 12.2%;
+    --foreground: 43 58.8% 81%;
+    --card: 0 0% 15.7%;
+    --card-foreground: 43 58.8% 81%;
+    --popover: 0 0% 15.7%;
+    --popover-foreground: 43 58.8% 81%;
+    --primary: 157 15.9% 58%;
+    --primary-foreground: 195 6.5% 12.2%;
+    --secondary: 20 5.3% 22.4%;
+    --secondary-foreground: 43 58.8% 81%;
+    --muted: 20 5.3% 22.4%;
+    --muted-foreground: 35 17.1% 58.8%;
+    --accent: 20 5.3% 22.4%;
+    --accent-foreground: 43 58.8% 81%;
+    --border: 22 7.4% 29.2%;
+    --input: 22 7.4% 29.2%;
+    --ring: 157 15.9% 58%;
+    --chart-1: 157 15.9% 58%;
+    --chart-2: 344 46.7% 67.6%;
+    --chart-3: 27 99.1% 54.7%;
+    --chart-4: 61 66.2% 44.1%;
+  }
+
+  /* ---- Nord. https://www.nordtheme.com, MIT. Verve derives the light variant:
+     Nord has no canonical one. ---- */
   [data-palette="nord"] {
     --background: 218 27% 97%;
     --foreground: 220 16% 20%;
@@ -186,151 +339,155 @@
     --chart-4: 311 34% 66%;
   }
 
-  /* ---- Ember — orange on warm neutral. The loud one. ---- */
-  [data-palette="ember"] {
-    --background: 30 40% 98%;
-    --foreground: 20 14% 12%;
+  /* ---- Rosé Pine: Dawn (light) / Main (dark).
+     https://rosepinetheme.com, MIT. ---- */
+  [data-palette="rosepine"] {
+    --background: 32 56.5% 95.5%;
+    --foreground: 248 19.2% 39.8%;
+    --card: 35 100% 97.6%;
+    --card-foreground: 248 19.2% 39.8%;
+    --popover: 35 100% 97.6%;
+    --popover-foreground: 248 19.2% 39.8%;
+    --primary: 197 53.2% 33.5%;
+    --primary-foreground: 35 100% 97.6%;
+    --secondary: 28 39.5% 91.6%;
+    --secondary-foreground: 248 19.2% 39.8%;
+    --muted: 28 39.5% 91.6%;
+    --muted-foreground: 249 14.7% 42.7%;
+    --accent: 28 39.5% 91.6%;
+    --accent-foreground: 248 19.2% 39.8%;
+    --border: 10 8.6% 86.3%;
+    --input: 10 8.6% 86.3%;
+    --ring: 197 53.2% 33.5%;
+    --chart-1: 268 21.5% 57.1%;
+    --chart-2: 197 53.2% 33.5%;
+    --chart-3: 343 35.1% 54.7%;
+    --chart-4: 37 92% 39.2%;
+  }
+
+  .dark[data-palette="rosepine"] {
+    --background: 249 22% 11.6%;
+    --foreground: 245 50% 91.4%;
+    --card: 247 22.7% 14.7%;
+    --card-foreground: 245 50% 91.4%;
+    --popover: 247 22.7% 14.7%;
+    --popover-foreground: 245 50% 91.4%;
+    --primary: 267 57.1% 78%;
+    --primary-foreground: 249 22% 11.6%;
+    --secondary: 248 24.7% 18.2%;
+    --secondary-foreground: 245 50% 91.4%;
+    --muted: 248 24.7% 18.2%;
+    --muted-foreground: 248 15% 60.8%;
+    --accent: 248 24.7% 18.2%;
+    --accent-foreground: 245 50% 91.4%;
+    --border: 249 14.7% 28%;
+    --input: 249 14.7% 28%;
+    --ring: 267 57.1% 78%;
+    --chart-1: 267 57.1% 78%;
+    --chart-2: 189 43.5% 72.9%;
+    --chart-3: 343 75.6% 67.8%;
+    --chart-4: 35 87.6% 71.6%;
+  }
+
+  /* ---- Solarized: Light / Dark. https://ethanschoonover.com/solarized,
+     MIT. Blue and body text are nudged for AA, which Solarized deliberately runs
+     close to. ---- */
+  [data-palette="solarized"] {
+    --background: 46 42.4% 88.4%;
+    --foreground: 196 16.6% 32%;
+    --card: 44 86.7% 94.1%;
+    --card-foreground: 196 16.6% 32%;
+    --popover: 44 86.7% 94.1%;
+    --popover-foreground: 196 16.6% 32%;
+    --primary: 202 71.7% 36.1%;
+    --primary-foreground: 44 86.7% 94.1%;
+    --secondary: 46 34.1% 83.3%;
+    --secondary-foreground: 196 16.6% 32%;
+    --muted: 46 34.1% 83.3%;
+    --muted-foreground: 195 17.6% 35.7%;
+    --accent: 46 34.1% 83.3%;
+    --accent-foreground: 196 16.6% 32%;
+    --border: 45 28.2% 77.1%;
+    --input: 45 28.2% 77.1%;
+    --ring: 202 71.7% 36.1%;
+    --chart-1: 205 69.4% 48.6%;
+    --chart-2: 331 64.1% 52%;
+    --chart-3: 71 100% 24.3%;
+    --chart-4: 18 80.4% 44.1%;
+  }
+
+  .dark[data-palette="solarized"] {
+    --background: 192 100% 10.6%;
+    --foreground: 180 8.2% 66.7%;
+    --card: 192 80.8% 14.3%;
+    --card-foreground: 180 8.2% 66.7%;
+    --popover: 192 80.8% 14.3%;
+    --popover-foreground: 180 8.2% 66.7%;
+    --primary: 204 73.6% 53.9%;
+    --primary-foreground: 192 100% 10.6%;
+    --secondary: 191 70.8% 18.8%;
+    --secondary-foreground: 180 8.2% 66.7%;
+    --muted: 191 70.8% 18.8%;
+    --muted-foreground: 180 6.9% 60.4%;
+    --accent: 191 70.8% 18.8%;
+    --accent-foreground: 180 8.2% 66.7%;
+    --border: 192 68.1% 22.2%;
+    --input: 192 68.1% 22.2%;
+    --ring: 204 73.6% 53.9%;
+    --chart-1: 205 72.8% 55.3%;
+    --chart-2: 330 69.2% 60.6%;
+    --chart-3: 67 100% 34.5%;
+    --chart-4: 20 80.5% 53.7%;
+  }
+
+  /* ---- Tokyo Night: Day (light) / Night (dark).
+     https://github.com/enkia/tokyo-night-vscode-theme, MIT. ---- */
+  [data-palette="tokyonight"] {
+    --background: 230 11.1% 89.4%;
+    --foreground: 222 55.3% 48.2%;
     --card: 0 0% 100%;
-    --card-foreground: 20 14% 12%;
+    --card-foreground: 222 55.3% 48.2%;
     --popover: 0 0% 100%;
-    --popover-foreground: 20 14% 12%;
-    --primary: 21 90% 42%;
-    --primary-foreground: 30 40% 98%;
-    --secondary: 30 25% 94%;
-    --secondary-foreground: 20 14% 12%;
-    --muted: 30 25% 94%;
-    --muted-foreground: 25 7% 43%;
-    --accent: 30 25% 94%;
-    --accent-foreground: 20 14% 12%;
-    --border: 30 20% 88%;
-    --input: 30 20% 88%;
-    --ring: 21 90% 42%;
-    --chart-1: 21 90% 46%;
-    --chart-2: 199 85% 38%;
-    --chart-3: 142 60% 31%;
-    --chart-4: 291 62% 52%;
+    --popover-foreground: 222 55.3% 48.2%;
+    --primary: 215 68.9% 46.7%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 233 22% 92%;
+    --secondary-foreground: 222 55.3% 48.2%;
+    --muted: 233 22% 92%;
+    --muted-foreground: 229 23.7% 40.6%;
+    --accent: 233 22% 92%;
+    --accent-foreground: 222 55.3% 48.2%;
+    --border: 229 22.9% 81.2%;
+    --input: 229 22.9% 81.2%;
+    --ring: 215 68.9% 46.7%;
+    --chart-1: 215 81% 54.7%;
+    --chart-2: 266 84.9% 63.7%;
+    --chart-3: 89 34.5% 34.1%;
+    --chart-4: 31 100% 34.7%;
   }
 
-  .dark[data-palette="ember"] {
-    --background: 20 14% 7%;
-    --foreground: 30 30% 96%;
-    --card: 20 14% 10%;
-    --card-foreground: 30 30% 96%;
-    --popover: 20 14% 10%;
-    --popover-foreground: 30 30% 96%;
-    --primary: 25 95% 58%;
-    --primary-foreground: 20 14% 7%;
-    --secondary: 22 12% 18%;
-    --secondary-foreground: 30 30% 96%;
-    --muted: 22 12% 18%;
-    --muted-foreground: 28 8% 65%;
-    --accent: 22 12% 18%;
-    --accent-foreground: 30 30% 96%;
-    --border: 22 12% 20%;
-    --input: 22 12% 20%;
-    --ring: 25 95% 58%;
-    --chart-1: 25 95% 60%;
-    --chart-2: 199 85% 55%;
-    --chart-3: 142 55% 48%;
-    --chart-4: 291 65% 66%;
-  }
-
-  /* ---- Forest — green on warm stone. ---- */
-  [data-palette="forest"] {
-    --background: 60 20% 98%;
-    --foreground: 100 15% 10%;
-    --card: 0 0% 100%;
-    --card-foreground: 100 15% 10%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 100 15% 10%;
-    --primary: 142 60% 30%;
-    --primary-foreground: 60 20% 98%;
-    --secondary: 60 12% 94%;
-    --secondary-foreground: 100 15% 10%;
-    --muted: 60 12% 94%;
-    --muted-foreground: 90 6% 42%;
-    --accent: 60 12% 94%;
-    --accent-foreground: 100 15% 10%;
-    --border: 60 10% 88%;
-    --input: 60 10% 88%;
-    --ring: 142 60% 30%;
-    --chart-1: 142 60% 31%;
-    --chart-2: 199 85% 40%;
-    --chart-3: 42 92% 44%;
-    --chart-4: 280 60% 52%;
-  }
-
-  .dark[data-palette="forest"] {
-    --background: 130 12% 6%;
-    --foreground: 60 20% 96%;
-    --card: 130 12% 9%;
-    --card-foreground: 60 20% 96%;
-    --popover: 130 12% 9%;
-    --popover-foreground: 60 20% 96%;
-    --primary: 142 65% 48%;
-    --primary-foreground: 130 12% 6%;
-    --secondary: 130 8% 17%;
-    --secondary-foreground: 60 20% 96%;
-    --muted: 130 8% 17%;
-    --muted-foreground: 100 6% 64%;
-    --accent: 130 8% 17%;
-    --accent-foreground: 60 20% 96%;
-    --border: 130 8% 19%;
-    --input: 130 8% 19%;
-    --ring: 142 65% 48%;
-    --chart-1: 142 60% 52%;
-    --chart-2: 199 85% 58%;
-    --chart-3: 42 92% 58%;
-    --chart-4: 280 62% 68%;
-  }
-
-  /* ---- Rose — crimson on neutral. ---- */
-  [data-palette="rose"] {
-    --background: 0 0% 100%;
-    --foreground: 340 20% 10%;
-    --card: 0 0% 100%;
-    --card-foreground: 340 20% 10%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 340 20% 10%;
-    --primary: 346 77% 50%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 340 15% 95%;
-    --secondary-foreground: 340 20% 10%;
-    --muted: 340 15% 95%;
-    --muted-foreground: 340 6% 43%;
-    --accent: 340 15% 95%;
-    --accent-foreground: 340 20% 10%;
-    --border: 340 12% 90%;
-    --input: 340 12% 90%;
-    --ring: 346 77% 50%;
-    --chart-1: 346 77% 50%;
-    --chart-2: 199 89% 42%;
-    --chart-3: 160 70% 34%;
-    --chart-4: 262 70% 56%;
-  }
-
-  .dark[data-palette="rose"] {
-    --background: 340 15% 6%;
-    --foreground: 340 12% 96%;
-    --card: 340 15% 9%;
-    --card-foreground: 340 12% 96%;
-    --popover: 340 15% 9%;
-    --popover-foreground: 340 12% 96%;
-    --primary: 347 82% 62%;
-    --primary-foreground: 340 15% 6%;
-    --secondary: 340 10% 17%;
-    --secondary-foreground: 340 12% 96%;
-    --muted: 340 10% 17%;
-    --muted-foreground: 340 6% 64%;
-    --accent: 340 10% 17%;
-    --accent-foreground: 340 12% 96%;
-    --border: 340 10% 19%;
-    --input: 340 10% 19%;
-    --ring: 347 82% 62%;
-    --chart-1: 347 82% 62%;
-    --chart-2: 199 89% 58%;
-    --chart-3: 160 65% 48%;
-    --chart-4: 262 75% 68%;
+  .dark[data-palette="tokyonight"] {
+    --background: 240 15.4% 10.2%;
+    --foreground: 229 72.6% 85.7%;
+    --card: 235 18.8% 12.5%;
+    --card-foreground: 229 72.6% 85.7%;
+    --popover: 235 18.8% 12.5%;
+    --popover-foreground: 229 72.6% 85.7%;
+    --primary: 221 88.7% 72.4%;
+    --primary-foreground: 235 18.8% 12.5%;
+    --secondary: 228 23.4% 21%;
+    --secondary-foreground: 229 72.6% 85.7%;
+    --muted: 228 23.4% 21%;
+    --muted-foreground: 229 35.4% 75.1%;
+    --accent: 228 23.4% 21%;
+    --accent-foreground: 229 72.6% 85.7%;
+    --border: 229 23.1% 33.1%;
+    --input: 229 23.1% 33.1%;
+    --ring: 221 88.7% 72.4%;
+    --chart-1: 221 88.7% 72.4%;
+    --chart-2: 261 85.3% 78.6%;
+    --chart-3: 89 50.5% 61.2%;
+    --chart-4: 22 100% 69.6%;
   }
 }
 
