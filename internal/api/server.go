@@ -30,10 +30,20 @@ type Config struct {
 	// DataDir is the data root; web import uploads stream through DataDir/tmp and
 	// orphans there are swept at startup (ADR 0016).
 	DataDir string
-	// ArtifactsDir is where a web import copies GPX route artifacts (ADR 0004).
+	// ArtifactsDir is where a web import copies GPX route artifacts (ADR 0004), and
+	// where the workout endpoints read them back from.
 	ArtifactsDir string
 	// MaxUploadBytes caps a web import upload; zero uses defaultMaxUploadBytes.
 	MaxUploadBytes int64
+	// MapTiles is the tile URL template a workout map draws its basemap from, and
+	// is empty by default (ADR 0028). Empty means the trace is drawn on a blank
+	// ground and the browser makes no outbound request, which is what keeps "does
+	// not phone home" literally true. Filling it is the account holder informed
+	// choice, and it is echoed to the client so the map can render its attribution.
+	MapTiles string
+	// MapAttribution is the credit line the configured tile source requires. It is
+	// not optional in practice: every public tile server asks for one.
+	MapAttribution string
 }
 
 // Server holds the HTTP layer's dependencies. It owns no global state.
@@ -47,6 +57,9 @@ type Server struct {
 	secureCookies bool
 	sessionTTL    time.Duration
 	spa           http.Handler
+	artifactsDir  string
+	mapTiles      string
+	mapAttrib     string
 	imports       *importRegistry
 	// decoyHash is verified against on logins for missing accounts so timing does
 	// not reveal which emails exist. It is a hash of an unguessable value.
@@ -83,6 +96,9 @@ func New(logger *slog.Logger, models data.Models, engine query.Engine, cfg Confi
 		secureCookies: cfg.SecureCookies,
 		sessionTTL:    ttl,
 		spa:           cfg.SPA,
+		artifactsDir:  cfg.ArtifactsDir,
+		mapTiles:      cfg.MapTiles,
+		mapAttrib:     cfg.MapAttribution,
 		imports:       imports,
 		decoyHash:     decoy,
 	}, nil
@@ -148,6 +164,13 @@ func (s *Server) Handler() http.Handler {
 
 	// Pins: the Metrics the Account keeps in the sidebar. A Pin is a shortcut to a
 	// Metric page, so its identity is the Catalog slug and both writes are idempotent.
+	// Workouts (ADR 0028): a Session is an entity, so it is listed and opened
+	// rather than bucketed, and its Route is served as its own resource.
+	mux.Handle("GET /v1/sessions", s.requireAuth(s.handleListSessions))
+	mux.Handle("GET /v1/sessions/{id}", s.requireAuth(s.handleGetSession))
+	mux.Handle("GET /v1/sessions/{id}/routes", s.requireAuth(s.handleSessionRoutes))
+	mux.Handle("GET /v1/sessions/{id}/routes/{routeID}", s.requireAuth(s.handleDownloadRoute))
+
 	mux.Handle("GET /v1/pins", s.requireAuth(s.handleListPins))
 	mux.Handle("POST /v1/pins", s.requireAuth(s.handleCreatePin))
 	mux.Handle("DELETE /v1/pins/{metric}", s.requireAuth(s.handleDeletePin))
