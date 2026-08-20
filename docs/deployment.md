@@ -150,12 +150,12 @@ Restore by stopping Verve and putting the directory (or the `.db` file plus
 
 ### Docker Compose (recommended for a homelab)
 
-The repo ships a minimal [`compose.yml`](../compose.yml). It builds the image
-locally from the [`Dockerfile`](../Dockerfile) on the first `up`, so there are no
-prerequisites beyond Docker:
+The repo ships a minimal [`compose.yml`](../compose.yml) pointing at the
+published image, so there are no prerequisites beyond Docker and nothing to
+check out:
 
 ```sh
-docker compose up -d --build
+docker compose up -d
 # Then open http://localhost:8080 and create your account on the first screen.
 #
 # Optional, for the shell path instead: create the account and import from the CLI
@@ -168,11 +168,36 @@ The image is [distroless](https://github.com/GoogleContainerTools/distroless)
 and runs as a non-root user (uid 65532); the single `/data` volume is the data
 directory.
 
+To run an unreleased `main` instead, clone the repo and swap the `image:` line
+in `compose.yml` for the `build: .` beneath it.
+
+### Images and tags
+
+Images are published to `ghcr.io/gauthier-se/verve` on every tag, as
+`0.1.0`, `0.1` and `latest`. `latest` follows the newest tag and never `main`.
+
+Currently **`linux/amd64` only**. An arm64 image is planned; until then, a Pi or
+an Apple-silicon host builds its own with `docker build -t verve .`, which works
+because the binary is CGo-free (ADR 0004) and needs no toolchain beyond Docker.
+
+### Upgrading
+
+Pull the new tag and restart. Migrations apply themselves on startup, so there
+is no migrate step and no maintenance window beyond the restart:
+
+```sh
+docker compose pull && docker compose up -d
+```
+
+**There is no downgrade.** Migrations are forward-only: an older binary started
+against a database a newer one has migrated will not run. Take a backup before
+a major upgrade, which on Verve means copying a directory (above).
+
 ### Standalone binary
 
-No version is tagged yet, so there is no binary to download: build one with
-`make dist` (see below). Once releases are published, a static binary for your
-OS and architecture will need nothing beyond a data directory:
+Static binaries for linux, macOS and Windows on amd64 and arm64 are attached to
+every [release](https://github.com/gauthier-se/verve/releases), with a
+`checksums.txt` beside them. A binary needs nothing beyond a data directory:
 
 ```sh
 VERVE_DATA_DIR=/srv/verve ./verve serve --addr=:8080

@@ -12,9 +12,11 @@ comparing periods, and above all at letting you keep what it holds. Verve runs
 on your own server: one binary, one database file, no account on anyone else's
 infrastructure, no telemetry.
 
-> **Status: pre-release.** Verve is usable day to day and every feature listed
-> below is implemented and tested, but no version has been tagged yet, so
-> install today means Docker Compose or a build from source. See
+> **Status: `0.x`.** Verve is usable day to day and every feature listed below
+> is implemented and tested. The version number starts with a zero because the
+> interface and the JSON API are still moving, not because the data is at risk:
+> migrations are forward-only and apply themselves, and the whole state is one
+> directory you can copy. Features land before `1.0`, see
 > [ROADMAP.md](./ROADMAP.md).
 
 ## Features
@@ -61,6 +63,12 @@ infrastructure, no telemetry.
   shown and never counted as sleep, and a night your Watch spent on a charger
   is a gap rather than a zero — the per-night average divides by the nights you
   actually recorded.
+* **Workouts, listed and opened.** Every workout you recorded, filtered by
+  activity over a range of its own, with the totals for that period named
+  rather than summed from the page on screen. Open one and you get every
+  statistic your device reported, plus the GPX trace as a map with an elevation
+  and a pace profile. The basemap is opt-in: configure no tile server and the
+  browser makes no outbound request at all.
 * **The numbers behind the curves.** The ledger shows the same aggregated
   series as a sortable table, so a value can be read exactly and copied out.
 
@@ -96,9 +104,10 @@ infrastructure, no telemetry.
 Verve is not a medical device and gives no diagnosis or medical advice. It does
 not phone home, does not sync to a cloud, and has no hosted version. Sleep is
 read as durations per night, not as a hypnogram: the shape of a single night
-needs an intra-day axis Verve does not serve. Workouts are already imported and
-stored but not yet visualized, and ECG waveforms are kept as files without a
-viewer. See [ROADMAP.md](./ROADMAP.md).
+needs an intra-day axis Verve does not serve, and for the same reason a
+workout's detail view shows its recorded statistics and its trace but no heart
+rate curve. ECG waveforms are kept as files without a viewer. See
+[ROADMAP.md](./ROADMAP.md).
 
 ## Getting started
 
@@ -106,22 +115,55 @@ Verve is one static binary serving both the API and the web UI. All state lives
 in a single directory (`VERVE_DATA_DIR`). Migrations apply themselves on
 startup.
 
-### Docker Compose, recommended for a homelab
+### One command, to look before committing
 
 ```sh
-git clone https://github.com/gauthier-se/verve.git
-cd verve
-docker compose up -d --build
+docker run --rm -p 8080:8080 -v verve-data:/data \
+    ghcr.io/gauthier-se/verve:latest serve --addr=:8080 --secure-cookie=false
 ```
 
 Open <http://localhost:8080>, create your account on the first screen, then
 import your export from the Import page. On the iPhone: Health app, profile
 picture, Export All Health Data.
 
+`--secure-cookie=false` is what makes the login work over plain HTTP. Drop it
+behind an HTTPS reverse proxy so the session cookie is only ever sent over TLS.
+
+### Docker Compose, recommended for a homelab
+
+Nothing to clone. Save this as `compose.yml`:
+
+```yaml
+name: verve
+
+services:
+  verve:
+    image: ghcr.io/gauthier-se/verve:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      VERVE_DATA_DIR: /data
+    volumes:
+      - verve-data:/data
+    command: ["serve", "--addr=:8080", "--secure-cookie=false"]
+
+volumes:
+  verve-data:
+```
+
+```sh
+docker compose up -d
+```
+
 The image is [distroless](https://github.com/GoogleContainerTools/distroless)
-and runs as a non-root user. The bundled `compose.yml` relaxes the session
-cookie for plain-HTTP LAN access; behind an HTTPS reverse proxy, drop the
-`--secure-cookie=false` flag.
+and runs as a non-root user, and it is `linux/amd64` for now. `latest` follows
+the newest tag; pin a version if you would rather decide when to upgrade.
+Upgrading is pulling the new tag and restarting: migrations apply themselves.
+
+The [`compose.yml`](./compose.yml) in this repository is the same file with the
+CLI paths documented, for creating further accounts and for importing an
+already unzipped export.
 
 ### From source
 

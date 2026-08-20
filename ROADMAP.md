@@ -28,26 +28,16 @@ Everything below is merged into `main`, tested, and usable today.
 | Appearance | Light, dark or system, times nine palettes, each verified for contrast and chart separation |
 | Pins | Metrics kept in the sidebar as shortcuts, deliberately without a time axis |
 | Sleep | The imported sleep stages read at last: one Metric, bucketed by Night rather than by calendar day, rendered as a stack |
+| Workouts | Every statistic Apple reports kept at import, a filterable list carrying its own range, a detail view, and the GPX trace as a map with elevation and pace profiles |
+| Releases | A tag builds the static binaries and publishes the image, CI compiles the front end on every pull request, and installing is a `docker pull` |
 
 ## Next
 
-The three items that would change what Verve is, in the order they matter. The
-release comes first: it is the only one that changes who can run Verve at all.
-
-### A tagged release
-
-There is no published version and no published image, so installing means
-cloning and building. A first tag, a container image on a registry, and the
-binaries goreleaser is already configured to produce would turn Verve from
-something you build into something you install.
-
-### Read path for workouts
-
-What sleep was until this milestone, **Sessions** still are: workouts, their
-summary statistics and their GPX routes are ingested, the route files are kept
-as artifacts, and nothing reads any of it. What is missing is a list, a detail
-view, and a map. Deferred from the core milestone on purpose, still deferred,
-still wanted, and now specified: see `.scratch/workouts-read-path/PRD.md`.
+Verve is on `0.x`. The leading zero is about the API and the interface, which
+are still moving, and not about the data, which a tag already protects: see
+[ADR 0029](./docs/adr/0029-a-0x-tag-promises-the-data-not-the-interface.md).
+Features land before `1.0`, and the criterion for dropping the zero is a second
+connector having pushed on the Catalog without breaking it, not a feature count.
 
 ### Annotations
 
@@ -69,6 +59,13 @@ happening: an illness, a trip, a change of program. Not yet specified.
   intra-day axis the API deliberately does not serve. Sleep onset, wake time and
   efficiency belong with it, and none of them is expressible as a derived
   Metric's Formula.
+* **Training volume.** A workout is an entity and gets no Panel (ADR 0028).
+  Time or distance per activity, stacked on a time axis, is the aggregate side
+  of the same data, and it is expressible as the `duration_by_state` shape
+  sleep already uses. It is a Metric question, not a Session one.
+* **Intra-workout series.** Heart rate during a ride lives in `measurements`,
+  and reading it per workout is the sub-day read ADR 0012 refuses. It belongs
+  with the hypnogram above: one intra-day axis, or neither.
 * **Merging sources** rather than only ranking them, for the case where two
   devices have complementary coverage instead of overlapping coverage.
 * **More connectors.** The connector interface and its declarative mapping
