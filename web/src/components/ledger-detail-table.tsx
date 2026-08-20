@@ -1,8 +1,9 @@
 import * as React from "react";
 import { ArrowDown, ArrowUp, Check, Copy } from "lucide-react";
 import { useSeries } from "@/hooks/use-series";
-import { computeDelta, formatExact } from "@/lib/format";
+import { computeDelta, formatDuration, formatExact } from "@/lib/format";
 import { copyTsv, tsvNumber } from "@/lib/clipboard";
+import { stageLabel, stagesPresent } from "@/lib/sleep";
 import type { RangeTokens } from "@/lib/time-range";
 import type { Aggregation, Bucket, Point } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -42,6 +43,13 @@ export function LedgerDetailTable({
   const query = useSeries({ metrics: [metric], range, bucket });
   const points = query.data?.series[0]?.points ?? [];
   const isAverage = aggregation === "average";
+  // A duration_by_state Metric decomposes into Stages, so the table grows one column
+  // per Stage present — the same shape the average rule's min/max columns already
+  // take. A stacked bar is the chart whose segments are least readable by eye, which
+  // makes "the numbers behind the curves" load-bearing here rather than nice to have.
+  const isDuration = aggregation === "duration_by_state";
+  const stages = React.useMemo(() => (isDuration ? stagesPresent(points) : []), [isDuration, points]);
+  const showValue = (v: number) => (isDuration ? formatDuration(v) : formatExact(v));
 
   // Delta is versus the previous chronological Point, so it is computed on ascending
   // order before any display sort. Rows then sort by the chosen column.
@@ -61,11 +69,17 @@ export function LedgerDetailTable({
     setSort((s) => (s.key === key ? { key, desc: !s.desc } : { key, desc: true }));
 
   const onCopy = async () => {
-    const headers = ["Date", "Value", ...(isAverage ? ["Min", "Max"] : [])];
+    const headers = [
+      "Date",
+      "Value",
+      ...(isAverage ? ["Min", "Max"] : []),
+      ...stages.map(stageLabel),
+    ];
     const body = rows.map(({ point }) => [
       point.bucket,
       tsvNumber(point.value),
       ...(isAverage ? [numOrEmpty(point.min), numOrEmpty(point.max)] : []),
+      ...stages.map((stage) => numOrEmpty(point.states?.[stage])),
     ]);
     await copyTsv(headers, body);
     setCopied(true);
@@ -116,6 +130,11 @@ export function LedgerDetailTable({
               />
               {isAverage && <TableHead className="text-right">Min</TableHead>}
               {isAverage && <TableHead className="text-right">Max</TableHead>}
+              {stages.map((stage) => (
+                <TableHead key={stage} className="text-right">
+                  {stageLabel(stage)}
+                </TableHead>
+              ))}
               <TableHead className="text-right">Δ vs previous</TableHead>
             </TableRow>
           </TableHeader>
@@ -123,9 +142,14 @@ export function LedgerDetailTable({
             {rows.map(({ point, delta }) => (
               <TableRow key={point.bucket}>
                 <TableCell className="whitespace-nowrap">{formatBucket(point.bucket, bucket)}</TableCell>
-                <TableCell className="text-right tabular-nums">{formatExact(point.value)}</TableCell>
+                <TableCell className="text-right tabular-nums">{showValue(point.value)}</TableCell>
                 {isAverage && <TableCell className="text-right tabular-nums text-muted-foreground">{bandCell(point.min)}</TableCell>}
                 {isAverage && <TableCell className="text-right tabular-nums text-muted-foreground">{bandCell(point.max)}</TableCell>}
+                {stages.map((stage) => (
+                  <TableCell key={stage} className="text-right tabular-nums text-muted-foreground">
+                    {point.states?.[stage] === undefined ? "—" : formatDuration(point.states[stage])}
+                  </TableCell>
+                ))}
                 <TableCell className="text-right tabular-nums text-muted-foreground">
                   {delta ? `${delta.arrow} ${delta.label}` : "—"}
                 </TableCell>

@@ -5,7 +5,7 @@ import { useMetricMap } from "@/hooks/use-catalog";
 import { usePins, useAddPin, useRemovePin } from "@/hooks/use-pins";
 import { useSeries } from "@/hooks/use-series";
 import { defaultChartType, metricLabel } from "@/lib/metrics";
-import { formatExact, formatSummaryValue } from "@/lib/format";
+import { formatDuration, formatExact, formatSummaryValue } from "@/lib/format";
 import { RANGE_PRESETS, type RangeTokens } from "@/lib/time-range";
 import type { Aggregation, Series } from "@/lib/types";
 import { Button } from "./ui/button";
@@ -154,10 +154,13 @@ function Stat({
     <Card className="px-4 py-3">
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="flex items-baseline gap-1.5">
+        {/* A night reads as a duration; the unit is then already in the text (ADR 0027). */}
         <span className="text-lg font-semibold tabular-nums" title={`${formatExact(value)} ${unit}`.trim()}>
-          {formatSummaryValue(value, aggregation)}
+          {aggregation === "duration_by_state" ? formatDuration(value) : formatSummaryValue(value, aggregation)}
         </span>
-        {unit && <span className="text-xs text-muted-foreground">{unit}</span>}
+        {unit && aggregation !== "duration_by_state" && (
+          <span className="text-xs text-muted-foreground">{unit}</span>
+        )}
       </div>
       <div className="text-xs text-muted-foreground">{formatBucket(date, bucket)}</div>
     </Card>

@@ -69,6 +69,13 @@ func TestDerivedMetricsWellFormed(t *testing.T) {
 			if op.Nature != Imported {
 				t.Errorf("derived %q references non-imported operand %q", slug, s)
 			}
+			// A duration_by_state operand would fold time asleep into a weighted sum
+			// or a ratio and produce a number with no meaning — and would do it
+			// silently, since the engine can serve the operand (ADR 0027). Nothing
+			// violates this today; the fence is what keeps that true.
+			if op.Aggregation == DurationByState {
+				t.Errorf("derived %q references duration-by-state operand %q: a Formula folds Measurements, not Nights", slug, s)
+			}
 		}
 
 		units, err := acceptableUnits(f)

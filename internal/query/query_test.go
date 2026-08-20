@@ -85,7 +85,7 @@ func TestSeriesSumPerDay(t *testing.T) {
 		t.Errorf("metadata = %q/%q, want sum/count", s.Aggregation, s.Unit)
 	}
 	want := []Point{{Bucket: "2024-01-01", Value: 300}, {Bucket: "2024-01-02", Value: 50}}
-	if len(s.Points) != 2 || s.Points[0] != want[0] || s.Points[1] != want[1] {
+	if len(s.Points) != 2 || !samePoint(s.Points[0], want[0]) || !samePoint(s.Points[1], want[1]) {
 		t.Errorf("points = %+v, want %+v", s.Points, want)
 	}
 	// Days is the window's whole-day span (Jan 1 → Jan 3), the per-day denominator:
@@ -184,7 +184,7 @@ func TestSeriesLatestPerBucket(t *testing.T) {
 		t.Fatalf("Series: %v", err)
 	}
 	want := []Point{{Bucket: "2024-01-01", Value: 79.5}, {Bucket: "2024-01-05", Value: 79.0}}
-	if len(s.Points) != 2 || s.Points[0] != want[0] || s.Points[1] != want[1] {
+	if len(s.Points) != 2 || !samePoint(s.Points[0], want[0]) || !samePoint(s.Points[1], want[1]) {
 		t.Errorf("points = %+v, want %+v", s.Points, want)
 	}
 }
@@ -248,7 +248,7 @@ func TestSeriesWeekAndMonthBuckets(t *testing.T) {
 		t.Fatalf("Series week: %v", err)
 	}
 	wantWeek := []Point{{Bucket: "2024-01-01", Value: 30}, {Bucket: "2024-01-08", Value: 30}}
-	if len(week.Points) != 2 || week.Points[0] != wantWeek[0] || week.Points[1] != wantWeek[1] {
+	if len(week.Points) != 2 || !samePoint(week.Points[0], wantWeek[0]) || !samePoint(week.Points[1], wantWeek[1]) {
 		t.Errorf("week points = %+v, want %+v", week.Points, wantWeek)
 	}
 
@@ -259,7 +259,7 @@ func TestSeriesWeekAndMonthBuckets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Series month: %v", err)
 	}
-	if len(month.Points) != 1 || month.Points[0] != (Point{Bucket: "2024-01-01", Value: 60}) {
+	if len(month.Points) != 1 || !samePoint(month.Points[0], Point{Bucket: "2024-01-01", Value: 60}) {
 		t.Errorf("month points = %+v, want one bucket of 60", month.Points)
 	}
 }
@@ -362,7 +362,7 @@ func TestSeriesDerivedCalorieBalance(t *testing.T) {
 	}
 	// Only day 1 is emitted; day 2 is a gap for the missing dietary_energy.
 	want := []Point{{Bucket: "2024-01-01", Value: -200}} // 1800 − 400 − 1600
-	if len(s.Points) != 1 || s.Points[0] != want[0] {
+	if len(s.Points) != 1 || !samePoint(s.Points[0], want[0]) {
 		t.Errorf("points = %+v, want %+v (day 2 absent)", s.Points, want)
 	}
 }
@@ -388,7 +388,7 @@ func TestSeriesDerivedProteinPerKg(t *testing.T) {
 		t.Fatalf("Series: %v", err)
 	}
 	want := []Point{{Bucket: "2024-01-01", Value: 1.5}} // 120 / 80
-	if len(s.Points) != 1 || s.Points[0] != want[0] {
+	if len(s.Points) != 1 || !samePoint(s.Points[0], want[0]) {
 		t.Errorf("points = %+v, want %+v (day 2 absent, no weigh-in)", s.Points, want)
 	}
 }
@@ -422,7 +422,7 @@ func TestSeriesDerivedWeeklyRecomputesFromOperands(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Series TEE: %v", err)
 	}
-	if len(tee.Points) != 1 || tee.Points[0] != (Point{Bucket: "2024-01-01", Value: 4000}) {
+	if len(tee.Points) != 1 || !samePoint(tee.Points[0], Point{Bucket: "2024-01-01", Value: 4000}) {
 		t.Errorf("weekly TEE = %+v, want one bucket of 4000", tee.Points)
 	}
 
@@ -516,4 +516,34 @@ func TestParseBucket(t *testing.T) {
 			}
 		})
 	}
+}
+
+// samePoint compares two Points by value. Point stopped being comparable with `==`
+// when it gained the per-Stage breakdown a duration_by_state Metric carries (ADR
+// 0027): a map is the honest model for a free-text state_value column, and this is
+// its cost, paid once here rather than by closing the Stage set in the engine.
+func samePoint(a, b Point) bool {
+	if a.Bucket != b.Bucket || a.Value != b.Value || a.Gap != b.Gap {
+		return false
+	}
+	if !sameOptional(a.Min, b.Min) || !sameOptional(a.Max, b.Max) {
+		return false
+	}
+	if len(a.States) != len(b.States) {
+		return false
+	}
+	for stage, minutes := range a.States {
+		if other, ok := b.States[stage]; !ok || other != minutes {
+			return false
+		}
+	}
+	return true
+}
+
+// sameOptional compares two optional float64s, nil included.
+func sameOptional(a, b *float64) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }

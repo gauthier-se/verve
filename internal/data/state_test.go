@@ -39,3 +39,38 @@ func TestInsertStateBatchIdempotent(t *testing.T) {
 		t.Errorf("state rows = %d, want 2 (no duplicates)", count)
 	}
 }
+
+// TestHasStates: the one question the Ledger asks of this family, scoped to the
+// owning Account and to one kind.
+func TestHasStates(t *testing.T) {
+	_, models := openTestDB(t)
+	acc := seedAccount(t, models)
+
+	has, err := models.States.HasStates(context.Background(), acc, "sleep")
+	if err != nil {
+		t.Fatalf("HasStates: %v", err)
+	}
+	if has {
+		t.Error("HasStates = true on an empty table, want false")
+	}
+
+	if _, err := models.States.InsertStateBatch(context.Background(), []State{{
+		AccountID: acc, Kind: "sleep", StateValue: "asleep_core",
+		StartAt: "2024-01-01T23:00:00Z", EndAt: "2024-01-02T06:00:00Z",
+		Source: "Apple Watch", ContentKey: "k1",
+	}}); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	has, err = models.States.HasStates(context.Background(), acc, "sleep")
+	if err != nil || !has {
+		t.Errorf("HasStates(sleep) = %v (%v), want true", has, err)
+	}
+	// Another kind, and another Account, are separate questions.
+	if has, _ := models.States.HasStates(context.Background(), acc, "stand"); has {
+		t.Error("HasStates(stand) = true, want false")
+	}
+	if has, _ := models.States.HasStates(context.Background(), acc+1, "sleep"); has {
+		t.Error("HasStates for another Account = true, want false")
+	}
+}

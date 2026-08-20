@@ -36,10 +36,10 @@ func TestComparePrevious(t *testing.T) {
 	wantCur := []Point{{Bucket: "2024-01-08", Value: 100}, {Bucket: "2024-01-09", Value: 200}, {Bucket: "2024-01-10", Value: 300}}
 	wantBase := []Point{{Bucket: "2024-01-05", Value: 10}, {Bucket: "2024-01-06", Value: 20}, {Bucket: "2024-01-07", Value: 30}}
 	for i := range wantCur {
-		if cmp.Current.Points[i] != wantCur[i] {
+		if !samePoint(cmp.Current.Points[i], wantCur[i]) {
 			t.Errorf("current[%d] = %+v, want %+v", i, cmp.Current.Points[i], wantCur[i])
 		}
-		if cmp.Baseline.Points[i] != wantBase[i] {
+		if !samePoint(cmp.Baseline.Points[i], wantBase[i]) {
 			t.Errorf("baseline[%d] = %+v, want %+v", i, cmp.Baseline.Points[i], wantBase[i])
 		}
 		if cmp.Baseline.Points[i].Bucket == cmp.Current.Points[i].Bucket {
@@ -80,7 +80,7 @@ func TestCompareTruncatesLongerBaseline(t *testing.T) {
 	}
 	wantBase := []Point{{Bucket: "2024-03-01", Value: 10}, {Bucket: "2024-03-02", Value: 20}, {Bucket: "2024-03-03", Value: 30}}
 	for i := range wantBase {
-		if cmp.Baseline.Points[i] != wantBase[i] {
+		if !samePoint(cmp.Baseline.Points[i], wantBase[i]) {
 			t.Errorf("baseline[%d] = %+v, want %+v", i, cmp.Baseline.Points[i], wantBase[i])
 		}
 	}
@@ -111,7 +111,7 @@ func TestCompareTruncatesCurrentToShorter(t *testing.T) {
 	}
 	wantCur := []Point{{Bucket: "2024-02-01", Value: 1}, {Bucket: "2024-02-02", Value: 2}}
 	for i := range wantCur {
-		if cmp.Current.Points[i] != wantCur[i] {
+		if !samePoint(cmp.Current.Points[i], wantCur[i]) {
 			t.Errorf("current[%d] = %+v, want %+v", i, cmp.Current.Points[i], wantCur[i])
 		}
 	}
@@ -146,7 +146,7 @@ func TestCompareEmptyWindow(t *testing.T) {
 		t.Fatalf("baseline points = %+v, want 3 all-gap slots", cmp.Baseline.Points)
 	}
 	for i := range wantGap {
-		if cmp.Baseline.Points[i] != wantGap[i] {
+		if !samePoint(cmp.Baseline.Points[i], wantGap[i]) {
 			t.Errorf("baseline[%d] = %+v, want dated gap %+v", i, cmp.Baseline.Points[i], wantGap[i])
 		}
 	}
@@ -181,10 +181,10 @@ func TestCompareGapInCurrentAligns(t *testing.T) {
 		t.Fatalf("lengths = current %d / baseline %d, want 2/2", len(cmp.Current.Points), len(cmp.Baseline.Points))
 	}
 	for i := range wantCur {
-		if cmp.Current.Points[i] != wantCur[i] {
+		if !samePoint(cmp.Current.Points[i], wantCur[i]) {
 			t.Errorf("current[%d] = %+v, want %+v", i, cmp.Current.Points[i], wantCur[i])
 		}
-		if cmp.Baseline.Points[i] != wantBase[i] {
+		if !samePoint(cmp.Baseline.Points[i], wantBase[i]) {
 			t.Errorf("baseline[%d] = %+v, want %+v (aligned by ordinal, not slice index)", i, cmp.Baseline.Points[i], wantBase[i])
 		}
 	}
@@ -218,7 +218,7 @@ func TestCompareGapInBaseline(t *testing.T) {
 		{Bucket: "2024-01-07", Value: 30},
 	}
 	for i := range want {
-		if cmp.Baseline.Points[i] != want[i] {
+		if !samePoint(cmp.Baseline.Points[i], want[i]) {
 			t.Errorf("baseline[%d] = %+v, want %+v", i, cmp.Baseline.Points[i], want[i])
 		}
 	}
@@ -242,10 +242,10 @@ func TestCompareWeekBuckets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compare: %v", err)
 	}
-	if len(cmp.Current.Points) != 1 || cmp.Current.Points[0] != (Point{Bucket: "2024-01-08", Value: 30}) {
+	if len(cmp.Current.Points) != 1 || !samePoint(cmp.Current.Points[0], Point{Bucket: "2024-01-08", Value: 30}) {
 		t.Errorf("current = %+v, want the week of 2024-01-08 summing to 30", cmp.Current.Points)
 	}
-	if len(cmp.Baseline.Points) != 1 || cmp.Baseline.Points[0] != (Point{Bucket: "2024-01-01", Value: 5}) {
+	if len(cmp.Baseline.Points) != 1 || !samePoint(cmp.Baseline.Points[0], Point{Bucket: "2024-01-01", Value: 5}) {
 		t.Errorf("baseline = %+v, want the prior week of 2024-01-01 (Monday key) valued 5", cmp.Baseline.Points)
 	}
 }
@@ -270,10 +270,10 @@ func TestCompareDerived(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compare: %v", err)
 	}
-	if len(cmp.Current.Points) != 1 || cmp.Current.Points[0] != (Point{Bucket: "2024-01-02", Value: -200}) {
+	if len(cmp.Current.Points) != 1 || !samePoint(cmp.Current.Points[0], Point{Bucket: "2024-01-02", Value: -200}) {
 		t.Errorf("current = %+v, want 2024-01-02/-200", cmp.Current.Points)
 	}
-	if len(cmp.Baseline.Points) != 1 || cmp.Baseline.Points[0] != (Point{Bucket: "2024-01-01", Value: 400}) {
+	if len(cmp.Baseline.Points) != 1 || !samePoint(cmp.Baseline.Points[0], Point{Bucket: "2024-01-01", Value: 400}) {
 		t.Errorf("baseline = %+v, want 2024-01-01/400 (recomputed from operands)", cmp.Baseline.Points)
 	}
 	if cmp.Baseline.Source != "" {

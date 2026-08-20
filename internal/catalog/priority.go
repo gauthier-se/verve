@@ -29,6 +29,11 @@ var sourcePriority = map[string][]string{
 	"steps":                    {"watch", "iphone"},
 	"distance_walking_running": {"watch", "iphone"},
 	"flights_climbed":          {"watch", "iphone"},
+	// Sleep resolves per Night rather than per range (ADR 0027), so this ordering
+	// breaks a tie between two Sources that both staged the *same* night: the Watch
+	// is the one actually on the wrist. The nights it missed still come from the
+	// iPhone, which is why the two are not ranked over the whole window.
+	"sleep": {"watch", "iphone"},
 }
 
 // SourcePriority returns the configured ordered priority patterns for a Metric,

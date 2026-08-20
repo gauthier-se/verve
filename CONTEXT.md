@@ -34,6 +34,9 @@ _Avoid_: Waveform, Signal, Trace.
 **State**:
 A categorical state that holds over an interval — e.g. a sleep stage
 (`InBed`, `AsleepREM`) or a stand hour. Defined by (state value, start, end).
+The sleep States are read through the `sleep` **Metric** (see **Night** and
+**Stage** under Sleep); the stand States are stored and deliberately unread,
+since `apple_stand_time` already answers that question as a Measurement.
 _Avoid_: Interval, Category, Phase.
 
 **Event**:
@@ -165,6 +168,38 @@ Pinning and unpinning are idempotent, nothing is seeded, and a Pin whose Metric 
 left the Catalog is hidden at render rather than deleted.
 _Avoid_: Favorite (implies a judgement Verve does not make), Bookmark (a browser
 concept), Shortcut (too generic), Watchlist (implies alerting Verve does not do).
+
+### Sleep
+
+**Night**:
+The bucket a sleep interval falls in, and the reason sleep is not read at day
+grain: a **Measurement** is an instant, a sleep **State** is a span that crosses
+midnight by construction, so a calendar day splits every night in two and calls
+neither half a night. A Night is the **noon-anchored day keyed on the morning it
+wakes into** — `date(start_at, '+12 hours')` — so a night fragmented into dozens
+of rows still lands whole in one bucket, labelled with the day the rest of the
+Dashboard is talking about. A Night belongs to a **Time range** whole or not at
+all, and a week or month bucket is folded from the Night labels rather than from
+the intervals, so a Night is never in a different week than the day it is named
+after. It is also the grain at which sleep's evidence is resolved — which
+**Stage** rows and which **Source** count — for the same reason the **Manual
+overlay**'s grain is the day: it is the grain at which the evidence actually
+changes (ADR 0027).
+_Avoid_: Sleep day (reads as a day spent sleeping), Session (that's the workout
+family), Bedtime, Sleep period.
+
+**Stage**:
+One phase within a **Night** — `asleep_deep`, `asleep_core`, `asleep_rem`,
+`asleep` (unspecified), `awake`, `in_bed` — carried per bucket as minutes and
+rendered as the stacked bar's segments. The `sleep` Metric's value is **time
+asleep**, the sum of the `asleep*` Stages: `awake` is always reported so the
+stack shows the interruptions and never counted as sleep. `in_bed` is not a
+Stage of the same nature but the container the others sit inside — an iPhone
+records it over the very minutes a Watch records Stages in — so it counts only
+in a Night that has no Stages at all, which is exactly an iPhone-only Account's
+whole sleep history (ADR 0027).
+_Avoid_: Phase (that's the Planning term), Sleep state (State is the family),
+Level, Depth.
 
 ### Appearance
 

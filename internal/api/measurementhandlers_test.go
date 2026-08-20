@@ -111,6 +111,9 @@ func TestCreateMeasurementRejectsBadInput(t *testing.T) {
 	}{
 		{"unknown slug", map[string]any{"metric": "not_a_metric", "value": 1}, "metric"},
 		{"derived metric", map[string]any{"metric": "calorie_balance", "value": 1}, "metric"},
+		// Sleep is read from the States family: a typed row would land in measurements,
+		// where the sleep read path never looks at it again (ADR 0027).
+		{"duration-by-state metric", map[string]any{"metric": "sleep", "value": 420}, "metric"},
 		{"missing metric", map[string]any{"value": 1}, "metric"},
 		{"missing value", map[string]any{"metric": "body_mass"}, "value"},
 		{"future date", map[string]any{"metric": "body_mass", "value": 91, "measured_at": "2030-01-01T00:00:00Z"}, "measured_at"},

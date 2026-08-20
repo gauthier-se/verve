@@ -26,9 +26,9 @@ infrastructure, no telemetry.
   unzip, no shell needed.
 * **Idempotent re-import.** Re-importing a full snapshot adds only what is new,
   so you can drop in a fresh export every month.
-* **107 canonical metrics**, each with a fixed unit and a fixed aggregation
+* **108 canonical metrics**, each with a fixed unit and a fixed aggregation
   rule: energy, body composition, activity, heart, respiratory, audio exposure,
-  and the full nutrition panel down to individual micronutrients.
+  sleep, and the full nutrition panel down to individual micronutrients.
 * **Nothing is discarded.** Every source is kept side by side. When the Watch
   and the iPhone both counted your steps, Verve resolves the overlap when
   reading rather than deleting rows, and anything it cannot map lands in an
@@ -55,6 +55,12 @@ infrastructure, no telemetry.
   operands.
 * **A page per metric**, reachable from any panel title or legend entry, and a
   **Pinned** sidebar for the handful you check daily.
+* **Sleep, by the night.** The stages your Watch records are read at the grain
+  a night actually has, not the calendar day it straddles: one bar per night,
+  stacked by stage, labelled with the morning you woke up on. Time awake is
+  shown and never counted as sleep, and a night your Watch spent on a charger
+  is a gap rather than a zero — the per-night average divides by the nights you
+  actually recorded.
 * **The numbers behind the curves.** The ledger shows the same aggregated
   series as a sortable table, so a value can be read exactly and copied out.
 
@@ -88,10 +94,11 @@ infrastructure, no telemetry.
 ### What Verve does not do
 
 Verve is not a medical device and gives no diagnosis or medical advice. It does
-not phone home, does not sync to a cloud, and has no hosted version. Sleep and
-workouts are already imported and stored, but they are not yet visualized, and
-ECG waveforms are kept as files without a viewer. See
-[ROADMAP.md](./ROADMAP.md).
+not phone home, does not sync to a cloud, and has no hosted version. Sleep is
+read as durations per night, not as a hypnogram: the shape of a single night
+needs an intra-day axis Verve does not serve. Workouts are already imported and
+stored but not yet visualized, and ECG waveforms are kept as files without a
+viewer. See [ROADMAP.md](./ROADMAP.md).
 
 ## Getting started
 
