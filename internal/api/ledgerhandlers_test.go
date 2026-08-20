@@ -1,7 +1,9 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"math"
 	"net/http"
 	"testing"
@@ -103,5 +105,86 @@ func assertFloat(t *testing.T, name string, got *float64, want float64) {
 	}
 	if math.Abs(*got-want) > 1e-9 {
 		t.Errorf("%s = %v, want %v", name, *got, want)
+	}
+}
+
+// seedNights seeds one whole-night sleep State per entry, each starting at 23:00 the
+// evening before the Night it belongs to, so the Night label is n days ago.
+func seedNights(t *testing.T, models data.Models, email string, minutesByNightsAgo map[int]float64) {
+	t.Helper()
+	acc, err := models.Accounts.GetByEmail(context.Background(), email)
+	if err != nil {
+		t.Fatalf("get account: %v", err)
+	}
+	now := time.Now().UTC()
+	var batch []data.State
+	for nightsAgo, minutes := range minutesByNightsAgo {
+		night := now.AddDate(0, 0, -nightsAgo)
+		start := time.Date(night.Year(), night.Month(), night.Day(), 0, 0, 0, 0, time.UTC).Add(-time.Hour)
+		batch = append(batch, data.State{
+			AccountID: acc.ID, Kind: "sleep", StateValue: "asleep_core",
+			StartAt:    start.Format(time.RFC3339),
+			EndAt:      start.Add(time.Duration(minutes) * time.Minute).Format(time.RFC3339),
+			Source:     "Apple Watch",
+			ContentKey: fmt.Sprintf("night-%d", nightsAgo),
+		})
+	}
+	if _, err := models.States.InsertStateBatch(context.Background(), batch); err != nil {
+		t.Fatalf("seed states: %v", err)
+	}
+}
+
+// TestLedgerSleepFoldsPerNight: sleep joins the scoreboard from the States family,
+// and its window figures divide by the Nights that hold data — never by the window's
+// days, which would report a shortfall the Account never had.
+func TestLedgerSleepFoldsPerNight(t *testing.T) {
+	srv, models, cookie := newTestServer(t)
+	// Three nights in the last week, of 420, 480 and 300 minutes: 1200 over 3 nights
+	// is 400 a night. Over 7 days it would be 171 — the wrong answer this pins.
+	seedNights(t, models, testEmail, map[int]float64{1: 420, 2: 480, 4: 300})
+
+	res, body := do(t, srv, "/v1/ledger", cookie)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", res.StatusCode, body["error"])
+	}
+	var rows []ledgerRow
+	if err := json.Unmarshal(body["rows"], &rows); err != nil {
+		t.Fatalf("decode rows: %v", err)
+	}
+
+	sleep := findRow(t, rows, "sleep")
+	if sleep.Unit != "min" || sleep.Aggregation != "duration_by_state" {
+		t.Errorf("sleep row = %+v, want unit min / duration_by_state", sleep)
+	}
+	assertFloat(t, "week", sleep.Week, 400)
+	assertFloat(t, "month", sleep.Month, 400)
+	if sleep.Latest == nil || sleep.Latest.Value != 420 {
+		t.Errorf("latest = %+v, want last night's 420 min", sleep.Latest)
+	}
+	if sleep.Latest.Date != time.Now().UTC().AddDate(0, 0, -1).Format("2006-01-02") {
+		t.Errorf("latest date = %q, want the night that woke yesterday", sleep.Latest.Date)
+	}
+}
+
+// TestLedgerOmitsSleepWithoutStates: an Account with no sleep gets no sleep row, and
+// no error for the family it has never imported.
+func TestLedgerOmitsSleepWithoutStates(t *testing.T) {
+	srv, models, cookie := newTestServer(t)
+	seedSteps(t, models, testEmail, []data.Measurement{
+		{Metric: "steps", Value: 700, OriginalUnit: "count", StartAt: daysAgo(2), EndAt: daysAgo(2), Source: "Watch", ContentKey: "s1"},
+	})
+
+	res, body := do(t, srv, "/v1/ledger", cookie)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", res.StatusCode)
+	}
+	var rows []ledgerRow
+	if err := json.Unmarshal(body["rows"], &rows); err != nil {
+		t.Fatalf("decode rows: %v", err)
+	}
+	for _, r := range rows {
+		if r.Metric == "sleep" {
+			t.Fatalf("rows = %+v, want no sleep row for an Account with no States", rows)
+		}
 	}
 }

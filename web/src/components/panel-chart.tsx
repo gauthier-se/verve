@@ -14,7 +14,9 @@ import {
   YAxis,
 } from "recharts";
 import type { AxisDomain } from "recharts/types/util/types";
+import { formatDuration } from "@/lib/format";
 import { metricLabel } from "@/lib/metrics";
+import { STAGE_COLOR_INDEX, isSleepSeries, stageLabel, stagesPresent } from "@/lib/sleep";
 import type { ChartType, PanelMetric, Series } from "@/lib/types";
 
 /** SERIES_COLORS is the fixed categorical order, assigned by position in the
@@ -55,7 +57,13 @@ interface ChartDatum {
   bucket: string;
   baselineValue?: number;
   baselineBucket?: string;
-  [seriesKey: `v${number}` | `band${number}`]: number | number[] | undefined;
+  [seriesKey: `v${number}` | `band${number}` | `stage:${string}`]: number | number[] | undefined;
+}
+
+/** stageKey namespaces a Stage's minutes on the datum, so a Stage slug can never
+ *  collide with a series key. */
+function stageKey(stage: string): `stage:${string}` {
+  return `stage:${stage}`;
 }
 
 /** PanelChart renders a Panel's Series as one combo chart: each Series with its
@@ -73,6 +81,11 @@ export function PanelChart({
   baseline?: Series;
 }) {
   const data = React.useMemo<ChartDatum[]>(() => mergeSeries(list, baseline), [list, baseline]);
+  // The Stages to stack, empty for every Panel that is not a lone sleep Metric.
+  const stages = React.useMemo(
+    () => (list.length === 1 && isSleepSeries(list[0]) ? stagesPresent(list[0].points) : []),
+    [list],
+  );
 
   if (data.length === 0) {
     return (
@@ -87,13 +100,16 @@ export function PanelChart({
   const axisOf = (s: Series) => (s.unit === leftUnit ? "left" : "right");
 
   const axisProps = { stroke: AXIS, fontSize: 11, tickLine: false, axisLine: false } as const;
+  // An axis carrying minutes of sleep is labelled as a duration: "7h 12m", not "432".
+  const tickFormatter = (axis: "left" | "right") =>
+    list.some((s) => axisOf(s) === axis && isSleepSeries(s)) ? formatDuration : formatValue;
   const xAxis = (
     <XAxis dataKey="bucket" tickFormatter={formatTick(list[0].bucket)} minTickGap={24} {...axisProps} />
   );
   const grid = <CartesianGrid stroke={GRID} strokeDasharray="3 3" vertical={false} />;
   const tooltip = (
     <Tooltip
-      content={<ChartTooltip list={list} bucket={list[0].bucket} />}
+      content={<ChartTooltip list={list} bucket={list[0].bucket} stages={stages} />}
       cursor={{ stroke: GRID }}
     />
   );
@@ -108,7 +124,7 @@ export function PanelChart({
           width={40}
           domain={axisDomain(list, metrics, "left", axisOf)}
           {...axisProps}
-          tickFormatter={formatValue}
+          tickFormatter={tickFormatter("left")}
         />
         {rightUnit && (
           <YAxis
@@ -117,12 +133,12 @@ export function PanelChart({
             width={40}
             domain={axisDomain(list, metrics, "right", axisOf)}
             {...axisProps}
-            tickFormatter={formatValue}
+            tickFormatter={tickFormatter("right")}
           />
         )}
         {tooltip}
         {list.map((s, i) =>
-          marks(metrics[i]?.chart_type ?? "line", i, axisOf(s), data, list.length > 1),
+          marks(metrics[i]?.chart_type ?? "line", i, axisOf(s), data, list.length > 1, stages),
         )}
         {baseline && baselineLine}
       </ComposedChart>
@@ -140,6 +156,9 @@ function mergeSeries(list: Series[], baseline?: Series): ChartDatum[] {
       const bp = baseline?.points[i];
       const d: ChartDatum = { bucket: p.bucket, v0: p.value };
       if (p.min !== undefined && p.max !== undefined) d.band0 = [p.min, p.max];
+      // The Stage breakdown a stacked bar reads, carried beside the value the
+      // tooltip and the Baseline still use (ADR 0027).
+      for (const [stage, minutes] of Object.entries(p.states ?? {})) d[stageKey(stage)] = minutes;
       if (bp) {
         d.baselineBucket = bp.bucket;
         if (!bp.gap) d.baselineValue = bp.value;
@@ -207,6 +226,7 @@ function marks(
   yAxisId: "left" | "right",
   data: ChartDatum[],
   multi: boolean,
+  stages: string[],
 ): React.ReactNode {
   const color = SERIES_COLORS[i] ?? SERIES_COLORS[0];
   const key: `v${number}` = `v${i}`;
@@ -258,17 +278,31 @@ function marks(
           </Bar>
         </React.Fragment>
       );
-    // stacked_bar is the sleep (duration_by_state) variant. That aggregation is
-    // not served yet — the query engine defers it and no Catalog Metric uses it
-    // (internal/query/query.go) — so this Series never carries per-state values
-    // to stack. Until it does, the branch renders the single value as a plain
-    // bar rather than pretending to stack; the true stacked rendering lands with
-    // the sleep slice.
+    // stacked_bar is the sleep (duration_by_state) variant: one segment per Stage,
+    // each on its own fixed colour (ADR 0027). It stacks only when sleep is the
+    // Panel's sole Metric — a decomposition can own the colour ramp only when it
+    // owns the Panel, or ADR 0020's "colour by position" would stop being true the
+    // moment a second Metric joined. In a combo it is one plain bar of time asleep
+    // in its own position colour, which is what the `bar` branch below already does.
     case "stacked_bar":
-    case "bar":
-    default:
-      return <Bar key={key} yAxisId={yAxisId} dataKey={key} fill={color} radius={[3, 3, 0, 0]} />;
+      if (multi || stages.length === 0) break;
+      return (
+        <React.Fragment key={key}>
+          {stages.map((stage, s) => (
+            <Bar
+              key={stage}
+              yAxisId={yAxisId}
+              dataKey={stageKey(stage)}
+              stackId="stages"
+              fill={SERIES_COLORS[STAGE_COLOR_INDEX[stage] ?? s % SERIES_COLORS.length]}
+              radius={s === stages.length - 1 ? [3, 3, 0, 0] : undefined}
+              isAnimationActive={false}
+            />
+          ))}
+        </React.Fragment>
+      );
   }
+  return <Bar key={key} yAxisId={yAxisId} dataKey={key} fill={color} radius={[3, 3, 0, 0]} />;
 }
 
 /** formatTick labels the X axis by the bucket granularity: a day/week bucket
@@ -299,44 +333,83 @@ interface TooltipProps {
   payload?: { payload: ChartDatum }[];
   list: Series[];
   bucket: Series["bucket"];
+  stages: string[];
+}
+
+/** StageRows lists a stacked Night's Stages with their durations, then the night's
+ *  total asleep. A stacked bar is the one chart whose segments cannot be read by eye,
+ *  so the hover has to name them; and the total has to be shown separately because it
+ *  is not the height of the bar — `awake` is stacked and never counted (ADR 0027). */
+function StageRows({ d, total, stages }: { d: ChartDatum; total: number | undefined; stages: string[] }) {
+  return (
+    <>
+      {stages.map((stage) => {
+        const minutes = d[stageKey(stage)];
+        if (typeof minutes !== "number") return null;
+        return (
+          <div key={stage} className="flex items-center gap-1.5 text-muted-foreground">
+            <span
+              className="inline-block size-2 shrink-0 rounded-[2px]"
+              style={{ background: SERIES_COLORS[STAGE_COLOR_INDEX[stage] ?? 0] }}
+            />
+            <span className="truncate">{stageLabel(stage)}</span>
+            <span className="ml-auto tabular-nums">{formatDuration(minutes)}</span>
+          </div>
+        );
+      })}
+      {typeof total === "number" && (
+        <div className="mt-1 flex items-center gap-3 border-t pt-1">
+          <span>Asleep</span>
+          <span className="ml-auto tabular-nums">{formatDuration(total)}</span>
+        </div>
+      )}
+    </>
+  );
 }
 
 /** ChartTooltip lists every Series' value (with its unit and color swatch) for
  *  the hovered bucket; a Series without data there shows nothing — a gap is never
  *  a zero (ADR 0014). Single-Metric comparison keeps both windows' own real dates
  *  side by side (ADR 0015). */
-function ChartTooltip({ active, payload, list, bucket }: TooltipProps) {
+function ChartTooltip({ active, payload, list, bucket, stages }: TooltipProps) {
   if (!active || !payload?.length) return null;
   const d = payload[0].payload;
   const hasBaseline = d.baselineBucket !== undefined;
   const multi = list.length > 1;
+  const stacked = stages.length > 0;
   return (
     <div className="rounded-md border bg-popover px-2.5 py-1.5 text-xs shadow-md">
       <div className="font-medium">{formatBucket(d.bucket, bucket)}</div>
-      {list.map((s, i) => {
-        const value = d[`v${i}`];
-        if (typeof value !== "number") return null;
-        const band = d[`band${i}`];
-        return (
-          <div key={s.metric} className="flex items-center gap-1.5 text-muted-foreground">
-            {multi && <Swatch i={i} />}
-            {multi && <span className="truncate">{metricLabel(s.metric)}</span>}
-            <span className="tabular-nums">
-              {formatValue(value)} {s.unit}
-            </span>
-            {Array.isArray(band) && (
-              <span className="opacity-70">
-                ({formatValue(band[0])}–{formatValue(band[1])})
+      {stacked && <StageRows d={d} total={d.v0 as number | undefined} stages={stages} />}
+      {!stacked &&
+        list.map((s, i) => {
+          const value = d[`v${i}`];
+          if (typeof value !== "number") return null;
+          const band = d[`band${i}`];
+          return (
+            <div key={s.metric} className="flex items-center gap-1.5 text-muted-foreground">
+              {multi && <Swatch i={i} />}
+              {multi && <span className="truncate">{metricLabel(s.metric)}</span>}
+              <span className="tabular-nums">
+                {formatValue(value)} {s.unit}
               </span>
-            )}
-          </div>
-        );
-      })}
+              {Array.isArray(band) && (
+                <span className="opacity-70">
+                  ({formatValue(band[0])}–{formatValue(band[1])})
+                </span>
+              )}
+            </div>
+          );
+        })}
       {hasBaseline && (
         <div className="mt-1 border-t pt-1">
           <div className="font-medium text-muted-foreground">{formatBucket(d.baselineBucket!, bucket)}</div>
           <div className="text-muted-foreground">
-            {d.baselineValue !== undefined ? `${formatValue(d.baselineValue)} ${list[0].unit}` : "no data"}
+            {d.baselineValue === undefined
+              ? "no data"
+              : stacked
+                ? formatDuration(d.baselineValue)
+                : `${formatValue(d.baselineValue)} ${list[0].unit}`}
           </div>
         </div>
       )}

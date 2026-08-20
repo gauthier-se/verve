@@ -149,6 +149,12 @@ type Point struct {
 	Min    *float64 `json:"min,omitempty"`
 	Max    *float64 `json:"max,omitempty"`
 	Gap    bool     `json:"gap,omitempty"`
+	// States is the bucket's minutes per Stage, set only for a duration_by_state
+	// Metric (ADR 0027): the decomposition the stacked bar renders. Value stays the
+	// one scalar every other consumer reads — for sleep, time asleep — so `awake`
+	// appears here and is never counted there. Omitted for every other Metric, whose
+	// payload is therefore byte-identical to what it was before sleep was served.
+	States map[string]float64 `json:"states,omitempty"`
 }
 
 // Series is the result of a query: the resolved Metric metadata, the single
@@ -177,6 +183,12 @@ type Series struct {
 	// instead when summaries are rendered as period averages, so a trend (this period's
 	// mean vs the compared period's mean) is legible. Nil is a gap (no data).
 	Mean *float64 `json:"mean,omitempty"`
+	// Nights is the number of Nights holding data in the window, set only for a
+	// duration_by_state Metric (ADR 0027). It is to a per-night figure what Days is to
+	// a per-day one: the honest denominator. A 30-day window over 21 recorded nights
+	// must divide by 21 — dividing by Days would report a shortfall the Account never
+	// had, with the confidence of a computed number.
+	Nights int `json:"nights,omitempty"`
 }
 
 // windowDays is the whole-day span of a query window [from, to), rounded to the
@@ -208,6 +220,13 @@ func (e Engine) Series(ctx context.Context, req Request) (Series, error) {
 
 	if metric.Nature == catalog.Derived {
 		return e.seriesDerived(ctx, req, metric)
+	}
+	// A duration_by_state Metric reads intervals from the States family, not points
+	// from measurements, and buckets them by Night (sleep.go, ADR 0027). Everything
+	// below this line is measurement-shaped — the Source filter, the Manual overlay,
+	// the per-bucket SQL — and stays untouched by it.
+	if metric.Aggregation == catalog.DurationByState {
+		return e.seriesSleep(ctx, req, metric)
 	}
 
 	out := Series{
@@ -512,8 +531,9 @@ func (e Engine) aggregate(ctx context.Context, req Request, agg catalog.Aggregat
 			GROUP BY b ORDER BY b`, bucket, where), args)
 
 	default:
-		// duration_by_state (the States family) is unreachable via a metric slug —
-		// no Catalog Metric uses it — and derived Metrics take seriesDerived. Guarded.
+		// duration_by_state never reaches here: Series routes it to seriesSleep, which
+		// reads the states table, and derived Metrics take seriesDerived. Guarded rather
+		// than assumed, so a future rule that forgets to route itself fails loudly.
 		return nil, fmt.Errorf("%w: %q", ErrUnsupportedAggregation, agg)
 	}
 }

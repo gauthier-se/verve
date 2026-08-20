@@ -27,28 +27,20 @@ Everything below is merged into `main`, tested, and usable today.
 | Metric page | A page per metric, linked from every panel title and legend entry |
 | Appearance | Light, dark or system, times nine palettes, each verified for contrast and chart separation |
 | Pins | Metrics kept in the sidebar as shortcuts, deliberately without a time axis |
+| Sleep | The imported sleep stages read at last: one Metric, bucketed by Night rather than by calendar day, rendered as a stack |
 
 ## Next
 
 The three items that would change what Verve can answer, in the order they
 matter.
 
-### Read path for sleep
-
-Sleep is already imported and stored as **State** rows, one per stage with a
-start and an end. Nothing reads them: the query engine only aggregates
-measurements, no endpoint serves them, no screen shows them. Closing this
-requires an interval-aware aggregation, an endpoint, and a panel type that
-renders stages as stacked bars rather than a curve. The data is in your
-database right now, which makes this the largest gap between what Verve holds
-and what it shows.
-
 ### Read path for workouts
 
-Same story for **Sessions**: workouts, their summary statistics, and their GPX
-routes are ingested and the route files are kept as artifacts. What is missing
-is a list, a detail view, and a map. Deferred from the core milestone on
-purpose, still deferred, still wanted.
+What sleep was until this milestone, **Sessions** still are: workouts, their
+summary statistics and their GPX routes are ingested, the route files are kept
+as artifacts, and nothing reads any of it. What is missing is a list, a detail
+view, and a map. Deferred from the core milestone on purpose, still deferred,
+still wanted.
 
 ### Annotations
 
@@ -72,6 +64,11 @@ something you build into something you install.
 * **Meals.** The link between the nutrients logged together is preserved at
   import. Surfacing it answers "what did I eat", which is a different question
   from "how much protein did I get".
+* **A hypnogram, and the questions around a night.** Durations per Night are on
+  screen; the shape of a single night — stages against the clock — needs an
+  intra-day axis the API deliberately does not serve. Sleep onset, wake time and
+  efficiency belong with it, and none of them is expressible as a derived
+  Metric's Formula.
 * **Merging sources** rather than only ranking them, for the case where two
   devices have complementary coverage instead of overlapping coverage.
 * **More connectors.** The connector interface and its declarative mapping

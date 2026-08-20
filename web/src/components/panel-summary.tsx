@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { computeDelta, formatExact, formatSummaryValue } from "@/lib/format";
+import { computeDelta, formatDuration, formatExact, formatSummaryValue } from "@/lib/format";
 import { metricLabel } from "@/lib/metrics";
 import type { Metric, Series } from "@/lib/types";
 import { FormulaHint } from "./formula-hint";
@@ -13,20 +13,24 @@ import { Swatch, formatBucket } from "./panel-chart";
  *  ratio (a Formula with a denominator) and the `average`/`latest` rules are intensive
  *  and keep their value. */
 function isExtensive(aggregation: Series["aggregation"], metric?: Metric): boolean {
-  if (aggregation === "sum") return true;
+  if (aggregation === "sum" || aggregation === "duration_by_state") return true;
   const formula = metric?.formula;
   return formula !== undefined && (formula.denominator?.length ?? 0) === 0;
 }
 
 /** SummaryMode is how a Series summary is shown: the plain window total, an extensive
- *  Metric's per-day average, or a `latest` Metric's window mean. */
-type SummaryMode = "total" | "per_day" | "mean";
+ *  Metric's per-day average, sleep's per-night average, or a `latest` Metric's window
+ *  mean. */
+type SummaryMode = "total" | "per_day" | "per_night" | "mean";
 
 /** summaryMode picks the mode from the global "average" toggle: an extensive Metric
- *  averages per day, a `latest` Metric shows its window mean, and an intensive Metric
- *  (an `average` rate, a ratio) has no meaningful average and stays as its total. */
+ *  averages per day — per *night* for sleep, whose window accumulates over Nights and
+ *  not over days (ADR 0027) — a `latest` Metric shows its window mean, and an
+ *  intensive Metric (an `average` rate, a ratio) has no meaningful average and stays
+ *  as its total. */
 function summaryMode(aggregation: Series["aggregation"], metric: Metric | undefined, average: boolean): SummaryMode {
   if (!average) return "total";
+  if (aggregation === "duration_by_state") return "per_night";
   if (isExtensive(aggregation, metric)) return "per_day";
   if (aggregation === "latest") return "mean";
   return "total";
@@ -39,11 +43,52 @@ function summaryFigureValue(s: Series, mode: SummaryMode): number | undefined {
   switch (mode) {
     case "per_day":
       return s.summary && (s.days ?? 0) > 0 ? s.summary.value / (s.days as number) : undefined;
+    // Nights with data, never the window's days: the Watch spends nights on a charger,
+    // and dividing by 30 would report a shortfall the Account never had (ADR 0027).
+    case "per_night":
+      return s.summary && (s.nights ?? 0) > 0 ? s.summary.value / (s.nights as number) : undefined;
     case "mean":
       return s.mean;
     default:
       return s.summary?.value;
   }
+}
+
+/** figureText renders a summary figure: minutes of sleep read as a duration ("7h 12m"),
+ *  everything else through the number formats the prefs choose. */
+function figureText(value: number, aggregation: Series["aggregation"], exact: boolean): string {
+  if (aggregation === "duration_by_state") return formatDuration(value);
+  return exact ? formatExact(value) : formatSummaryValue(value, aggregation);
+}
+
+/** modeNote is the words a mode adds to a title attribute. */
+function modeNote(mode: SummaryMode): string {
+  switch (mode) {
+    case "per_day":
+      return " per day";
+    case "per_night":
+      return " per night";
+    case "mean":
+      return " average";
+    default:
+      return "";
+  }
+}
+
+/** FigureUnit is the small unit marker beside a figure. A duration carries its own
+ *  unit in its text, so it shows only what the plain number cannot say: the divisor. */
+function FigureUnit({ unit, aggregation, mode }: { unit: string; aggregation: Series["aggregation"]; mode: SummaryMode }) {
+  if (aggregation === "duration_by_state") {
+    return mode === "per_night" ? <span className="text-xs text-muted-foreground opacity-70">/night</span> : null;
+  }
+  if (!unit) return null;
+  return (
+    <span className="text-xs text-muted-foreground">
+      {unit}
+      {mode === "per_day" && <span className="opacity-70">/day</span>}
+      {mode === "mean" && <span className="opacity-70"> avg</span>}
+    </span>
+  );
 }
 
 /** PanelSummary is the headline band above a Panel's curve (ADR 0019): the large
@@ -74,12 +119,12 @@ export function PanelSummary({
   // server, per window (so a Baseline of a different length compares fairly).
   const mode = summaryMode(aggregation, metric, prefs.average);
   const figure = (s: Series) => summaryFigureValue(s, mode);
-  const fmt = (value: number) => (prefs.exact ? formatExact(value) : formatSummaryValue(value, aggregation));
+  const fmt = (value: number) => figureText(value, aggregation, prefs.exact);
 
   // The primary figure; a gap (no value) shows "—". Its exact value goes in a tooltip.
   const primaryValue = figure(series);
   const primary = primaryValue !== undefined ? fmt(primaryValue) : "—";
-  const noteLabel = mode === "per_day" ? " per day" : mode === "mean" ? " average" : "";
+  const noteLabel = modeNote(mode);
   const primaryTitle =
     primaryValue !== undefined ? `${formatExact(primaryValue)} ${unit}${noteLabel}`.trim() : undefined;
 
@@ -109,13 +154,7 @@ export function PanelSummary({
       <span className="text-2xl font-semibold leading-none tabular-nums" title={primaryTitle}>
         {primary}
       </span>
-      {primaryValue !== undefined && unit && (
-        <span className="text-xs text-muted-foreground">
-          {unit}
-          {mode === "per_day" && <span className="opacity-70">/day</span>}
-          {mode === "mean" && <span className="opacity-70"> avg</span>}
-        </span>
-      )}
+      {primaryValue !== undefined && <FigureUnit unit={unit} aggregation={aggregation} mode={mode} />}
       {delta && (
         <span
           className="text-xs tabular-nums text-muted-foreground"
@@ -159,9 +198,8 @@ export function PanelLegend({
         const formula = m?.formula;
         const mode = summaryMode(s.aggregation, m, prefs.average);
         const value = summaryFigureValue(s, mode);
-        const shown =
-          value === undefined ? "—" : prefs.exact ? formatExact(value) : formatSummaryValue(value, s.aggregation);
-        const note = mode === "per_day" ? " per day" : mode === "mean" ? " average" : "";
+        const shown = value === undefined ? "—" : figureText(value, s.aggregation, prefs.exact);
+        const note = modeNote(mode);
         return (
         <span key={s.metric} className="flex items-center gap-1.5">
           <Swatch i={i} />
@@ -176,13 +214,7 @@ export function PanelLegend({
           >
             {shown}
           </span>
-          {value !== undefined && s.unit && (
-            <span className="text-muted-foreground">
-              {s.unit}
-              {mode === "per_day" && <span className="opacity-70">/day</span>}
-              {mode === "mean" && <span className="opacity-70"> avg</span>}
-            </span>
-          )}
+          {value !== undefined && <FigureUnit unit={s.unit} aggregation={s.aggregation} mode={mode} />}
         </span>
         );
       })}

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gauthier-se/verve/internal/auth"
@@ -656,5 +657,66 @@ func TestSeriesMultiMetricMixesDerivedAndImported(t *testing.T) {
 	// calorie_balance = 1800 − 500 − 1600 = −300 (ADR 0014).
 	if len(list) != 2 || len(list[0].Points) != 1 || list[0].Points[0].Value != -300 {
 		t.Errorf("series = %+v, want derived −300 alongside dietary_energy", list)
+	}
+}
+
+// TestSeriesSleepCarriesStagesAndNights: sleep is served by the same endpoint as
+// every other Metric (ADR 0027), carrying the per-Stage breakdown the stacked bar
+// needs and the Night count the per-night headline divides by.
+func TestSeriesSleepCarriesStagesAndNights(t *testing.T) {
+	srv, models, cookie := newTestServer(t)
+	acc, err := models.Accounts.GetByEmail(context.Background(), testEmail)
+	if err != nil {
+		t.Fatalf("get account: %v", err)
+	}
+	// One night waking on 2024-01-02, fragmented across midnight.
+	if _, err := models.States.InsertStateBatch(context.Background(), []data.State{
+		{AccountID: acc.ID, Kind: "sleep", StateValue: "asleep_core",
+			StartAt: "2024-01-01T23:00:00Z", EndAt: "2024-01-02T02:00:00Z", Source: "Apple Watch", ContentKey: "n1"},
+		{AccountID: acc.ID, Kind: "sleep", StateValue: "asleep_deep",
+			StartAt: "2024-01-02T02:00:00Z", EndAt: "2024-01-02T04:00:00Z", Source: "Apple Watch", ContentKey: "n2"},
+		{AccountID: acc.ID, Kind: "sleep", StateValue: "awake",
+			StartAt: "2024-01-02T04:00:00Z", EndAt: "2024-01-02T04:30:00Z", Source: "Apple Watch", ContentKey: "n3"},
+	}); err != nil {
+		t.Fatalf("seed states: %v", err)
+	}
+
+	res, body := do(t, srv, "/v1/series?metric=sleep&range_preset=custom&range_from=2024-01-01&range_to=2024-01-03&bucket=day", cookie)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", res.StatusCode, body["error"])
+	}
+	var series query.Series
+	if err := json.Unmarshal(body["series"], &series); err != nil {
+		t.Fatalf("decode series: %v", err)
+	}
+	if series.Aggregation != "duration_by_state" || series.Unit != "min" {
+		t.Errorf("series = %+v, want duration_by_state in minutes", series)
+	}
+	if len(series.Points) != 1 || series.Points[0].Bucket != "2024-01-02" {
+		t.Fatalf("points = %+v, want one Night labelled by its waking morning", series.Points)
+	}
+	p := series.Points[0]
+	if p.Value != 300 {
+		t.Errorf("value = %v, want 300 min asleep (awake excluded)", p.Value)
+	}
+	if p.States["asleep_core"] != 180 || p.States["asleep_deep"] != 120 || p.States["awake"] != 30 {
+		t.Errorf("states = %+v, want the per-Stage minutes including awake", p.States)
+	}
+	if series.Nights != 1 {
+		t.Errorf("nights = %d, want 1", series.Nights)
+	}
+}
+
+// TestSeriesNonSleepOmitsSleepFields: every other Metric's payload is untouched — the
+// breakdown and the Night count are absent keys, not empty ones.
+func TestSeriesNonSleepOmitsSleepFields(t *testing.T) {
+	srv, models, cookie := newTestServer(t)
+	seedSteps(t, models, testEmail, []data.Measurement{
+		{Metric: "steps", Value: 100, OriginalUnit: "count", StartAt: "2024-01-01T08:00:00Z", EndAt: "2024-01-01T08:00:00Z", Source: "Watch", ContentKey: "a"},
+	})
+	_, body := do(t, srv, "/v1/series?metric=steps&range_preset=custom&range_from=2024-01-01&range_to=2024-01-02&bucket=day", cookie)
+	raw := string(body["series"])
+	if strings.Contains(raw, "states") || strings.Contains(raw, "nights") {
+		t.Errorf("series JSON = %s, want no states/nights keys for a measurement Metric", raw)
 	}
 }

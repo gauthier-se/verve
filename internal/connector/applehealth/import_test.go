@@ -260,8 +260,22 @@ func TestMappingMatchesCatalog(t *testing.T) {
 	for _, slug := range typeToMetric {
 		mapped[slug] = true
 	}
+	// A duration_by_state Metric is fed by the States family, whose Apple mapping is
+	// by category *kind* (categoryStateKinds) rather than by record type — so it is
+	// covered there, not in typeToMetric.
+	stateKinds := map[string]bool{}
+	for _, kind := range categoryStateKinds {
+		stateKinds[kind] = true
+	}
+
 	for slug, m := range catalog.All() {
 		if m.Nature != catalog.Imported {
+			continue
+		}
+		if m.Aggregation == catalog.DurationByState {
+			if !stateKinds[slug] {
+				t.Errorf("duration-by-state Catalog metric %q has no Apple state kind", slug)
+			}
 			continue
 		}
 		if !mapped[slug] {

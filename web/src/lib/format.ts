@@ -18,6 +18,18 @@ export function formatSummaryValue(value: number, aggregation: Aggregation | "")
   return nf({ maximumFractionDigits: 1 }).format(value);
 }
 
+/** formatDuration renders a figure in minutes as hours and minutes: 432 → "7h 12m",
+ *  47 → "47m". Sleep's canonical unit is the minute, and a night reported as "432"
+ *  is a number nobody reads as a duration. Keyed off the unit rather than the Metric,
+ *  so any minute-valued figure can use it. */
+export function formatDuration(minutes: number): string {
+  const total = Math.round(Math.abs(minutes));
+  const sign = minutes < 0 ? "-" : "";
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  return h === 0 ? `${sign}${m}m` : `${sign}${h}h ${m}m`;
+}
+
 /** formatExact is the full grouped value for a tooltip: "245 321", "74,2". */
 export function formatExact(value: number): string {
   return nf({ maximumFractionDigits: 2 }).format(value);

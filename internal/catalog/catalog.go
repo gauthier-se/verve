@@ -13,7 +13,7 @@ const (
 	Sum             Aggregation = "sum"               // total (steps, calories, nutrients)
 	Average         Aggregation = "average"           // mean, with a min/max band (heart rate)
 	Latest          Aggregation = "latest"            // most recent point (body mass, height)
-	DurationByState Aggregation = "duration_by_state" // time per state (sleep); unused in this slice
+	DurationByState Aggregation = "duration_by_state" // time per Stage over a Night (sleep, ADR 0027)
 )
 
 // Nature distinguishes Metrics produced by a Connector from those computed on read.
@@ -94,6 +94,11 @@ func buildMetrics() map[string]Metric {
 		{"running_stride_length", "m", Average},
 		{"running_ground_contact_time", "ms", Average},
 		{"running_vertical_oscillation", "cm", Average},
+
+		// --- Sleep ---
+		// The only duration_by_state Metric: read from the States family, not from
+		// measurements, and bucketed by Night rather than by calendar day (ADR 0027).
+		{"sleep", "min", DurationByState},
 
 		// --- Heart & circulation ---
 		{"heart_rate", "count/min", Average},

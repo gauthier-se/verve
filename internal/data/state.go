@@ -25,6 +25,21 @@ type StateModel struct {
 	DB *sql.DB
 }
 
+// HasStates reports whether the Account has any State of a kind. It answers the one
+// question the Ledger overview asks about this family — "is there sleep at all" — so
+// a Metric read from states can join a row set that otherwise comes from
+// DistinctMetrics and by construction cannot see it (ADR 0027).
+//
+// Deliberately not a DistinctKinds: there are two kinds and only one is read.
+func (m StateModel) HasStates(ctx context.Context, accountID int64, kind string) (bool, error) {
+	const query = `SELECT EXISTS(SELECT 1 FROM states WHERE account_id = ? AND kind = ?)`
+	var found bool
+	if err := m.DB.QueryRowContext(ctx, query, accountID, kind).Scan(&found); err != nil {
+		return false, fmt.Errorf("data: state HasStates: %w", err)
+	}
+	return found, nil
+}
+
 // InsertStateBatch inserts a batch of States in one transaction, skipping any
 // whose (account, content_key) already exists so re-import is idempotent (ADR
 // 0006). It returns a mask parallel to ss: inserted[i] is true iff ss[i] was a

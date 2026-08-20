@@ -2,7 +2,7 @@ import * as React from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Check, ChevronRight, Copy, Download, Pencil } from "lucide-react";
 import { useLedger } from "@/hooks/use-ledger";
-import { formatExact, formatSummaryValue } from "@/lib/format";
+import { formatDuration, formatExact, formatSummaryValue } from "@/lib/format";
 import { metricLabel } from "@/lib/metrics";
 import { copyTsv, tsvNumber } from "@/lib/clipboard";
 import type { LedgerRow } from "@/lib/types";
@@ -104,7 +104,7 @@ function Scoreboard({ rows }: { rows: LedgerRow[] }) {
                 <TableCell className="text-right tabular-nums">
                   {r.latest ? (
                     <span title={`${formatExact(r.latest.value)} ${r.unit}`.trim()}>
-                      {formatSummaryValue(r.latest.value, r.aggregation)}
+                      {ledgerFigure(r.latest.value, r.aggregation)}
                       <span className="ml-1.5 text-xs text-muted-foreground">
                         {formatBucket(r.latest.date, "day")}
                       </span>
@@ -130,13 +130,20 @@ function Scoreboard({ rows }: { rows: LedgerRow[] }) {
   );
 }
 
+/** ledgerFigure renders a scoreboard number: sleep's minutes as a duration ("7h 12m"),
+ *  everything else as a plain figure. A night reported as "432" is a number nobody
+ *  reads as a duration (ADR 0027). */
+function ledgerFigure(value: number, aggregation: LedgerRow["aggregation"]): string {
+  return aggregation === "duration_by_state" ? formatDuration(value) : formatSummaryValue(value, aggregation);
+}
+
 function WindowCell({ value, aggregation }: { value: number | undefined; aggregation: LedgerRow["aggregation"] }) {
   return (
     <TableCell className="text-right tabular-nums">
       {value === undefined ? (
         <span className="text-muted-foreground">—</span>
       ) : (
-        formatSummaryValue(value, aggregation)
+        ledgerFigure(value, aggregation)
       )}
     </TableCell>
   );
@@ -151,7 +158,7 @@ function DeltaLabel({ row }: { row: LedgerRow }) {
   const label =
     row.delta_pct !== undefined
       ? `${Math.abs(Math.round(row.delta_pct))} %`
-      : formatSummaryValue(Math.abs(row.delta_abs), row.aggregation);
+      : ledgerFigure(Math.abs(row.delta_abs), row.aggregation);
   return (
     <span className={cn(row.delta_abs === 0 && "opacity-70")}>
       {arrow} {label}

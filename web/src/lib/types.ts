@@ -95,6 +95,11 @@ export interface Point {
   min?: number;
   max?: number;
   gap?: boolean;
+  /** states is the bucket's minutes per Stage, carried only by a duration_by_state
+   *  Metric (ADR 0027): what the stacked bar stacks. `value` stays the single scalar
+   *  every other reader uses — for sleep, time asleep — so `awake` appears here and is
+   *  never counted there. */
+  states?: Record<string, number>;
 }
 
 /** ImportReport is the compact outcome of a finished web import (ADR 0016). */
@@ -164,6 +169,11 @@ export interface Series {
    *  shown instead of the last reading when summaries render as period averages — the
    *  better trend view. Server-computed; absent for non-latest Metrics or an empty window. */
   mean?: number;
+  /** nights is the count of Nights holding data in the window, carried only by a
+   *  duration_by_state Metric (ADR 0027). It is the denominator for a per-night figure,
+   *  as `days` is for a per-day one: a 30-day window over 21 recorded nights divides by
+   *  21, never by 30. */
+  nights?: number;
 }
 
 /** ManualMeasurement is one Manual entry: a Measurement the Account typed rather than
