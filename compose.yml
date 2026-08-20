@@ -16,10 +16,12 @@ name: verve
 
 services:
   verve:
-    # Build the image locally from the Dockerfile so `docker compose up` works
-    # with no prerequisites. Once a published image exists, swap in `image:`.
-    build: .
-    # image: ghcr.io/gauthier-se/verve:latest
+    # The published image, so this file works on its own with nothing checked
+    # out. `latest` follows the newest tag; pin a version (:0.1.0) if you would
+    # rather decide when to upgrade. Swap in `build: .` from a clone to run an
+    # unreleased main.
+    image: ghcr.io/gauthier-se/verve:latest
+    # build: .
     restart: unless-stopped
     ports:
       - "8080:8080"

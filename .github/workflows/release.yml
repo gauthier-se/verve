@@ -1,0 +1,96 @@
+# A tag is the only input to a release. Pushing v0.1.0 builds the static
+# binaries for every target (.goreleaser.yaml) and publishes the container image
+# to ghcr.io. Nothing about the version is written in a file: main.version is
+# stamped from the tag by both paths (see cmd/verve/version.go).
+#
+#   git tag -a v0.1.0 -m "v0.1.0" && git push origin v0.1.0
+#
+# Dry run before that, locally: `goreleaser build --snapshot --clean`.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  # Static binaries for linux/darwin/windows on amd64/arm64, plus the GitHub
+  # release page and its checksums. goreleaser's before-hooks build the SPA, so
+  # this runner needs Node as well as Go.
+  binaries:
+    name: Binaries and GitHub release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the release, upload the archives
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # goreleaser derives the version and the changelog from git history;
+          # the default shallow clone gives it neither.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: '~> v2'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # linux/amd64 only for now. arm64 is wanted and is cheap when it comes (the
+  # build is CGO_ENABLED=0, so GOARCH cross-compiles natively rather than running
+  # under QEMU), but the first thing to establish is that a tag yields a pullable
+  # image at all.
+  image:
+    name: Container image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # push to ghcr.io
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 0.1.0, 0.1 and latest. `latest` follows the newest tag and never main:
+      # an image that moves under a `docker compose pull` breaks instances that
+      # have no version to point back at.
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Overrides the Dockerfile's VERSION=docker default, so `verve version`
+          # inside the image reports the tag. Taken from metadata-action rather
+          # than from github.ref_name so it is "0.1.0" and not "v0.1.0": that is
+          # what goreleaser stamps into the binaries, and the two must not
+          # disagree about what version they are.
+          build-args: VERSION=${{ steps.meta.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

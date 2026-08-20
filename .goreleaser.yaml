@@ -9,6 +9,11 @@ version: 2
 
 before:
   hooks:
+    # vite.config.ts sets emptyOutDir:false to protect the committed .gitkeep, so
+    # nothing clears the previous build's hashed chunks. `make ui` does this rm;
+    # without it here, a release run from a working checkout embeds last month's
+    # assets beside this month's. Harmless on a fresh CI clone, invisible locally.
+    - rm -rf internal/web/dist/assets
     - npm --prefix web ci
     - npm --prefix web run build
 
