@@ -17,11 +17,19 @@ is vendored by the Go module cache and npm.
 ```sh
 git clone https://github.com/gauthier-se/verve.git
 cd verve
-make ci        # fmt-check, vet, build, test -race: what CI runs, verbatim
+make ci        # fmt-check, vet, build, test -race, then the SPA build
 ```
 
 A green `make ci` locally means a green CI, because the `ci` target mirrors
-`.github/workflows/ci.yml` exactly.
+`.github/workflows/ci.yml` exactly: its two jobs are the Go checks and
+`npm run build`, which is `tsc --noEmit && vite build` and so typechecks the
+front end as well as bundling it.
+
+If you have no Node installed and your change is Go-only, `make ci-go` runs
+just the Go half. It is a real subset and not a shortcut: the binary embeds
+whatever is in `internal/web/dist` and compiles against a committed placeholder
+when nothing has been built, which is why the two jobs are independent in CI
+too.
 
 Day to day:
 
@@ -103,6 +111,27 @@ Issues live as markdown under `.scratch/<milestone>/`, with a PRD next to them
 `main` is protected: no direct pushes. Keep pull requests to one milestone
 issue where you can; the history is meant to be readable as a sequence of
 decisions.
+
+## Cutting a release
+
+A tag is the only input. Pushing `vX.Y.Z` triggers
+[`release.yml`](.github/workflows/release.yml), which builds the static binaries
+for every target and publishes the image to `ghcr.io/gauthier-se/verve`:
+
+```sh
+goreleaser build --snapshot --clean   # dry run first: no tag, no publish
+git tag -a v0.1.0 -m "v0.1.0" && git push origin v0.1.0
+```
+
+The version is never written into a file. `main.version` defaults to `"dev"`,
+the Makefile stamps `git describe`, the Dockerfile takes `ARG VERSION`, and
+goreleaser stamps the tag: all four read from git or from a value that is
+obviously not a release. The changelog is generated from commit subjects, which
+is the other reason the subject line matters below.
+
+Verve is on `0.x` and the leading zero is a statement about the API, not about
+maturity: see [ADR 0029](docs/adr/0029-a-0x-tag-promises-the-data-not-the-interface.md)
+for what a tag does and does not promise.
 
 ## Commit messages: Conventional Commits
 

@@ -26,9 +26,13 @@ before disclosing publicly.
 
 ## Supported versions
 
-Verve has not reached a tagged release. Only the current `main` branch is
-supported, and fixes land there. Once versions are published this section will
-say which ones receive fixes.
+Verve is on `0.x`. The newest published minor receives fixes, and nothing is
+backported to an older one: a security fix ships as the next `0.x.y`, or as the
+next `0.x` if it needed a change that a patch release should not carry. This is
+a one-person side project, and maintaining parallel branches would mean
+maintaining them badly.
+
+Test against the newest tag or against `main`, and say which in your report.
 
 ## In scope
 
