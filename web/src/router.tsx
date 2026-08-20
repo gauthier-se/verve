@@ -6,6 +6,8 @@ import { DataPage } from "./components/data-page";
 import { ImportPage } from "./components/import-page";
 import { MetricPage } from "./components/metric-page";
 import { PlanPage } from "./components/plan-page";
+import { SessionDetailPage } from "./components/session-detail";
+import { SessionsPage } from "./components/sessions-page";
 
 // Code-based routes (no file router / codegen) keep the build a plain Vite SPA
 // (ADR 0013). The Go server serves index.html on every non-/v1 path, so a deep
@@ -42,6 +44,20 @@ const metricRoute = createRoute({
   component: MetricPage,
 });
 
+const workoutsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/workouts",
+  component: SessionsPage,
+});
+
+// A Session is an entity, so it has a URL of its own: a workout can be linked to
+// and reloaded, which a bucket on a Panel never can (ADR 0028).
+const workoutRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/workouts/$sessionId",
+  component: SessionDetailPage,
+});
+
 const planRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/plan",
@@ -59,6 +75,8 @@ const routeTree = rootRoute.addChildren([
   dashboardRoute,
   dataRoute,
   metricRoute,
+  workoutsRoute,
+  workoutRoute,
   planRoute,
   importRoute,
 ]);

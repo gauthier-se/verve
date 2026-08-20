@@ -32,6 +32,8 @@ func (app *application) serveCommand(ctx context.Context, args []string) error {
 		DataDir:        app.config.dataDir,
 		ArtifactsDir:   app.config.artifactsDir(),
 		MaxUploadBytes: *maxUploadMB << 20,
+		MapTiles:       envOr("VERVE_MAP_TILES", ""),
+		MapAttribution: envOr("VERVE_MAP_ATTRIBUTION", ""),
 	})
 	if err != nil {
 		return err

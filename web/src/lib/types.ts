@@ -311,3 +311,105 @@ export interface Pin {
   metric: string;
   position: number;
 }
+
+/** Activity is what a Session was, as the server hands it over: the slug the
+ *  Connector stored plus everything a screen needs to show it. The label, the
+ *  group and the reading come from the server's curated table (ADR 0028) rather
+ *  than being restated here, so an activity added there needs no client release. */
+export interface Activity {
+  slug: string;
+  label: string;
+  group: "cardio" | "strength" | "water" | "winter" | "other";
+  reading: "pace" | "speed" | "none";
+}
+
+/** Session is one workout. `distance` and `energy` are the Session's own totals,
+ *  which is what the device measured: they are the figures a screen shows, never
+ *  anything derived from the simplified route geometry (ADR 0028). */
+export interface Session {
+  id: number;
+  activity: Activity;
+  start_at: string;
+  end_at: string;
+  duration: number; // seconds
+  distance?: number; // km
+  energy?: number; // kcal
+  source: string;
+  has_route: boolean;
+}
+
+/** SessionTotals describes the whole filter and names the period it covers, so a
+ *  header can say what it is totalling. A total without its domain reads as a
+ *  truth and is not one. */
+export interface SessionTotals {
+  count: number;
+  duration: number;
+  distance?: number;
+  energy?: number;
+  from: string;
+  to: string;
+}
+
+export interface SessionPage {
+  sessions: Session[];
+  totals: SessionTotals;
+  next_cursor?: string;
+}
+
+/** SessionStat is one summary figure of a workout: an aggregate of a canonical
+ *  Metric over the whole session. An average and a maximum are two answers, so
+ *  both arrive and both are shown. */
+export interface SessionStat {
+  metric: string;
+  stat: "sum" | "average" | "min" | "max";
+  value: number;
+  unit: string;
+}
+
+export interface RouteRef {
+  id: number;
+  start_at: string;
+  end_at: string;
+  source: string;
+}
+
+export interface SessionDetail {
+  session: Session;
+  stats: SessionStat[];
+  routes: RouteRef[];
+}
+
+/** RouteSample is one point of a route profile: a distance along the trace with
+ *  what was true there. `speed` is km/h; a pace reading is rendered from it. */
+export interface RouteSample {
+  km: number;
+  ele?: number;
+  speed?: number;
+}
+
+/** RouteGeometry is one Route drawn. `length_km` is the geometry's own length and
+ *  belongs to the profile axis only: what a screen reports as the workout's
+ *  distance is the Session's own total (ADR 0028). */
+export interface RouteGeometry {
+  id: number;
+  start_at: string;
+  end_at: string;
+  source: string;
+  points: [number, number][];
+  profiles: {
+    samples: RouteSample[];
+    length_km: number;
+    ascent_m: number;
+    descent_m: number;
+    min_ele_m?: number;
+    max_ele_m?: number;
+  };
+}
+
+/** MapConfig is the basemap an instance has been configured with. Absent means
+ *  none, which is the default: the workout map then draws its trace on a blank
+ *  ground and the browser makes no outbound request (ADR 0028). */
+export interface MapConfig {
+  tiles: string;
+  attribution: string;
+}

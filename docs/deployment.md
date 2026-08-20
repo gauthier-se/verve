@@ -50,6 +50,31 @@ Behind an HTTPS reverse proxy, keep `--secure-cookie=true` (the default) so the
 session cookie is only ever sent over TLS. On a plain-HTTP LAN, set
 `--secure-cookie=false` or logins won't stick.
 
+### Workout map tiles
+
+| | |
+|---|---|
+| **Env** | `VERVE_MAP_TILES`, `VERVE_MAP_ATTRIBUTION` |
+| **Default** | empty: no basemap, and no outbound request |
+
+A workout with a GPS route is drawn on the Workouts page. By default the trace
+is drawn on a blank ground and **your browser contacts nothing**: a map tile is
+fetched from whoever serves it, and the tiles a trace needs say where you run,
+to within a street. Verve will not make that request on your behalf without
+being told to.
+
+Setting `VERVE_MAP_TILES` to a tile URL template turns the basemap on. Point it
+at your own tile server, or at a public one whose terms you have read, and set
+`VERVE_MAP_ATTRIBUTION` to the credit line that source requires:
+
+```sh
+export VERVE_MAP_TILES='https://tile.example.org/{z}/{x}/{y}.png'
+export VERVE_MAP_ATTRIBUTION='© OpenStreetMap contributors'
+```
+
+The request goes from your browser to that host, not from the Verve server, so
+the host sees your IP address and the tiles you ask for.
+
 ### Other commands
 
 | Command | What it does |

@@ -39,6 +39,7 @@ type Store interface {
 	InsertUnmappedBatch(ctx context.Context, us []data.UnmappedRecord) ([]bool, error)
 	InsertStateBatch(ctx context.Context, ss []data.State) ([]bool, error)
 	InsertSession(ctx context.Context, s *data.Session) (bool, error)
+	InsertSessionStats(ctx context.Context, sessionID int64, stats []data.SessionStat) error
 	InsertRoute(ctx context.Context, r *data.Route) (bool, error)
 	RecordImport(ctx context.Context, imp *data.Import) error
 }
@@ -241,9 +242,10 @@ func importStream(ctx context.Context, store Store, accountID int64, sourceFile 
 		return nil
 	}
 
-	// finishWorkout writes one Session on its closing tag, then copies and
-	// records each of its GPX routes. The Session id (new or pre-existing) is
-	// needed to attach the routes, so this runs per workout rather than batched.
+	// finishWorkout writes one Session on its closing tag, then attaches its
+	// summary stats and copies and records each of its GPX routes. The Session id
+	// (new or pre-existing) is needed for both, so this runs per workout rather
+	// than batched.
 	finishWorkout := func() error {
 		sess := wb.session(accountID)
 		inserted, err := store.InsertSession(ctx, &sess)
@@ -259,6 +261,15 @@ func importStream(ctx context.Context, store Store, accountID int64, sourceFile 
 			report.SessionsSkipped++
 		}
 		report.PerActivity[sess.ActivityType] = c
+
+		// Stats and routes are attached whether or not the Session is new, which is
+		// what makes a re-import converge: a workout already in the database still
+		// gains what a widened import now captures. Skipping them on the
+		// already-present branch would leave every existing database stat-less
+		// forever, and quietly make the README promise of a painless re-import false.
+		if err := store.InsertSessionStats(ctx, sess.ID, wb.stats); err != nil {
+			return err
+		}
 
 		for _, ref := range wb.routes {
 			key, artifact, err := copyRouteArtifact(opener, ref.path, artifactsDir)
