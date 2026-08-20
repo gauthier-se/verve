@@ -10,6 +10,10 @@ permissions:
   contents: read
 
 jobs:
+  # The Go job needs no Node: internal/web/dist ships a committed .gitkeep so
+  # `go:embed all:dist` compiles before the SPA has ever been built, and two
+  # tests hold that path. The web job below therefore runs beside this one and
+  # not before it, so a Go-only contributor is never blocked on npm.
   go:
     name: Go build, vet, test
     runs-on: ubuntu-latest
@@ -38,3 +42,26 @@ jobs:
 
       - name: Test
         run: go test -race ./...
+
+  # `npm run build` is `tsc --noEmit && vite build`, so this single step is both
+  # the typecheck and the bundle. Without it the front end is compiled only by a
+  # developer running `make ui` and by goreleaser's before-hook, which runs after
+  # a tag has been pushed, making the tag itself the first TypeScript compile.
+  web:
+    name: Web typecheck and build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Keep in step with the node image in the Dockerfile's SPA stage.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install
+        run: npm --prefix web ci
+
+      - name: Typecheck and build
+        run: npm --prefix web run build

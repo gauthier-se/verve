@@ -100,9 +100,16 @@ vet:
 tidy:
 	$(GO) mod tidy
 
-## ci: run the same checks as CI (fmt-check, vet, build, test -race)
+## ci: run the same checks as CI (fmt-check, vet, build, test -race, ui)
 .PHONY: ci
 ci: fmt-check vet
+	$(GO) build ./...
+	$(GO) test -race ./...
+	$(MAKE) ui
+
+## ci-go: the Go half of CI only — no Node required
+.PHONY: ci-go
+ci-go: fmt-check vet
 	$(GO) build ./...
 	$(GO) test -race ./...
 
