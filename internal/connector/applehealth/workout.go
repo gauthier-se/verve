@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/gauthier-se/verve/internal/catalog"
 	"github.com/gauthier-se/verve/internal/data"
 	"github.com/gauthier-se/verve/internal/units"
 )
@@ -32,6 +33,8 @@ type workoutBuilder struct {
 	duration     float64
 	distance     *float64
 	energy       *float64
+
+	stats []data.SessionStat
 
 	curRoute *routeRef // the WorkoutRoute currently open, awaiting its FileReference
 	routes   []routeRef
@@ -85,29 +88,76 @@ func durationSeconds(value, unit string) float64 {
 	return secs
 }
 
-// addStatistic folds one <WorkoutStatistics> into the workout's totals: a
-// distance-type statistic sets total_distance (km), an active-energy statistic
-// sets total_energy (kcal). Other statistics (heart rate, step count, basal
-// energy…) are summary detail out of scope for this slice.
+// addStatistic folds one <WorkoutStatistics> into the workout: every aggregate
+// Apple reports for a mapped type becomes a Session stat in the Metric's
+// canonical unit, and the distance and active-energy sums are additionally
+// promoted to total_distance (km) and total_energy (kcal).
+//
+// The promotion is a deliberate duplication: those two are what the workout list
+// sorts and displays, and reading them from a column costs no join per row.
+//
+// An unmapped type is skipped rather than kept in a second unmapped bin: a
+// statistic is a summary of a quantity Verve either models or does not, and the
+// Records the same workout emitted already land in the Unmapped bin if not.
 func (b *workoutBuilder) addStatistic(attrs []xml.Attr) {
-	var typ, sum, unit string
+	var typ, unit string
+	values := map[string]string{}
 	for _, a := range attrs {
 		switch a.Name.Local {
 		case "type":
 			typ = a.Value
-		case "sum":
-			sum = a.Value
 		case "unit":
 			unit = a.Value
+		case "sum":
+			values[data.StatSum] = a.Value
+		case "average":
+			values[data.StatAverage] = a.Value
+		case "minimum":
+			values[data.StatMin] = a.Value
+		case "maximum":
+			values[data.StatMax] = a.Value
 		}
 	}
-	if sum == "" {
+
+	slug, ok := typeToMetric[typ]
+	if !ok {
 		return
 	}
-	raw, err := strconv.ParseFloat(sum, 64)
-	if err != nil {
+	metric, ok := catalog.Lookup(slug)
+	if !ok {
 		return
 	}
+
+	// Ordered so the stats of one workout are stable across imports, which keeps
+	// tests and the detail payload readable; the table is keyed, not ordered.
+	for _, stat := range []string{data.StatSum, data.StatAverage, data.StatMin, data.StatMax} {
+		raw, ok := values[stat]
+		if !ok {
+			continue
+		}
+		n, err := strconv.ParseFloat(raw, 64)
+		if err != nil {
+			continue
+		}
+		// A value whose unit will not convert is dropped rather than stored in an
+		// unknown unit, exactly as classifyRecord drops such a Record.
+		v, err := units.Convert(n, unit, metric.Unit)
+		if err != nil {
+			continue
+		}
+		b.stats = append(b.stats, data.SessionStat{Metric: slug, Stat: stat, Value: v})
+
+		if stat == data.StatSum {
+			b.promote(typ, n, unit)
+		}
+	}
+}
+
+// promote copies a distance or active-energy sum into the Session's own column.
+// It converts from the raw value rather than reusing the stat, because a stat is
+// in its Metric's canonical unit and those disagree with the column: swimming
+// distance is canonically metres while total_distance is km.
+func (b *workoutBuilder) promote(typ string, raw float64, unit string) {
 	switch {
 	case strings.HasPrefix(typ, "HKQuantityTypeIdentifierDistance"):
 		if km, err := units.Convert(raw, unit, "km"); err == nil {

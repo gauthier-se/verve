@@ -48,7 +48,51 @@ _Avoid_: Alert, Flag, Incident.
 A rich, bounded activity aggregating multiple sub-measurements — e.g. a
 workout with duration, distance, energy, an optional route, and summary
 statistics. Sessions may reference their own child data (e.g. a GPS route).
-_Avoid_: Activity, Workout (Workout is one *kind* of Session), Event.
+Unlike a **State**, a Session is read as an **entity** and not as a **Metric**:
+it has identity, so it gets a list, a detail and a map rather than a bucket, and
+it appears on no Panel (ADR 0028). The interface says **Workouts** where the
+domain says Session, because that is the word its owner uses and Session is kept
+for the day a bounded activity is not a workout; the API follows the domain
+(`/v1/sessions`).
+_Avoid_: Activity (that is what a Session *was*, see below), Workout (Workout is
+one *kind* of Session), Event.
+
+**Activity**:
+What a **Session** was: `running`, `cycling`, `traditional_strength_training`,
+derived as a neutral slug from the source type without a table, so the set is
+open by construction and holds every value a Connector emits (ADR 0011). Display
+is what closes: a curated table maps a known Activity to a label, an icon, a
+group (`cardio`, `strength`, `water`, `winter`, `other`) and whether it reads in
+pace or in speed, and an unknown one falls back to its own prettified slug
+(ADR 0002). The group is a server-side filter and not a decoration, which is why
+the table is Catalog data rather than a web asset.
+_Avoid_: Sport, Type (too generic), Workout type, Discipline.
+
+**Session stat**:
+One summary figure a **Session** carries: an aggregate of a canonical **Metric**
+over the whole workout, keyed (Session, Metric, aggregate) with the aggregate
+one of `sum`, `average`, `min`, `max`. An average heart rate and a maximum heart
+rate are different answers, so all four are kept rather than collapsed to one.
+Values are in the Metric's canonical unit, so a Session stat and a Measurement of
+the same quantity are directly comparable. The distance and energy sums are also
+promoted to columns on the Session, deliberately duplicated so the list sorts
+and displays without a join per row (ADR 0028).
+_Avoid_: Statistic (unqualified, it reads as a computed figure Verve derives),
+Summary (that is the Panel term), Total (only one of the four aggregates).
+
+**Route**:
+A GPS track attached to a **Session**, stored as its GPX file under
+`artifacts/` and referenced by content hash (ADR 0004). A Session may carry
+several, and they stay separate: concatenating them draws a line between the end
+of one segment and the start of the next, which is ground that was never
+covered. A Route is served as its own **resource** and not as a **Series**: a
+simplified polyline with its elevation and pace profiles, derived from the
+artefact at read time, so the day-resolution cap on the series contract (ADR
+0012) is untouched. Its geometric length is the profile axis and never a figure
+on screen, because the Session's own `total_distance` is what the device measured
+(ADR 0028).
+_Avoid_: Track, Trace (fine in prose, not as the term), GPX (that is the file
+format), Path.
 
 ### Dashboards
 
