@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Link, useLocation, useParams } from "@tanstack/react-router";
 import { useHotkeys } from "react-hotkeys-hook";
-import { Activity, Download, LogOut, Plus, Table2, Target } from "lucide-react";
+import { Activity, Download, Dumbbell, LogOut, Plus, Table2, Target } from "lucide-react";
 import { useLogout, useMe } from "@/hooks/use-auth";
 import { useDashboards } from "@/hooks/use-dashboards";
 import { cn } from "@/lib/utils";
@@ -23,6 +23,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const onImportPage = useLocation({ select: (l) => l.pathname === "/import" });
   const onDataPage = useLocation({ select: (l) => l.pathname === "/data" });
   const onPlanPage = useLocation({ select: (l) => l.pathname === "/plan" });
+  // The workout detail is a page of its own, so the entry stays lit while reading one.
+  const onWorkoutsPage = useLocation({ select: (l) => l.pathname.startsWith("/workouts") });
 
   // Hotkey: "n" opens the new-dashboard dialog (react-hotkeys-hook, ADR 0013).
   useHotkeys("n", () => setCreateOpen(true), { preventDefault: true });
@@ -76,6 +78,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             )}
           >
             <Table2 className="size-4" /> Data
+          </Link>
+          <Link
+            to="/workouts"
+            className={cn(
+              "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-accent",
+              onWorkoutsPage ? "bg-accent font-medium text-accent-foreground" : "text-muted-foreground",
+            )}
+          >
+            <Dumbbell className="size-4" /> Workouts
           </Link>
           <Link
             to="/plan"

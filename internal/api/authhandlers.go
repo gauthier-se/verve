@@ -219,9 +219,24 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		s.serverErrorResponse(w, r, err)
 		return
 	}
-	if err := writeJSON(w, http.StatusOK, envelope{"account": meView(acc)}, nil); err != nil {
+	// The map configuration rides along on the payload the SPA already loads at
+	// boot rather than getting an endpoint of its own. An absent "map" means no
+	// basemap is configured, which is the default: the workout map then draws its
+	// trace on a blank ground and the browser makes no outbound request (ADR 0028).
+	body := envelope{"account": meView(acc)}
+	if s.mapTiles != "" {
+		body["map"] = mapView{Tiles: s.mapTiles, Attribution: s.mapAttrib}
+	}
+	if err := writeJSON(w, http.StatusOK, body, nil); err != nil {
 		s.serverErrorResponse(w, r, err)
 	}
+}
+
+// mapView is the configured basemap, present only when one is configured. Its
+// absence is the default and is what a client must treat as "draw no tiles".
+type mapView struct {
+	Tiles       string `json:"tiles"`
+	Attribution string `json:"attribution"`
 }
 
 // setSessionCookie writes the opaque session cookie: HttpOnly (no JS access),

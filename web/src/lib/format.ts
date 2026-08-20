@@ -72,3 +72,36 @@ export function computeDelta(
   const arrow = shownZero ? "→" : diff > 0 ? "↑" : "↓";
   return { arrow, label, exact: formatExact(Math.abs(diff)) };
 }
+
+/** formatPace renders a speed in km/h as minutes per kilometre: 10 → "6:00/km".
+ *  A runner reads a pace and a cyclist reads a speed, so which of the two a
+ *  workout shows comes from its Activity's `reading` (ADR 0028) and never from a
+ *  guess in the component. formatDuration cannot produce this: it rounds to the
+ *  minute, and a pace is read to the second. */
+export function formatPace(kmh: number): string {
+  if (!Number.isFinite(kmh) || kmh <= 0) return "—";
+  const secondsPerKm = Math.round(3600 / kmh);
+  const m = Math.floor(secondsPerKm / 60);
+  const s = secondsPerKm % 60;
+  return `${m}:${String(s).padStart(2, "0")}/km`;
+}
+
+/** formatSpeed renders a speed in km/h: 28.4 → "28,4 km/h". */
+export function formatSpeed(kmh: number): string {
+  if (!Number.isFinite(kmh)) return "—";
+  return `${nf({ maximumFractionDigits: 1 }).format(kmh)} km/h`;
+}
+
+/** formatSessionDuration renders a workout's duration, given in seconds, as
+ *  "1h 04m" or "48m". Seconds rather than minutes because that is the unit a
+ *  Session stores, and rounding to minutes first loses a short interval entirely. */
+export function formatSessionDuration(seconds: number): string {
+  const total = Math.max(0, Math.round(seconds));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  if (h === 0) {
+    const s = total % 60;
+    return m === 0 ? `${s}s` : `${m}m`;
+  }
+  return `${h}h ${String(m).padStart(2, "0")}m`;
+}

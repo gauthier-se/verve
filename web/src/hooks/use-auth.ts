@@ -1,6 +1,23 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "@/lib/api";
-import type { Account, AuthState } from "@/lib/types";
+import type { Account, AuthState, MapConfig } from "@/lib/types";
+
+/** MePayload is what GET /v1/auth/me returns: the Account, plus the instance
+ *  settings a client needs at boot. `map` is present only when a basemap is
+ *  configured, and its absence is the default (ADR 0028). */
+interface MePayload {
+  account: Account | null;
+  map?: MapConfig;
+}
+
+async function fetchMe(): Promise<MePayload> {
+  try {
+    return await api<MePayload>("/v1/auth/me");
+  } catch (err) {
+    if (err instanceof ApiError && err.unauthenticated) return { account: null };
+    throw err;
+  }
+}
 
 /** useAuthState resolves whether the instance still needs its first Account, so
  *  the unauthenticated app can pick the create-account vs. login screen (ADR 0017). */
@@ -14,18 +31,15 @@ export function useAuthState() {
 /** useMe resolves the logged-in Account, or null when unauthenticated. It is the
  *  gate the app checks to decide between the login screen and the dashboards. */
 export function useMe() {
-  return useQuery({
-    queryKey: ["me"],
-    queryFn: async () => {
-      try {
-        const { account } = await api<{ account: Account }>("/v1/auth/me");
-        return account;
-      } catch (err) {
-        if (err instanceof ApiError && err.unauthenticated) return null;
-        throw err;
-      }
-    },
-  });
+  return useQuery({ queryKey: ["me"], queryFn: fetchMe, select: (p) => p.account });
+}
+
+/** useMapConfig resolves the configured basemap, or null when none is: the
+ *  default, in which case a workout map draws its trace on a blank ground and the
+ *  browser makes no outbound request (ADR 0028). It shares the `me` query, so
+ *  reading it costs no extra request. */
+export function useMapConfig() {
+  return useQuery({ queryKey: ["me"], queryFn: fetchMe, select: (p) => p.map ?? null });
 }
 
 /** useLogin posts credentials and, on success, primes the `me` cache so the app
@@ -36,7 +50,11 @@ export function useLogin() {
     mutationFn: (input: { email: string; password: string }) =>
       api<{ account: Account }>("/v1/auth/login", { method: "POST", body: input }),
     onSuccess: ({ account }) => {
-      qc.setQueryData(["me"], account);
+      // Prime for an instant transition, then refetch: the login payload carries the
+      // Account and not the instance settings, and a map configured server-side must
+      // not stay invisible until the next reload.
+      qc.setQueryData<MePayload>(["me"], { account });
+      qc.invalidateQueries({ queryKey: ["me"] });
     },
   });
 }
@@ -50,7 +68,8 @@ export function useRegister() {
     mutationFn: (input: { email: string; password: string }) =>
       api<{ account: Account }>("/v1/auth/register", { method: "POST", body: input }),
     onSuccess: ({ account }) => {
-      qc.setQueryData(["me"], account);
+      qc.setQueryData<MePayload>(["me"], { account });
+      qc.invalidateQueries({ queryKey: ["me"] });
       qc.setQueryData<AuthState>(["auth-state"], { needs_bootstrap: false });
     },
   });
@@ -62,7 +81,7 @@ export function useLogout() {
   return useMutation({
     mutationFn: () => api("/v1/auth/logout", { method: "POST" }),
     onSuccess: () => {
-      qc.setQueryData(["me"], null);
+      qc.setQueryData<MePayload>(["me"], { account: null });
       qc.clear();
     },
   });

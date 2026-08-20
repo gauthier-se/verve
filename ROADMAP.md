@@ -31,23 +31,8 @@ Everything below is merged into `main`, tested, and usable today.
 
 ## Next
 
-The three items that would change what Verve can answer, in the order they
-matter.
-
-### Read path for workouts
-
-What sleep was until this milestone, **Sessions** still are: workouts, their
-summary statistics and their GPX routes are ingested, the route files are kept
-as artifacts, and nothing reads any of it. What is missing is a list, a detail
-view, and a map. Deferred from the core milestone on purpose, still deferred,
-still wanted.
-
-### Annotations
-
-The fourth differentiator promised alongside period comparison, cross-metric
-panels and derived metrics, and the only one not built. A dated note on the
-time axis, visible across dashboards, so a curve can be read against what was
-happening: an illness, a trip, a change of program. Not yet specified.
+The three items that would change what Verve is, in the order they matter. The
+release comes first: it is the only one that changes who can run Verve at all.
 
 ### A tagged release
 
@@ -55,6 +40,21 @@ There is no published version and no published image, so installing means
 cloning and building. A first tag, a container image on a registry, and the
 binaries goreleaser is already configured to produce would turn Verve from
 something you build into something you install.
+
+### Read path for workouts
+
+What sleep was until this milestone, **Sessions** still are: workouts, their
+summary statistics and their GPX routes are ingested, the route files are kept
+as artifacts, and nothing reads any of it. What is missing is a list, a detail
+view, and a map. Deferred from the core milestone on purpose, still deferred,
+still wanted, and now specified: see `.scratch/workouts-read-path/PRD.md`.
+
+### Annotations
+
+The fourth differentiator promised alongside period comparison, cross-metric
+panels and derived metrics, and the only one not built. A dated note on the
+time axis, visible across dashboards, so a curve can be read against what was
+happening: an illness, a trip, a change of program. Not yet specified.
 
 ## Later
 
