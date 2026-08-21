@@ -16,6 +16,7 @@ type Models struct {
 	Panels       PanelModel
 	Phases       PhaseModel
 	Pins         PinModel
+	Annotations  AnnotationModel
 
 	db *sql.DB // for cross-cutting needs (e.g. health checks) that want the handle itself
 }
@@ -32,6 +33,7 @@ func NewModels(db *sql.DB) Models {
 		Panels:       PanelModel{DB: db},
 		Phases:       PhaseModel{DB: db},
 		Pins:         PinModel{DB: db},
+		Annotations:  AnnotationModel{DB: db},
 		db:           db,
 	}
 }

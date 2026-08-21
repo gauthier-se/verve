@@ -513,3 +513,57 @@ func TestUpdatePanelReplacesMetricsList(t *testing.T) {
 		t.Errorf("error = %v, want field metrics", fields)
 	}
 }
+
+// TestDashboardShowsAnnotationsByDefault: the notes belong to the Account, so a
+// Dashboard that hid them until someone found a switch would make the feature
+// invisible to the person who just wrote their first note (ADR 0030).
+func TestDashboardShowsAnnotationsByDefault(t *testing.T) {
+	srv, _, cookie := newTestServer(t)
+	d := createDashboard(t, srv, cookie, "D")
+	if !d.Annotations {
+		t.Errorf("new dashboard = %+v, want annotations on", d)
+	}
+	// The seeded Overview predates nothing and is created the same way, but it is
+	// the one every Account actually opens (ADR 0018).
+	res, body := doReq(t, srv, http.MethodGet, "/v1/dashboards", "", cookie)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("list status = %d, want 200 (%s)", res.StatusCode, body["error"])
+	}
+	var listed []dashboardView
+	_ = json.Unmarshal(body["dashboards"], &listed)
+	for _, got := range listed {
+		if !got.Annotations {
+			t.Errorf("dashboard %q = %+v, want annotations on", got.Name, got)
+		}
+	}
+}
+
+// TestUpdateDashboardAnnotationsToggle persists the toggle and leaves it alone on
+// a patch that touches only the time range: showing the markers is a property of
+// this Dashboard, and nothing else on the axis may reset it.
+func TestUpdateDashboardAnnotationsToggle(t *testing.T) {
+	srv, _, cookie := newTestServer(t)
+	d := createDashboard(t, srv, cookie, "D")
+
+	res, body := doReq(t, srv, http.MethodPatch, "/v1/dashboards/"+itoa(d.ID), `{"annotations":false}`, cookie)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (%s)", res.StatusCode, body["error"])
+	}
+	var got dashboardView
+	_ = json.Unmarshal(body["dashboard"], &got)
+	if got.Annotations {
+		t.Fatalf("dashboard = %+v, want annotations off", got)
+	}
+
+	_, body = doReq(t, srv, http.MethodPatch, "/v1/dashboards/"+itoa(d.ID), `{"range_preset":"7d"}`, cookie)
+	_ = json.Unmarshal(body["dashboard"], &got)
+	if got.Annotations {
+		t.Errorf("dashboard = %+v, want annotations still off after a range patch", got)
+	}
+
+	_, body = doReq(t, srv, http.MethodPatch, "/v1/dashboards/"+itoa(d.ID), `{"annotations":true}`, cookie)
+	_ = json.Unmarshal(body["dashboard"], &got)
+	if !got.Annotations {
+		t.Errorf("dashboard = %+v, want annotations back on", got)
+	}
+}

@@ -230,3 +230,37 @@ func truncateDay(t time.Time) time.Time {
 	t = t.UTC()
 	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
 }
+
+// Fold maps an inclusive day span [from, to] onto the resolved bucket grid: the
+// bucket-start dates of the buckets holding its first and last day, clamped to the
+// window. ok is false when the span does not overlap the window at all.
+//
+// It exists so that nothing outside this module ever computes "which bucket holds
+// this day". A Panel's X axis is categorical, keyed on the bucket-start dates the
+// server emitted, so a marker placed at a date derived by a second, independent
+// boundary rule does not error: it renders nothing, silently, on the day the two
+// rules disagree. One module owns the boundaries; this is how the rest of the app
+// asks it a question.
+//
+// A span that starts before the window is clamped to its first bucket and one that
+// runs past the end to its last, because a fortnight overlapping the range by three
+// days is still on screen for those three days and must be drawn there.
+func (r Resolved) Fold(from, to time.Time) (start, end string, ok bool) {
+	from, to = truncateDay(from), truncateDay(to)
+	if to.Before(from) {
+		from, to = to, from
+	}
+	// The window is half-open, so its last day is the day before To.
+	last := truncateDay(r.Current.To).AddDate(0, 0, -1)
+	first := truncateDay(r.Current.From)
+	if to.Before(first) || from.After(last) {
+		return "", "", false
+	}
+	if from.Before(first) {
+		from = first
+	}
+	if to.After(last) {
+		to = last
+	}
+	return r.Bucket.Start(from), r.Bucket.Start(to), true
+}

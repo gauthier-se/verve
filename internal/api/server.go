@@ -162,8 +162,6 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("PATCH /v1/panels/{id}", s.requireAuth(s.handleUpdatePanel))
 	mux.Handle("DELETE /v1/panels/{id}", s.requireAuth(s.handleDeletePanel))
 
-	// Pins: the Metrics the Account keeps in the sidebar. A Pin is a shortcut to a
-	// Metric page, so its identity is the Catalog slug and both writes are idempotent.
 	// Workouts (ADR 0028): a Session is an entity, so it is listed and opened
 	// rather than bucketed, and its Route is served as its own resource.
 	mux.Handle("GET /v1/sessions", s.requireAuth(s.handleListSessions))
@@ -171,9 +169,19 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /v1/sessions/{id}/routes", s.requireAuth(s.handleSessionRoutes))
 	mux.Handle("GET /v1/sessions/{id}/routes/{routeID}", s.requireAuth(s.handleDownloadRoute))
 
+	// Pins: the Metrics the Account keeps in the sidebar. A Pin is a shortcut to a
+	// Metric page, so its identity is the Catalog slug and both writes are idempotent.
 	mux.Handle("GET /v1/pins", s.requireAuth(s.handleListPins))
 	mux.Handle("POST /v1/pins", s.requireAuth(s.handleCreatePin))
 	mux.Handle("DELETE /v1/pins/{metric}", s.requireAuth(s.handleDeletePin))
+
+	// Annotations: dated notes on the time axis (ADR 0030). The list takes the same
+	// time-axis tokens /v1/series takes, and answers with each note folded onto that
+	// bucket grid; with no tokens it answers the Account's whole history.
+	mux.Handle("GET /v1/annotations", s.requireAuth(s.handleListAnnotations))
+	mux.Handle("POST /v1/annotations", s.requireAuth(s.handleCreateAnnotation))
+	mux.Handle("PATCH /v1/annotations/{id}", s.requireAuth(s.handleUpdateAnnotation))
+	mux.Handle("DELETE /v1/annotations/{id}", s.requireAuth(s.handleDeleteAnnotation))
 
 	// /v1/* is the JSON API (identity-resolved), everything else the SPA. Routing-
 	// level 404/405 keep the stdlib plain-text body; application errors are JSON.

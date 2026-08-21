@@ -156,3 +156,55 @@ func TestMigrationBackfillsPanelMetrics(t *testing.T) {
 		t.Errorf("panels.metric still exists after 0007")
 	}
 }
+
+// TestMigrationBackfillsAnnotationsOnExistingDashboards: 0012 adds the toggle to a
+// table that already holds rows, and it must arrive on rather than off. A default
+// of 0 would leave every dashboard that predates the feature silently hiding it,
+// which is indistinguishable from the feature not working (ADR 0030).
+func TestMigrationBackfillsAnnotationsOnExistingDashboards(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "verve.db")
+	db, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+
+	// Everything before 0012: a database as it stood before Annotations existed.
+	if err := ensureMigrationsTable(ctx, db); err != nil {
+		t.Fatalf("ensureMigrationsTable: %v", err)
+	}
+	versions, err := fs.Glob(migrationsFS, migrationsDir+"/*.sql")
+	if err != nil {
+		t.Fatalf("glob migrations: %v", err)
+	}
+	sort.Strings(versions)
+	for _, v := range versions {
+		version := path.Base(v)
+		if version >= "0012" {
+			break
+		}
+		if err := applyMigration(ctx, db, version); err != nil {
+			t.Fatalf("apply %s: %v", version, err)
+		}
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO accounts (id, email) VALUES (1, 'legacy@example.com')`); err != nil {
+		t.Fatalf("insert legacy account: %v", err)
+	}
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO dashboards (id, account_id, name, range_preset) VALUES (1, 1, 'Legacy', '30d')`); err != nil {
+		t.Fatalf("insert legacy dashboard: %v", err)
+	}
+
+	if err := Migrate(ctx, db, testLogger()); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+
+	got, err := NewModels(db).Dashboards.GetByID(ctx, 1, 1)
+	if err != nil {
+		t.Fatalf("GetByID after migration: %v", err)
+	}
+	if !got.Annotations {
+		t.Errorf("migrated dashboard = %+v, want annotations on", got)
+	}
+}
