@@ -99,6 +99,11 @@ export interface Point {
   min?: number;
   max?: number;
   gap?: boolean;
+  /** count is how many rows the bucket was folded from — Measurements for an
+   *  observed Metric, Nights for a duration_by_state one. It is the evidence behind
+   *  the value, which the Ledger prints beside it. Absent for a derived Metric, whose
+   *  operands each have their own count. */
+  count?: number;
   /** states is the bucket's minutes per Stage, carried only by a duration_by_state
    *  Metric (ADR 0027): what the stacked bar stacks. `value` stays the single scalar
    *  every other reader uses — for sleep, time asleep — so `awake` appears here and is
@@ -439,4 +444,155 @@ export interface RouteGeometry {
 export interface MapConfig {
   tiles: string;
   attribution: string;
+}
+
+/** Window is a resolved half-open range as the server names it: the first day, the
+ *  exclusive bound, the last day a label should print, and the whole-day span. */
+export interface Window {
+  from: string;
+  to: string;
+  last: string;
+  days: number;
+}
+
+/** TimeAxis is a set of range tokens resolved (GET /v1/timeaxis): the window every
+ *  Series on the screen is read over, the bucket they are drawn at, and the compared
+ *  window when comparison is on. The client prints these dates; it never derives one
+ *  (ADR 0012). */
+export interface TimeAxis {
+  range: Window;
+  bucket: Bucket;
+  baseline?: Window;
+}
+
+/** Pair is one ordered pair's co-variation: A read against B shifted by the page's
+ *  lag, over the buckets they share. `rho` is Spearman's rank correlation — strength
+ *  and direction, never a cause and never a valence. `ranked` is false when the pair
+ *  shares too few buckets to be ranked at all. */
+export interface Pair {
+  a: string;
+  b: string;
+  rho: number;
+  shared: number;
+  ranked: boolean;
+}
+
+/** ScatterDot is one shared bucket of a pair, drawn. */
+export interface ScatterDot {
+  bucket: string;
+  x: number;
+  y: number;
+}
+
+/** ScatterFit is the least-squares line through a scatter, as its two endpoints.
+ *  Fitted server-side: the client draws statistics, it does not compute them. */
+export interface ScatterFit {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
+/** Scatter is the strongest pair of a window drawn bucket by bucket. */
+export interface Scatter {
+  a: string;
+  b: string;
+  unit_a: string;
+  unit_b: string;
+  points: ScatterDot[];
+  fit?: ScatterFit;
+  rho: number;
+  shared: number;
+}
+
+/** CoVaryLag is how far the second Metric of a pair is shifted, and — inseparably —
+ *  the grain the question is asked at: "the next morning" is a day-grain question. */
+export type CoVaryLag = "same" | "next_day" | "next_week";
+
+/** SkippedMetric is a pinned Metric that could not join the matrix, and why. */
+export interface SkippedMetric {
+  metric: string;
+  reason: string;
+}
+
+/** CoVary is the cross-metric answer for one window (GET /v1/covary): the pinned
+ *  Metrics paired, ranked strongest first, with the threshold under which a pair is
+ *  not ranked at all. */
+export interface CoVary {
+  range: Window;
+  bucket: Bucket;
+  lag: CoVaryLag;
+  lag_shift: number;
+  metrics: string[];
+  units: Record<string, string>;
+  pairs: Pair[];
+  min_shared: number;
+  strongest?: Scatter;
+  skipped?: SkippedMetric[];
+}
+
+/** HistorySpan is a stretch of the history's bucket grid, both ends inclusive. */
+export interface HistorySpan {
+  from: string;
+  to: string;
+}
+
+/** PhaseKind is what the sign of a Phase's rate makes it (ADR 0023). */
+export type PhaseKind = "cut" | "bulk" | "maintenance";
+
+/** HistoryPhase is one Phase placed on the history band's grid. */
+export interface HistoryPhase {
+  id: number;
+  kind: PhaseKind;
+  rate_pct_per_week: number;
+  started_on: string;
+  ended_on?: string;
+  from: string;
+  to: string;
+}
+
+/** HistoryBand is one Metric over the Account's entire history, *dense*: one entry
+ *  per bucket, empty ones marked `gap`. Everywhere else a gap is simply absent
+ *  (ADR 0014); here the gaps are the subject, so they are drawn. */
+export interface HistoryBand {
+  metric: string;
+  unit: string;
+  bucket: Bucket;
+  points: Point[];
+  gaps: HistorySpan[];
+  phases: HistoryPhase[];
+}
+
+/** HistoryEventKind is what happened: data arrived, a Phase was committed, a note
+ *  was written, a Source appeared, or the history itself begins. */
+export type HistoryEventKind = "import" | "phase" | "note" | "source" | "origin";
+
+/** HistoryFigure is one key/number chip under an event. The key is a stable slug
+ *  the interface labels; the value is already in its unit. */
+export interface HistoryFigure {
+  key: string;
+  value: number;
+  unit?: string;
+}
+
+/** HistoryEvent is one dated entry in the ledger. The server says what happened and
+ *  when; the words are the interface's. */
+export interface HistoryEvent {
+  kind: HistoryEventKind;
+  date: string;
+  ends_on?: string;
+  label?: string;
+  body?: string;
+  figures?: HistoryFigure[];
+  rate_pct_per_week?: number;
+}
+
+/** History is the long view (GET /v1/history): how far back the data goes, one
+ *  Metric drawn over all of it, and the dated events that explain its shape. */
+export interface History {
+  first?: string;
+  last?: string;
+  days: number;
+  band?: HistoryBand;
+  events: HistoryEvent[];
 }

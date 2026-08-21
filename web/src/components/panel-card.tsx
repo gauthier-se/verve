@@ -4,12 +4,16 @@ import { ChevronDown, ChevronUp, GripVertical, Plus, Settings2, StickyNote, Tras
 import { useDeletePanel, useUpdatePanel } from "@/hooks/use-dashboards";
 import { useAnnotations } from "@/hooks/use-annotations";
 import { useSeries, type BaselineParams } from "@/hooks/use-series";
+import { NEGATIVE, POSITIVE } from "@/lib/chart";
 import { CHART_TYPE_LABEL, compatibleChartTypes, metricLabel } from "@/lib/metrics";
+import { isSleepSeries, stageColor, stageLabel, stagesPresent } from "@/lib/sleep";
 import type { RangeTokens } from "@/lib/time-range";
-import type { Bucket, ChartType, Metric, Panel, PanelMetric } from "@/lib/types";
+import type { Bucket, ChartType, Metric, Panel, PanelMetric, Series } from "@/lib/types";
+import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { AnnotationDialog } from "./annotation-dialog";
 import { Card } from "./ui/card";
+import { LegendItem, Meta, SectionTitle } from "./ui/figure";
 import { Label } from "./ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
@@ -39,7 +43,13 @@ interface PanelCardProps {
  *  range at the server-resolved bucket — a single Metric overlaid with the
  *  Dashboard's Baseline in comparison mode (multi-Metric Panels cut it, ADR
  *  0020) — with a settings popover to edit the Metric list, per-Metric chart
- *  types, the bucket override, size, or remove it. */
+ *  types, the bucket override, size, or remove it.
+ *
+ *  The card is a headline figure with a curve under it, in that order: the shape of
+ *  a trend never reveals its magnitude, so the number is what the eye lands on and
+ *  the chart is what it lands on next (ADR 0019). Everything else on the card —
+ *  the rule it was folded by, the grain, the evidence count — is a mono note beside
+ *  the title, quiet enough to skip and precise enough to trust. */
 export function PanelCard({ panel, catalog, range, baseline, showAnnotations, dragHandle }: PanelCardProps) {
   const slugs = panel.metrics.map((m) => m.metric);
   const showNotes = showAnnotations !== false;
@@ -63,51 +73,54 @@ export function PanelCard({ panel, catalog, range, baseline, showAnnotations, dr
   // (ADR 0014), so the user understands how the number is computed.
   const metric = multi ? undefined : catalog.get(slugs[0] ?? "");
   const title = slugs.map(metricLabel).join(" · ");
+  const series = multi ? undefined : list?.[0];
+  const chartType = panel.metrics[0]?.chart_type;
+  const stages = series && isSleepSeries(series) ? stagesPresent(series.points) : [];
 
   return (
-    <Card className="flex h-72 flex-col">
-      <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
-        <div className="flex min-w-0 items-center gap-1">
-          {dragHandle}
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
-              {!multi && slugs[0] && <MetricIcon slug={slugs[0]} className="size-4" />}
-              {!multi && slugs[0] ? (
-                <Link
-                  to="/data/$metric"
-                  params={{ metric: slugs[0] }}
-                  className="truncate text-sm font-medium hover:underline"
-                >
-                  {title}
-                </Link>
-              ) : (
-                <span className="truncate text-sm font-medium" title={multi ? title : undefined}>
-                  {title}
-                </span>
-              )}
-              {metric?.formula && <FormulaHint formula={metric.formula} />}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {bucket}
-              {panel.bucket ? "" : " (auto)"}
-            </div>
-          </div>
+    // A wider Panel is a taller Panel: a card given two columns was given them to
+    // hold a longer curve, and a year of nights in 112px is a texture, not a series.
+    <Card className={cn("flex flex-col", panel.width > 1 ? "h-80" : "h-72")}>
+      <div className="flex items-start justify-between gap-3 px-4 pt-3.5">
+        <div className="flex min-w-0 items-baseline gap-2">
+          <div className="-ml-1.5 flex shrink-0 -translate-y-px items-center">{dragHandle}</div>
+          {!multi && slugs[0] && <MetricIcon slug={slugs[0]} className="size-3.5 shrink-0 -translate-y-px" />}
+          {!multi && slugs[0] ? (
+            <Link to="/data/$metric" params={{ metric: slugs[0] }} className="min-w-0 hover:underline">
+              <SectionTitle>{title}</SectionTitle>
+            </Link>
+          ) : (
+            <SectionTitle title={multi ? title : undefined}>{title}</SectionTitle>
+          )}
+          {metric?.formula && <FormulaHint formula={metric.formula} />}
+          <Meta className="hidden sm:inline">{panelNote({ series, metric, list, bucket, stages })}</Meta>
         </div>
-        <PanelSettings panel={panel} catalog={catalog} onAddNote={() => setNoteOpen(true)} />
+
+        <div className="flex shrink-0 items-center gap-2">
+          {stages.length > 0 && <StageLegend stages={stages} />}
+          <PanelSettings panel={panel} catalog={catalog} onAddNote={() => setNoteOpen(true)} />
+        </div>
       </div>
 
       {list &&
         (multi ? (
           <PanelLegend list={list} comparing={comparing} catalog={catalog} />
         ) : (
-          list[0] && <PanelSummary series={list[0]} baseline={query.data?.baseline} metric={metric} />
+          list[0] && (
+            <PanelSummary
+              series={list[0]}
+              baseline={query.data?.baseline}
+              metric={metric}
+              wide={panel.width > 1}
+            />
+          )
         ))}
 
-      <div className="min-h-0 flex-1 p-2">
+      <div className="min-h-0 flex-1 px-2 pb-1 pt-2">
         {query.isLoading ? (
           <CenteredSpinner />
         ) : query.isError ? (
-          <div className="flex h-full items-center justify-center px-4 text-center text-sm text-destructive">
+          <div className="flex h-full items-center justify-center px-4 text-center text-xs text-destructive">
             Couldn’t load this panel
           </div>
         ) : list ? (
@@ -121,8 +134,94 @@ export function PanelCard({ panel, catalog, range, baseline, showAnnotations, dr
         ) : null}
       </div>
 
+      {/* A diverging bar is the one chart whose colours are not identities: they are
+          the sign of the value, and the key for that has to be on the card. */}
+      {!multi && chartType === "diverging_bar" && <SignLegend />}
+
       <AnnotationDialog open={noteOpen} onOpenChange={setNoteOpen} defaultDay={hovered} />
     </Card>
+  );
+}
+
+/** panelNote is the mono line beside a Panel's title: how this figure was arrived
+ *  at, in the fewest words that are still true.
+ *
+ *  It replaces the bare bucket name the card used to show. "week" alone answers a
+ *  question nobody asked; "sum · weekly buckets" says both what was done to the
+ *  numbers and over what — which is the difference between reading a chart and
+ *  trusting it. */
+function panelNote({
+  series,
+  metric,
+  list,
+  bucket,
+  stages,
+}: {
+  series?: Series;
+  metric?: Metric;
+  list?: Series[];
+  bucket: Bucket | null;
+  stages: string[];
+}): string {
+  const grain = bucket ? `${grainWord(bucket)} buckets` : "";
+
+  // A multi-Metric Panel says how many axes it is carrying, which is the one thing
+  // about it that changes how its curves must be read (ADR 0020).
+  if (list && list.length > 1) {
+    const units = new Set(list.map((s) => s.unit));
+    return [units.size > 1 ? "two axes" : `${list.length} metrics`, grain].filter(Boolean).join(" · ");
+  }
+  if (!series) return grain;
+
+  if (stages.length > 0) {
+    // Nights recorded, not days elapsed: the honest denominator behind the figure
+    // above it, and the reason a sparse month is not a shortfall (ADR 0027).
+    const nights = series.nights ?? 0;
+    return ["stacked", nights > 0 ? `${nights} nights recorded` : grain].filter(Boolean).join(" · ");
+  }
+  if (metric?.nature === "derived") {
+    const ratio = (metric.formula?.denominator?.length ?? 0) > 0;
+    return ["derived", ratio ? "ratio" : series.unit || grain].filter(Boolean).join(" · ");
+  }
+  switch (series.aggregation) {
+    case "sum":
+      return ["sum", grain].filter(Boolean).join(" · ");
+    case "average":
+      return ["average", series.unit].filter(Boolean).join(" · ");
+    case "latest":
+      return ["latest", series.unit].filter(Boolean).join(" · ");
+    default:
+      return grain;
+  }
+}
+
+function grainWord(bucket: Bucket): string {
+  return bucket === "day" ? "daily" : bucket === "week" ? "weekly" : "monthly";
+}
+
+/** StageLegend names the segments of a stacked Night. A stacked bar is the one
+ *  chart whose parts cannot be told apart by eye, so its key is not optional. */
+function StageLegend({ stages }: { stages: string[] }) {
+  return (
+    <div className="hidden items-center gap-2.5 md:flex">
+      {stages.map((stage, i) => (
+        <LegendItem key={stage} color={stageColor(stage, i)}>
+          {stageLabel(stage)}
+        </LegendItem>
+      ))}
+    </div>
+  );
+}
+
+/** SignLegend names the two sides of a diverging bar (ADR 0014). Warm above zero
+ *  and cool below is a reading of the *sign*, not of the news: Verve does not know
+ *  whether a surplus is what you wanted. */
+function SignLegend() {
+  return (
+    <div className="flex items-center gap-3.5 px-4 pb-3 pt-1">
+      <LegendItem color={POSITIVE}>surplus</LegendItem>
+      <LegendItem color={NEGATIVE}>deficit</LegendItem>
+    </div>
   );
 }
 
@@ -174,8 +273,13 @@ function PanelSettings({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" className="size-7 shrink-0" aria-label="Panel settings">
-          <Settings2 className="size-4" />
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-6 shrink-0 text-muted-foreground"
+          aria-label="Panel settings"
+        >
+          <Settings2 className="size-3.5" />
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-72 space-y-3">
@@ -335,11 +439,11 @@ export function DragHandle(props: React.HTMLAttributes<HTMLButtonElement>) {
   return (
     <button
       type="button"
-      className="flex size-6 shrink-0 cursor-grab touch-none items-center justify-center text-muted-foreground hover:text-foreground active:cursor-grabbing"
+      className="flex size-5 shrink-0 cursor-grab touch-none items-center justify-center text-muted-foreground/60 transition-colors hover:text-foreground active:cursor-grabbing"
       aria-label="Drag to reorder"
       {...props}
     >
-      <GripVertical className="size-4" />
+      <GripVertical className="size-3.5" />
     </button>
   );
 }

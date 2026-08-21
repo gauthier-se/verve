@@ -2,7 +2,9 @@ import { createRootRoute, createRoute, createRouter, Outlet } from "@tanstack/re
 import { AppShell } from "./components/app-shell";
 import { DashboardIndex } from "./components/dashboard-index";
 import { DashboardView } from "./components/dashboard-view";
+import { CrossMetricPage } from "./components/cross-metric-page";
 import { DataPage } from "./components/data-page";
+import { HistoryPage } from "./components/history-page";
 import { ImportPage } from "./components/import-page";
 import { MetricPage } from "./components/metric-page";
 import { PlanPage } from "./components/plan-page";
@@ -44,6 +46,21 @@ const metricRoute = createRoute({
   component: MetricPage,
 });
 
+// Cross-metric and History are reads over the Account's whole data rather than over
+// a Dashboard's window, so they are pages of their own beside Data rather than a
+// Panel or a tab on one.
+const crossRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/cross",
+  component: CrossMetricPage,
+});
+
+const historyRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/history",
+  component: HistoryPage,
+});
+
 const workoutsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/workouts",
@@ -75,6 +92,8 @@ const routeTree = rootRoute.addChildren([
   dashboardRoute,
   dataRoute,
   metricRoute,
+  crossRoute,
+  historyRoute,
   workoutsRoute,
   workoutRoute,
   planRoute,

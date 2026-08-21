@@ -22,12 +22,17 @@ import type { Metric, Panel } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { DragHandle, PanelCard } from "./panel-card";
 
-// A Panel's width preset maps to a responsive column span: it narrows on
-// smaller viewports so a 3-wide card never overflows a 2- or 1-column grid.
+// A Panel's width preset maps to a column span. The grid itself is an auto-fit of
+// 320px-minimum tracks rather than a fixed three columns, so the number of columns
+// follows the space available and not a breakpoint guess: a wide monitor gets four
+// or five, a split window gets two, and nothing is ever squeezed under its minimum.
+// A span is then capped by the track count in CSS, which is what `min()` on the
+// span cannot express — hence the breakpoint qualifiers, which only ever *reduce*
+// a span on a narrow grid.
 const WIDTH_CLASS: Record<number, string> = {
   1: "col-span-1",
   2: "col-span-1 md:col-span-2",
-  3: "col-span-1 md:col-span-2 lg:col-span-3",
+  3: "col-span-1 md:col-span-2 xl:col-span-3",
 };
 
 /** DashboardGrid lays the Panels out in a responsive 3-column grid and makes
@@ -67,7 +72,7 @@ export function DashboardGrid({
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
       <SortableContext items={panels.map((p) => p.id)} strategy={rectSortingStrategy}>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(20rem,1fr))]">
           {panels.map((panel) => (
             <SortablePanel
               key={panel.id}

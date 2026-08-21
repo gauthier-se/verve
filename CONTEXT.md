@@ -234,6 +234,42 @@ left the Catalog is hidden at render rather than deleted.
 _Avoid_: Favorite (implies a judgement Verve does not make), Bookmark (a browser
 concept), Shortcut (too generic), Watchlist (implies alerting Verve does not do).
 
+**Co-variation**:
+The read that answers "does this move with that": two Metrics' buckets ranked
+against each other over one window, optionally with one of them **lagged** by a
+bucket. Reported as **ρ**, Spearman's rank correlation — a correlation of *ranks*
+rather than of values, so one holiday tripling a step count cannot write the
+answer and a relationship that is monotone but not linear stays legible. Verve
+reports **strength and direction and nothing else**: never a cause, and never a
+valence, because it cannot know which direction is good for your Metric. Its
+inputs are the **Pins** (ADR 0025), which is the whole of "how do I put a Metric
+on that page". A pair below the shared-bucket threshold is shown and explicitly
+**not ranked** — "too little overlap" is an answer, and hiding it would read as
+"no relationship" (ADR 0031).
+_Avoid_: Correlation (the *measure* is a correlation; the reading is not — and
+`Meal` already claims the word in Apple's sense), Insight, Causation, Signal,
+Discovery.
+
+**Lag**:
+How far the second Metric of a pair is shifted before the two are ranked — "sleep
+tonight against resting heart rate tomorrow". A Lag carries the **grain** the
+question is asked at along with the shift, because the two are one choice: "the
+next morning" is a day-grain question and "the week after" a week-grain one. A
+non-zero Lag makes a pair **directional**: A→B is a different question from B→A,
+which is the reason to ask for one.
+_Avoid_: Offset, Delay, Shift (as a noun), Window (that is the Time range).
+
+**History**:
+The long view: everything an Account holds, drawn over its own real extent rather
+than over a preset, with the dated events that explain the shape — Imports,
+Phases, Annotations, the arrival of each Source, and the earliest record itself.
+It is the one read where a **gap** is the subject rather than a rule about
+drawing: elsewhere a bucket with no data is simply absent (ADR 0014), and here
+the grid is materialised so an empty stretch can be shown as one (ADR 0032).
+_Avoid_: Timeline (the rendering, not the concept), Activity feed, Log, Audit
+trail (it explains data, it does not police access), Journal (that is closer to
+Annotations).
+
 ### Sleep
 
 **Night**:

@@ -31,6 +31,8 @@ Everything below is merged into `main`, tested, and usable today.
 | Workouts | Every statistic Apple reports kept at import, a filterable list carrying its own range, a detail view, and the GPX trace as a map with elevation and pace profiles |
 | Annotations | A dated note on the time axis, written once and read against every curve: markers and bands on every panel, a list on the Data page |
 | Releases | A tag builds the static binaries and publishes the image, CI compiles the front end on every pull request, and installing is a `docker pull` |
+| Cross-metric | Every pinned metric paired against every other over one window, ranked, with a lag — strength and direction, never a cause |
+| History | The whole span in one band, phases behind it and gaps drawn as gaps, over a ledger of every import, note, phase and source |
 
 ## Next
 
@@ -40,10 +42,10 @@ are still moving, and not about the data, which a tag already protects: see
 Features land before `1.0`, and the criterion for dropping the zero is a second
 connector having pushed on the Catalog without breaking it, not a feature count.
 
-Annotations, the fourth differentiator promised alongside period comparison,
-cross-metric panels and derived metrics, has landed, and nothing is committed in
-its place yet. What comes next is a choice among the entries below, and the one
-that moves the leading zero is a second connector.
+Cross-metric and History have landed, which closes the reading side of the
+promise: what you have, what it does over years, and what moves with what.
+Nothing is committed in their place yet. What comes next is a choice among the
+entries below, and the one that moves the leading zero is a second connector.
 
 ## Later
 

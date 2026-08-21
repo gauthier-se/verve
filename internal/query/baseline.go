@@ -38,8 +38,8 @@ func (e Engine) Compare(ctx context.Context, req Request, baseFrom, baseTo time.
 // empty buckets). Both windows truncate to the shorter's count; a Baseline bucket
 // with no data at an ordinal becomes a dated Gap, never a zero.
 func alignOrdinal(bucket Bucket, current, baseline *Series, curFrom, curTo, baseFrom, baseTo time.Time) {
-	curStarts := bucket.starts(curFrom, curTo)
-	baseStarts := bucket.starts(baseFrom, baseTo)
+	curStarts := bucket.Starts(curFrom, curTo)
+	baseStarts := bucket.Starts(baseFrom, baseTo)
 	n := min(len(curStarts), len(baseStarts)) // the shorter window's bucket count
 
 	ordinal := make(map[string]int, len(curStarts))

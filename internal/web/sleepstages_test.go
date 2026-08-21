@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -111,5 +112,29 @@ func TestSleepStagesCoverTheConnector(t *testing.T) {
 		if slot < 0 || slot >= seriesColors {
 			t.Errorf("Stage %q takes colour slot %d, outside the %d-colour ramp", stage, slot, seriesColors)
 		}
+	}
+}
+
+// TestAwakeIsDrawnRecessed locks the one Stage that is deliberately not a colour in
+// the ramp.
+//
+// Awake minutes are stacked so a broken night looks broken, and are never counted as
+// sleep (ADR 0027). Giving them a fourth categorical colour would say the opposite —
+// that awake is a fourth kind of sleep — and would put the most saturated treatment
+// on the card's least important segment. So `awake` keeps its slot in the contract
+// above (every Stage must have one) and is painted in the recessed tone instead.
+func TestAwakeIsDrawnRecessed(t *testing.T) {
+	ts := readFileText(t, sleepTSPath)
+	if !strings.Contains(ts, `RECESSIVE_STAGES: readonly string[] = ["awake"]`) {
+		t.Errorf("%s: awake must be listed as a recessive Stage (ADR 0027)", sleepTSPath)
+	}
+	if !strings.Contains(ts, "if (RECESSIVE_STAGES.includes(stage)) return RECESSED;") {
+		t.Errorf("%s: stageColor must paint a recessive Stage in the recessed tone", sleepTSPath)
+	}
+	// Every consumer must go through stageColor rather than indexing the ramp
+	// directly, or the rule would hold on the chart and not in the tooltip.
+	chart := readFileText(t, panelChartTSXPath)
+	if strings.Contains(chart, "SERIES_COLORS[STAGE_COLOR_INDEX[") {
+		t.Errorf("%s indexes the ramp by Stage directly: use stageColor, which knows about awake", panelChartTSXPath)
 	}
 }

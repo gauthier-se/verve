@@ -547,3 +547,71 @@ func sameOptional(a, b *float64) bool {
 	}
 	return *a == *b
 }
+
+// TestSeriesCountsTheRowsBehindEachBucket locks the evidence figure the Ledger
+// prints beside a value: a Point's Count is how many Measurements the bucket was
+// folded from, under every rule — including `latest`, where the winning row is one
+// of several and the count is the whole bucket, not the pick.
+func TestSeriesCountsTheRowsBehindEachBucket(t *testing.T) {
+	e, models, acc := setup(t)
+	seed(t, e.DB, models, acc, []meas{
+		{"steps", 100, "2024-01-01T08:00:00Z", "Watch"},
+		{"steps", 200, "2024-01-01T18:00:00Z", "Watch"},
+		{"steps", 50, "2024-01-02T09:00:00Z", "Watch"},
+		{"body_mass", 80, "2024-01-01T08:00:00Z", "Health"},
+		{"body_mass", 81, "2024-01-01T20:00:00Z", "Health"},
+		{"resting_heart_rate", 52, "2024-01-01T08:00:00Z", "Watch"},
+		{"resting_heart_rate", 54, "2024-01-01T09:00:00Z", "Watch"},
+		{"resting_heart_rate", 56, "2024-01-01T10:00:00Z", "Watch"},
+	})
+
+	from, to := mustTime(t, "2024-01-01T00:00:00Z"), mustTime(t, "2024-01-03T00:00:00Z")
+	cases := []struct {
+		metric     string
+		wantFirst  int // the first bucket's count
+		wantWindow int // the summary's count over the window
+	}{
+		{"steps", 2, 3},              // sum
+		{"body_mass", 2, 2},          // latest: two readings, one of them wins
+		{"resting_heart_rate", 3, 3}, // average
+	}
+	for _, tc := range cases {
+		s, err := e.Series(context.Background(), Request{
+			AccountID: acc, Metric: tc.metric, Bucket: Day, From: from, To: to,
+		})
+		if err != nil {
+			t.Fatalf("Series(%s): %v", tc.metric, err)
+		}
+		if len(s.Points) == 0 {
+			t.Fatalf("Series(%s): no points", tc.metric)
+		}
+		if s.Points[0].Count != tc.wantFirst {
+			t.Errorf("%s first bucket count = %d, want %d", tc.metric, s.Points[0].Count, tc.wantFirst)
+		}
+		if s.Summary == nil || s.Summary.Count != tc.wantWindow {
+			t.Errorf("%s summary count = %+v, want %d", tc.metric, s.Summary, tc.wantWindow)
+		}
+	}
+}
+
+// TestSeriesDerivedCarriesNoCount locks that a derived Metric reports no count: its
+// operands each have their own, and a combined one would name no row set (ADR 0014).
+func TestSeriesDerivedCarriesNoCount(t *testing.T) {
+	e, models, acc := setup(t)
+	seed(t, e.DB, models, acc, []meas{
+		{"dietary_energy", 2500, "2024-01-01T12:00:00Z", "Log"},
+		{"active_energy", 600, "2024-01-01T12:00:00Z", "Watch"},
+		{"basal_energy", 1700, "2024-01-01T12:00:00Z", "Watch"},
+	})
+
+	s, err := e.Series(context.Background(), Request{
+		AccountID: acc, Metric: "calorie_balance", Bucket: Day,
+		From: mustTime(t, "2024-01-01T00:00:00Z"), To: mustTime(t, "2024-01-02T00:00:00Z"),
+	})
+	if err != nil {
+		t.Fatalf("Series: %v", err)
+	}
+	if len(s.Points) != 1 || s.Points[0].Count != 0 {
+		t.Errorf("points = %+v, want one point carrying no count", s.Points)
+	}
+}

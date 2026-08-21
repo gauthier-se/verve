@@ -69,8 +69,22 @@ infrastructure, no telemetry.
   statistic your device reported, plus the GPX trace as a map with an elevation
   and a pace profile. The basemap is opt-in: configure no tile server and the
   browser makes no outbound request at all.
+* **What moves with what.** Every metric you pinned, paired against every other
+  over one window, ranked by strength, optionally with one of them lagged by a
+  day or a week — "does a short night show up in tomorrow's resting heart rate".
+  Verve reports the strength and the direction and stops there: colour means
+  together or opposite, never better or worse, and a relationship is never
+  presented as a cause. A pair with too little overlap is shown as exactly that
+  rather than as a weak result.
+* **The long view.** Your whole history in one band — every year of it, at the
+  grain that span deserves — with your phases behind the curve and the stretches
+  where nothing was recorded drawn as gaps rather than quietly interpolated.
+  Under it, a dated ledger of every import, note, phase, and the day each of
+  your devices first recorded something, which is usually the real explanation
+  for a step in a curve.
 * **The numbers behind the curves.** The ledger shows the same aggregated
-  series as a sortable table, so a value can be read exactly and copied out.
+  series as a sortable table, with the reading count behind every bucket, so a
+  value can be read exactly, weighed, and copied out.
 
 ### Fill the gaps and plan ahead
 

@@ -3,6 +3,7 @@ import { computeDelta, formatDuration, formatExact, formatSummaryValue } from "@
 import { metricLabel } from "@/lib/metrics";
 import type { Metric, Series } from "@/lib/types";
 import { FormulaHint } from "./formula-hint";
+import { Figure, Unit } from "./ui/figure";
 import { MetricIcon } from "./metric-icon";
 import { useSummaryPrefs } from "./panel-prefs";
 import { Swatch, formatBucket } from "./panel-chart";
@@ -79,15 +80,11 @@ function modeNote(mode: SummaryMode): string {
  *  unit in its text, so it shows only what the plain number cannot say: the divisor. */
 function FigureUnit({ unit, aggregation, mode }: { unit: string; aggregation: Series["aggregation"]; mode: SummaryMode }) {
   if (aggregation === "duration_by_state") {
-    return mode === "per_night" ? <span className="text-xs text-muted-foreground opacity-70">/night</span> : null;
+    return mode === "per_night" ? <Unit divisor="/night" /> : null;
   }
   if (!unit) return null;
   return (
-    <span className="text-xs text-muted-foreground">
-      {unit}
-      {mode === "per_day" && <span className="opacity-70">/day</span>}
-      {mode === "mean" && <span className="opacity-70"> avg</span>}
-    </span>
+    <Unit divisor={mode === "per_day" ? "/day" : mode === "mean" ? " avg" : undefined}>{unit}</Unit>
   );
 }
 
@@ -102,10 +99,16 @@ export function PanelSummary({
   series,
   baseline,
   metric,
+  wide,
+  size,
 }: {
   series: Series;
   baseline?: Series;
   metric?: Metric;
+  /** wide raises the headline to a two-column Panel's size. */
+  wide?: boolean;
+  /** size overrides the headline outright — the Metric page's hero. */
+  size?: "hero" | "wide" | "panel";
 }) {
   const { prefs } = useSummaryPrefs();
   const { points, unit, aggregation, bucket } = series;
@@ -150,14 +153,16 @@ export function PanelSummary({
   return (
     // panel-summary is a query container (index.css) so the secondary figure drops by
     // the band's own width — narrow card, not viewport — without touching the chart.
-    <div className="panel-summary flex items-baseline gap-x-2 px-3 pt-1.5">
-      <span className="text-2xl font-semibold leading-none tabular-nums" title={primaryTitle}>
+    <div className="panel-summary flex items-baseline gap-x-2 px-4 pt-2">
+      <Figure size={size ?? (wide ? "wide" : "panel")} title={primaryTitle}>
         {primary}
-      </span>
+      </Figure>
       {primaryValue !== undefined && <FigureUnit unit={unit} aggregation={aggregation} mode={mode} />}
       {delta && (
+        // Never green, never red: a delta is a direction and a magnitude, and Verve
+        // does not know which direction is good for your Metric (ADR 0019).
         <span
-          className="text-xs tabular-nums text-muted-foreground"
+          className="font-mono text-2xs tabular-nums text-muted-foreground"
           title={`${delta.arrow} ${delta.exact} ${unit} vs the compared period`.trim()}
         >
           {delta.arrow} {delta.label}
@@ -167,7 +172,7 @@ export function PanelSummary({
       {showSecondary && (
         // panel-summary-secondary is dropped on a narrow card by a container query
         // (index.css) — the first thing to go when space is tight (ADR 0019).
-        <span className="panel-summary-secondary ml-auto whitespace-nowrap text-xs tabular-nums text-muted-foreground">
+        <span className="panel-summary-secondary ml-auto whitespace-nowrap font-mono text-2xs tabular-nums text-muted-foreground">
           <span className="opacity-70">{formatBucket(last.bucket, bucket)}</span> {fmt(last.value)}
         </span>
       )}
@@ -192,7 +197,7 @@ export function PanelLegend({
 }) {
   const { prefs } = useSummaryPrefs();
   return (
-    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 px-3 pt-1.5 text-xs">
+    <div className="flex flex-wrap items-baseline gap-x-3.5 gap-y-1 px-4 pt-2 text-2xs">
       {list.map((s, i) => {
         const m = catalog?.get(s.metric);
         const formula = m?.formula;
@@ -201,15 +206,15 @@ export function PanelLegend({
         const shown = value === undefined ? "—" : figureText(value, s.aggregation, prefs.exact);
         const note = modeNote(mode);
         return (
-        <span key={s.metric} className="flex items-center gap-1.5">
+        <span key={s.metric} className="flex items-baseline gap-1.5">
           <Swatch i={i} />
-          <MetricIcon slug={s.metric} className="size-3.5" />
+          <MetricIcon slug={s.metric} className="size-3 -translate-y-px" />
           <Link to="/data/$metric" params={{ metric: s.metric }} className="text-muted-foreground hover:text-foreground hover:underline">
             {metricLabel(s.metric)}
           </Link>
           {formula && <FormulaHint formula={formula} />}
           <span
-            className="font-medium tabular-nums"
+            className="font-mono font-medium tabular-nums"
             title={value !== undefined ? `${formatExact(value)} ${s.unit}${note}`.trim() : undefined}
           >
             {shown}
@@ -220,7 +225,7 @@ export function PanelLegend({
       })}
       {comparing && (
         <span
-          className="ml-auto text-muted-foreground/70"
+          className="ml-auto font-mono text-3xs text-muted-foreground/70"
           title="Period comparison overlays a Baseline on single-metric panels only — co-variation and comparison don't stack."
         >
           no baseline

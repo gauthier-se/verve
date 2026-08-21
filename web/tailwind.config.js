@@ -52,6 +52,25 @@ export default {
           negative: "hsl(var(--chart-negative))",
         },
       },
+      // The reading scale. Tailwind's own steps stop being useful below 12px, and
+      // this interface spends most of its type there: a legend, a unit, an axis tick
+      // and a bucket key are all smaller than body text and all different sizes.
+      // Named by role rather than by number, so a change of taste is one edit here
+      // and not a sweep through every arbitrary value in the components.
+      fontSize: {
+        "3xs": ["0.625rem", { lineHeight: "0.875rem" }], // axis tick, footnote, eyebrow
+        "2xs": ["0.6875rem", { lineHeight: "1rem" }], // legend, meta, delta, unit
+        heading: ["0.8125rem", { lineHeight: "1.125rem" }], // panel and section title
+        screen: ["1.1875rem", { lineHeight: "1.625rem" }], // the title of a page
+      },
+      letterSpacing: {
+        // A large mono figure needs its tracking pulled in or it reads as a serial
+        // number; an eyebrow needs it pushed out or it reads as a word.
+        screen: "-0.015em",
+        figure: "-0.02em",
+        eyebrow: "0.08em",
+        column: "0.06em",
+      },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
