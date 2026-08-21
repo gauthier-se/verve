@@ -39,12 +39,14 @@ export function DashboardGrid({
   metrics,
   range,
   baseline,
+  showAnnotations,
 }: {
   dashboardId: number;
   panels: Panel[];
   metrics: Map<string, Metric>;
   range: RangeTokens;
   baseline?: BaselineParams;
+  showAnnotations: boolean;
 }) {
   const reorder = useReorderPanels();
   const sensors = useSensors(
@@ -73,6 +75,7 @@ export function DashboardGrid({
               catalog={metrics}
               range={range}
               baseline={baseline}
+              showAnnotations={showAnnotations}
             />
           ))}
         </div>
@@ -86,11 +89,13 @@ function SortablePanel({
   catalog,
   range,
   baseline,
+  showAnnotations,
 }: {
   panel: Panel;
   catalog: Map<string, Metric>;
   range: RangeTokens;
   baseline?: BaselineParams;
+  showAnnotations: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: panel.id });
   const style: React.CSSProperties = {
@@ -102,7 +107,14 @@ function SortablePanel({
 
   return (
     <div ref={setNodeRef} style={style} className={cn(WIDTH_CLASS[panel.width] ?? WIDTH_CLASS[1])} {...attributes}>
-      <PanelCard panel={panel} catalog={catalog} range={range} baseline={baseline} dragHandle={<DragHandle {...listeners} />} />
+      <PanelCard
+        panel={panel}
+        catalog={catalog}
+        range={range}
+        baseline={baseline}
+        showAnnotations={showAnnotations}
+        dragHandle={<DragHandle {...listeners} />}
+      />
     </div>
   );
 }

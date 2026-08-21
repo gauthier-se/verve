@@ -91,6 +91,15 @@ func (b Bucket) approxDuration() time.Duration {
 	}
 }
 
+// Start is the bucket-start date (YYYY-MM-DD) of the bucket holding t: the key
+// a Point carries and the category a chart's X axis is drawn on. It is snap's
+// exported face, so anything that has to name a position on the grid (a folded
+// Annotation, say) asks the module that owns the boundaries instead of
+// re-deriving them.
+func (b Bucket) Start(t time.Time) string {
+	return b.snap(t).Format("2006-01-02")
+}
+
 // snap rounds t down to the start of its bucket, in UTC.
 func (b Bucket) snap(t time.Time) time.Time {
 	t = t.UTC()

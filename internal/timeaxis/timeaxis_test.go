@@ -162,3 +162,88 @@ func TestValidate(t *testing.T) {
 		}
 	}
 }
+
+// TestFoldOntoBucketGrid pins the one arithmetic a marker depends on. A Panel's X
+// axis is categorical, keyed on the bucket-start dates the server emitted, so a
+// folded day that is off by one boundary rule does not raise anything: the marker
+// simply is not drawn. Every case below is a day whose bucket is not itself.
+func TestFoldOntoBucketGrid(t *testing.T) {
+	// A March window, wide enough that the caller has to choose the bucket.
+	window := Window{day(t, "2026-03-01"), day(t, "2026-04-01")}
+
+	tests := []struct {
+		name        string
+		bucket      query.Bucket
+		from, to    string
+		start, end  string
+		wantOK      bool
+		wantIsRange bool
+	}{
+		{name: "a day is its own bucket at the day grain", bucket: query.Day,
+			from: "2026-03-12", to: "2026-03-12", start: "2026-03-12", end: "2026-03-12", wantOK: true},
+		{name: "a Thursday folds back to its Monday", bucket: query.Week,
+			from: "2026-03-12", to: "2026-03-12", start: "2026-03-09", end: "2026-03-09", wantOK: true},
+		{name: "a Monday is its own week", bucket: query.Week,
+			from: "2026-03-09", to: "2026-03-09", start: "2026-03-09", end: "2026-03-09", wantOK: true},
+		{name: "a Sunday folds back six days", bucket: query.Week,
+			from: "2026-03-15", to: "2026-03-15", start: "2026-03-09", end: "2026-03-09", wantOK: true},
+		{name: "any day folds to the first of its month", bucket: query.Month,
+			from: "2026-03-12", to: "2026-03-31", start: "2026-03-01", end: "2026-03-01", wantOK: true},
+		{name: "a span keeps both ends at the day grain", bucket: query.Day,
+			from: "2026-03-12", to: "2026-03-19", start: "2026-03-12", end: "2026-03-19", wantOK: true,
+			wantIsRange: true},
+		{name: "a span crossing a Monday spans two weeks", bucket: query.Week,
+			from: "2026-03-12", to: "2026-03-19", start: "2026-03-09", end: "2026-03-16", wantOK: true,
+			wantIsRange: true},
+		// A span that started before the range is still on screen for the days it
+		// overlaps, and must be drawn there rather than dropped.
+		{name: "a span starting before the window is clamped to its first bucket", bucket: query.Day,
+			from: "2026-02-20", to: "2026-03-03", start: "2026-03-01", end: "2026-03-03", wantOK: true,
+			wantIsRange: true},
+		{name: "a span running past the window is clamped to its last day", bucket: query.Day,
+			from: "2026-03-28", to: "2026-04-15", start: "2026-03-28", end: "2026-03-31", wantOK: true,
+			wantIsRange: true},
+		// The window is half-open: 2026-04-01 is the first day of the next window.
+		{name: "the last day of the window is inside it", bucket: query.Day,
+			from: "2026-03-31", to: "2026-03-31", start: "2026-03-31", end: "2026-03-31", wantOK: true},
+		{name: "the day the window ends on is outside it", bucket: query.Day,
+			from: "2026-04-01", to: "2026-04-01", wantOK: false},
+		{name: "a day before the window is outside it", bucket: query.Day,
+			from: "2026-02-28", to: "2026-02-28", wantOK: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			r := Resolved{Current: window, Bucket: tc.bucket}
+			start, end, ok := r.Fold(day(t, tc.from), day(t, tc.to))
+			if ok != tc.wantOK {
+				t.Fatalf("Fold(%s, %s) ok = %v, want %v", tc.from, tc.to, ok, tc.wantOK)
+			}
+			if !ok {
+				return
+			}
+			if start != tc.start || end != tc.end {
+				t.Errorf("Fold(%s, %s) = (%s, %s), want (%s, %s)",
+					tc.from, tc.to, start, end, tc.start, tc.end)
+			}
+			// A span that folds into one bucket is one bucket wide and draws as a
+			// marker, not a band: the client's test is start != end, so it has to
+			// hold for the right reason.
+			if (start != end) != tc.wantIsRange {
+				t.Errorf("Fold(%s, %s) spans more than one bucket = %v, want %v",
+					tc.from, tc.to, start != end, tc.wantIsRange)
+			}
+		})
+	}
+}
+
+// TestFoldNormalizesAnInvertedSpan: the API rejects an inverted span, so this is
+// belt and braces, but a silent inversion here would mean a ReferenceArea drawn
+// from right to left, which Recharts renders as nothing at all.
+func TestFoldNormalizesAnInvertedSpan(t *testing.T) {
+	r := Resolved{Current: Window{day(t, "2026-03-01"), day(t, "2026-04-01")}, Bucket: query.Day}
+	start, end, ok := r.Fold(day(t, "2026-03-19"), day(t, "2026-03-12"))
+	if !ok || start != "2026-03-12" || end != "2026-03-19" {
+		t.Errorf("Fold(19th, 12th) = (%s, %s, %v), want (2026-03-12, 2026-03-19, true)", start, end, ok)
+	}
+}

@@ -167,6 +167,27 @@ rules are *recomputed* from the current range, never stored as dates; only
 a `1y` range the two relative rules coincide.
 _Avoid_: Comparison mode, Offset, Shift (that's the mechanic, not the choice).
 
+**Annotation**:
+A dated note the Account writes on the time axis, so a curve can be read against
+what was happening: an illness, a trip, a change of program. One **label**, an
+optional body, a `starts_on` day and an optional `ends_on`: a single day renders
+as a recessed marker on every Panel, a span as a band. It carries **no value, no
+unit, no Metric and no aggregation rule**, it is not a Measurement and never
+enters the Catalog, because the Metric it is read against is whichever Panel
+happens to be on screen. It belongs to the **Account**, not to a Dashboard:
+"flu, 12-19 March" is a fact about the year and shows wherever that fortnight is
+on screen. Only its *showing* is a Dashboard property (`annotations`, default
+on, stored beside the **Baseline rule**), because the Dashboard owns the time
+axis. The server folds it onto the bucket grid at read time (`bucket` and, for a
+span wider than one bucket, `end_bucket`), so nothing outside `timeaxis` ever
+computes which bucket holds a day (ADR 0030). Day-granular like every bound Verve
+stores: "the run at 18:30" would need the intra-day axis the API does not serve
+(ADR 0012).
+_Avoid_: Event (implies something Verve detected rather than something you
+wrote), Note (loses the dating, which is the whole point), Marker and Band (the
+rendering, never the concept), Tag (a label on an object, not a point in time),
+Log (implies an append-only stream).
+
 **Ordinal alignment**:
 How a Baseline series is laid over the current series on one chart: by **position
 within the period** (bucket 1 vs bucket 1, "day 1 of each window"), not by

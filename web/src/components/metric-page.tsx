@@ -1,12 +1,14 @@
 import * as React from "react";
 import { Link, useParams } from "@tanstack/react-router";
-import { ArrowLeft, Pin, PinOff } from "lucide-react";
+import { ArrowLeft, Pin, PinOff, StickyNote } from "lucide-react";
 import { useMetricMap } from "@/hooks/use-catalog";
 import { usePins, useAddPin, useRemovePin } from "@/hooks/use-pins";
+import { useAllAnnotations, useAnnotations } from "@/hooks/use-annotations";
 import { useSeries } from "@/hooks/use-series";
 import { defaultChartType, metricLabel } from "@/lib/metrics";
 import { formatDuration, formatExact, formatSummaryValue } from "@/lib/format";
 import { RANGE_PRESETS, type RangeTokens } from "@/lib/time-range";
+import { cn } from "@/lib/utils";
 import type { Aggregation, Series } from "@/lib/types";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
@@ -14,6 +16,7 @@ import { CenteredSpinner } from "./spinner";
 import { FormulaHint } from "./formula-hint";
 import { LedgerDetailTable } from "./ledger-detail-table";
 import { MetricIcon } from "./metric-icon";
+import { AnnotationDialog } from "./annotation-dialog";
 import { formatBucket, PanelChart } from "./panel-chart";
 import { PanelSummary } from "./panel-summary";
 
@@ -31,7 +34,13 @@ export function MetricPage() {
   const [preset, setPreset] = React.useState<Preset>("3m");
   const range: RangeTokens = { preset, from: null, to: null };
 
+  // A Metric page has no persisted time axis (ADR 0025), so its notes toggle is
+  // local state: there is nowhere to store one, and it must not grow a store for it.
+  const [showNotes, setShowNotes] = React.useState(true);
+  const [hovered, setHovered] = React.useState<string | null>(null);
+  const [noteOpen, setNoteOpen] = React.useState(false);
   const query = useSeries({ metrics: [metric], range, bucket: null });
+  const notes = useAnnotations({ range, bucket: null, enabled: showNotes });
   const series = query.data?.series[0];
   const meta = catalog.map.get(metric);
 
@@ -66,18 +75,24 @@ export function MetricPage() {
           {meta?.formula && <FormulaHint formula={meta.formula} />}
           <PinToggle metric={metric} />
         </div>
-        <div className="flex items-center rounded-md border p-0.5">
-          {RANGE_PRESETS.map((p) => (
-            <Button
-              key={p.value}
-              variant={preset === p.value ? "secondary" : "ghost"}
-              size="sm"
-              className="h-7 px-2.5"
-              onClick={() => setPreset(p.value)}
-            >
-              {p.label}
-            </Button>
-          ))}
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" className="h-7" onClick={() => setNoteOpen(true)}>
+            <StickyNote className="size-3.5" /> Add a note
+          </Button>
+          <NotesToggle on={showNotes} onToggle={() => setShowNotes((v) => !v)} />
+          <div className="flex items-center rounded-md border p-0.5">
+            {RANGE_PRESETS.map((p) => (
+              <Button
+                key={p.value}
+                variant={preset === p.value ? "secondary" : "ghost"}
+                size="sm"
+                className="h-7 px-2.5"
+                onClick={() => setPreset(p.value)}
+              >
+                {p.label}
+              </Button>
+            ))}
+          </div>
         </div>
       </header>
 
@@ -92,7 +107,12 @@ export function MetricPage() {
               {series && <PanelSummary series={series} metric={meta} />}
               <div className="min-h-0 flex-1 p-2">
                 {series && (
-                  <PanelChart list={[series]} metrics={[{ metric, chart_type: defaultChartType(meta) }]} />
+                  <PanelChart
+                    list={[series]}
+                    metrics={[{ metric, chart_type: defaultChartType(meta) }]}
+                    annotations={showNotes ? notes.data : undefined}
+                    onHoverBucket={setHovered}
+                  />
                 )}
               </div>
             </Card>
@@ -108,6 +128,8 @@ export function MetricPage() {
           </>
         )}
       </div>
+
+      <AnnotationDialog open={noteOpen} onOpenChange={setNoteOpen} defaultDay={hovered} />
     </div>
   );
 }
@@ -188,6 +210,30 @@ function PinToggle({ metric }: { metric: string }) {
       onClick={() => (pinned ? removePin.mutate(metric) : addPin.mutate(metric))}
     >
       {pinned ? <PinOff className="size-4" /> : <Pin className="size-4" />}
+    </Button>
+  );
+}
+
+/** NotesToggle shows or hides the Account's Annotations on this page's chart
+ *  (ADR 0030). Unlike the Dashboard's, this toggle is not persisted: a Metric page
+ *  has no stored time axis to hang it on, and giving it one would be the first step
+ *  toward the one-Panel Dashboard ADR 0025 refused. It hides itself while the
+ *  Account has no notes at all, for the same reason the Dashboard's does. */
+function NotesToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+  const all = useAllAnnotations();
+  if (!all.data?.length) return null;
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className={cn("size-7", !on && "text-muted-foreground")}
+      aria-pressed={on}
+      aria-label={on ? "Hide notes" : "Show notes"}
+      title={on ? "Hide notes" : "Show notes"}
+      onClick={onToggle}
+    >
+      <StickyNote className="size-4" />
     </Button>
   );
 }

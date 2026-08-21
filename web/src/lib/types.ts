@@ -84,6 +84,10 @@ export interface Dashboard {
   baseline_rule: BaselineRule;
   baseline_from: string | null;
   baseline_to: string | null;
+  /** annotations is whether this Dashboard draws the Account's Annotation markers.
+   *  The notes are Account data; only their showing is a Dashboard property, because
+   *  the Dashboard owns the time axis they sit on (ADR 0030). */
+  annotations: boolean;
   panels: Panel[];
 }
 
@@ -302,6 +306,29 @@ export interface Profile {
   biological_sex?: "male" | "female";
   body_composition_trust?: BodyCompositionTrust;
   derived_trust: BodyCompositionTrust;
+}
+
+/** Annotation is a dated note the Account wrote on the time axis (ADR 0030): an
+ *  illness, a trip, a change of program. It carries no value and no Metric, and it
+ *  belongs to the Account rather than to a Dashboard, so the same note is read
+ *  against every curve. `starts_on`/`ends_on` are the real dates the tooltip shows;
+ *  `bucket`/`end_bucket` are those dates folded onto the resolved bucket grid by the
+ *  server, which is where a marker is drawn. Nothing here is derived client-side:
+ *  snapping a date to a bucket is `internal/timeaxis`' job, and a second
+ *  implementation of it would disagree silently. */
+export interface Annotation {
+  id: number;
+  label: string;
+  body: string | null;
+  starts_on: string;
+  ends_on: string | null;
+  /** bucket is the grid position of the first day on screen. Absent when the request
+   *  carried no time axis (the Data page's full list). */
+  bucket?: string;
+  /** end_bucket is set only when the span covers more than one bucket, so its very
+   *  presence is the "band, not marker" test. A fortnight at the month bucket is one
+   *  bucket wide and has no band to draw. */
+  end_bucket?: string;
 }
 
 /** Pin is a Catalog Metric the Account keeps in the sidebar (ADR 0025). It holds

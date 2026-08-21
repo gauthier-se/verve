@@ -48,16 +48,20 @@ type panelView struct {
 // whole dashboard in one response. The Baseline mirrors the Time range (ADR
 // 0015): a rule plus, for "custom" only, a frozen from/to window.
 type dashboardView struct {
-	ID           int64       `json:"id"`
-	Name         string      `json:"name"`
-	Position     int         `json:"position"`
-	RangePreset  string      `json:"range_preset"`
-	RangeFrom    *string     `json:"range_from"`
-	RangeTo      *string     `json:"range_to"`
-	BaselineRule string      `json:"baseline_rule"`
-	BaselineFrom *string     `json:"baseline_from"`
-	BaselineTo   *string     `json:"baseline_to"`
-	Panels       []panelView `json:"panels"`
+	ID           int64   `json:"id"`
+	Name         string  `json:"name"`
+	Position     int     `json:"position"`
+	RangePreset  string  `json:"range_preset"`
+	RangeFrom    *string `json:"range_from"`
+	RangeTo      *string `json:"range_to"`
+	BaselineRule string  `json:"baseline_rule"`
+	BaselineFrom *string `json:"baseline_from"`
+	BaselineTo   *string `json:"baseline_to"`
+	// Annotations is whether this Dashboard draws the Account's Annotation markers.
+	// The notes are Account data; only their showing is a Dashboard property, because
+	// the Dashboard owns the time axis they sit on (ADR 0030).
+	Annotations bool        `json:"annotations"`
+	Panels      []panelView `json:"panels"`
 }
 
 func panelToView(p data.Panel) panelView {
@@ -84,7 +88,8 @@ func dashboardToView(d data.Dashboard, panels []data.Panel) dashboardView {
 		ID: d.ID, Name: d.Name, Position: d.Position,
 		RangePreset: d.RangePreset, RangeFrom: d.RangeFrom, RangeTo: d.RangeTo,
 		BaselineRule: d.BaselineRule, BaselineFrom: d.BaselineFrom, BaselineTo: d.BaselineTo,
-		Panels: views,
+		Annotations: d.Annotations,
+		Panels:      views,
 	}
 }
 
@@ -175,6 +180,7 @@ func (s *Server) handleUpdateDashboard(w http.ResponseWriter, r *http.Request) {
 		BaselineRule *string `json:"baseline_rule"`
 		BaselineFrom *string `json:"baseline_from"`
 		BaselineTo   *string `json:"baseline_to"`
+		Annotations  *bool   `json:"annotations"`
 	}
 	if err := readJSON(w, r, &input); err != nil {
 		s.badRequestResponse(w, r, err)
@@ -217,6 +223,10 @@ func (s *Server) handleUpdateDashboard(w http.ResponseWriter, r *http.Request) {
 		d.BaselineFrom, d.BaselineTo = input.BaselineFrom, input.BaselineTo
 	default:
 		d.BaselineFrom, d.BaselineTo = nil, nil
+	}
+
+	if input.Annotations != nil {
+		d.Annotations = *input.Annotations
 	}
 
 	v := NewValidator()

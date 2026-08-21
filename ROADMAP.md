@@ -29,6 +29,7 @@ Everything below is merged into `main`, tested, and usable today.
 | Pins | Metrics kept in the sidebar as shortcuts, deliberately without a time axis |
 | Sleep | The imported sleep stages read at last: one Metric, bucketed by Night rather than by calendar day, rendered as a stack |
 | Workouts | Every statistic Apple reports kept at import, a filterable list carrying its own range, a detail view, and the GPX trace as a map with elevation and pace profiles |
+| Annotations | A dated note on the time axis, written once and read against every curve: markers and bands on every panel, a list on the Data page |
 | Releases | A tag builds the static binaries and publishes the image, CI compiles the front end on every pull request, and installing is a `docker pull` |
 
 ## Next
@@ -39,12 +40,10 @@ are still moving, and not about the data, which a tag already protects: see
 Features land before `1.0`, and the criterion for dropping the zero is a second
 connector having pushed on the Catalog without breaking it, not a feature count.
 
-### Annotations
-
-The fourth differentiator promised alongside period comparison, cross-metric
-panels and derived metrics, and the only one not built. A dated note on the
-time axis, visible across dashboards, so a curve can be read against what was
-happening: an illness, a trip, a change of program. Not yet specified.
+Annotations, the fourth differentiator promised alongside period comparison,
+cross-metric panels and derived metrics, has landed, and nothing is committed in
+its place yet. What comes next is a choice among the entries below, and the one
+that moves the leading zero is a second connector.
 
 ## Later
 

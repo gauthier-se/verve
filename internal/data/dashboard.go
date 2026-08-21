@@ -21,8 +21,12 @@ type Dashboard struct {
 	BaselineRule string
 	BaselineFrom *string
 	BaselineTo   *string
-	CreatedAt    string
-	UpdatedAt    string
+	// Annotations is whether this Dashboard draws the Account's Annotation markers on
+	// its Panels. The notes belong to the Account; showing them belongs to the
+	// Dashboard, which owns the time axis they sit on (ADR 0030). Default true.
+	Annotations bool
+	CreatedAt   string
+	UpdatedAt   string
 }
 
 // PanelMetric is one Metric on a Panel with its own chart type (ADR 0020). The
@@ -69,18 +73,20 @@ func insertDashboard(ctx context.Context, q querier, d *Dashboard) error {
 	const query = `
 		INSERT INTO dashboards (account_id, name, position, range_preset, range_from, range_to, baseline_rule, baseline_from, baseline_to)
 		VALUES (?, ?, (SELECT COALESCE(MAX(position)+1, 0) FROM dashboards WHERE account_id = ?), ?, ?, ?, ?, ?, ?)
-		RETURNING id, position, created_at, updated_at`
+		RETURNING id, position, annotations, created_at, updated_at`
 	args := []any{d.AccountID, d.Name, d.AccountID, d.RangePreset, d.RangeFrom, d.RangeTo,
 		d.BaselineRule, d.BaselineFrom, d.BaselineTo}
+	// annotations is left out of the column list so the schema DEFAULT applies and is
+	// read back: a new Dashboard shows the Account's notes, and the toggle is a PATCH.
 	return q.QueryRowContext(ctx, query, args...).
-		Scan(&d.ID, &d.Position, &d.CreatedAt, &d.UpdatedAt)
+		Scan(&d.ID, &d.Position, &d.Annotations, &d.CreatedAt, &d.UpdatedAt)
 }
 
 // ListByAccount returns the Account's dashboards in switcher (position) order.
 func (m DashboardModel) ListByAccount(ctx context.Context, accountID int64) ([]Dashboard, error) {
 	const query = `
 		SELECT id, account_id, name, position, range_preset, range_from, range_to,
-		       baseline_rule, baseline_from, baseline_to, created_at, updated_at
+		       baseline_rule, baseline_from, baseline_to, annotations, created_at, updated_at
 		FROM dashboards
 		WHERE account_id = ?
 		ORDER BY position, id`
@@ -95,7 +101,7 @@ func (m DashboardModel) ListByAccount(ctx context.Context, accountID int64) ([]D
 		var d Dashboard
 		if err := rows.Scan(&d.ID, &d.AccountID, &d.Name, &d.Position,
 			&d.RangePreset, &d.RangeFrom, &d.RangeTo,
-			&d.BaselineRule, &d.BaselineFrom, &d.BaselineTo, &d.CreatedAt, &d.UpdatedAt); err != nil {
+			&d.BaselineRule, &d.BaselineFrom, &d.BaselineTo, &d.Annotations, &d.CreatedAt, &d.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("data: scan dashboard: %w", err)
 		}
 		dashboards = append(dashboards, d)
@@ -111,14 +117,14 @@ func (m DashboardModel) ListByAccount(ctx context.Context, accountID int64) ([]D
 func (m DashboardModel) GetByID(ctx context.Context, accountID, id int64) (*Dashboard, error) {
 	const query = `
 		SELECT id, account_id, name, position, range_preset, range_from, range_to,
-		       baseline_rule, baseline_from, baseline_to, created_at, updated_at
+		       baseline_rule, baseline_from, baseline_to, annotations, created_at, updated_at
 		FROM dashboards
 		WHERE id = ? AND account_id = ?`
 	var d Dashboard
 	err := m.DB.QueryRowContext(ctx, query, id, accountID).Scan(
 		&d.ID, &d.AccountID, &d.Name, &d.Position,
 		&d.RangePreset, &d.RangeFrom, &d.RangeTo,
-		&d.BaselineRule, &d.BaselineFrom, &d.BaselineTo, &d.CreatedAt, &d.UpdatedAt)
+		&d.BaselineRule, &d.BaselineFrom, &d.BaselineTo, &d.Annotations, &d.CreatedAt, &d.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrRecordNotFound
@@ -134,11 +140,11 @@ func (m DashboardModel) Update(ctx context.Context, d *Dashboard) error {
 	const query = `
 		UPDATE dashboards
 		SET name = ?, range_preset = ?, range_from = ?, range_to = ?,
-		    baseline_rule = ?, baseline_from = ?, baseline_to = ?,
+		    baseline_rule = ?, baseline_from = ?, baseline_to = ?, annotations = ?,
 		    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 		WHERE id = ? AND account_id = ?`
 	args := []any{d.Name, d.RangePreset, d.RangeFrom, d.RangeTo,
-		d.BaselineRule, d.BaselineFrom, d.BaselineTo, d.ID, d.AccountID}
+		d.BaselineRule, d.BaselineFrom, d.BaselineTo, d.Annotations, d.ID, d.AccountID}
 	return execExpectingRow(ctx, m.DB, query, args...)
 }
 
