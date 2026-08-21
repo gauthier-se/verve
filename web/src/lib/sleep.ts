@@ -2,6 +2,7 @@
 // (CONTEXT.md: Stage, ADR 0027). Kept apart from metrics.ts because it is the only
 // Metric-specific vocabulary in the client, and apart from panel-chart.tsx because
 // the chart imports it.
+import { RECESSED, SERIES_COLORS } from "./chart";
 import type { Point, Series } from "./types";
 
 /** SLEEP_STAGES is every Stage the server can send, bottom to top in the stack.
@@ -69,4 +70,24 @@ export function stagesPresent(points: Point[]): string[] {
   const known = SLEEP_STAGES.filter((s) => seen.has(s));
   const unknown = [...seen].filter((s) => !SLEEP_STAGES.includes(s as SleepStage));
   return [...known, ...unknown];
+}
+
+/** RECESSIVE_STAGES are the Stages drawn in the recessed tone rather than in a slot
+ *  of the categorical ramp.
+ *
+ *  Only `awake` is one, and it follows from ADR 0027 rather than from taste: awake
+ *  minutes are stacked so a broken night looks broken, and are never counted as
+ *  sleep. A fourth ramp colour would make it a fourth kind of sleep — the one thing
+ *  it is not — and would give the least important segment the most saturated
+ *  treatment on the card. Recessed, it reads as what it is: the part of the bar that
+ *  is not the answer. */
+export const RECESSIVE_STAGES: readonly string[] = ["awake"];
+
+/** stageColor is the colour one Stage is drawn in: the recessed tone for a
+ *  recessive Stage, otherwise its fixed slot in the ramp. `fallback` covers a Stage
+ *  this build has never heard of, which takes a ramp slot by position rather than
+ *  vanishing. */
+export function stageColor(stage: string, fallback: number): string {
+  if (RECESSIVE_STAGES.includes(stage)) return RECESSED;
+  return SERIES_COLORS[STAGE_COLOR_INDEX[stage] ?? fallback % SERIES_COLORS.length];
 }

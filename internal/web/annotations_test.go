@@ -1,6 +1,9 @@
 package web
 
 import (
+	"io/fs"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -15,6 +18,16 @@ import (
 const (
 	annotationsTSPath = "../../web/src/lib/annotations.ts"
 	panelChartTSXPath = "../../web/src/components/panel-chart.tsx"
+	chartTSPath       = "../../web/src/lib/chart.ts"
+)
+
+var (
+	// A hex literal anywhere in the drawing code, in either notation.
+	hexColourRe = regexp.MustCompile(`#[0-9a-fA-F]{3,8}\b`)
+	// A CSS colour keyword or function that is not a custom property: rgb(), hsl()
+	// with literal numbers, or a bare named colour on a paint attribute.
+	namedColourRe = regexp.MustCompile(
+		`(?:fill|stroke|background|color)\s*[:=]\s*"(?:[a-z]+|rgba?\([^"]*\)|hsla?\(\s*\d[^"]*\))"`)
 )
 
 // dateArithmetic is the vocabulary of snapping a date to a bucket. None of it
@@ -76,15 +89,65 @@ func TestAnnotationOverlayDrawsBehindTheMarks(t *testing.T) {
 
 // TestAnnotationOverlayWearsTheRecessedTone: a note that wore a chart colour would
 // read as a fifth series on a Panel that already carries four (ADR 0020).
+//
+// The tone is now named once in lib/chart.ts and referenced by the chart, so this
+// follows the indirection rather than reading a literal: the chart must bind
+// ANNOTATION to AXIS, and AXIS must be the muted text tone. Checking both ends keeps
+// the contract honest — binding to a constant that had drifted to a chart colour
+// would otherwise pass.
 func TestAnnotationOverlayWearsTheRecessedTone(t *testing.T) {
 	src := readFileText(t, panelChartTSXPath)
-	if !strings.Contains(src, `const ANNOTATION = "hsl(var(--muted-foreground))"`) {
-		t.Errorf("%s: the Annotation tone must be the muted one the Baseline uses", panelChartTSXPath)
+	if !strings.Contains(src, "const ANNOTATION = AXIS;") {
+		t.Errorf("%s: the Annotation tone must be the muted one the Baseline uses (AXIS)", panelChartTSXPath)
+	}
+	if !strings.Contains(src, "const BASELINE = AXIS;") {
+		t.Errorf("%s: the Baseline tone must be the muted one too (ADR 0015)", panelChartTSXPath)
 	}
 	for _, chart := range []string{"--chart-1", "--chart-positive", "--chart-negative"} {
 		if strings.Contains(src, "ANNOTATION = \"hsl(var("+chart) {
 			t.Errorf("%s colours its Annotations with %s: they are context, not a series", panelChartTSXPath, chart)
 		}
+	}
+
+	tokens := readFileText(t, chartTSPath)
+	if !strings.Contains(tokens, `export const AXIS = token("muted-foreground");`) {
+		t.Errorf("%s: AXIS must be the muted text tone — it is what the Annotation and Baseline wear", chartTSPath)
+	}
+}
+
+// TestSpaColoursAreTokensOnly: Verve ships nine Palettes in two modes (ADR 0024,
+// ADR 0026), so a literal colour anywhere in the SPA is a bug in seventeen of the
+// eighteen combinations — and one that shows up only in the palette nobody thought
+// to open. Every colour must be a token: a Tailwind class bound to a custom
+// property, or `hsl(var(--x))` where a library needs a string.
+//
+// This scans the whole source tree rather than the chart modules alone, because the
+// rule is not about charts. The stylesheet is the one file allowed to hold literals:
+// it is where the Palettes are defined.
+func TestSpaColoursAreTokensOnly(t *testing.T) {
+	root := filepath.Clean("../../web/src")
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || (filepath.Ext(path) != ".ts" && filepath.Ext(path) != ".tsx") {
+			return nil
+		}
+		src := readFileText(t, path)
+		for _, m := range hexColourRe.FindAllString(src, -1) {
+			t.Errorf("%s carries the literal colour %s: use a token (ADR 0024)", path, m)
+		}
+		for _, m := range namedColourRe.FindAllString(src, -1) {
+			// `stroke="none"` and `fill="none"` are absences, not colours.
+			if strings.Contains(m, `"none"`) {
+				continue
+			}
+			t.Errorf("%s carries the literal colour %s: use a token (ADR 0024)", path, m)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk %s: %v", root, err)
 	}
 }
 

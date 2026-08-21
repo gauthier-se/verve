@@ -36,7 +36,11 @@ function RouteMap({ routes, className }: { routes: RouteGeometry[]; className?: 
     const stroke = colors.getPropertyValue("--chart-1").trim();
     const layers = lines.map((pts) =>
       L.polyline(pts, {
-        color: stroke ? `hsl(${stroke})` : "#2563eb",
+        // The fallback is the same token by another route: every Palette defines
+        // --chart-1 (enforced by the palette contract), so the computed read only
+        // fails before the stylesheet has applied — and a literal here would be the
+        // one colour on the page that ignores the Palette.
+        color: stroke ? `hsl(${stroke})` : "hsl(var(--chart-1))",
         weight: 3,
         opacity: 0.9,
       }).addTo(map),

@@ -50,7 +50,7 @@ func TestBucketStarts(t *testing.T) {
 		{Month, "2024-01-15T00:00:00Z", "2024-04-01T00:00:00Z", []string{"2024-01-01", "2024-02-01", "2024-03-01"}},
 	}
 	for _, c := range cases {
-		got := c.b.starts(mustTime(t, c.from), mustTime(t, c.to))
+		got := c.b.Starts(mustTime(t, c.from), mustTime(t, c.to))
 		if len(got) != len(c.want) {
 			t.Errorf("%s [%s,%s): got %v, want %v", c.b, c.from, c.to, got, c.want)
 			continue

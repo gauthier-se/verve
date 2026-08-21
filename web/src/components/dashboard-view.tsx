@@ -4,9 +4,11 @@ import { Download, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
 import { useDeleteDashboard, useUpdateDashboard, useDashboards } from "@/hooks/use-dashboards";
 import { useImportStatus } from "@/hooks/use-import";
 import { useMetricMap } from "@/hooks/use-catalog";
+import { useTimeAxis } from "@/hooks/use-time-axis";
 import type { BaselineParams } from "@/hooks/use-series";
+import { formatDayRange } from "@/lib/format";
 import { rangeTokens } from "@/lib/time-range";
-import type { Dashboard } from "@/lib/types";
+import type { Dashboard, TimeAxis } from "@/lib/types";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
 import {
@@ -17,6 +19,7 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { Input } from "./ui/input";
+import { ScreenTitle } from "./ui/figure";
 import { AddPanelDialog } from "./add-panel-dialog";
 import { DashboardGrid } from "./dashboard-grid";
 import { CenteredSpinner } from "./spinner";
@@ -31,9 +34,16 @@ export function DashboardView() {
   const dashboards = useDashboards();
   const metrics = useMetricMap();
 
+  const dashboard = dashboards.data?.find((d) => String(d.id) === dashboardId);
+  const range = dashboard ? rangeTokens(dashboard) : { preset: "1y" as const, from: null, to: null };
+  const baseline = dashboard ? resolveBaseline(dashboard) : undefined;
+  // The axis is resolved server-side for the meta line under the header — the same
+  // resolution the Panels' own queries run, so the dates named there are the dates
+  // the buckets came from (ADR 0012).
+  const axis = useTimeAxis({ range, baseline });
+
   if (dashboards.isLoading) return <CenteredSpinner />;
 
-  const dashboard = dashboards.data?.find((d) => String(d.id) === dashboardId);
   if (!dashboard) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
@@ -42,12 +52,11 @@ export function DashboardView() {
     );
   }
 
-  const range = rangeTokens(dashboard);
-  const baseline = resolveBaseline(dashboard);
-
   return (
     <div className="flex h-full flex-col">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b px-6 py-3">
+      {/* Translucent and sticky: the controls stay reachable while a year of panels
+          scrolls under them, and the blur keeps the curves legible behind it. */}
+      <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b bg-background/85 px-6 py-3.5 backdrop-blur">
         <DashboardHeading dashboard={dashboard} />
         <div className="flex flex-wrap items-center gap-2">
           <AnnotationsControl dashboard={dashboard} />
@@ -57,6 +66,7 @@ export function DashboardView() {
       </header>
 
       <div className="flex-1 overflow-y-auto p-6">
+        <MetaLine dashboard={dashboard} axis={axis.data} />
         <ImportCta />
         {dashboard.panels.length === 0 ? (
           <EmptyPanels dashboardId={dashboard.id} />
@@ -73,6 +83,39 @@ export function DashboardView() {
       </div>
     </div>
   );
+}
+
+/** MetaLine states what is on screen, in one row of mono: the window the panels are
+ *  read over, what they are compared against, and how much is being drawn.
+ *
+ *  It is the line that makes a Dashboard readable at a glance without hovering
+ *  anything — "these are the last 12 months, against the 12 before, in weekly
+ *  buckets" — and every date in it comes from the server. */
+function MetaLine({ dashboard, axis }: { dashboard: Dashboard; axis?: TimeAxis }) {
+  const panels = dashboard.panels.length;
+  const metrics = dashboard.panels.reduce((n, p) => n + p.metrics.length, 0);
+
+  return (
+    <div className="mb-4 flex flex-wrap items-baseline gap-x-5 gap-y-1 text-2xs text-muted-foreground">
+      <span className="font-mono tabular-nums">
+        {axis ? formatDayRange(axis.range.from, axis.range.last) : " "}
+      </span>
+      <span>{comparisonNote(axis)}</span>
+      <span className="ml-auto font-mono tabular-nums">
+        {panels} {panels === 1 ? "panel" : "panels"} · {metrics} {metrics === 1 ? "metric" : "metrics"}
+        {axis && ` · bucket ${axis.bucket}`}
+      </span>
+    </div>
+  );
+}
+
+/** comparisonNote names the compared window in words, or says plainly that nothing
+ *  is being compared. "vs the previous period" without dates is the sentence that
+ *  makes a reader wonder which period; this one answers it. */
+function comparisonNote(axis?: TimeAxis): string {
+  if (!axis) return "";
+  if (!axis.baseline) return "no comparison";
+  return `against ${formatDayRange(axis.baseline.from, axis.baseline.last)}`;
 }
 
 /** resolveBaseline forwards the Dashboard's Baseline, forced off for the `all`
@@ -95,14 +138,14 @@ function DashboardHeading({ dashboard }: { dashboard: Dashboard }) {
   };
 
   return (
-    <div className="flex items-center gap-2">
-      <h1 className="text-xl font-semibold">{dashboard.name}</h1>
-      <Button size="sm" variant="outline" className="h-8" onClick={() => setAddOpen(true)}>
-        <Plus className="size-4" /> Add panel
+    <div className="flex min-w-0 items-center gap-2.5">
+      <ScreenTitle className="truncate">{dashboard.name}</ScreenTitle>
+      <Button size="sm" variant="outline" className="h-7 gap-1.5 px-2.5 text-xs" onClick={() => setAddOpen(true)}>
+        <Plus className="size-3.5" /> Add panel
       </Button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" className="size-8" aria-label="Dashboard menu">
+          <Button variant="ghost" size="icon" className="size-7 text-muted-foreground" aria-label="Dashboard menu">
             <MoreHorizontal className="size-4" />
           </Button>
         </DropdownMenuTrigger>
@@ -173,14 +216,14 @@ function ImportCta() {
   if (status.data === undefined || status.data.has_data) return null;
 
   return (
-    <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed bg-card/40 px-5 py-4">
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed bg-card/40 px-5 py-4">
       <div>
-        <p className="font-medium">No data yet</p>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-heading font-medium">No data yet</p>
+        <p className="text-xs text-muted-foreground">
           Import your Apple Health export to fill these panels.
         </p>
       </div>
-      <Button asChild>
+      <Button asChild size="sm">
         <Link to="/import">
           <Download className="size-4" /> Import data
         </Link>
@@ -193,8 +236,8 @@ function EmptyPanels({ dashboardId }: { dashboardId: number }) {
   const [addOpen, setAddOpen] = React.useState(false);
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-      <p className="text-sm text-muted-foreground">This dashboard has no panels yet.</p>
-      <Button onClick={() => setAddOpen(true)}>
+      <p className="text-xs text-muted-foreground">This dashboard has no panels yet.</p>
+      <Button size="sm" onClick={() => setAddOpen(true)}>
         <Plus className="size-4" /> Add your first panel
       </Button>
       <AddPanelDialog dashboardId={dashboardId} open={addOpen} onOpenChange={setAddOpen} />

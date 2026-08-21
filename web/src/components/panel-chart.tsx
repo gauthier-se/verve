@@ -18,43 +18,31 @@ import {
 import type { CategoricalChartState } from "recharts/types/chart/types";
 import type { AxisDomain } from "recharts/types/util/types";
 import { projectAnnotations, type AnnotationOverlay } from "@/lib/annotations";
+import { AXIS, GRID, NEGATIVE, POSITIVE, SERIES_COLORS } from "@/lib/chart";
 import { formatDuration } from "@/lib/format";
 import { metricLabel } from "@/lib/metrics";
-import { STAGE_COLOR_INDEX, isSleepSeries, stageLabel, stagesPresent } from "@/lib/sleep";
+import { isSleepSeries, stageColor, stageLabel, stagesPresent } from "@/lib/sleep";
+import { Key } from "./ui/figure";
 import type { Annotation, ChartType, PanelMetric, Series } from "@/lib/types";
 
-/** SERIES_COLORS is the fixed categorical order, assigned by position in the
- *  Panel (ADR 0020) — the legend swatches use the same array. */
-export const SERIES_COLORS = [
-  "hsl(var(--chart-1))",
-  "hsl(var(--chart-2))",
-  "hsl(var(--chart-3))",
-  "hsl(var(--chart-4))",
-];
+export { SERIES_COLORS };
 
 /** Swatch is the small square color key for series i, shared by the legend and
  *  the tooltip so identity reads the same everywhere. */
 export function Swatch({ i }: { i: number }) {
-  return (
-    <span
-      className="inline-block size-2 shrink-0 rounded-[2px]"
-      style={{ background: SERIES_COLORS[i] ?? SERIES_COLORS[0] }}
-    />
-  );
+  return <Key color={SERIES_COLORS[i] ?? SERIES_COLORS[0]} />;
 }
 
-const BAND = "hsl(var(--chart-2))";
-const GRID = "hsl(var(--border))";
-const AXIS = "hsl(var(--muted-foreground))";
+const BAND = SERIES_COLORS[1];
 // The Baseline is one recessed reference line, the same muted/dashed treatment on
 // every chart type (ADR 0015) — never colored by sign or metric.
-const BASELINE = "hsl(var(--muted-foreground))";
+const BASELINE = AXIS;
 // An Annotation is context, not a series: it wears the Baseline's recessed tone,
 // never a chart colour, and it draws behind the marks (ADR 0030).
-const ANNOTATION = "hsl(var(--muted-foreground))";
+const ANNOTATION = AXIS;
 // Diverging-bar sign colors: surplus (≥ 0) warm, deficit (< 0) cool (ADR 0014).
-const SURPLUS = "hsl(var(--chart-positive))";
-const DEFICIT = "hsl(var(--chart-negative))";
+const SURPLUS = POSITIVE;
+const DEFICIT = NEGATIVE;
 
 /** ChartDatum is one x-position: per-series values keyed v0…v3 (band0… for the
  *  min/max band), sparse — a Series without data in that bucket has no key (a gap,
@@ -117,7 +105,9 @@ export function PanelChart({
   const rightUnit = list.find((s) => s.unit !== leftUnit)?.unit;
   const axisOf = (s: Series) => (s.unit === leftUnit ? "left" : "right");
 
-  const axisProps = { stroke: AXIS, fontSize: 11, tickLine: false, axisLine: false } as const;
+  // 10px mono ticks: an axis label is a coordinate, not prose, and it has to stay
+  // out of the way of the curve it is labelling.
+  const axisProps = { stroke: AXIS, fontSize: 10, tickLine: false, axisLine: false } as const;
   // An axis carrying minutes of sleep is labelled as a duration: "7h 12m", not "432".
   const tickFormatter = (axis: "left" | "right") =>
     list.some((s) => axisOf(s) === axis && isSleepSeries(s)) ? formatDuration : formatValue;
@@ -365,7 +355,7 @@ function marks(
               yAxisId={yAxisId}
               dataKey={stageKey(stage)}
               stackId="stages"
-              fill={SERIES_COLORS[STAGE_COLOR_INDEX[stage] ?? s % SERIES_COLORS.length]}
+              fill={stageColor(stage, s)}
               radius={s === stages.length - 1 ? [3, 3, 0, 0] : undefined}
               isAnimationActive={false}
             />
@@ -424,7 +414,7 @@ function StageRows({ d, total, stages }: { d: ChartDatum; total: number | undefi
           <div key={stage} className="flex items-center gap-1.5 text-muted-foreground">
             <span
               className="inline-block size-2 shrink-0 rounded-[2px]"
-              style={{ background: SERIES_COLORS[STAGE_COLOR_INDEX[stage] ?? 0] }}
+              style={{ background: stageColor(stage, 0) }}
             />
             <span className="truncate">{stageLabel(stage)}</span>
             <span className="ml-auto tabular-nums">{formatDuration(minutes)}</span>

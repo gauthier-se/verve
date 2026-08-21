@@ -314,6 +314,9 @@ func foldNights(bucket Bucket, nights map[string]night) []Point {
 			byBucket[key] = p
 		}
 		p.Value += n.value
+		// A sleep bucket is folded from Nights, so its Count is nights recorded — the
+		// same denominator Series.Nights carries at window scope (ADR 0027).
+		p.Count++
 		for stage, minutes := range n.stages {
 			p.States[stage] += minutes
 		}
@@ -341,6 +344,7 @@ func summarizeSleep(req Request, nights map[string]night) *Point {
 			out.States[stage] += minutes
 		}
 	}
+	out.Count = len(nights)
 	return &out
 }
 

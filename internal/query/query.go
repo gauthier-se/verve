@@ -128,9 +128,10 @@ func (b Bucket) next(t time.Time) time.Time {
 	}
 }
 
-// starts enumerates the bucket-start dates covering [from, to), in order — the
-// ordinal sequence used to align a Baseline by position, not date (ADR 0015).
-func (b Bucket) starts(from, to time.Time) []string {
+// Starts enumerates the bucket-start dates covering [from, to), in order — the
+// ordinal sequence used to align a Baseline by position, not date (ADR 0015), and
+// the grid a dense series is drawn on when the gaps themselves are the subject.
+func (b Bucket) Starts(from, to time.Time) []string {
 	out := []string{}
 	for cur := b.snap(from); cur.Before(to.UTC()); cur = b.next(cur) {
 		out = append(out, cur.Format("2006-01-02"))
@@ -164,6 +165,13 @@ type Point struct {
 	// appears here and is never counted there. Omitted for every other Metric, whose
 	// payload is therefore byte-identical to what it was before sleep was served.
 	States map[string]float64 `json:"states,omitempty"`
+	// Count is how many rows the bucket was folded from — Measurements for an
+	// observed Metric, Nights for a duration_by_state one (ADR 0027). It is the
+	// evidence behind the value, which the Ledger prints beside it: a weekly average
+	// of 52 bpm reads differently at 300 readings than at two. Zero (omitted) for a
+	// derived Metric, whose operands each have their own count and whose combined one
+	// would mean nothing.
+	Count int `json:"count,omitempty"`
 }
 
 // Series is the result of a query: the resolved Metric metadata, the single
@@ -517,24 +525,27 @@ func (e Engine) aggregate(ctx context.Context, req Request, agg catalog.Aggregat
 	switch agg {
 	case catalog.Sum:
 		return e.scanScalar(ctx, fmt.Sprintf(`
-			SELECT %s AS b, SUM(value) AS v
+			SELECT %s AS b, SUM(value) AS v, COUNT(*) AS n
 			FROM measurements
 			WHERE %s
 			GROUP BY b ORDER BY b`, bucket, where), args)
 
 	case catalog.Latest:
-		// Most recent point per bucket; ties broken by row id for a stable pick.
+		// Most recent point per bucket; ties broken by row id for a stable pick. The
+		// count is the bucket's whole row set, not the one row that won: it says how
+		// much evidence the bucket held, which is the question the Ledger asks.
 		return e.scanScalar(ctx, fmt.Sprintf(`
-			SELECT b, value FROM (
+			SELECT b, value, n FROM (
 				SELECT %s AS b, value,
+				       COUNT(*) OVER (PARTITION BY %s) AS n,
 				       ROW_NUMBER() OVER (PARTITION BY %s ORDER BY start_at DESC, id DESC) AS rn
 				FROM measurements
 				WHERE %s
-			) WHERE rn = 1 ORDER BY b`, bucket, bucket, where), args)
+			) WHERE rn = 1 ORDER BY b`, bucket, bucket, bucket, where), args)
 
 	case catalog.Average:
 		return e.scanBand(ctx, fmt.Sprintf(`
-			SELECT %s AS b, AVG(value) AS v, MIN(value) AS lo, MAX(value) AS hi
+			SELECT %s AS b, AVG(value) AS v, MIN(value) AS lo, MAX(value) AS hi, COUNT(*) AS n
 			FROM measurements
 			WHERE %s
 			GROUP BY b ORDER BY b`, bucket, where), args)
@@ -547,7 +558,7 @@ func (e Engine) aggregate(ctx context.Context, req Request, agg catalog.Aggregat
 	}
 }
 
-// scanScalar reads (bucket, value) rows for the sum and latest rules.
+// scanScalar reads (bucket, value, count) rows for the sum and latest rules.
 func (e Engine) scanScalar(ctx context.Context, q string, args []any) ([]Point, error) {
 	rows, err := e.DB.QueryContext(ctx, q, args...)
 	if err != nil {
@@ -558,7 +569,7 @@ func (e Engine) scanScalar(ctx context.Context, q string, args []any) ([]Point, 
 	points := []Point{}
 	for rows.Next() {
 		var p Point
-		if err := rows.Scan(&p.Bucket, &p.Value); err != nil {
+		if err := rows.Scan(&p.Bucket, &p.Value, &p.Count); err != nil {
 			return nil, fmt.Errorf("query: scan point: %w", err)
 		}
 		points = append(points, p)
@@ -569,7 +580,7 @@ func (e Engine) scanScalar(ctx context.Context, q string, args []any) ([]Point, 
 	return points, nil
 }
 
-// scanBand reads (bucket, avg, min, max) rows for the average rule, attaching
+// scanBand reads (bucket, avg, min, max, count) rows for the average rule, attaching
 // the min–max band to each Point.
 func (e Engine) scanBand(ctx context.Context, q string, args []any) ([]Point, error) {
 	rows, err := e.DB.QueryContext(ctx, q, args...)
@@ -582,7 +593,7 @@ func (e Engine) scanBand(ctx context.Context, q string, args []any) ([]Point, er
 	for rows.Next() {
 		var p Point
 		var lo, hi float64
-		if err := rows.Scan(&p.Bucket, &p.Value, &lo, &hi); err != nil {
+		if err := rows.Scan(&p.Bucket, &p.Value, &lo, &hi, &p.Count); err != nil {
 			return nil, fmt.Errorf("query: scan band point: %w", err)
 		}
 		p.Min, p.Max = &lo, &hi
@@ -606,12 +617,12 @@ func (e Engine) summarize(ctx context.Context, req Request, agg catalog.Aggregat
 	where := `WHERE ` + pred
 	switch agg {
 	case catalog.Sum:
-		return e.scanSummaryScalar(ctx, `SELECT SUM(value) FROM measurements `+where, args, label)
+		return e.scanSummaryScalar(ctx, `SELECT SUM(value), COUNT(*) FROM measurements `+where, args, label)
 	case catalog.Latest:
-		return e.scanSummaryScalar(ctx, `SELECT value FROM measurements `+where+
-			` ORDER BY start_at DESC, id DESC LIMIT 1`, args, label)
+		return e.scanSummaryScalar(ctx, `SELECT value, (SELECT COUNT(*) FROM measurements `+where+`) FROM measurements `+where+
+			` ORDER BY start_at DESC, id DESC LIMIT 1`, append(append([]any{}, args...), args...), label)
 	case catalog.Average:
-		return e.scanSummaryBand(ctx, `SELECT AVG(value), MIN(value), MAX(value) FROM measurements `+where, args, label)
+		return e.scanSummaryBand(ctx, `SELECT AVG(value), MIN(value), MAX(value), COUNT(*) FROM measurements `+where, args, label)
 	default:
 		return nil, fmt.Errorf("%w: %q", ErrUnsupportedAggregation, agg)
 	}
@@ -621,7 +632,8 @@ func (e Engine) summarize(ctx context.Context, req Request, agg catalog.Aggregat
 // NULL aggregate or no row means an empty window: a nil summary (gap).
 func (e Engine) scanSummaryScalar(ctx context.Context, q string, args []any, label string) (*Point, error) {
 	var v sql.NullFloat64
-	err := e.DB.QueryRowContext(ctx, q, args...).Scan(&v)
+	var n int
+	err := e.DB.QueryRowContext(ctx, q, args...).Scan(&v, &n)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -631,13 +643,14 @@ func (e Engine) scanSummaryScalar(ctx context.Context, q string, args []any, lab
 	if !v.Valid {
 		return nil, nil
 	}
-	return &Point{Bucket: label, Value: v.Float64}, nil
+	return &Point{Bucket: label, Value: v.Float64, Count: n}, nil
 }
 
 // scanSummaryBand reads the window mean with its min–max band for the average rule.
 func (e Engine) scanSummaryBand(ctx context.Context, q string, args []any, label string) (*Point, error) {
 	var avg, lo, hi sql.NullFloat64
-	err := e.DB.QueryRowContext(ctx, q, args...).Scan(&avg, &lo, &hi)
+	var n int
+	err := e.DB.QueryRowContext(ctx, q, args...).Scan(&avg, &lo, &hi, &n)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -648,7 +661,7 @@ func (e Engine) scanSummaryBand(ctx context.Context, q string, args []any, label
 		return nil, nil
 	}
 	l, h := lo.Float64, hi.Float64
-	return &Point{Bucket: label, Value: avg.Float64, Min: &l, Max: &h}, nil
+	return &Point{Bucket: label, Value: avg.Float64, Min: &l, Max: &h, Count: n}, nil
 }
 
 // summarizeDerived folds a derived Metric over the whole window: each operand is

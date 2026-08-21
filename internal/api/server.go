@@ -125,6 +125,11 @@ func (s *Server) Handler() http.Handler {
 	// Account data: only the authenticated Account's own series.
 	mux.Handle("GET /v1/series", s.requireAuth(s.handleSeries))
 
+	// The resolved time axis behind a set of range tokens: the window, its bucket,
+	// and the compared window. Dates the interface prints come from here, never from
+	// the browser's clock (ADR 0012).
+	mux.Handle("GET /v1/timeaxis", s.requireAuth(s.handleTimeAxis))
+
 	// The Ledger overview: one folded row per Metric with data (ADR 0021).
 	mux.Handle("GET /v1/ledger", s.requireAuth(s.handleLedger))
 
@@ -174,6 +179,15 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /v1/pins", s.requireAuth(s.handleListPins))
 	mux.Handle("POST /v1/pins", s.requireAuth(s.handleCreatePin))
 	mux.Handle("DELETE /v1/pins/{metric}", s.requireAuth(s.handleDeletePin))
+
+	// History: the long view — everything the Account holds, and the dated events that
+	// explain its shape. One call, because the band, its Phases and the ledger all have
+	// to agree about one axis.
+	mux.Handle("GET /v1/history", s.requireAuth(s.handleHistory))
+
+	// Co-variation: the pinned Metrics paired over one window at one lag. The read is
+	// quadratic, so its inputs are the Pins and its width is capped (ADR 0025).
+	mux.Handle("GET /v1/covary", s.requireAuth(s.handleCoVary))
 
 	// Annotations: dated notes on the time axis (ADR 0030). The list takes the same
 	// time-axis tokens /v1/series takes, and answers with each note folded onto that
