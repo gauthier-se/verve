@@ -37,6 +37,7 @@ export interface DashboardPatch {
   baseline_rule?: BaselineRule;
   baseline_from?: string | null;
   baseline_to?: string | null;
+  annotations?: boolean;
 }
 
 export function useUpdateDashboard() {

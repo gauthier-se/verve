@@ -1,12 +1,14 @@
 import * as React from "react";
 import { Link } from "@tanstack/react-router";
-import { ChevronDown, ChevronUp, GripVertical, Plus, Settings2, Trash2, X } from "lucide-react";
+import { ChevronDown, ChevronUp, GripVertical, Plus, Settings2, StickyNote, Trash2, X } from "lucide-react";
 import { useDeletePanel, useUpdatePanel } from "@/hooks/use-dashboards";
+import { useAnnotations } from "@/hooks/use-annotations";
 import { useSeries, type BaselineParams } from "@/hooks/use-series";
 import { CHART_TYPE_LABEL, compatibleChartTypes, metricLabel } from "@/lib/metrics";
 import type { RangeTokens } from "@/lib/time-range";
 import type { Bucket, ChartType, Metric, Panel, PanelMetric } from "@/lib/types";
 import { Button } from "./ui/button";
+import { AnnotationDialog } from "./annotation-dialog";
 import { Card } from "./ui/card";
 import { Label } from "./ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
@@ -27,6 +29,9 @@ interface PanelCardProps {
   catalog: Map<string, Metric>;
   range: RangeTokens;
   baseline?: BaselineParams;
+  /** showAnnotations is the Dashboard's own toggle (ADR 0030): the notes belong to
+   *  the Account, drawing them here belongs to this Dashboard. */
+  showAnnotations?: boolean;
   dragHandle?: React.ReactNode;
 }
 
@@ -35,9 +40,19 @@ interface PanelCardProps {
  *  Dashboard's Baseline in comparison mode (multi-Metric Panels cut it, ADR
  *  0020) — with a settings popover to edit the Metric list, per-Metric chart
  *  types, the bucket override, size, or remove it. */
-export function PanelCard({ panel, catalog, range, baseline, dragHandle }: PanelCardProps) {
+export function PanelCard({ panel, catalog, range, baseline, showAnnotations, dragHandle }: PanelCardProps) {
   const slugs = panel.metrics.map((m) => m.metric);
+  const showNotes = showAnnotations !== false;
+  // The last bucket the cursor was on, so an "Add a note" opened from this Panel's
+  // menu prefills the day the person was looking at rather than today.
+  const [hovered, setHovered] = React.useState<string | null>(null);
+  const [noteOpen, setNoteOpen] = React.useState(false);
   const query = useSeries({ metrics: slugs, range, bucket: panel.bucket, baseline });
+  // The Panel's own bucket override goes with the tokens, so the server folds the
+  // notes onto this Panel's grid and not the Dashboard's default one. Panels sharing
+  // an axis share one cached request. The toggle gates the render as well as the
+  // fetch: a disabled query still serves whatever it cached while it was on.
+  const notes = useAnnotations({ range, bucket: panel.bucket, enabled: showNotes });
   const list = query.data?.series;
   const multi = panel.metrics.length > 1;
   const comparing = baseline !== undefined && baseline.rule !== "none";
@@ -78,7 +93,7 @@ export function PanelCard({ panel, catalog, range, baseline, dragHandle }: Panel
             </div>
           </div>
         </div>
-        <PanelSettings panel={panel} catalog={catalog} />
+        <PanelSettings panel={panel} catalog={catalog} onAddNote={() => setNoteOpen(true)} />
       </div>
 
       {list &&
@@ -96,9 +111,17 @@ export function PanelCard({ panel, catalog, range, baseline, dragHandle }: Panel
             Couldn’t load this panel
           </div>
         ) : list ? (
-          <PanelChart list={list} metrics={panel.metrics} baseline={query.data?.baseline} />
+          <PanelChart
+            list={list}
+            metrics={panel.metrics}
+            baseline={query.data?.baseline}
+            annotations={showNotes ? notes.data : undefined}
+            onHoverBucket={setHovered}
+          />
         ) : null}
       </div>
+
+      <AnnotationDialog open={noteOpen} onOpenChange={setNoteOpen} defaultDay={hovered} />
     </Card>
   );
 }
@@ -106,7 +129,15 @@ export function PanelCard({ panel, catalog, range, baseline, dragHandle }: Panel
 /** PanelSettings is the per-Panel controls popover: the ordered Metric list
  *  (add / remove / reorder, per-Metric chart type), the bucket override, and the
  *  width. Every list edit PATCHes the whole metrics list (ADR 0020). */
-function PanelSettings({ panel, catalog }: { panel: Panel; catalog: Map<string, Metric> }) {
+function PanelSettings({
+  panel,
+  catalog,
+  onAddNote,
+}: {
+  panel: Panel;
+  catalog: Map<string, Metric>;
+  onAddNote: () => void;
+}) {
   const update = useUpdatePanel();
   const remove = useDeletePanel();
 
@@ -256,14 +287,19 @@ function PanelSettings({ panel, catalog }: { panel: Panel; catalog: Map<string, 
           </Select>
         </div>
 
-        <Button
-          variant="ghost"
-          size="sm"
-          className="w-full justify-start text-destructive hover:text-destructive"
-          onClick={() => remove.mutate(panel.id)}
-        >
-          <Trash2 className="size-4" /> Remove panel
-        </Button>
+        <div className="space-y-1 border-t pt-2">
+          <Button variant="ghost" size="sm" className="w-full justify-start" onClick={onAddNote}>
+            <StickyNote className="size-4" /> Add a note
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full justify-start text-destructive hover:text-destructive"
+            onClick={() => remove.mutate(panel.id)}
+          >
+            <Trash2 className="size-4" /> Remove panel
+          </Button>
+        </div>
       </PopoverContent>
     </Popover>
   );

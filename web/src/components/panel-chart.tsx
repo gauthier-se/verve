@@ -1,5 +1,6 @@
 import * as React from "react";
 import { format, parseISO } from "date-fns";
+import { StickyNote } from "lucide-react";
 import {
   Area,
   Bar,
@@ -7,17 +8,20 @@ import {
   Cell,
   ComposedChart,
   Line,
+  ReferenceArea,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
+import type { CategoricalChartState } from "recharts/types/chart/types";
 import type { AxisDomain } from "recharts/types/util/types";
+import { projectAnnotations, type AnnotationOverlay } from "@/lib/annotations";
 import { formatDuration } from "@/lib/format";
 import { metricLabel } from "@/lib/metrics";
 import { STAGE_COLOR_INDEX, isSleepSeries, stageLabel, stagesPresent } from "@/lib/sleep";
-import type { ChartType, PanelMetric, Series } from "@/lib/types";
+import type { Annotation, ChartType, PanelMetric, Series } from "@/lib/types";
 
 /** SERIES_COLORS is the fixed categorical order, assigned by position in the
  *  Panel (ADR 0020) — the legend swatches use the same array. */
@@ -45,6 +49,9 @@ const AXIS = "hsl(var(--muted-foreground))";
 // The Baseline is one recessed reference line, the same muted/dashed treatment on
 // every chart type (ADR 0015) — never colored by sign or metric.
 const BASELINE = "hsl(var(--muted-foreground))";
+// An Annotation is context, not a series: it wears the Baseline's recessed tone,
+// never a chart colour, and it draws behind the marks (ADR 0030).
+const ANNOTATION = "hsl(var(--muted-foreground))";
 // Diverging-bar sign colors: surplus (≥ 0) warm, deficit (< 0) cool (ADR 0014).
 const SURPLUS = "hsl(var(--chart-positive))";
 const DEFICIT = "hsl(var(--chart-negative))";
@@ -75,12 +82,23 @@ export function PanelChart({
   list,
   metrics,
   baseline,
+  annotations,
+  onHoverBucket,
 }: {
   list: Series[];
   metrics: PanelMetric[];
   baseline?: Series;
+  annotations?: Annotation[];
+  /** onHoverBucket reports the category under the cursor, so an "Add a note" opened
+   *  afterwards can prefill the day the person was actually looking at. */
+  onHoverBucket?: (bucket: string | null) => void;
 }) {
   const data = React.useMemo<ChartDatum[]>(() => mergeSeries(list, baseline), [list, baseline]);
+  // The notes to draw, placed on the categories this chart actually has (ADR 0030).
+  const overlay = React.useMemo(
+    () => projectAnnotations(annotations, data.map((d) => d.bucket)),
+    [annotations, data],
+  );
   // The Stages to stack, empty for every Panel that is not a lone sleep Metric.
   const stages = React.useMemo(
     () => (list.length === 1 && isSleepSeries(list[0]) ? stagesPresent(list[0].points) : []),
@@ -109,14 +127,20 @@ export function PanelChart({
   const grid = <CartesianGrid stroke={GRID} strokeDasharray="3 3" vertical={false} />;
   const tooltip = (
     <Tooltip
-      content={<ChartTooltip list={list} bucket={list[0].bucket} stages={stages} />}
+      content={<ChartTooltip list={list} bucket={list[0].bucket} stages={stages} notes={overlay.byBucket} />}
       cursor={{ stroke: GRID }}
     />
   );
 
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <ComposedChart data={data} margin={{ top: 8, right: rightUnit ? 0 : 8, bottom: 0, left: 0 }}>
+      <ComposedChart
+        data={data}
+        margin={{ top: 8, right: rightUnit ? 0 : 8, bottom: 0, left: 0 }}
+        onMouseMove={(s: CategoricalChartState) =>
+          onHoverBucket?.(typeof s.activeLabel === "string" ? s.activeLabel : null)
+        }
+      >
         {grid}
         {xAxis}
         <YAxis
@@ -137,6 +161,7 @@ export function PanelChart({
           />
         )}
         {tooltip}
+        {annotationOverlay(overlay)}
         {list.map((s, i) =>
           marks(metrics[i]?.chart_type ?? "line", i, axisOf(s), data, list.length > 1, stages),
         )}
@@ -196,6 +221,52 @@ function axisDomain(
   return diverging
     ? [(min: number) => Math.min(0, min), (max: number) => Math.max(0, max)]
     : undefined;
+}
+
+/** annotationOverlay draws the Account's notes behind the marks: a band for a span
+ *  covering more than one bucket, a thin dashed rule for everything else, both in
+ *  the Baseline's recessed tone so the chart stays about the data. Several notes in
+ *  one bucket share one rule carrying a count; their labels live in the tooltip,
+ *  which is the one hover target this chart has.
+ *
+ *  Every x here is a category the server named and the chart drew. Nothing is
+ *  computed from a date: Recharts matches x by equality, so a mark derived from a
+ *  second boundary rule would silently draw nothing at all. */
+function annotationOverlay(overlay: AnnotationOverlay): React.ReactNode {
+  if (overlay.markers.length === 0) return null;
+  return (
+    <>
+      {overlay.bands.map((b) => (
+        <ReferenceArea
+          key={`band-${b.id}`}
+          yAxisId="left"
+          x1={b.from}
+          x2={b.to}
+          fill={ANNOTATION}
+          fillOpacity={0.08}
+          strokeOpacity={0}
+          isFront={false}
+        />
+      ))}
+      {overlay.markers.map((m) => (
+        <ReferenceLine
+          key={`mark-${m.bucket}`}
+          yAxisId="left"
+          x={m.bucket}
+          stroke={ANNOTATION}
+          strokeWidth={1}
+          strokeDasharray="2 3"
+          strokeOpacity={0.6}
+          isFront={false}
+          label={
+            m.count > 1
+              ? { value: String(m.count), position: "top", fill: ANNOTATION, fontSize: 10 }
+              : undefined
+          }
+        />
+      ))}
+    </>
+  );
 }
 
 // baselineLine is the single recessed overlay: a muted dashed line at each
@@ -334,6 +405,9 @@ interface TooltipProps {
   list: Series[];
   bucket: Series["bucket"];
   stages: string[];
+  /** notes are the Annotations covering each drawn bucket (ADR 0030). They belong
+   *  in this tooltip rather than beside the marks: one hover target, not two. */
+  notes?: Map<string, Annotation[]>;
 }
 
 /** StageRows lists a stacked Night's Stages with their durations, then the night's
@@ -371,9 +445,10 @@ function StageRows({ d, total, stages }: { d: ChartDatum; total: number | undefi
  *  the hovered bucket; a Series without data there shows nothing — a gap is never
  *  a zero (ADR 0014). Single-Metric comparison keeps both windows' own real dates
  *  side by side (ADR 0015). */
-function ChartTooltip({ active, payload, list, bucket, stages }: TooltipProps) {
+function ChartTooltip({ active, payload, list, bucket, stages, notes }: TooltipProps) {
   if (!active || !payload?.length) return null;
   const d = payload[0].payload;
+  const covering = notes?.get(d.bucket) ?? [];
   const hasBaseline = d.baselineBucket !== undefined;
   const multi = list.length > 1;
   const stacked = stages.length > 0;
@@ -401,6 +476,16 @@ function ChartTooltip({ active, payload, list, bucket, stages }: TooltipProps) {
             </div>
           );
         })}
+      {covering.length > 0 && (
+        <div className="mt-1 max-w-56 space-y-0.5 border-t pt-1">
+          {covering.map((a) => (
+            <div key={a.id} className="flex items-start gap-1.5 text-muted-foreground">
+              <StickyNote className="mt-px size-3 shrink-0 opacity-70" aria-hidden />
+              <span className="truncate">{a.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
       {hasBaseline && (
         <div className="mt-1 border-t pt-1">
           <div className="font-medium text-muted-foreground">{formatBucket(d.baselineBucket!, bucket)}</div>

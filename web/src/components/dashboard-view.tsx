@@ -20,6 +20,7 @@ import { Input } from "./ui/input";
 import { AddPanelDialog } from "./add-panel-dialog";
 import { DashboardGrid } from "./dashboard-grid";
 import { CenteredSpinner } from "./spinner";
+import { AnnotationsControl } from "./annotations-control";
 import { ComparisonControl } from "./comparison-control";
 import { TimeRangeControl } from "./time-range-control";
 
@@ -49,6 +50,7 @@ export function DashboardView() {
       <header className="flex flex-wrap items-center justify-between gap-3 border-b px-6 py-3">
         <DashboardHeading dashboard={dashboard} />
         <div className="flex flex-wrap items-center gap-2">
+          <AnnotationsControl dashboard={dashboard} />
           <ComparisonControl dashboard={dashboard} />
           <TimeRangeControl dashboard={dashboard} />
         </div>
@@ -65,6 +67,7 @@ export function DashboardView() {
             metrics={metrics.map}
             range={range}
             baseline={baseline}
+            showAnnotations={dashboard.annotations}
           />
         )}
       </div>

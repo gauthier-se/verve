@@ -1,15 +1,17 @@
 import * as React from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Check, ChevronRight, Copy, Download, Pencil } from "lucide-react";
+import { Check, ChevronRight, Copy, Download, Pencil, StickyNote } from "lucide-react";
+import { useAllAnnotations } from "@/hooks/use-annotations";
 import { useLedger } from "@/hooks/use-ledger";
 import { formatDuration, formatExact, formatSummaryValue } from "@/lib/format";
 import { metricLabel } from "@/lib/metrics";
 import { copyTsv, tsvNumber } from "@/lib/clipboard";
-import type { LedgerRow } from "@/lib/types";
+import type { Annotation, LedgerRow } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { CenteredSpinner } from "./spinner";
+import { AnnotationDialog } from "./annotation-dialog";
 import { ManualEntryDialog } from "./manual-entry-dialog";
 import { MetricIcon } from "./metric-icon";
 import { formatBucket } from "./panel-chart";
@@ -20,7 +22,9 @@ import { formatBucket } from "./panel-chart";
  *  and lows, and the chronological detail table). */
 export function DataPage() {
   const ledger = useLedger();
+  const notes = useAllAnnotations();
   const [entryOpen, setEntryOpen] = React.useState(false);
+  const empty = (ledger.data?.length ?? 0) === 0;
 
   return (
     <div className="flex h-full flex-col">
@@ -34,11 +38,14 @@ export function DataPage() {
       <div className="flex-1 overflow-y-auto p-6">
         {ledger.isLoading ? (
           <CenteredSpinner />
-        ) : (ledger.data?.length ?? 0) === 0 ? (
+        ) : empty ? (
           <EmptyState />
         ) : (
           <Scoreboard rows={ledger.data ?? []} />
         )}
+        {/* The notes stand on their own: they need no import, so an Account with
+            nothing but notes still finds them here. */}
+        {!ledger.isLoading && (!empty || (notes.data?.length ?? 0) > 0) && <NotesSection />}
       </div>
 
       <ManualEntryDialog open={entryOpen} onOpenChange={setEntryOpen} />
@@ -178,5 +185,66 @@ function EmptyState() {
         </Link>
       </Button>
     </div>
+  );
+}
+
+/** NotesSection is the third face of the Data page, beside the Ledger's overview and
+ *  its per-Metric detail: every Annotation the Account has written, most recent span
+ *  first (ADR 0030). It is the only view that reaches a note outside the current
+ *  range, and the only one that answers "what have I written down", which no chart
+ *  can. A row opens the same dialog that wrote it. */
+function NotesSection() {
+  const notes = useAllAnnotations();
+  const [editing, setEditing] = React.useState<Annotation | null>(null);
+  const [open, setOpen] = React.useState(false);
+
+  const rows = notes.data ?? [];
+  const edit = (a: Annotation) => {
+    setEditing(a);
+    setOpen(true);
+  };
+  const add = () => {
+    setEditing(null);
+    setOpen(true);
+  };
+
+  return (
+    <section className="mt-8 space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-sm font-medium">Notes</h2>
+        <Button variant="outline" size="sm" className="h-7" onClick={add}>
+          <StickyNote className="size-3.5" /> Add a note
+        </Button>
+      </div>
+
+      {rows.length === 0 ? (
+        <p className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+          A note is a dated line about what was happening: an illness, a trip, a change of
+          program. It shows on every chart covering those days, so a curve can be read
+          against it.
+        </p>
+      ) : (
+        <div className="divide-y rounded-lg border">
+          {rows.map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              onClick={() => edit(a)}
+              className="flex w-full items-baseline gap-3 px-3 py-2 text-left transition-colors hover:bg-accent/50"
+            >
+              <span className="w-40 shrink-0 text-xs tabular-nums text-muted-foreground">
+                {a.ends_on ? `${a.starts_on} → ${a.ends_on}` : a.starts_on}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="text-sm">{a.label}</span>
+                {a.body && <span className="ml-2 truncate text-xs text-muted-foreground">{a.body}</span>}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <AnnotationDialog open={open} onOpenChange={setOpen} annotation={editing} />
+    </section>
   );
 }
