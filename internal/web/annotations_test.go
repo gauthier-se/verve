@@ -184,3 +184,34 @@ func TestAnnotationWritesInvalidateOnlyTheNotes(t *testing.T) {
 		t.Errorf("%s wires onSuccess %d times, want one per verb (3)", hookPath, n)
 	}
 }
+
+// TestSpaSourceHasNoControlCharacters: a stray control character in a string
+// literal is invisible in an editor, survives `tsc` and a production build, and
+// changes behaviour.
+//
+// This is not hypothetical. A NUL crept into the cross-metric matrix's map key
+// during this milestone, turning `${a} ${b}` into `${a}\x00${b}` on the writing
+// side only. Every lookup then missed, so every cell rendered as "not ranked" —
+// which is indistinguishable, on screen, from an account whose metrics genuinely
+// do not overlap. Nothing in the toolchain had an opinion about it.
+func TestSpaSourceHasNoControlCharacters(t *testing.T) {
+	root := filepath.Clean("../../web/src")
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || (filepath.Ext(path) != ".ts" && filepath.Ext(path) != ".tsx") {
+			return nil
+		}
+		for i, r := range readFileText(t, path) {
+			// Tab, newline and carriage return are the only ones that belong in source.
+			if r < 0x20 && r != '\t' && r != '\n' && r != '\r' {
+				t.Errorf("%s carries control character %#U at byte %d", path, r, i)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk %s: %v", root, err)
+	}
+}
