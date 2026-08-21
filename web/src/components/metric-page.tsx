@@ -116,7 +116,7 @@ export function MetricPage() {
               {shownNotes && shownNotes.length > 0 && <AnnotationStrip notes={shownNotes} />}
             </Card>
 
-            {series && <WindowStats series={series} axis={axis.data} metric={meta} />}
+            {series && <WindowStats series={series} axis={axis.data} metric={meta} preset={preset} />}
 
             <LedgerDetailTable
               metric={metric}
@@ -215,7 +215,17 @@ function AnnotationStrip({ notes }: { notes: Annotation[] }) {
  *  count of the rows behind the window. Coverage is the pair that makes the rest
  *  honest: fourteen buckets out of ninety is a different claim from ninety out of
  *  ninety, and no figure above it says so. */
-function WindowStats({ series, axis, metric }: { series: Series; axis?: TimeAxis; metric: Metric }) {
+function WindowStats({
+  series,
+  axis,
+  metric,
+  preset,
+}: {
+  series: Series;
+  axis?: TimeAxis;
+  metric: Metric;
+  preset: Preset;
+}) {
   const { points, unit, aggregation, bucket, summary } = series;
   if (points.length === 0) return null;
 
@@ -228,7 +238,12 @@ function WindowStats({ series, axis, metric }: { series: Series; axis?: TimeAxis
 
   // The window's bucket count comes from its own day span and grain — both
   // server-resolved — so "of N" is never a guess made from the points that arrived.
-  const total = axis ? bucketsInWindow(axis) : undefined;
+  //
+  // Except at `all`, where there is no denominator worth printing: that preset
+  // expands to a floor far earlier than any real history (timeaxis), so "53 of 319
+  // months" would be true of the window and a lie about the data. The count stands
+  // on its own there.
+  const total = axis && preset !== "all" ? bucketsInWindow(axis) : undefined;
   const readings = summary?.count ?? 0;
   const derived = metric.nature === "derived";
 

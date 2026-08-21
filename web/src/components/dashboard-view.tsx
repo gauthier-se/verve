@@ -6,7 +6,7 @@ import { useImportStatus } from "@/hooks/use-import";
 import { useMetricMap } from "@/hooks/use-catalog";
 import { useTimeAxis } from "@/hooks/use-time-axis";
 import type { BaselineParams } from "@/hooks/use-series";
-import { formatDayRange } from "@/lib/format";
+import { formatDay, formatDayRange } from "@/lib/format";
 import { rangeTokens } from "@/lib/time-range";
 import type { Dashboard, TimeAxis } from "@/lib/types";
 import { Button } from "./ui/button";
@@ -98,7 +98,7 @@ function MetaLine({ dashboard, axis }: { dashboard: Dashboard; axis?: TimeAxis }
   return (
     <div className="mb-4 flex flex-wrap items-baseline gap-x-5 gap-y-1 text-2xs text-muted-foreground">
       <span className="font-mono tabular-nums">
-        {axis ? formatDayRange(axis.range.from, axis.range.last) : " "}
+        {axis ? windowLabel(dashboard.range_preset, axis) : " "}
       </span>
       <span>{comparisonNote(axis)}</span>
       <span className="ml-auto font-mono tabular-nums">
@@ -107,6 +107,17 @@ function MetaLine({ dashboard, axis }: { dashboard: Dashboard; axis?: TimeAxis }
       </span>
     </div>
   );
+}
+
+/** windowLabel names the window the Panels are read over.
+ *
+ *  Every preset but one prints its resolved dates. `all` prints only its end,
+ *  because its start is not a date about your data: the preset expands to a floor
+ *  far earlier than any real history (timeaxis), and "1 Jan 2000 →" would be true
+ *  of the query and a lie about what is on screen. */
+function windowLabel(preset: Dashboard["range_preset"], axis: TimeAxis): string {
+  if (preset === "all") return `everything up to ${formatDay(axis.range.last)}`;
+  return formatDayRange(axis.range.from, axis.range.last);
 }
 
 /** comparisonNote names the compared window in words, or says plainly that nothing
