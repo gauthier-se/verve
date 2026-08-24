@@ -12,7 +12,6 @@ import {
   YAxis,
 } from "recharts";
 import { useHistory } from "@/hooks/use-history";
-import { useMetricMap } from "@/hooks/use-catalog";
 import { AXIS, GRID, RECESSED, SERIES_COLORS } from "@/lib/chart";
 import { formatDay, formatDayRange, formatExact } from "@/lib/format";
 import { metricLabel } from "@/lib/metrics";
@@ -25,8 +24,8 @@ import type {
 } from "@/lib/types";
 import { Card } from "./ui/card";
 import { Chip, Figure, Key, LegendItem, Meta, ScreenTitle, SectionTitle } from "./ui/figure";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { CenteredSpinner } from "./spinner";
+import { MetricPicker } from "./metric-picker";
 
 /** A Phase's band colour. A cut and a bulk are directions, not verdicts, so they
  *  take two identity colours from the ramp rather than a red and a green — Verve
@@ -71,7 +70,15 @@ export function HistoryPage() {
             </Chip>
           )}
         </div>
-        <BandMetricPicker value={metric} onChange={setMetric} />
+        {/* Which Metric the long curve draws. Body mass by default: the Metric most
+            Accounts have across their whole history, and the one a Phase is actually
+            about. The band is not hard-wired to it. */}
+        <MetricPicker
+          value={metric}
+          onChange={setMetric}
+          label="Metric drawn over the whole history"
+          className="w-56"
+        />
       </header>
 
       <div className="flex-1 space-y-5 overflow-y-auto p-6">
@@ -89,32 +96,6 @@ export function HistoryPage() {
         )}
       </div>
     </div>
-  );
-}
-
-/** BandMetricPicker chooses which Metric the long curve draws. Body mass by
- *  default — the Metric most Accounts have across their whole history, and the one
- *  a Phase is actually about — but the band is not hard-wired to it. */
-function BandMetricPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const catalog = useMetricMap();
-  const options = React.useMemo(
-    () => [...catalog.map.values()].sort((a, b) => a.slug.localeCompare(b.slug)),
-    [catalog.map],
-  );
-
-  return (
-    <Select value={value} onValueChange={onChange}>
-      <SelectTrigger className="h-8 w-56 text-xs" aria-label="Metric drawn over the whole history">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {options.map((m) => (
-          <SelectItem key={m.slug} value={m.slug}>
-            {metricLabel(m.slug)} <span className="text-muted-foreground">({m.unit})</span>
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
   );
 }
 
