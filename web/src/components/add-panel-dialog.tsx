@@ -1,12 +1,12 @@
 import * as React from "react";
-import { Search } from "lucide-react";
 import { useCreatePanel } from "@/hooks/use-dashboards";
 import { useMetrics } from "@/hooks/use-catalog";
+import { textMatcher } from "@/lib/search";
 import { metricLabel } from "@/lib/metrics";
 import { MetricIcon } from "./metric-icon";
+import { SearchField } from "./search-field";
 import type { Metric } from "@/lib/types";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
-import { Input } from "./ui/input";
 
 /** AddPanelDialog lists the Catalog so the user can add a Metric as a Panel. The
  *  new Panel takes the Metric's aggregation-derived default chart type (the
@@ -27,11 +27,9 @@ export function AddPanelDialog({
   // Group derived Metrics ahead of imported ones so calorie_balance, the macro
   // shares, and protein_per_kg are discoverable as a distinct family (issue 04).
   const groups = React.useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const matches = (m: Metric) =>
-      !q || m.slug.includes(q) || metricLabel(m.slug).toLowerCase().includes(q);
+    const matches = textMatcher(query);
     const all = [...(metrics.data ?? [])]
-      .filter(matches)
+      .filter((m) => matches(m.slug, m.unit))
       .sort((a, b) => a.slug.localeCompare(b.slug));
     return [
       { label: "Derived", metrics: all.filter((m) => m.nature === "derived") },
@@ -53,16 +51,13 @@ export function AddPanelDialog({
           <DialogTitle>Add a panel</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-            <Input
-              autoFocus
-              placeholder="Search metrics…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              className="pl-8"
-            />
-          </div>
+          <SearchField
+            autoFocus
+            value={query}
+            onChange={setQuery}
+            label="Search the catalog"
+            placeholder="Search metrics…"
+          />
           <div className="max-h-80 space-y-2 overflow-y-auto">
             {groups.map((group) => (
               <div key={group.label} className="space-y-0.5">
