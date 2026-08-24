@@ -115,12 +115,16 @@ type importJobView struct {
 }
 
 // reportView is the compact import outcome the SPA renders: the source file and
-// added / skipped / unmapped counts across all families.
+// added / skipped / unmapped / excluded counts across all families.
 type reportView struct {
 	SourceFile string `json:"source_file"`
 	Added      int    `json:"added"`
 	Skipped    int    `json:"skipped"`
 	Unmapped   int    `json:"unmapped"`
+	// Excluded is what the Account's Exclusions refused (ADR 0033). It is its own
+	// number and not folded into Skipped: skipped means "you already had this", and
+	// reading a refusal as a duplicate would hide the one count this feature owes.
+	Excluded int `json:"excluded"`
 }
 
 // view snapshots the job under its lock into the API shape, collapsing the active
@@ -144,6 +148,7 @@ func (job *importJob) view() importJobView {
 			Added:      job.report.Added + job.report.StatesAdded + job.report.SessionsAdded,
 			Skipped:    job.report.Skipped + job.report.StatesSkipped + job.report.SessionsSkipped,
 			Unmapped:   job.report.Unmapped,
+			Excluded:   job.report.Excluded,
 		}
 	}
 	return v

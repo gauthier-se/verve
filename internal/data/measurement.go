@@ -145,6 +145,11 @@ func (m MeasurementModel) InsertOne(ctx context.Context, row *Measurement) (bool
 // it invokes this: removing an imported row would drop its content key and the next
 // Import would silently restore it (ADR 0022). Returns ErrRecordNotFound when no row
 // matches — absent, owned by another Account, or not a Manual entry.
+//
+// This is no longer the only way a Measurement leaves the store. An Exclusion purges
+// imported rows too (deleteMeasurementsInSpan, below), and it makes the deletion
+// stick by refusing the rows at the next import, which is exactly the thing this
+// statement's guard exists to say cannot be done row by row (ADR 0033).
 func (m MeasurementModel) Delete(ctx context.Context, accountID, id int64) error {
 	const query = `DELETE FROM measurements WHERE id = ? AND account_id = ? AND source = ?`
 	res, err := m.DB.ExecContext(ctx, query, id, accountID, catalog.SourceManual)
@@ -159,6 +164,59 @@ func (m MeasurementModel) Delete(ctx context.Context, accountID, id int64) error
 		return ErrRecordNotFound
 	}
 	return nil
+}
+
+// measurementSpanFilter matches one Account's rows of one Metric within an
+// Exclusion's inclusive day span, either bound empty meaning unbounded. The purge
+// and the count that previews it share this one predicate: a confirmation showing a
+// number the delete would not match is an estimate, not a confirmation.
+//
+// The day is `date(start_at)`, the expression every day-grain read already buckets
+// by (internal/query), so this and a chart can never disagree about which day a row
+// belongs to. There is deliberately no `source` predicate: "delete every body fat
+// value" means every one, Manual entries included (ADR 0033).
+const measurementSpanFilter = `account_id = ? AND metric = ?
+	AND (? = '' OR date(start_at) >= ?)
+	AND (? = '' OR date(start_at) <= ?)`
+
+// spanArgs are measurementSpanFilter's placeholders, in order.
+func spanArgs(accountID int64, metric, startsOn, endsOn string) []any {
+	return []any{accountID, metric, startsOn, startsOn, endsOn, endsOn}
+}
+
+// deleteMeasurementsInSpan removes every Measurement an Exclusion covers, returning
+// how many went. It takes a querier rather than the model's handle because it runs
+// inside the transaction that writes the Exclusion: a purge without its rule is data
+// that comes back next month, and a rule without its purge is a delete that never
+// happened (ADR 0033).
+//
+// It lives here, beside Delete, because Delete's comment states an invariant this
+// statement breaks. Anywhere else and that comment stays true-looking and wrong.
+func deleteMeasurementsInSpan(ctx context.Context, q querier, accountID int64, metric, startsOn, endsOn string) (int64, error) {
+	res, err := q.ExecContext(ctx, `DELETE FROM measurements WHERE `+measurementSpanFilter,
+		spanArgs(accountID, metric, startsOn, endsOn)...)
+	if err != nil {
+		return 0, fmt.Errorf("data: purge measurements: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("data: purge measurements rows affected: %w", err)
+	}
+	return n, nil
+}
+
+// CountInSpan counts what an Exclusion over this Metric and span would purge. It is
+// the only count of raw Measurements the API serves, and it serves it to a
+// confirmation dialog rather than to a chart: ADR 0012 refuses to serve the rows,
+// not to say how many there are.
+func (m MeasurementModel) CountInSpan(ctx context.Context, accountID int64, metric, startsOn, endsOn string) (int64, error) {
+	var n int64
+	err := m.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM measurements WHERE `+measurementSpanFilter,
+		spanArgs(accountID, metric, startsOn, endsOn)...).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("data: count measurements in span: %w", err)
+	}
+	return n, nil
 }
 
 // GetByID returns one Measurement of the Account, or ErrRecordNotFound. The delete

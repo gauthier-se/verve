@@ -81,7 +81,7 @@ func New(logger *slog.Logger, models data.Models, engine query.Engine, cfg Confi
 		logger.Error("build login timing decoy", "err", err)
 	}
 
-	imports, err := newImportRegistry(logger, models.ImportStore(), cfg.DataDir, cfg.ArtifactsDir, cfg.MaxUploadBytes)
+	imports, err := newImportRegistry(logger, models, cfg.DataDir, cfg.ArtifactsDir, cfg.MaxUploadBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -179,6 +179,14 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /v1/pins", s.requireAuth(s.handleListPins))
 	mux.Handle("POST /v1/pins", s.requireAuth(s.handleCreatePin))
 	mux.Handle("DELETE /v1/pins/{metric}", s.requireAuth(s.handleDeletePin))
+
+	// Exclusions: the Metrics and spans no Connector may write (ADR 0033). Creating
+	// one purges what it covers, which is why the preview counts first: it is the
+	// only endpoint here that deletes years in one call.
+	mux.Handle("GET /v1/exclusions", s.requireAuth(s.handleListExclusions))
+	mux.Handle("GET /v1/exclusions/preview", s.requireAuth(s.handlePreviewExclusion))
+	mux.Handle("POST /v1/exclusions", s.requireAuth(s.handleCreateExclusion))
+	mux.Handle("DELETE /v1/exclusions/{id}", s.requireAuth(s.handleDeleteExclusion))
 
 	// History: the long view — everything the Account holds, and the dated events that
 	// explain its shape. One call, because the band, its Phases and the ledger all have

@@ -172,10 +172,20 @@ func (app *application) importCommand(ctx context.Context, args []string) error 
 		return err
 	}
 
+	// The same Exclusions the web import honours, read from the same table: the two
+	// import paths must not disagree about what this Account accepts (ADR 0033).
+	exclusions, err := app.models.Exclusions.Set(ctx, acc.ID)
+	if err != nil {
+		return err
+	}
+
 	// The artifacts dir (where GPX routes are copied) is created at startup in
 	// run(), so it already exists here.
 	app.logger.Info("import started", "account", acc.Email, "file", path)
-	report, err := applehealth.Import(ctx, app.models.ImportStore(), acc.ID, path, app.config.artifactsDir())
+	report, err := applehealth.Import(ctx, app.models.ImportStore(), acc.ID, path, applehealth.Options{
+		ArtifactsDir: app.config.artifactsDir(),
+		Exclusions:   exclusions,
+	})
 	if err != nil {
 		return err
 	}
@@ -196,7 +206,13 @@ func renderReport(w io.Writer, r applehealth.Report) {
 	sort.Strings(slugs)
 	for _, slug := range slugs {
 		c := r.PerMetric[slug]
-		fmt.Fprintf(w, "  %-38s %8d added  %8d skipped\n", slug, c.Added, c.Skipped)
+		fmt.Fprintf(w, "  %-38s %8d added  %8d skipped", slug, c.Added, c.Skipped)
+		// The third column appears only where there is one, so an Account with no
+		// Exclusion reads the report it has always read.
+		if c.Excluded > 0 {
+			fmt.Fprintf(w, "  %8d excluded", c.Excluded)
+		}
+		fmt.Fprintln(w)
 	}
 
 	renderFamily(w, "States", r.PerState)
@@ -220,8 +236,12 @@ func renderReport(w io.Writer, r applehealth.Report) {
 
 	fmt.Fprintf(w, "\n  Total: %d measurements, %d states, %d sessions, %d routes added",
 		r.Added, r.StatesAdded, r.SessionsAdded, r.RoutesAdded)
-	fmt.Fprintf(w, " (%d/%d/%d/%d skipped, %d unmapped)\n\n",
+	fmt.Fprintf(w, " (%d/%d/%d/%d skipped, %d unmapped)\n",
 		r.Skipped, r.StatesSkipped, r.SessionsSkipped, r.RoutesSkipped, r.Unmapped)
+	if r.Excluded > 0 {
+		fmt.Fprintf(w, "  Excluded: %d records your exclusions refused\n", r.Excluded)
+	}
+	fmt.Fprintln(w)
 }
 
 // renderFamily prints one non-scalar family's per-bucket added/skipped tallies

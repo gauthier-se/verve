@@ -254,3 +254,59 @@ func TestHistoryImportEventIsDatedToday(t *testing.T) {
 		t.Errorf("import date = %q, want %q", view.Events[0].Date, want)
 	}
 }
+
+// An Exclusion is dated to the day it was decided, carries the span it is about in
+// its own fields, and reports what it removed. The History exists to explain the
+// shape of the data (ADR 0032), and this is the one gap Verve itself made.
+func TestHistoryCarriesTheExclusionEvent(t *testing.T) {
+	srv, models, cookie := newTestServer(t)
+	seedMass(t, models, testEmail, []string{"2024-01-01", "2024-02-01"}, 80)
+
+	ctx := context.Background()
+	acc, err := models.Accounts.GetByEmail(ctx, testEmail)
+	if err != nil {
+		t.Fatalf("get account: %v", err)
+	}
+	e := &data.Exclusion{AccountID: acc.ID, Metric: "body_mass", StartsOn: "2024-02-01"}
+	if _, err := models.Exclusions.Insert(ctx, e); err != nil {
+		t.Fatalf("insert exclusion: %v", err)
+	}
+
+	view := getHistory(t, srv, cookie, "/v1/history")
+	var event *historyEventView
+	for i, ev := range view.Events {
+		if ev.Kind == eventExclusion {
+			event = &view.Events[i]
+			break
+		}
+	}
+	if event == nil {
+		t.Fatalf("no exclusion event in %+v", view.Events)
+	}
+	if event.Label != "body_mass" {
+		t.Errorf("label = %q, want the Metric slug", event.Label)
+	}
+	if event.Date != time.Now().UTC().Format(dayLayout) {
+		t.Errorf("date = %q, want today: it is dated when it was decided", event.Date)
+	}
+	if event.SpanFrom != "2024-02-01" || event.SpanTo != "" {
+		t.Errorf("span = %q..%q, want an open-ended span from the excluded day", event.SpanFrom, event.SpanTo)
+	}
+	// EndsOn draws a band from Date across the axis; the span is not that.
+	if event.EndsOn != nil {
+		t.Errorf("ends_on = %v, want nil: an exclusion is a point event", *event.EndsOn)
+	}
+	if len(event.Figures) != 1 || event.Figures[0].Key != "purged" || event.Figures[0].Value != 1 {
+		t.Errorf("figures = %+v, want one purged=1 chip", event.Figures)
+	}
+
+	// Deleting the rule takes its event with it: the History reads current state.
+	if err := models.Exclusions.Delete(ctx, acc.ID, e.ID); err != nil {
+		t.Fatalf("delete exclusion: %v", err)
+	}
+	for _, ev := range getHistory(t, srv, cookie, "/v1/history").Events {
+		if ev.Kind == eventExclusion {
+			t.Errorf("exclusion event survives its rule: %+v", ev)
+		}
+	}
+}

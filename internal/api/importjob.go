@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/gauthier-se/verve/internal/connector/applehealth"
+	"github.com/gauthier-se/verve/internal/data"
 )
 
 // defaultMaxUploadBytes caps a web import upload absent an override: 2 GiB, ample
@@ -63,10 +64,12 @@ type importJob struct {
 
 // importRegistry holds the at-most-one in-flight import per Account (ADR 0016),
 // in memory. It owns the temp directory uploads stream through and the import
-// engine's dependencies (store, artifacts dir, size cap).
+// engine's dependencies: the store it writes through, the Exclusions it must honour,
+// the artifacts dir, and the size cap.
 type importRegistry struct {
 	logger       *slog.Logger
 	store        applehealth.Store
+	exclusions   data.ExclusionModel
 	artifactsDir string
 	tmpDir       string
 	maxUpload    int64
@@ -77,7 +80,7 @@ type importRegistry struct {
 
 // newImportRegistry prepares the temp directory under dataDir and sweeps any
 // orphan upload left by a crashed import (ADR 0016). maxUpload ≤ 0 uses the default.
-func newImportRegistry(logger *slog.Logger, store applehealth.Store, dataDir, artifactsDir string, maxUpload int64) (*importRegistry, error) {
+func newImportRegistry(logger *slog.Logger, models data.Models, dataDir, artifactsDir string, maxUpload int64) (*importRegistry, error) {
 	if maxUpload <= 0 {
 		maxUpload = defaultMaxUploadBytes
 	}
@@ -96,7 +99,7 @@ func newImportRegistry(logger *slog.Logger, store applehealth.Store, dataDir, ar
 		}
 	}
 	return &importRegistry{
-		logger: logger, store: store, artifactsDir: artifactsDir,
+		logger: logger, store: models.ImportStore(), exclusions: models.Exclusions, artifactsDir: artifactsDir,
 		tmpDir: tmpDir, maxUpload: maxUpload, jobs: map[int64]*importJob{},
 	}, nil
 }
@@ -153,7 +156,24 @@ func (reg *importRegistry) run(job *importJob, accountID int64, tmpPath string) 
 		job.decoded.Store(decoded)
 		job.decodeTotal.Store(total)
 	}
-	report, err := applehealth.ImportWithProgress(context.Background(), reg.store, accountID, tmpPath, reg.artifactsDir, progress)
+
+	ctx := context.Background()
+	// The Exclusions are read here, at run time, and not when the registry was
+	// built: they are edited on the page that starts the import, seconds before it
+	// starts, and a set cached at startup would spend that interval being wrong
+	// (ADR 0033).
+	exclusions, err := reg.exclusions.Set(ctx, accountID)
+	if err != nil {
+		reg.logger.Error("read exclusions for import", "account", accountID, "err", err)
+		job.fail("the server could not read your exclusions.")
+		return
+	}
+
+	report, err := applehealth.Import(ctx, reg.store, accountID, tmpPath, applehealth.Options{
+		ArtifactsDir: reg.artifactsDir,
+		Progress:     progress,
+		Exclusions:   exclusions,
+	})
 	if err != nil {
 		reg.logger.Error("web import failed", "account", accountID, "err", err)
 		job.fail(humanImportError(err))

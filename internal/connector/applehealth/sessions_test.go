@@ -50,7 +50,7 @@ func TestImportStreamSessionsAndRoutes(t *testing.T) {
 	artifacts := t.TempDir()
 	opener := fakeOpener{routeRef1: gpxBody}
 
-	report, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(workoutXML), artifacts, opener)
+	report, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(workoutXML), Options{ArtifactsDir: artifacts}, opener)
 	if err != nil {
 		t.Fatalf("importStream: %v", err)
 	}
@@ -137,10 +137,10 @@ func TestImportStreamSessionsIdempotent(t *testing.T) {
 	artifacts := t.TempDir()
 	opener := fakeOpener{routeRef1: gpxBody}
 
-	if _, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(workoutXML), artifacts, opener); err != nil {
+	if _, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(workoutXML), Options{ArtifactsDir: artifacts}, opener); err != nil {
 		t.Fatalf("first import: %v", err)
 	}
-	report, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(workoutXML), artifacts, opener)
+	report, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(workoutXML), Options{ArtifactsDir: artifacts}, opener)
 	if err != nil {
 		t.Fatalf("second import: %v", err)
 	}

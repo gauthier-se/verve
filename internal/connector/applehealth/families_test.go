@@ -64,7 +64,7 @@ func TestImportStreamStandHourIsState(t *testing.T) {
  <Record type="HKCategoryTypeIdentifierLowHeartRateEvent" sourceName="Watch" startDate="2025-07-23 13:00:00 +0000" endDate="2025-07-23 13:00:00 +0000" value="HKCategoryValueLowHeartRateEvent"/>
 </HealthData>`
 
-	report, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(xml), t.TempDir(), nil)
+	report, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(xml), Options{ArtifactsDir: t.TempDir()}, nil)
 	if err != nil {
 		t.Fatalf("importStream: %v", err)
 	}

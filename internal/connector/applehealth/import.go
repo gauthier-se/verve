@@ -44,19 +44,25 @@ type Store interface {
 	RecordImport(ctx context.Context, imp *data.Import) error
 }
 
-// Tally is one bucket's added/skipped counts within a Report — used per Metric,
-// per State kind, and per activity type.
+// Tally is one bucket's counts within a Report, used per Metric, per State kind,
+// and per activity type. Excluded is scalar-only: nothing but a Measurement can be
+// excluded yet (ADR 0033), and the field stays zero on a State or activity tally.
 type Tally struct {
-	Added   int
-	Skipped int
+	Added    int
+	Skipped  int
+	Excluded int
 }
 
 // Report is the outcome of one import, suitable for a readable CLI summary.
 type Report struct {
-	SourceFile    string
-	Added         int
-	Skipped       int
-	Unmapped      int // newly kept in the Unmapped bin
+	SourceFile string
+	Added      int
+	Skipped    int
+	Unmapped   int // newly kept in the Unmapped bin
+	// Excluded is how many Records the Account's Exclusions refused (ADR 0033). It
+	// is reported rather than absorbed silently: an import that drops data without
+	// saying how much is worse than the delete that did not stick.
+	Excluded      int
 	PerMetric     map[string]Tally
 	UnmappedTypes map[string]int // raw source type → count newly kept
 
@@ -76,21 +82,29 @@ type Report struct {
 // called frequently, so an implementation must be cheap and non-blocking.
 type Progress func(decoded, total int64)
 
-// Import reads the Apple Health export at path and writes it to store, scoped to
-// accountID; GPX route artifacts are copied into artifactsDir (ADR 0004). A
-// ".zip" path is opened as an archive and its export.xml entry streamed, with
-// routes resolved to entries in the same archive; any other path is streamed
-// directly as XML, with routes resolved as files beside it.
-func Import(ctx context.Context, store Store, accountID int64, path, artifactsDir string) (Report, error) {
-	return ImportWithProgress(ctx, store, accountID, path, artifactsDir, nil)
+// Options are the per-run inputs of an import beyond the source itself. They are
+// one struct rather than a growing argument list because the two call sites differ
+// only by which of these they set, and a second entry point that existed solely to
+// take one more parameter is what this replaces.
+type Options struct {
+	// ArtifactsDir is where GPX route artifacts are copied (ADR 0004).
+	ArtifactsDir string
+	// Progress, when non-nil, is called as the export.xml entry is read, against its
+	// declared uncompressed size: the web import's honest second phase, at no cost
+	// to the CLI path (which leaves it nil). Only the ".zip" path reports progress;
+	// a bare XML path has no declared size to report against.
+	Progress Progress
+	// Exclusions are the Metrics and spans this Account refused (ADR 0033). A
+	// matching Record is dropped and counted rather than written. The zero value
+	// excludes nothing, which is the common case and costs one map probe per Record.
+	Exclusions data.ExclusionSet
 }
 
-// ImportWithProgress is Import with a decode-progress hook (ADR 0016). progress,
-// when non-nil, is called as the export.xml entry is read, against its declared
-// uncompressed size — the web import's honest second phase, at no cost to the CLI
-// path (which passes nil). Only the ".zip" path reports progress; a bare XML path
-// has no declared size, so progress stays nil there.
-func ImportWithProgress(ctx context.Context, store Store, accountID int64, path, artifactsDir string, progress Progress) (Report, error) {
+// Import reads the Apple Health export at path and writes it to store, scoped to
+// accountID. A ".zip" path is opened as an archive and its export.xml entry
+// streamed, with routes resolved to entries in the same archive; any other path is
+// streamed directly as XML, with routes resolved as files beside it.
+func Import(ctx context.Context, store Store, accountID int64, path string, opts Options) (Report, error) {
 	sourceFile := filepath.Base(path)
 
 	if strings.EqualFold(filepath.Ext(path), ".zip") {
@@ -111,10 +125,10 @@ func ImportWithProgress(ctx context.Context, store Store, accountID int64, path,
 		defer rc.Close()
 
 		var r io.Reader = rc
-		if progress != nil {
-			r = &countingReader{r: rc, total: int64(entry.UncompressedSize64), progress: progress}
+		if opts.Progress != nil {
+			r = &countingReader{r: rc, total: int64(entry.UncompressedSize64), progress: opts.Progress}
 		}
-		return importStream(ctx, store, accountID, sourceFile, r, artifactsDir, zipRouteOpener{&zr.Reader})
+		return importStream(ctx, store, accountID, sourceFile, r, opts, zipRouteOpener{&zr.Reader})
 	}
 
 	f, err := os.Open(path)
@@ -122,7 +136,7 @@ func ImportWithProgress(ctx context.Context, store Store, accountID int64, path,
 		return Report{}, fmt.Errorf("applehealth: open %s: %w", path, err)
 	}
 	defer f.Close()
-	return importStream(ctx, store, accountID, sourceFile, f, artifactsDir, dirRouteOpener{filepath.Dir(path)})
+	return importStream(ctx, store, accountID, sourceFile, f, opts, dirRouteOpener{filepath.Dir(path)})
 }
 
 // countingReader wraps the export.xml reader to report decode progress on every
@@ -156,7 +170,7 @@ func findExportXML(zr *zip.Reader) *zip.File {
 // to a Measurement, State, or the Unmapped bin and each Workout to a Session with
 // its routes, flushing in bounded batches. Split from Import so tests can feed an
 // in-memory reader and a fake route opener.
-func importStream(ctx context.Context, store Store, accountID int64, sourceFile string, r io.Reader, artifactsDir string, opener routeOpener) (Report, error) {
+func importStream(ctx context.Context, store Store, accountID int64, sourceFile string, r io.Reader, opts Options, opener routeOpener) (Report, error) {
 	report := Report{
 		SourceFile:    sourceFile,
 		PerMetric:     make(map[string]Tally),
@@ -272,7 +286,7 @@ func importStream(ctx context.Context, store Store, accountID int64, sourceFile 
 		}
 
 		for _, ref := range wb.routes {
-			key, artifact, err := copyRouteArtifact(opener, ref.path, artifactsDir)
+			key, artifact, err := copyRouteArtifact(opener, ref.path, opts.ArtifactsDir)
 			if err != nil {
 				return err
 			}
@@ -340,6 +354,20 @@ func importStream(ctx context.Context, store Store, accountID int64, sourceFile 
 				}
 				m, u, isMeasurement := classifyRecord(accountID, attrs)
 				if isMeasurement {
+					// The Exclusion check sits here, after classification and before
+					// the batch: an Exclusion names a Catalog Metric, so there is
+					// nothing to check until the Record has one. A refused Record is
+					// counted and dropped, and deliberately does not fall through to
+					// the Unmapped bin: that bin exists so no source data is lost to a
+					// Catalog gap (ADR 0002), and routing a refusal there would keep,
+					// row for row, exactly what was asked to be dropped (ADR 0033).
+					if opts.Exclusions.Excludes(m.Metric, m.StartAt) {
+						c := report.PerMetric[m.Metric]
+						c.Excluded++
+						report.PerMetric[m.Metric] = c
+						report.Excluded++
+						continue
+					}
 					measurements = append(measurements, m)
 					if len(measurements) >= batchSize {
 						if err := flushMeasurements(); err != nil {

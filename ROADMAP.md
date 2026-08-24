@@ -33,6 +33,7 @@ Everything below is merged into `main`, tested, and usable today.
 | Releases | A tag builds the static binaries and publishes the image, CI compiles the front end on every pull request, and installing is a `docker pull` |
 | Cross-metric | Every pinned metric paired against every other over one window, ranked, with a lag — strength and direction, never a cause |
 | History | The whole span in one band, phases behind it and gaps drawn as gaps, over a ledger of every import, note, phase and source |
+| Exclusions | A metric, or a stretch of one, refused at every import and purged from what is stored: one rule that deletes and remembers |
 
 ## Next
 

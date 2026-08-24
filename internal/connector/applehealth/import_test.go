@@ -63,7 +63,7 @@ func TestImportStreamMapsAndBins(t *testing.T) {
 	store, db, acc := openStore(t)
 	ctx := context.Background()
 
-	report, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(sampleXML), t.TempDir(), nil)
+	report, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(sampleXML), Options{ArtifactsDir: t.TempDir()}, nil)
 	if err != nil {
 		t.Fatalf("importStream: %v", err)
 	}
@@ -126,10 +126,10 @@ func TestImportStreamIdempotent(t *testing.T) {
 	store, db, acc := openStore(t)
 	ctx := context.Background()
 
-	if _, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(sampleXML), t.TempDir(), nil); err != nil {
+	if _, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(sampleXML), Options{ArtifactsDir: t.TempDir()}, nil); err != nil {
 		t.Fatalf("first import: %v", err)
 	}
-	report, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(sampleXML), t.TempDir(), nil)
+	report, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(sampleXML), Options{ArtifactsDir: t.TempDir()}, nil)
 	if err != nil {
 		t.Fatalf("second import: %v", err)
 	}
@@ -169,7 +169,7 @@ func TestImportStreamNormalizesUnits(t *testing.T) {
  <Record type="HKQuantityTypeIdentifierBodyMass" sourceName="Scale" unit="g" startDate="2024-02-01 07:00:00 +0000" endDate="2024-02-01 07:00:00 +0000" value="70500"/>
 </HealthData>`
 
-	if _, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(grams), t.TempDir(), nil); err != nil {
+	if _, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(grams), Options{ArtifactsDir: t.TempDir()}, nil); err != nil {
 		t.Fatalf("importStream: %v", err)
 	}
 
@@ -188,10 +188,10 @@ func TestImportStreamNormalizesUnits(t *testing.T) {
 	}
 }
 
-// TestImportWithProgressReportsDecodeBytes verifies the web import's honest second
+// TestImportReportsDecodeBytes verifies the web import's honest second
 // phase: reading a real .zip drives the Progress hook up to the export.xml entry's
 // declared uncompressed size (ADR 0016).
-func TestImportWithProgressReportsDecodeBytes(t *testing.T) {
+func TestImportReportsDecodeBytes(t *testing.T) {
 	store, _, acc := openStore(t)
 	ctx := context.Background()
 
@@ -207,8 +207,8 @@ func TestImportWithProgressReportsDecodeBytes(t *testing.T) {
 		calls.Add(1)
 	}
 
-	if _, err := ImportWithProgress(ctx, store, acc, path, dir, progress); err != nil {
-		t.Fatalf("ImportWithProgress: %v", err)
+	if _, err := Import(ctx, store, acc, path, Options{ArtifactsDir: dir, Progress: progress}); err != nil {
+		t.Fatalf("Import: %v", err)
 	}
 
 	wantTotal := int64(len(sampleXML))
@@ -281,5 +281,142 @@ func TestMappingMatchesCatalog(t *testing.T) {
 		if !mapped[slug] {
 			t.Errorf("imported Catalog metric %q has no Apple mapping", slug)
 		}
+	}
+}
+
+// An unbounded Exclusion refuses a Metric outright: nothing of it is written, and
+// the Report says how much was refused rather than swallowing it (ADR 0033).
+func TestImportRefusesAnExcludedMetric(t *testing.T) {
+	store, db, acc := openStore(t)
+	ctx := context.Background()
+
+	opts := Options{
+		ArtifactsDir: t.TempDir(),
+		Exclusions:   data.ExclusionSet{"body_mass": {{Metric: "body_mass"}}},
+	}
+	report, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(sampleXML), opts, nil)
+	if err != nil {
+		t.Fatalf("importStream: %v", err)
+	}
+
+	if report.Excluded != 1 {
+		t.Errorf("Excluded = %d, want 1", report.Excluded)
+	}
+	if got := report.PerMetric["body_mass"].Excluded; got != 1 {
+		t.Errorf("body_mass excluded = %d, want 1", got)
+	}
+	if got := report.PerMetric["body_mass"].Added; got != 0 {
+		t.Errorf("body_mass added = %d, want 0", got)
+	}
+	// The refused Record is not "skipped" either: skipped means the row was already
+	// stored, and conflating the two would hide the count this feature owes.
+	if got := report.PerMetric["body_mass"].Skipped; got != 0 {
+		t.Errorf("body_mass skipped = %d, want 0", got)
+	}
+	if report.Added != 1 {
+		t.Errorf("Added = %d, want 1 (the step count still lands)", report.Added)
+	}
+
+	var rows int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM measurements WHERE metric = 'body_mass'`).Scan(&rows); err != nil {
+		t.Fatalf("count body_mass: %v", err)
+	}
+	if rows != 0 {
+		t.Errorf("%d body_mass rows written, want 0", rows)
+	}
+
+	// Not the Unmapped bin either: that bin is for what the Catalog cannot read, and
+	// putting a refusal there would keep exactly what was asked to be dropped.
+	var binned int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM unmapped_records`).Scan(&binned); err != nil {
+		t.Fatalf("count unmapped: %v", err)
+	}
+	if binned != 0 {
+		t.Errorf("%d rows in the Unmapped bin, want 0", binned)
+	}
+}
+
+// A bounded Exclusion refuses only its span; the same Metric outside it still lands.
+func TestImportRefusesOnlyTheExcludedSpan(t *testing.T) {
+	store, db, acc := openStore(t)
+	ctx := context.Background()
+
+	const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<HealthData locale="en_US">
+ <Record type="HKQuantityTypeIdentifierBodyMass" sourceName="Scale" unit="kg" startDate="2023-12-31 07:00:00 +0000" endDate="2023-12-31 07:00:00 +0000" value="71.0"/>
+ <Record type="HKQuantityTypeIdentifierBodyMass" sourceName="Scale" unit="kg" startDate="2024-01-01 07:00:00 +0000" endDate="2024-01-01 07:00:00 +0000" value="70.5"/>
+ <Record type="HKQuantityTypeIdentifierBodyMass" sourceName="Scale" unit="kg" startDate="2024-06-01 07:00:00 +0000" endDate="2024-06-01 07:00:00 +0000" value="69.0"/>
+</HealthData>`
+
+	opts := Options{
+		ArtifactsDir: t.TempDir(),
+		Exclusions:   data.ExclusionSet{"body_mass": {{Metric: "body_mass", StartsOn: "2024-01-01"}}},
+	}
+	report, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(xml), opts, nil)
+	if err != nil {
+		t.Fatalf("importStream: %v", err)
+	}
+	if report.Excluded != 2 {
+		t.Errorf("Excluded = %d, want 2", report.Excluded)
+	}
+	if report.Added != 1 {
+		t.Errorf("Added = %d, want 1 (the reading before the bound)", report.Added)
+	}
+
+	var start string
+	if err := db.QueryRow(`SELECT start_at FROM measurements WHERE metric = 'body_mass'`).Scan(&start); err != nil {
+		t.Fatalf("read body_mass: %v", err)
+	}
+	if start != "2023-12-31T07:00:00Z" {
+		t.Errorf("kept row starts at %q, want the one before the bound", start)
+	}
+}
+
+// An Exclusion naming a Metric the export does not carry changes nothing, which is
+// the state of most of the set for most imports.
+func TestImportUnaffectedByIrrelevantExclusion(t *testing.T) {
+	store, _, acc := openStore(t)
+	ctx := context.Background()
+
+	opts := Options{
+		ArtifactsDir: t.TempDir(),
+		Exclusions:   data.ExclusionSet{"dietary_protein": {{Metric: "dietary_protein"}}},
+	}
+	report, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(sampleXML), opts, nil)
+	if err != nil {
+		t.Fatalf("importStream: %v", err)
+	}
+	if report.Excluded != 0 {
+		t.Errorf("Excluded = %d, want 0", report.Excluded)
+	}
+	if report.Added != 2 {
+		t.Errorf("Added = %d, want the same 2 an import with no exclusion adds", report.Added)
+	}
+}
+
+// Sleep is stored as a State, and this milestone excludes Measurements. The API
+// refuses a `sleep` Exclusion at the door (ADR 0033); if one reached the Connector
+// anyway it must not silently appear to work.
+func TestImportDoesNotExcludeStates(t *testing.T) {
+	store, db, acc := openStore(t)
+	ctx := context.Background()
+
+	opts := Options{
+		ArtifactsDir: t.TempDir(),
+		Exclusions:   data.ExclusionSet{"sleep": {{Metric: "sleep"}}},
+	}
+	report, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(sampleXML), opts, nil)
+	if err != nil {
+		t.Fatalf("importStream: %v", err)
+	}
+	if report.Excluded != 0 {
+		t.Errorf("Excluded = %d, want 0: a State is not reached by an Exclusion", report.Excluded)
+	}
+	var states int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM states`).Scan(&states); err != nil {
+		t.Fatalf("count states: %v", err)
+	}
+	if states != 1 {
+		t.Errorf("%d states written, want 1", states)
 	}
 }
