@@ -85,7 +85,7 @@ func (m MeasurementModel) Span(ctx context.Context, accountID int64) (Span, erro
 // of idempotence, and only the second one proves it (ADR 0006).
 func (m MeasurementModel) ListImports(ctx context.Context, accountID int64) ([]Import, error) {
 	const query = `
-		SELECT id, account_id, source_file, added_count, skipped_count, unmapped_count, imported_at
+		SELECT id, account_id, connector, source_file, added_count, skipped_count, unmapped_count, imported_at
 		FROM imports WHERE account_id = ?
 		ORDER BY imported_at DESC, id DESC`
 	rows, err := m.DB.QueryContext(ctx, query, accountID)
@@ -97,7 +97,7 @@ func (m MeasurementModel) ListImports(ctx context.Context, accountID int64) ([]I
 	out := []Import{}
 	for rows.Next() {
 		var imp Import
-		if err := rows.Scan(&imp.ID, &imp.AccountID, &imp.SourceFile,
+		if err := rows.Scan(&imp.ID, &imp.AccountID, &imp.Connector, &imp.SourceFile,
 			&imp.AddedCount, &imp.SkippedCount, &imp.UnmappedCount, &imp.ImportedAt); err != nil {
 			return nil, fmt.Errorf("data: measurement ListImports scan: %w", err)
 		}

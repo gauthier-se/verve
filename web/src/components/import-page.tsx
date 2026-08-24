@@ -15,7 +15,7 @@ import { Eyebrow, Figure, ScreenTitle, SectionTitle, Track } from "./ui/figure";
 import { ExclusionDialog } from "./exclusion-dialog";
 
 /** ImportPage drives the browser end of a self-service import (ADR 0016): a
- *  drop-zone that streams an Apple Health .zip to the server, then a live two-phase
+ *  drop-zone that streams a health export .zip to the server, then a live two-phase
  *  progress bar and, when it settles, the report or a readable failure.
  *
  *  It is also, for most Accounts, the second screen they ever see, so it is built as
@@ -49,7 +49,7 @@ export function ImportPage() {
   const accept = (file: File | undefined) => {
     if (!file) return;
     if (!file.name.toLowerCase().endsWith(".zip")) {
-      setLocalError("Choose the .zip export from Apple Health.");
+      setLocalError("Choose a .zip export: Apple Health, or Google Health from Takeout.");
       return;
     }
     setLocalError(null);
@@ -97,7 +97,7 @@ function Steps({ hasData, busy }: { hasData: boolean; busy: boolean }) {
     },
     {
       title: "Bring your history in",
-      body: "Everything Health has kept, back to the first day it recorded anything. It is read once and stored in Verve's own model, so it outlives the export it came from.",
+      body: "Everything your export holds, back to the first day it recorded anything. It is read once and stored in Verve's own model, so it outlives the export it came from.",
       done: hasData,
     },
     {
@@ -262,10 +262,11 @@ function DropZone({ onFile }: { onFile: (file: File | undefined) => void }) {
         <Upload className="size-[1.125rem] text-muted-foreground" />
       </div>
       <div>
-        <p className="text-heading font-medium">Drop your Apple Health export here</p>
+        <p className="text-heading font-medium">Drop your health export here</p>
         <p className="pt-1.5 text-xs leading-relaxed text-muted-foreground">
-          The <span className="font-mono text-foreground">export.zip</span> from Health → your profile
-          → Export All Health Data. Nothing to unzip, and nothing leaves this machine.
+          <span className="font-mono text-foreground">export.zip</span> from Apple Health → your
+          profile → Export All Health Data, or your Google Health archive from takeout.google.com.
+          Nothing to unzip, and nothing leaves this machine.
         </p>
       </div>
       <input
@@ -320,7 +321,10 @@ function ReportCard({ job }: { job: ImportJob }) {
           <span className="flex size-[1.125rem] items-center justify-center rounded-full bg-primary text-primary-foreground">
             <Check className="size-2.5" />
           </span>
-          <SectionTitle>Imported {r.source_file}</SectionTitle>
+          <SectionTitle>
+            Imported {r.source_file}
+            {r.connector && <span className="font-normal text-muted-foreground"> · {r.connector}</span>}
+          </SectionTitle>
         </div>
         <dl className="grid grid-cols-3 border-t">
           <ReportStat label="Added" value={r.added} />

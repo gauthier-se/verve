@@ -1,0 +1,11 @@
+-- 0014_import_connector: which Connector ran an Import (ADR 0009).
+--
+-- With two Connectors, "export.zip" no longer says which platform an Import came
+-- from, and the History exists to explain the shape of a history: an import event
+-- that cannot name its source would be the one place the app is vague about
+-- provenance while a whole page is dedicated to it.
+--
+-- Every existing row was an Apple Health import, which is what the constant
+-- default records, the only kind of default a STRICT table's ALTER accepts, and
+-- the true one here.
+ALTER TABLE imports ADD COLUMN connector TEXT NOT NULL DEFAULT 'applehealth';

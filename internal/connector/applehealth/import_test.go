@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/gauthier-se/verve/internal/catalog"
+	"github.com/gauthier-se/verve/internal/connector"
 	"github.com/gauthier-se/verve/internal/data"
 )
 
@@ -63,7 +64,7 @@ func TestImportStreamMapsAndBins(t *testing.T) {
 	store, db, acc := openStore(t)
 	ctx := context.Background()
 
-	report, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(sampleXML), Options{ArtifactsDir: t.TempDir()}, nil)
+	report, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(sampleXML), connector.Options{ArtifactsDir: t.TempDir()}, nil)
 	if err != nil {
 		t.Fatalf("importStream: %v", err)
 	}
@@ -126,10 +127,10 @@ func TestImportStreamIdempotent(t *testing.T) {
 	store, db, acc := openStore(t)
 	ctx := context.Background()
 
-	if _, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(sampleXML), Options{ArtifactsDir: t.TempDir()}, nil); err != nil {
+	if _, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(sampleXML), connector.Options{ArtifactsDir: t.TempDir()}, nil); err != nil {
 		t.Fatalf("first import: %v", err)
 	}
-	report, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(sampleXML), Options{ArtifactsDir: t.TempDir()}, nil)
+	report, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(sampleXML), connector.Options{ArtifactsDir: t.TempDir()}, nil)
 	if err != nil {
 		t.Fatalf("second import: %v", err)
 	}
@@ -169,7 +170,7 @@ func TestImportStreamNormalizesUnits(t *testing.T) {
  <Record type="HKQuantityTypeIdentifierBodyMass" sourceName="Scale" unit="g" startDate="2024-02-01 07:00:00 +0000" endDate="2024-02-01 07:00:00 +0000" value="70500"/>
 </HealthData>`
 
-	if _, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(grams), Options{ArtifactsDir: t.TempDir()}, nil); err != nil {
+	if _, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(grams), connector.Options{ArtifactsDir: t.TempDir()}, nil); err != nil {
 		t.Fatalf("importStream: %v", err)
 	}
 
@@ -207,7 +208,7 @@ func TestImportReportsDecodeBytes(t *testing.T) {
 		calls.Add(1)
 	}
 
-	if _, err := Import(ctx, store, acc, path, Options{ArtifactsDir: dir, Progress: progress}); err != nil {
+	if _, err := Import(ctx, store, acc, path, connector.Options{ArtifactsDir: dir, Progress: progress}); err != nil {
 		t.Fatalf("Import: %v", err)
 	}
 
@@ -245,41 +246,16 @@ func writeExportZip(t *testing.T, path, xml string) {
 	}
 }
 
-// TestMappingMatchesCatalog guards ADR 0009: every mapping target is a real
-// Catalog slug, and every *imported* Catalog Metric has an Apple mapping (broad
-// seed). Derived Metrics are computed from other Metrics and have no source, so
-// they carry no Apple mapping (ADR 0014).
-func TestMappingMatchesCatalog(t *testing.T) {
+// TestMappingTargetsExist guards the Connector's half of ADR 0009: every mapping
+// target is a real Catalog slug. A State kind is not asserted here: "stand" is
+// deliberately not a Metric, since apple_stand_time already answers that question
+// as a Measurement (CONTEXT.md). The other half, that no imported Catalog Metric
+// is an orphan, moved to internal/connector/registry once a second Connector
+// existed, because it is an invariant about the Catalog and not about Apple.
+func TestMappingTargetsExist(t *testing.T) {
 	for appleType, slug := range typeToMetric {
 		if _, ok := catalog.Lookup(slug); !ok {
 			t.Errorf("mapping %s → %q targets a slug absent from the Catalog", appleType, slug)
-		}
-	}
-
-	mapped := make(map[string]bool, len(typeToMetric))
-	for _, slug := range typeToMetric {
-		mapped[slug] = true
-	}
-	// A duration_by_state Metric is fed by the States family, whose Apple mapping is
-	// by category *kind* (categoryStateKinds) rather than by record type — so it is
-	// covered there, not in typeToMetric.
-	stateKinds := map[string]bool{}
-	for _, kind := range categoryStateKinds {
-		stateKinds[kind] = true
-	}
-
-	for slug, m := range catalog.All() {
-		if m.Nature != catalog.Imported {
-			continue
-		}
-		if m.Aggregation == catalog.DurationByState {
-			if !stateKinds[slug] {
-				t.Errorf("duration-by-state Catalog metric %q has no Apple state kind", slug)
-			}
-			continue
-		}
-		if !mapped[slug] {
-			t.Errorf("imported Catalog metric %q has no Apple mapping", slug)
 		}
 	}
 }
@@ -290,7 +266,7 @@ func TestImportRefusesAnExcludedMetric(t *testing.T) {
 	store, db, acc := openStore(t)
 	ctx := context.Background()
 
-	opts := Options{
+	opts := connector.Options{
 		ArtifactsDir: t.TempDir(),
 		Exclusions:   data.ExclusionSet{"body_mass": {{Metric: "body_mass"}}},
 	}
@@ -348,7 +324,7 @@ func TestImportRefusesOnlyTheExcludedSpan(t *testing.T) {
  <Record type="HKQuantityTypeIdentifierBodyMass" sourceName="Scale" unit="kg" startDate="2024-06-01 07:00:00 +0000" endDate="2024-06-01 07:00:00 +0000" value="69.0"/>
 </HealthData>`
 
-	opts := Options{
+	opts := connector.Options{
 		ArtifactsDir: t.TempDir(),
 		Exclusions:   data.ExclusionSet{"body_mass": {{Metric: "body_mass", StartsOn: "2024-01-01"}}},
 	}
@@ -378,7 +354,7 @@ func TestImportUnaffectedByIrrelevantExclusion(t *testing.T) {
 	store, _, acc := openStore(t)
 	ctx := context.Background()
 
-	opts := Options{
+	opts := connector.Options{
 		ArtifactsDir: t.TempDir(),
 		Exclusions:   data.ExclusionSet{"dietary_protein": {{Metric: "dietary_protein"}}},
 	}
@@ -401,7 +377,7 @@ func TestImportDoesNotExcludeStates(t *testing.T) {
 	store, db, acc := openStore(t)
 	ctx := context.Background()
 
-	opts := Options{
+	opts := connector.Options{
 		ArtifactsDir: t.TempDir(),
 		Exclusions:   data.ExclusionSet{"sleep": {{Metric: "sleep"}}},
 	}

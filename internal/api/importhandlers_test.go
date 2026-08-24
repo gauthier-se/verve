@@ -107,6 +107,11 @@ func TestImportUploadRunsToReport(t *testing.T) {
 	if job.Report.SourceFile != "export.zip" {
 		t.Errorf("report SourceFile = %q, want export.zip", job.Report.SourceFile)
 	}
+	// Two exports look alike on disk, so the report says which one it turned out to
+	// be, named as a person names it rather than by the internal identifier.
+	if job.Report.Connector != "Apple Health" {
+		t.Errorf("report Connector = %q, want Apple Health", job.Report.Connector)
+	}
 
 	// The Account now has data: the empty-state CTA must retire.
 	_, env := do(t, srv, "/v1/imports", cookie)
@@ -172,7 +177,7 @@ func TestImportInvalidZipFails(t *testing.T) {
 	}
 }
 
-func TestImportMissingExportXMLFails(t *testing.T) {
+func TestImportUnrecognizedArchiveFails(t *testing.T) {
 	srv, _, cookie := newTestServer(t)
 
 	var buf bytes.Buffer
@@ -186,8 +191,11 @@ func TestImportMissingExportXMLFails(t *testing.T) {
 	if job.Status != string(stateFailed) {
 		t.Fatalf("status = %q, want failed", job.Status)
 	}
-	if !bytes.Contains([]byte(job.Error), []byte("export.xml")) {
-		t.Errorf("error = %q, want it to mention export.xml", job.Error)
+	// The refusal names what Verve does read rather than one Connector's marker
+	// file: with two Connectors registered, "no export.xml" would be an answer to a
+	// question the owner did not ask (ADR 0009).
+	if !bytes.Contains([]byte(job.Error), []byte("Apple Health")) {
+		t.Errorf("error = %q, want it to name the exports Verve reads", job.Error)
 	}
 }
 

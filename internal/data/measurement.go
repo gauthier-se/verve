@@ -45,6 +45,7 @@ type UnmappedRecord struct {
 type Import struct {
 	ID            int64
 	AccountID     int64
+	Connector     string // the Connector that ran it, e.g. "applehealth"
 	SourceFile    string
 	AddedCount    int
 	SkippedCount  int
@@ -362,10 +363,10 @@ func (m MeasurementModel) DistinctMetrics(ctx context.Context, accountID int64) 
 // generated ID and timestamp.
 func (m MeasurementModel) RecordImport(ctx context.Context, imp *Import) error {
 	const query = `
-		INSERT INTO imports (account_id, source_file, added_count, skipped_count, unmapped_count)
-		VALUES (?, ?, ?, ?, ?)
+		INSERT INTO imports (account_id, connector, source_file, added_count, skipped_count, unmapped_count)
+		VALUES (?, ?, ?, ?, ?, ?)
 		RETURNING id, imported_at`
 	return m.DB.QueryRowContext(ctx, query,
-		imp.AccountID, imp.SourceFile, imp.AddedCount, imp.SkippedCount, imp.UnmappedCount,
+		imp.AccountID, imp.Connector, imp.SourceFile, imp.AddedCount, imp.SkippedCount, imp.UnmappedCount,
 	).Scan(&imp.ID, &imp.ImportedAt)
 }
