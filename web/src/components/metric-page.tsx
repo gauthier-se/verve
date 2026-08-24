@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Link, useParams } from "@tanstack/react-router";
-import { ArrowLeft, Pin, PinOff, StickyNote } from "lucide-react";
+import { ArrowLeft, MoreHorizontal, Pin, PinOff, StickyNote, Trash2 } from "lucide-react";
 import { useMetricMap } from "@/hooks/use-catalog";
 import { usePins, useAddPin, useRemovePin } from "@/hooks/use-pins";
 import { useAllAnnotations, useAnnotations } from "@/hooks/use-annotations";
@@ -16,10 +16,17 @@ import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { CenteredSpinner } from "./spinner";
 import { Chip, Dot, Eyebrow, Figure, ScreenTitle, Unit } from "./ui/figure";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
 import { FormulaHint } from "./formula-hint";
 import { LedgerDetailTable } from "./ledger-detail-table";
 import { MetricIcon } from "./metric-icon";
 import { AnnotationDialog } from "./annotation-dialog";
+import { ExclusionDialog } from "./exclusion-dialog";
 import { formatBucket, PanelChart } from "./panel-chart";
 import { PanelSummary } from "./panel-summary";
 
@@ -42,6 +49,7 @@ export function MetricPage() {
   const [showNotes, setShowNotes] = React.useState(true);
   const [hovered, setHovered] = React.useState<string | null>(null);
   const [noteOpen, setNoteOpen] = React.useState(false);
+  const [excludeOpen, setExcludeOpen] = React.useState(false);
   // The page's grain, chosen here rather than left to the server's span rule. A
   // Metric page is read against the Data page's per-day figures and against its own
   // history table, and an auto grain silently makes a "3m" chart weekly: a bar and a
@@ -98,6 +106,26 @@ export function MetricPage() {
           <NotesToggle on={showNotes} onToggle={() => setShowNotes((v) => !v)} />
           <GrainPicker value={bucket} onChange={setGrain} preset={preset} />
           <RangePresets value={preset} onChange={setPreset} />
+          {/* The destructive action goes behind an overflow menu rather than beside
+              four visible controls: it is the rarest thing anyone does here and the
+              only one that cannot be undone by clicking again. */}
+          {meta.nature !== "derived" && meta.aggregation !== "duration_by_state" && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="size-7 text-muted-foreground" aria-label="Metric menu">
+                  <MoreHorizontal className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onClick={() => setExcludeOpen(true)}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Trash2 className="size-4" /> Delete this metric’s data
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </header>
 
@@ -140,6 +168,7 @@ export function MetricPage() {
       </div>
 
       <AnnotationDialog open={noteOpen} onOpenChange={setNoteOpen} defaultDay={hovered} />
+      <ExclusionDialog open={excludeOpen} onOpenChange={setExcludeOpen} metric={metric} />
     </div>
   );
 }

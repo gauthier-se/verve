@@ -290,3 +290,68 @@ func measurementCount(t *testing.T, models data.Models, accountID int64) int {
 	}
 	return n
 }
+
+// The whole feature, end to end and in the order it is actually used: exclude a
+// Metric, then drop an export that contains it. The rows never land, the report
+// says how many were refused, and the count is its own rather than folded into
+// "already had" (ADR 0033).
+func TestImportHonoursExclusionsCreatedJustBefore(t *testing.T) {
+	srv, models, cookie := newTestServer(t)
+
+	if status, _ := exclude(t, srv, cookie, `{"metric":"body_mass"}`); status != http.StatusCreated {
+		t.Fatalf("create exclusion status = %d, want 201", status)
+	}
+
+	res, _ := postImport(t, srv, "export.zip", zipBytes(t, sampleExportXML), cookie)
+	if res.StatusCode != http.StatusAccepted {
+		t.Fatalf("POST status = %d, want 202", res.StatusCode)
+	}
+	job := waitForImport(t, srv, cookie)
+	if job.Status != string(stateDone) {
+		t.Fatalf("final status = %q, want done (error: %q)", job.Status, job.Error)
+	}
+	if job.Report.Excluded != 1 {
+		t.Errorf("report excluded = %d, want 1", job.Report.Excluded)
+	}
+	if job.Report.Skipped != 0 {
+		t.Errorf("report skipped = %d, want 0: a refusal is not a duplicate", job.Report.Skipped)
+	}
+	// The step count and the sleep State still land; only body mass was refused.
+	if job.Report.Added != 2 {
+		t.Errorf("report added = %d, want 2", job.Report.Added)
+	}
+	if n := countRows(t, models, testEmail, "body_mass"); n != 0 {
+		t.Errorf("%d body_mass rows stored, want 0", n)
+	}
+}
+
+// Removing an Exclusion reopens the tap: the same export, dropped again, brings
+// back what it still holds. This is the feature's only undo, and it is the next
+// import rather than anything the delete does by itself.
+func TestImportRestoresAfterAnExclusionIsRemoved(t *testing.T) {
+	srv, models, cookie := newTestServer(t)
+
+	_, view := exclude(t, srv, cookie, `{"metric":"body_mass"}`)
+	postImport(t, srv, "export.zip", zipBytes(t, sampleExportXML), cookie)
+	waitForImport(t, srv, cookie)
+	if n := countRows(t, models, testEmail, "body_mass"); n != 0 {
+		t.Fatalf("%d body_mass rows after the excluded import, want 0", n)
+	}
+
+	res, body := doReq(t, srv, http.MethodDelete, "/v1/exclusions/"+itoa(view.ID), "", cookie)
+	if res.StatusCode != http.StatusNoContent {
+		t.Fatalf("delete exclusion status = %d, want 204 (%s)", res.StatusCode, body["error"])
+	}
+	if n := countRows(t, models, testEmail, "body_mass"); n != 0 {
+		t.Fatalf("deleting the rule restored %d rows by itself, want 0", n)
+	}
+
+	postImport(t, srv, "export.zip", zipBytes(t, sampleExportXML), cookie)
+	job := waitForImport(t, srv, cookie)
+	if job.Report.Excluded != 0 {
+		t.Errorf("report excluded = %d, want 0", job.Report.Excluded)
+	}
+	if n := countRows(t, models, testEmail, "body_mass"); n != 1 {
+		t.Errorf("%d body_mass rows after the re-import, want 1", n)
+	}
+}

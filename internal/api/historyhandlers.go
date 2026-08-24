@@ -69,6 +69,12 @@ type historyEventView struct {
 	Body    string              `json:"body,omitempty"`
 	Figures []historyFigureView `json:"figures,omitempty"`
 	Rate    *float64            `json:"rate_pct_per_week,omitempty"`
+	// SpanFrom/SpanTo are the days an event is *about*, which for an exclusion is
+	// not the day it happened: "excluded body fat from 2026" is a decision taken on
+	// one date about an open-ended stretch of another. They are deliberately not
+	// EndsOn, which draws a band across the axis from Date.
+	SpanFrom string `json:"span_from,omitempty"`
+	SpanTo   string `json:"span_to,omitempty"`
 }
 
 // historyFigureView is one key/number chip under an event. The key is a stable slug
@@ -93,11 +99,12 @@ type historyView struct {
 // what arrived, then what the Account decided, then what it wrote, then what the
 // data itself did.
 const (
-	eventImport = "import"
-	eventPhase  = "phase"
-	eventNote   = "note"
-	eventSource = "source"
-	eventOrigin = "origin"
+	eventImport    = "import"
+	eventPhase     = "phase"
+	eventExclusion = "exclusion"
+	eventNote      = "note"
+	eventSource    = "source"
+	eventOrigin    = "origin"
 )
 
 // handleHistory answers the History page: the long view of everything the Account
@@ -334,6 +341,27 @@ func (s *Server) historyEvents(ctx context.Context, accountID int64, span data.S
 		})
 	}
 
+	// An Exclusion is a dated fact about the shape of the data: a stretch of a curve
+	// is missing because it was refused, not because nothing was recorded. This page
+	// exists to explain gaps (ADR 0032), and this is the one gap Verve itself made.
+	// A deleted Exclusion takes its event with it: the History reads current state,
+	// and there is no audit log here.
+	exclusions, err := s.models.Exclusions.ListByAccount(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	for _, e := range exclusions {
+		day := e.CreatedAt
+		if t, err := time.Parse(time.RFC3339, e.CreatedAt); err == nil {
+			day = t.UTC().Format(dayLayout)
+		}
+		events = append(events, historyEventView{
+			Kind: eventExclusion, Date: day, Label: e.Metric,
+			SpanFrom: e.StartsOn, SpanTo: e.EndsOn,
+			Figures: []historyFigureView{{Key: "purged", Value: float64(e.Purged)}},
+		})
+	}
+
 	notes, err := s.models.Annotations.ListAll(ctx, accountID)
 	if err != nil {
 		return nil, err
@@ -382,7 +410,9 @@ func (s *Server) historyEvents(ctx context.Context, accountID int64, span data.S
 
 	// Newest first, and on a tie the kind order above, so a day carrying an import
 	// and the Phase it revealed reads in that order rather than at random.
-	kindRank := map[string]int{eventImport: 0, eventPhase: 1, eventNote: 2, eventSource: 3, eventOrigin: 4}
+	kindRank := map[string]int{
+		eventImport: 0, eventPhase: 1, eventExclusion: 2, eventNote: 3, eventSource: 4, eventOrigin: 5,
+	}
 	sort.SliceStable(events, func(i, j int) bool {
 		if events[i].Date != events[j].Date {
 			return events[i].Date > events[j].Date

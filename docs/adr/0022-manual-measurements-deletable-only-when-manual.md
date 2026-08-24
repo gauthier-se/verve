@@ -60,7 +60,10 @@ value means deleting it and re-entering.
   deleting an imported row removes its key and the next Apple import reinserts the
   row verbatim. The deletion is undone with no warning. Making it stick needs a
   tombstone table consulted at import time — a feature in its own right, not a flag
-  on this one.
+  on this one. *That feature was later built: an **Exclusion** purges imported rows
+  and refuses them at every subsequent import, which is what makes the removal stick
+  (ADR 0033). Row-by-row deletion of imported data remains refused, for the reason
+  given here.*
 - **Strictly append-only, correct by entering the right value on top.** Keeps the
   model immutable but leaves two same-day `Manual` rows in conflict, which Source
   priority *cannot* arbitrate (it ranks sources, not rows of the same source). It

@@ -117,6 +117,10 @@ export interface ImportReport {
   added: number;
   skipped: number;
   unmapped: number;
+  /** excluded is what your Exclusions refused (ADR 0033). It is its own number and
+   *  not part of `skipped`: skipped means "you already had this", and reading a
+   *  refusal as a duplicate would hide the one count this feature owes. */
+  excluded: number;
 }
 
 /** ImportJob is one web import in flight or settled: its lifecycle status, the
@@ -565,7 +569,7 @@ export interface HistoryBand {
 
 /** HistoryEventKind is what happened: data arrived, a Phase was committed, a note
  *  was written, a Source appeared, or the history itself begins. */
-export type HistoryEventKind = "import" | "phase" | "note" | "source" | "origin";
+export type HistoryEventKind = "import" | "phase" | "exclusion" | "note" | "source" | "origin";
 
 /** HistoryFigure is one key/number chip under an event. The key is a stable slug
  *  the interface labels; the value is already in its unit. */
@@ -585,6 +589,12 @@ export interface HistoryEvent {
   body?: string;
   figures?: HistoryFigure[];
   rate_pct_per_week?: number;
+  /** span_from/span_to are the days an event is *about*, which for an exclusion is
+   *  not the day it happened: a refusal decided today can name a stretch of 2026.
+   *  They are not `ends_on`, which draws a band on the axis from `date`. Empty means
+   *  unbounded on that side. */
+  span_from?: string;
+  span_to?: string;
 }
 
 /** History is the long view (GET /v1/history): how far back the data goes, one
@@ -595,4 +605,32 @@ export interface History {
   days: number;
   band?: HistoryBand;
   events: HistoryEvent[];
+}
+
+/** Exclusion is a standing refusal that a stretch of a Metric is Verve's to hold
+ *  (ADR 0033): no import may write what it names, and what was already stored under
+ *  it was deleted when it was created. `starts_on`/`ends_on` are inclusive days,
+ *  empty for unbounded, so an Exclusion with neither covers the whole Metric.
+ *  `purged` is what its purge removed, the historical figure and not a live count.
+ *
+ *  The set an Account holds *is* its remembered import filter: it is, by
+ *  construction, exactly what the next import will refuse, which is why there is no
+ *  second saved-profile object to keep in sync with it. */
+export interface Exclusion {
+  id: number;
+  metric: string;
+  starts_on: string;
+  ends_on: string;
+  purged: number;
+  created_at: string;
+}
+
+/** ExclusionPreview is GET /v1/exclusions/preview: how many Measurements an
+ *  Exclusion over this Metric and span would delete, counted with the very
+ *  predicate the purge will run, so the number shown is the number that goes. */
+export interface ExclusionPreview {
+  metric: string;
+  starts_on: string;
+  ends_on: string;
+  measurements: number;
 }

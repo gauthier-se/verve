@@ -497,6 +497,28 @@ run with its counts. A crash loses the job, not data: re-upload is idempotent
 (ADR 0016).
 _Avoid_: Task, Upload (that's one phase), Import (the finished record).
 
+**Exclusion**:
+A standing refusal that a stretch of a **Metric** is Verve's to hold: one Metric
+and, optionally, an inclusive span of days. It does two things and the pair is
+what makes it honest: no **Connector** may write what it names, and what was
+already stored under it is deleted the moment it is created, in one transaction.
+Each half alone fails invisibly, a rule with no purge being a delete that did not
+happen and a purge with no rule being data the next **Import** restores through its
+**Content key** (ADR 0022, ADR 0033). It is never a read-time filter: it removes,
+so nothing downstream needs to know it exists. It governs Connectors and never the
+Account, so a **Manual entry** on an excluded Metric is still accepted, which is
+the point rather than an oversight: refusing the scale's body fat and typing the
+figure you trust is one gesture in two halves. The purge takes every **Source**,
+`Manual` included, because "delete every body fat value" means every one. The set
+an Account holds *is* its remembered import filter, since it is by construction
+what the next Import will refuse; deleting one restores nothing by itself, and the
+next Import brings back whatever the export still holds.
+_Avoid_: Filter (a filter selects a view of what is there; an Exclusion means it is
+not there), Rule (the aggregation rule and the **Baseline rule** already claim the
+word), Import profile and Preset (Preset is the **Time range**'s word), Blocklist,
+Ignore, Mute (all imply the data is present and unheard), Tombstone (the mechanic,
+not the thing its owner creates).
+
 **Content key**:
 The deduplication identity of a Measurement, derived by hashing
 `(metric, source, startDate, endDate, value, unit)` — because Apple records

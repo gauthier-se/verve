@@ -1,14 +1,18 @@
 import * as React from "react";
 import { Link } from "@tanstack/react-router";
-import { Check, Upload, XCircle } from "lucide-react";
+import { Ban, Check, Plus, Upload, X, XCircle } from "lucide-react";
 import { useOnImportDone, useImportStatus, useUploadImport } from "@/hooks/use-import";
 import { useDashboards } from "@/hooks/use-dashboards";
+import { useExclusions, useRemoveExclusion } from "@/hooks/use-exclusions";
 import { ApiError } from "@/lib/api";
-import type { ImportJob } from "@/lib/types";
+import { formatDay } from "@/lib/format";
+import { metricLabel } from "@/lib/metrics";
+import type { Exclusion, ImportJob } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { Eyebrow, Figure, ScreenTitle, SectionTitle, Track } from "./ui/figure";
+import { ExclusionDialog } from "./exclusion-dialog";
 
 /** ImportPage drives the browser end of a self-service import (ADR 0016): a
  *  drop-zone that streams an Apple Health .zip to the server, then a live two-phase
@@ -62,6 +66,8 @@ export function ImportPage() {
       <div className="flex-1 overflow-y-auto px-6 py-8">
         <div className="mx-auto flex w-full max-w-xl flex-col gap-4">
           <Steps hasData={hasData} busy={busy} />
+
+          <Exclusions />
 
           {busy ? <Progress job={job} pending={uploadMutation.isPending} /> : <DropZone onFile={accept} />}
 
@@ -136,6 +142,97 @@ function Steps({ hasData, busy }: { hasData: boolean; busy: boolean }) {
       ))}
     </div>
   );
+}
+
+/** Exclusions is what the import you are about to run will refuse (ADR 0033).
+ *
+ *  It lives here rather than under settings because the request behind the feature
+ *  is "when I come back, propose the same import". A set of standing rules read on
+ *  the page where the import starts, seconds before it starts, is that proposal;
+ *  filed elsewhere it would be a thing to remember to check, which is the opposite.
+ *
+ *  The card is absent when the set is empty, so a first import is the screen it has
+ *  always been, and the way in is the same dialog the Metric page opens. */
+function Exclusions() {
+  const exclusions = useExclusions();
+  const [open, setOpen] = React.useState(false);
+  const list = exclusions.data ?? [];
+
+  return (
+    <>
+      {list.length > 0 ? (
+        <Card className="overflow-hidden">
+          <div className="flex items-center gap-2.5 border-b px-4 py-3">
+            <Ban className="size-3.5 text-muted-foreground" />
+            <SectionTitle>Excluded from every import</SectionTitle>
+          </div>
+          <ul className="divide-y">
+            {list.map((e) => (
+              <ExclusionRow key={e.id} exclusion={e} />
+            ))}
+          </ul>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3">
+            <p className="max-w-[24rem] text-2xs leading-relaxed text-muted-foreground">
+              Removing one restores nothing by itself. The next import brings back whatever the
+              export still holds, which is how you undo this.
+            </p>
+            <Button variant="outline" size="sm" className="h-7 gap-1.5 px-2.5 text-xs" onClick={() => setOpen(true)}>
+              <Plus className="size-3.5" /> Exclude a metric
+            </Button>
+          </div>
+        </Card>
+      ) : (
+        <div className="flex justify-end">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1.5 px-2 text-xs text-muted-foreground"
+            onClick={() => setOpen(true)}
+          >
+            <Ban className="size-3.5" /> Exclude a metric
+          </Button>
+        </div>
+      )}
+      <ExclusionDialog open={open} onOpenChange={setOpen} />
+    </>
+  );
+}
+
+/** ExclusionRow is one standing rule and its removal. The purge count is shown as
+ *  what that decision cost, once, on the day it was taken: it is a historical figure
+ *  and not a running total, so it never changes again. */
+function ExclusionRow({ exclusion }: { exclusion: Exclusion }) {
+  const remove = useRemoveExclusion();
+  return (
+    <li className="flex items-center justify-between gap-3 px-4 py-2.5">
+      <div className="min-w-0">
+        <p className="truncate text-xs font-medium">{metricLabel(exclusion.metric)}</p>
+        <p className="pt-0.5 text-2xs text-muted-foreground">
+          {spanLabel(exclusion)}
+          {exclusion.purged > 0 && ` · ${exclusion.purged.toLocaleString("fr-FR")} deleted`}
+        </p>
+      </div>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="size-7 shrink-0 text-muted-foreground"
+        aria-label={`Stop excluding ${metricLabel(exclusion.metric)}`}
+        disabled={remove.isPending}
+        onClick={() => remove.mutate(exclusion.id)}
+      >
+        <X className="size-3.5" />
+      </Button>
+    </li>
+  );
+}
+
+/** spanLabel says which days a rule covers, in the words the bounds actually mean:
+ *  an absent bound is not a date to print, it is the absence of one. */
+function spanLabel({ starts_on, ends_on }: Exclusion): string {
+  if (!starts_on && !ends_on) return "Everything";
+  if (!ends_on) return `From ${formatDay(starts_on)}`;
+  if (!starts_on) return `Up to ${formatDay(ends_on)}`;
+  return `${formatDay(starts_on)} → ${formatDay(ends_on)}`;
 }
 
 /** DropZone accepts a dropped or picked file. It only forwards the file; the page
@@ -241,8 +338,30 @@ function ReportCard({ job }: { job: ImportJob }) {
         </div>
       </Card>
 
+      {r.excluded > 0 && <ExcludedCard count={r.excluded} />}
       {r.unmapped > 0 && <UnmappedCard count={r.unmapped} />}
     </>
+  );
+}
+
+/** ExcludedCard accounts for what your own rules refused. It is a fourth number and
+ *  not a fourth cell in the grid above, because it is a different kind of thing from
+ *  the three: added, already-had and unmapped are what the export contained, and
+ *  this is what you decided about it.
+ *
+ *  It is never silent, for the reason the whole feature exists: an import that drops
+ *  data without saying how much is worse than the delete that did not stick. */
+function ExcludedCard({ count }: { count: number }) {
+  return (
+    <Card className="bg-card/40 px-4 py-3.5">
+      <p className="text-xs font-medium">
+        {count.toLocaleString("fr-FR")} {count === 1 ? "record was" : "records were"} not imported
+      </p>
+      <p className="pt-1 text-2xs leading-relaxed text-muted-foreground">
+        They matched an exclusion you set, so they were refused rather than stored. Remove the
+        exclusion above and import again to take them.
+      </p>
+    </Card>
   );
 }
 

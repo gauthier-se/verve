@@ -41,6 +41,10 @@ const PHASE_COLOR: Record<PhaseKind, string> = {
 const EVENT_COLOR: Record<HistoryEventKind, string> = {
   import: SERIES_COLORS[0],
   phase: SERIES_COLORS[0],
+  // An exclusion is the one event that took data away, so it is the one that gets
+  // the destructive colour, the one colour every Palette keeps identical because
+  // it carries meaning rather than style (ADR 0024).
+  exclusion: "hsl(var(--destructive))",
   note: SERIES_COLORS[2],
   source: SERIES_COLORS[1],
   origin: RECESSED,
@@ -309,6 +313,7 @@ const FIGURE_LABEL: Record<string, string> = {
   unmapped: "unmapped",
   rows: "records",
   unmapped_kept: "kept unmapped",
+  purged: "deleted",
 };
 
 /** describe turns a typed event into the sentence the page shows.
@@ -334,6 +339,14 @@ function describe(event: HistoryEvent): { title: string; body: string } {
           "A phase is a target rate you committed to, not a prediction. Adherence is read against " +
           "it on the Plan page, and the band behind the curve above is the stretch it covers.",
       };
+    case "exclusion":
+      return {
+        title: `${metricLabel(event.label ?? "a metric")} excluded${excludedSpan(event)}`,
+        body:
+          "A standing refusal: what it covered was deleted, and every import since has skipped it. " +
+          "That is why the number below does not come back on its own: remove the exclusion on the " +
+          "import page and import again, and whatever the export still holds returns.",
+      };
     case "note":
       return {
         title: event.label ?? "A note",
@@ -358,6 +371,19 @@ function describe(event: HistoryEvent): { title: string; body: string } {
           "gap rather than becoming a zero.",
       };
   }
+}
+
+/** excludedSpan reads the days an exclusion is *about*, which is not the day it was
+ *  decided (that is the event's own date, on the rail). An unbounded side is the
+ *  absence of a date rather than a date to print, and no bounds at all needs no
+ *  clause: "excluded" already says everything. */
+function excludedSpan(event: HistoryEvent): string {
+  const from = event.span_from;
+  const to = event.span_to;
+  if (!from && !to) return "";
+  if (!to) return `, from ${formatDay(from!)}`;
+  if (!from) return `, up to ${formatDay(to)}`;
+  return `, ${formatDayRange(from, to)}`;
 }
 
 function phaseTitle(event: HistoryEvent): string {
