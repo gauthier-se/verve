@@ -11,7 +11,7 @@ import { defaultChartType, metricLabel } from "@/lib/metrics";
 import { formatDay, formatDayRange, formatDuration, formatExact, formatSummaryValue } from "@/lib/format";
 import { RANGE_PRESETS, type RangeTokens } from "@/lib/time-range";
 import { cn } from "@/lib/utils";
-import type { Aggregation, Annotation, Metric, Series, TimeAxis } from "@/lib/types";
+import type { Aggregation, Annotation, Bucket, Metric, Series, TimeAxis } from "@/lib/types";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { CenteredSpinner } from "./spinner";
@@ -42,9 +42,18 @@ export function MetricPage() {
   const [showNotes, setShowNotes] = React.useState(true);
   const [hovered, setHovered] = React.useState<string | null>(null);
   const [noteOpen, setNoteOpen] = React.useState(false);
-  const query = useSeries({ metrics: [metric], range, bucket: null });
-  const notes = useAnnotations({ range, bucket: null, enabled: showNotes });
-  const axis = useTimeAxis({ range });
+  // The page's grain, chosen here rather than left to the server's span rule. A
+  // Metric page is read against the Data page's per-day figures and against its own
+  // history table, and an auto grain silently makes a "3m" chart weekly: a bar and a
+  // hover reading 70 000 steps where the row it was clicked from said 10 000, with
+  // nothing on the screen saying the two are counting different spans of time.
+  const [grain, setGrain] = React.useState<Bucket>("day");
+  const bucket = effectiveGrain(grain, preset);
+  // One bucket for the whole page: the chart, the notes drawn on it, the axis the
+  // stats are counted against, and the table underneath. They also share one fetch.
+  const query = useSeries({ metrics: [metric], range, bucket });
+  const notes = useAnnotations({ range, bucket, enabled: showNotes });
+  const axis = useTimeAxis({ range, bucket });
   const series = query.data?.series[0];
   const meta = catalog.map.get(metric);
 
@@ -87,6 +96,7 @@ export function MetricPage() {
             <StickyNote className="size-3.5" /> Add a note
           </Button>
           <NotesToggle on={showNotes} onToggle={() => setShowNotes((v) => !v)} />
+          <GrainPicker value={bucket} onChange={setGrain} preset={preset} />
           <RangePresets value={preset} onChange={setPreset} />
         </div>
       </header>
@@ -123,6 +133,7 @@ export function MetricPage() {
               unit={series?.unit ?? meta.unit}
               aggregation={series?.aggregation ?? meta.aggregation ?? ""}
               range={range}
+              bucket={bucket}
             />
           </>
         )}
@@ -164,6 +175,65 @@ function RangePresets({ value, onChange }: { value: Preset; onChange: (p: Preset
           {p.label}
         </button>
       ))}
+    </div>
+  );
+}
+
+/** GRAINS are the buckets a Metric page may be read at, finest first. */
+const GRAINS: { value: Bucket; label: string }[] = [
+  { value: "day", label: "Day" },
+  { value: "week", label: "Week" },
+  { value: "month", label: "Month" },
+];
+
+/** effectiveGrain is the chosen grain, clamped to what the preset's window can
+ *  actually be served at. "all" expands to a floor far earlier than any real history
+ *  (timeaxis), so a day or week bucket over it exceeds the engine's bucket cap and
+ *  would answer a chart with a validation error; that one preset reads monthly. */
+function effectiveGrain(grain: Bucket, preset: Preset): Bucket {
+  return preset === "all" && grain !== "month" ? "month" : grain;
+}
+
+/** GrainPicker chooses the bucket the whole page is read at — the chart, its hover,
+ *  the stats and the history table alike.
+ *
+ *  It sits beside the range because the two are one question ("how much time, cut how
+ *  finely"), and because the pair is what makes a figure legible: 70 000 steps is a
+ *  wrong number for a day and a right one for a week, and only this control says
+ *  which was asked for. The grains too coarse to matter are still offered; the ones
+ *  the window cannot serve are refused (see effectiveGrain). */
+function GrainPicker({
+  value,
+  onChange,
+  preset,
+}: {
+  value: Bucket;
+  onChange: (b: Bucket) => void;
+  preset: Preset;
+}) {
+  return (
+    <div className="flex items-center gap-0.5 rounded-md border p-0.5">
+      {GRAINS.map((g) => {
+        const unavailable = effectiveGrain(g.value, preset) !== g.value;
+        return (
+          <button
+            key={g.value}
+            type="button"
+            disabled={unavailable}
+            title={unavailable ? "The all range is only served in months" : `One point per ${g.value}`}
+            onClick={() => onChange(g.value)}
+            className={cn(
+              "rounded px-2 py-1 text-2xs transition-colors",
+              value === g.value
+                ? "bg-secondary font-medium text-secondary-foreground"
+                : "text-muted-foreground hover:text-foreground",
+              unavailable && "opacity-40 hover:text-muted-foreground",
+            )}
+          >
+            {g.label}
+          </button>
+        );
+      })}
     </div>
   );
 }

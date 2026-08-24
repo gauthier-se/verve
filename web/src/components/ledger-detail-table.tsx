@@ -12,31 +12,30 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { Meta, SectionTitle } from "./ui/figure";
 import { CenteredSpinner } from "./spinner";
 
-const BUCKETS: { value: Bucket; label: string }[] = [
-  { value: "day", label: "Day" },
-  { value: "week", label: "Week" },
-  { value: "month", label: "Month" },
-];
-
 type SortKey = "period" | "value";
 
 /** LedgerDetailTable is one Metric's Points as a chronological table (ADR 0021): the
- *  numbers behind its graph. A granularity toggle (day/week/month) refetches the
- *  Series; a per-row delta compares each Point to the previous one; header clicks sort;
- *  and Copy puts the visible table on the clipboard as TSV. It reuses GET /v1/series —
- *  the delta is a plain point-to-point read, not a re-aggregation (ADR 0012 holds). */
+ *  numbers behind its graph. A per-row delta compares each Point to the previous one;
+ *  header clicks sort; and Copy puts the visible table on the clipboard as TSV. It
+ *  reuses GET /v1/series — the delta is a plain point-to-point read, not a
+ *  re-aggregation (ADR 0012 holds).
+ *
+ *  The grain is the page's, not its own: the table reads at the bucket the chart above
+ *  it is drawn on, so one screen never states the same window in two sizes. It is also
+ *  why the two share a single fetch instead of asking for the Metric twice. */
 export function LedgerDetailTable({
   metric,
   unit,
   aggregation,
   range,
+  bucket,
 }: {
   metric: string;
   unit: string;
   aggregation: Aggregation | "";
   range: RangeTokens;
+  bucket: Bucket;
 }) {
-  const [bucket, setBucket] = React.useState<Bucket>("day");
   const [sort, setSort] = React.useState<{ key: SortKey; desc: boolean }>({ key: "period", desc: true });
   const [copied, setCopied] = React.useState(false);
 
@@ -100,23 +99,6 @@ export function LedgerDetailTable({
           </Meta>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-0.5 rounded-md border p-0.5">
-            {BUCKETS.map((b) => (
-              <button
-                key={b.value}
-                type="button"
-                onClick={() => setBucket(b.value)}
-                className={cn(
-                  "rounded px-2 py-1 text-2xs transition-colors",
-                  bucket === b.value
-                    ? "bg-secondary font-medium text-secondary-foreground"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {b.label}
-              </button>
-            ))}
-          </div>
           <Button
             variant="outline"
             size="sm"
