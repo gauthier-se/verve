@@ -454,8 +454,15 @@ _Avoid_: Raw table, Dead letter, Reject pile.
 **Source**:
 The origin that produced a piece of data — e.g. "Apple Watch", "Yazio",
 "Nike Run Club". Apple Health is itself only an aggregator of upstream
-sources, never the canonical owner. Every family carries its Source.
+sources, never the canonical owner, and so is Google Health: its Takeout mostly
+reports Sources like "Apple Health Health Kit", which is one aggregator's copy of
+another's row. A Source is therefore an **application as often as a device**, and
+what an export calls it is what Verve stores, verbatim: a row Google mirrored and
+a row Apple recorded are different provenance claims, and normalizing one into the
+other would make them indistinguishable in storage forever. Every family carries
+its Source.
 _Avoid_: Provider, Device, Origin (Device is narrower — the physical hardware).
+
 
 **Manual entry**:
 A Measurement the Account typed rather than a Connector imported, carrying the
@@ -530,10 +537,17 @@ _Avoid_: Fingerprint, Dedup key, Hash.
 A per-Metric ordering of Sources used to resolve overlap at read time. Verve
 keeps every Measurement from every Source (non-destructive); when a graph needs
 one series, it picks values from the highest-priority Source that has data —
-e.g. Watch over iPhone for `steps`, to avoid double-counting. Distinct from
-*merging* Sources (combining complementary coverage), which is a future
-refinement.
+e.g. Watch over iPhone for `steps`, to avoid double-counting. The election runs
+**per day**, not over the whole range: a Source wins the days it recorded, so an
+export that covers part of a history cannot take the years it never saw (ADR
+0034). That is the same grain the **Manual overlay** replaces at and the same the
+**Night** resolves at, and it is the grain at which the evidence actually changes;
+resolving at the caller's bucket instead would let a monthly chart, a daily chart
+and a **Panel summary** each read a different Source. Distinct from *merging*
+Sources (combining complementary coverage), which is a future refinement: a day
+both Sources cover still elects one of them.
 _Avoid_: Deduplication (too narrow — it's resolution, not row removal), Ranking.
+
 
 **Account**:
 A person who logs into Verve and owns their own data. Every piece of data
@@ -556,9 +570,13 @@ broader flow), Setup.
 
 **Connector**:
 A component that reads data from an external system and maps it into the
-canonical families — e.g. the Apple Health export importer. Compiled into the
-binary and registered in a registry; the community contributes new ones by PR.
-Its **mapping** (source type → Catalog Metric + unit conversion) is declarative
-data, so a Connector's code is mostly "how to read the source", not "what maps
-to what".
+canonical families, e.g. the Apple Health export importer, or the Google Health
+one. Compiled into the binary and registered in a registry; the community
+contributes new ones by PR. Its **mapping** (source type → Catalog Metric + unit
+conversion) is declarative data, so a Connector's code is mostly "how to read the
+source", not "what maps to what". What it reads is a **file the owner exports**
+and never a vendor API, and which Connector reads a given file is decided by
+looking **inside** it rather than at its extension, since every export so far is a
+`.zip` (ADR 0035).
 _Avoid_: Importer, Adapter, Plugin, Integration.
+

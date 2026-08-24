@@ -273,16 +273,15 @@ func resolveNights(slug string, rows []sleepRow) (map[string]night, map[string]s
 }
 
 // reportedSleepSource is the one Source name the Series carries when resolution ran
-// per Night and several Sources may have won one. It ranks the winners by the same
-// priority the per-Night election used, so the reported name is the dominant evidence
-// rather than whichever night happened to be last.
+// per Night and several Sources may have won one. It is dominantSource over the
+// Nights' winners: the same rule the per-day election reports by (ADR 0034), since a
+// Night is what day grain means for a span that crosses midnight.
 func reportedSleepSource(slug string, winners map[string]string) string {
 	distinct := map[string]bool{}
 	for _, s := range winners {
 		distinct[s] = true
 	}
-	source, _ := catalog.ResolveSource(slug, sortedKeys(distinct))
-	return source
+	return dominantSource(slug, sortedKeys(distinct))
 }
 
 // foldNights folds the resolved Nights into the requested bucket and returns the

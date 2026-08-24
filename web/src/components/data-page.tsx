@@ -298,7 +298,7 @@ function NoMatches({ query, onClear }: { query: string; onClear: () => void }) {
 function EmptyState() {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-      <p className="text-sm text-muted-foreground">No data yet — import your Apple Health export to fill the Ledger.</p>
+      <p className="text-sm text-muted-foreground">No data yet: import a health export to fill the Ledger.</p>
       <Button asChild>
         <Link to="/import">
           <Download className="size-4" /> Import data

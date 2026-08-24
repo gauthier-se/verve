@@ -13,7 +13,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gauthier-se/verve/internal/connector/applehealth"
+	"github.com/gauthier-se/verve/internal/connector"
+	"github.com/gauthier-se/verve/internal/connector/registry"
 	"github.com/gauthier-se/verve/internal/data"
 )
 
@@ -49,6 +50,10 @@ const (
 // the polling status handler, so they are atomic; the settled fields sit under mu.
 type importJob struct {
 	sourceFile string // the user's uploaded filename, for the report
+	// connectorLabel is the Connector that read it, as a person names it. It is set
+	// when the archive is recognized, which is after the upload: a job that fails
+	// before then has no source to name, and says so by leaving this empty.
+	connectorLabel string
 
 	uploaded    atomic.Int64
 	uploadTotal int64
@@ -58,7 +63,7 @@ type importJob struct {
 	mu     sync.Mutex
 	state  importState
 	phase  importPhase
-	report *applehealth.Report
+	report *connector.Report
 	errMsg string
 }
 
@@ -68,7 +73,7 @@ type importJob struct {
 // the artifacts dir, and the size cap.
 type importRegistry struct {
 	logger       *slog.Logger
-	store        applehealth.Store
+	store        connector.Store
 	exclusions   data.ExclusionModel
 	artifactsDir string
 	tmpDir       string
@@ -125,8 +130,9 @@ func (reg *importRegistry) job(accountID int64) *importJob {
 	return reg.jobs[accountID]
 }
 
-// tempPath is a fresh ".zip" path under the temp dir; the extension makes
-// applehealth.Import open it as an archive regardless of the uploaded name.
+// tempPath is a fresh ".zip" path under the temp dir. The extension is a hint for
+// anyone looking in that directory and nothing more: which Connector reads the file
+// is decided by looking inside it (ADR 0009).
 func (reg *importRegistry) tempPath(accountID int64) string {
 	return filepath.Join(reg.tmpDir, fmt.Sprintf("import-%d-%d.zip", accountID, time.Now().UnixNano()))
 }
@@ -169,7 +175,19 @@ func (reg *importRegistry) run(job *importJob, accountID int64, tmpPath string) 
 		return
 	}
 
-	report, err := applehealth.Import(ctx, reg.store, accountID, tmpPath, applehealth.Options{
+	// Which Connector reads this upload is decided by the file itself (ADR 0009):
+	// both supported exports are .zip, so the extension settles nothing and the
+	// owner is never asked a question their archive already answers.
+	conn, err := registry.For(tmpPath)
+	if err != nil {
+		reg.logger.Info("unrecognized export", "account", accountID, "err", err)
+		job.fail(humanImportError(err))
+		return
+	}
+
+	job.setConnector(conn.Label())
+
+	report, err := conn.Import(ctx, reg.store, accountID, tmpPath, connector.Options{
 		ArtifactsDir: reg.artifactsDir,
 		Progress:     progress,
 		Exclusions:   exclusions,
@@ -186,6 +204,12 @@ func (job *importJob) active() bool {
 	job.mu.Lock()
 	defer job.mu.Unlock()
 	return job.state == statePending || job.state == stateRunning
+}
+
+func (job *importJob) setConnector(label string) {
+	job.mu.Lock()
+	job.connectorLabel = label
+	job.mu.Unlock()
 }
 
 func (job *importJob) setRunning() {
@@ -208,7 +232,7 @@ func (job *importJob) fail(msg string) {
 	job.mu.Unlock()
 }
 
-func (job *importJob) finish(report applehealth.Report) {
+func (job *importJob) finish(report connector.Report) {
 	job.mu.Lock()
 	job.state = stateDone
 	job.report = &report
@@ -232,6 +256,10 @@ func (c countingWriter) Write(p []byte) (int, error) {
 // non-developer (ADR 0016). The underlying errors are wrapped strings from the
 // Connector; matching their stable phrasing keeps the mapping in one place.
 func humanImportError(err error) string {
+	if errors.Is(err, connector.ErrUnknownExport) {
+		return "no connector recognizes this archive. Verve reads " +
+			strings.Join(registry.Labels(), " and ") + " exports."
+	}
 	switch msg := err.Error(); {
 	case strings.Contains(msg, "no export.xml"):
 		return "no export.xml inside the archive — is this an Apple Health export?"

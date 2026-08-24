@@ -23,12 +23,29 @@ const SourceManual = "Manual"
 // vendor-supplied names.
 // Only Metrics prone to harmful overlap need an entry; the rest fall back to
 // alphabetical order (ResolveSource).
+// A Source ending in "Health Kit" is Google Health's copy of a HealthKit row: the
+// same measurement, one aggregator further from the device that took it. It ranks
+// behind anything recorded natively and ahead of nothing. "Apple Health Health Kit"
+// is the HealthKit aggregate, whatever device produced it, and "Phone Health Kit"
+// is explicitly the phone, so the aggregate is matched by its own pattern first
+// rather than left to tie and break alphabetically. Names come from a reference
+// Takeout; a Source matching none of these still ranks last, as it always did.
 var sourcePriority = map[string][]string{
 	// Watch and iPhone both count steps when worn together, double-counting the
 	// total; prefer the Watch, which is worn more continuously.
-	"steps":                    {"watch", "iphone"},
+	"steps":                    {"watch", "iphone", "apple health", "health kit"},
 	"distance_walking_running": {"watch", "iphone"},
-	"flights_climbed":          {"watch", "iphone"},
+	// Google reports one undifferentiated distance, so its Sources are ranked here
+	// rather than under the per-activity Metrics Apple splits into.
+	"distance":        {"watch", "iphone", "apple health", "health kit"},
+	"flights_climbed": {"watch", "iphone"},
+	// Heart rate had no entry until a second Source existed, which meant every
+	// Source tied and the winner was decided by the alphabet: "Apple Health Health
+	// Kit" sorts before "Apple Watch …", so a mirror covering months could take a
+	// window covering years. Day-grain resolution (ADR 0034) stops that from
+	// blanking anything; this decides the days both of them cover.
+	"heart_rate":         {"watch", "apple health", "health kit"},
+	"resting_heart_rate": {"watch", "apple health", "health kit"},
 	// Sleep resolves per Night rather than per range (ADR 0027), so this ordering
 	// breaks a tie between two Sources that both staged the *same* night: the Watch
 	// is the one actually on the wrist. The nights it missed still come from the

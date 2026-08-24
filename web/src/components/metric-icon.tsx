@@ -32,6 +32,7 @@ const EXPLICIT: Record<string, LucideIcon> = {
   basal_energy: Flame,
   dietary_energy: Flame,
   total_energy_expenditure: Flame,
+  total_energy_burned: Flame,
   calorie_balance: Scale,
   // Body
   body_mass: Scale,
@@ -42,6 +43,7 @@ const EXPLICIT: Record<string, LucideIcon> = {
   // Activity
   steps: Footprints,
   distance_walking_running: Footprints,
+  distance: Footprints,
   six_minute_walk_test_distance: Footprints,
   distance_cycling: Bike,
   flights_climbed: Mountain,

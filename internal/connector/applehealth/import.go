@@ -19,108 +19,35 @@ import (
 	"time"
 
 	"github.com/gauthier-se/verve/internal/catalog"
+	"github.com/gauthier-se/verve/internal/connector"
 	"github.com/gauthier-se/verve/internal/data"
 	"github.com/gauthier-se/verve/internal/units"
 )
 
-// batchSize is how many rows accumulate before a flush. It bounds memory and
-// keeps each write transaction (and the WAL) small during a large import.
-const batchSize = 5000
-
 // appleTimeLayout is Apple Health's date format, e.g. "2024-11-25 21:13:22 +0200".
 const appleTimeLayout = "2006-01-02 15:04:05 -0700"
-
-// Store is the subset of the data layer the Connector writes through. Rows are
-// deduplicated per account by content key; batch inserts return a mask of which
-// rows were newly added, and the single-row session/route inserts return whether
-// the row was new (see internal/data).
-type Store interface {
-	InsertBatch(ctx context.Context, ms []data.Measurement) ([]bool, error)
-	InsertUnmappedBatch(ctx context.Context, us []data.UnmappedRecord) ([]bool, error)
-	InsertStateBatch(ctx context.Context, ss []data.State) ([]bool, error)
-	InsertSession(ctx context.Context, s *data.Session) (bool, error)
-	InsertSessionStats(ctx context.Context, sessionID int64, stats []data.SessionStat) error
-	InsertRoute(ctx context.Context, r *data.Route) (bool, error)
-	RecordImport(ctx context.Context, imp *data.Import) error
-}
-
-// Tally is one bucket's counts within a Report, used per Metric, per State kind,
-// and per activity type. Excluded is scalar-only: nothing but a Measurement can be
-// excluded yet (ADR 0033), and the field stays zero on a State or activity tally.
-type Tally struct {
-	Added    int
-	Skipped  int
-	Excluded int
-}
-
-// Report is the outcome of one import, suitable for a readable CLI summary.
-type Report struct {
-	SourceFile string
-	Added      int
-	Skipped    int
-	Unmapped   int // newly kept in the Unmapped bin
-	// Excluded is how many Records the Account's Exclusions refused (ADR 0033). It
-	// is reported rather than absorbed silently: an import that drops data without
-	// saying how much is worse than the delete that did not stick.
-	Excluded      int
-	PerMetric     map[string]Tally
-	UnmappedTypes map[string]int // raw source type → count newly kept
-
-	// Non-scalar families.
-	StatesAdded     int
-	StatesSkipped   int
-	SessionsAdded   int
-	SessionsSkipped int
-	RoutesAdded     int
-	RoutesSkipped   int
-	PerState        map[string]Tally // State kind → tally
-	PerActivity     map[string]Tally // Session activity type → tally
-}
-
-// Progress reports decode progress during an import: decoded is how many bytes of
-// the export.xml entry have been read, total its declared uncompressed size. It is
-// called frequently, so an implementation must be cheap and non-blocking.
-type Progress func(decoded, total int64)
-
-// Options are the per-run inputs of an import beyond the source itself. They are
-// one struct rather than a growing argument list because the two call sites differ
-// only by which of these they set, and a second entry point that existed solely to
-// take one more parameter is what this replaces.
-type Options struct {
-	// ArtifactsDir is where GPX route artifacts are copied (ADR 0004).
-	ArtifactsDir string
-	// Progress, when non-nil, is called as the export.xml entry is read, against its
-	// declared uncompressed size: the web import's honest second phase, at no cost
-	// to the CLI path (which leaves it nil). Only the ".zip" path reports progress;
-	// a bare XML path has no declared size to report against.
-	Progress Progress
-	// Exclusions are the Metrics and spans this Account refused (ADR 0033). A
-	// matching Record is dropped and counted rather than written. The zero value
-	// excludes nothing, which is the common case and costs one map probe per Record.
-	Exclusions data.ExclusionSet
-}
 
 // Import reads the Apple Health export at path and writes it to store, scoped to
 // accountID. A ".zip" path is opened as an archive and its export.xml entry
 // streamed, with routes resolved to entries in the same archive; any other path is
 // streamed directly as XML, with routes resolved as files beside it.
-func Import(ctx context.Context, store Store, accountID int64, path string, opts Options) (Report, error) {
+func Import(ctx context.Context, store connector.Store, accountID int64, path string, opts connector.Options) (connector.Report, error) {
 	sourceFile := filepath.Base(path)
 
 	if strings.EqualFold(filepath.Ext(path), ".zip") {
 		zr, err := zip.OpenReader(path)
 		if err != nil {
-			return Report{}, fmt.Errorf("applehealth: open zip %s: %w", path, err)
+			return connector.Report{}, fmt.Errorf("applehealth: open zip %s: %w", path, err)
 		}
 		defer zr.Close()
 
 		entry := findExportXML(&zr.Reader)
 		if entry == nil {
-			return Report{}, fmt.Errorf("applehealth: no export.xml in %s", path)
+			return connector.Report{}, fmt.Errorf("applehealth: no export.xml in %s", path)
 		}
 		rc, err := entry.Open()
 		if err != nil {
-			return Report{}, fmt.Errorf("applehealth: open %s in zip: %w", entry.Name, err)
+			return connector.Report{}, fmt.Errorf("applehealth: open %s in zip: %w", entry.Name, err)
 		}
 		defer rc.Close()
 
@@ -133,7 +60,7 @@ func Import(ctx context.Context, store Store, accountID int64, path string, opts
 
 	f, err := os.Open(path)
 	if err != nil {
-		return Report{}, fmt.Errorf("applehealth: open %s: %w", path, err)
+		return connector.Report{}, fmt.Errorf("applehealth: open %s: %w", path, err)
 	}
 	defer f.Close()
 	return importStream(ctx, store, accountID, sourceFile, f, opts, dirRouteOpener{filepath.Dir(path)})
@@ -145,7 +72,7 @@ type countingReader struct {
 	r        io.Reader
 	n        int64
 	total    int64
-	progress Progress
+	progress connector.Progress
 }
 
 func (c *countingReader) Read(p []byte) (int, error) {
@@ -170,21 +97,22 @@ func findExportXML(zr *zip.Reader) *zip.File {
 // to a Measurement, State, or the Unmapped bin and each Workout to a Session with
 // its routes, flushing in bounded batches. Split from Import so tests can feed an
 // in-memory reader and a fake route opener.
-func importStream(ctx context.Context, store Store, accountID int64, sourceFile string, r io.Reader, opts Options, opener routeOpener) (Report, error) {
-	report := Report{
+func importStream(ctx context.Context, store connector.Store, accountID int64, sourceFile string, r io.Reader, opts connector.Options, opener routeOpener) (connector.Report, error) {
+	report := connector.Report{
+		Connector:     connectorName,
 		SourceFile:    sourceFile,
-		PerMetric:     make(map[string]Tally),
+		PerMetric:     make(map[string]connector.Tally),
 		UnmappedTypes: make(map[string]int),
-		PerState:      make(map[string]Tally),
-		PerActivity:   make(map[string]Tally),
+		PerState:      make(map[string]connector.Tally),
+		PerActivity:   make(map[string]connector.Tally),
 	}
 
 	dec := xml.NewDecoder(r)
 	dec.Strict = false // Apple's export carries a DTD and locale text; be lenient.
 
-	measurements := make([]data.Measurement, 0, batchSize)
-	unmapped := make([]data.UnmappedRecord, 0, batchSize)
-	states := make([]data.State, 0, batchSize)
+	measurements := make([]data.Measurement, 0, connector.BatchSize)
+	unmapped := make([]data.UnmappedRecord, 0, connector.BatchSize)
+	states := make([]data.State, 0, connector.BatchSize)
 
 	// stack tracks nesting so we process only top-level Records (children of
 	// HealthData); nested ones are duplicated at top level per Apple's note. wb is
@@ -314,14 +242,14 @@ func importStream(ctx context.Context, store Store, accountID int64, sourceFile 
 
 	for {
 		if err := ctx.Err(); err != nil {
-			return Report{}, err
+			return connector.Report{}, err
 		}
 		tok, err := dec.Token()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			return Report{}, fmt.Errorf("applehealth: parse %s: %w", sourceFile, err)
+			return connector.Report{}, fmt.Errorf("applehealth: parse %s: %w", sourceFile, err)
 		}
 
 		switch t := tok.(type) {
@@ -345,9 +273,9 @@ func importStream(ctx context.Context, store Store, accountID int64, sourceFile 
 				attrs := parseAttrs(t.Attr)
 				if kind, ok := stateKind(attrs.typ); ok {
 					states = append(states, buildState(accountID, kind, attrs))
-					if len(states) >= batchSize {
+					if len(states) >= connector.BatchSize {
 						if err := flushStates(); err != nil {
-							return Report{}, err
+							return connector.Report{}, err
 						}
 					}
 					continue
@@ -369,16 +297,16 @@ func importStream(ctx context.Context, store Store, accountID int64, sourceFile 
 						continue
 					}
 					measurements = append(measurements, m)
-					if len(measurements) >= batchSize {
+					if len(measurements) >= connector.BatchSize {
 						if err := flushMeasurements(); err != nil {
-							return Report{}, err
+							return connector.Report{}, err
 						}
 					}
 				} else {
 					unmapped = append(unmapped, u)
-					if len(unmapped) >= batchSize {
+					if len(unmapped) >= connector.BatchSize {
 						if err := flushUnmapped(); err != nil {
-							return Report{}, err
+							return connector.Report{}, err
 						}
 					}
 				}
@@ -386,7 +314,7 @@ func importStream(ctx context.Context, store Store, accountID int64, sourceFile 
 		case xml.EndElement:
 			if t.Name.Local == "Workout" && wb != nil {
 				if err := finishWorkout(); err != nil {
-					return Report{}, err
+					return connector.Report{}, err
 				}
 				wb = nil
 			}
@@ -397,24 +325,25 @@ func importStream(ctx context.Context, store Store, accountID int64, sourceFile 
 	}
 
 	if err := flushMeasurements(); err != nil {
-		return Report{}, err
+		return connector.Report{}, err
 	}
 	if err := flushUnmapped(); err != nil {
-		return Report{}, err
+		return connector.Report{}, err
 	}
 	if err := flushStates(); err != nil {
-		return Report{}, err
+		return connector.Report{}, err
 	}
 
 	imp := &data.Import{
 		AccountID:     accountID,
+		Connector:     connectorName,
 		SourceFile:    sourceFile,
 		AddedCount:    report.Added,
 		SkippedCount:  report.Skipped,
 		UnmappedCount: report.Unmapped,
 	}
 	if err := store.RecordImport(ctx, imp); err != nil {
-		return Report{}, fmt.Errorf("applehealth: record import: %w", err)
+		return connector.Report{}, fmt.Errorf("applehealth: record import: %w", err)
 	}
 	return report, nil
 }

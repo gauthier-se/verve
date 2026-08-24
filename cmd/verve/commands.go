@@ -8,9 +8,11 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strings"
 
 	"github.com/gauthier-se/verve/internal/auth"
-	"github.com/gauthier-se/verve/internal/connector/applehealth"
+	"github.com/gauthier-se/verve/internal/connector"
+	"github.com/gauthier-se/verve/internal/connector/registry"
 	"github.com/gauthier-se/verve/internal/data"
 )
 
@@ -23,7 +25,8 @@ Commands:
   migrate                          apply database migrations (auto-applied on startup)
   account create --email=EMAIL     create an account (prompts for a password)
   account passwd --email=EMAIL     set an account's password
-  import --account=EMAIL FILE      import an Apple Health export (.zip or export.xml)
+  import --account=EMAIL FILE      import a health export (Apple Health .zip/export.xml,
+                                   Google Health Takeout .zip)
   serve [--addr=:8080] [--secure-cookie]
                                    run the JSON API server
   version                          print the build version
@@ -148,7 +151,7 @@ func (app *application) accountPasswd(ctx context.Context, args []string) error 
 	return nil
 }
 
-// importCommand runs the Apple Health Connector over an export file, scoped to
+// importCommand runs whichever Connector recognizes the export file, scoped to
 // the account named by --account, and prints a readable report to stdout.
 func (app *application) importCommand(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("import", flag.ContinueOnError)
@@ -179,10 +182,18 @@ func (app *application) importCommand(ctx context.Context, args []string) error 
 		return err
 	}
 
+	// Which Connector reads the file is the file's business, not a flag's (ADR
+	// 0009): every supported export is recognized by its content.
+	conn, err := registry.For(path)
+	if err != nil {
+		return fmt.Errorf("import: %s is not an export Verve reads (%s)",
+			path, strings.Join(registry.Labels(), ", "))
+	}
+
 	// The artifacts dir (where GPX routes are copied) is created at startup in
 	// run(), so it already exists here.
-	app.logger.Info("import started", "account", acc.Email, "file", path)
-	report, err := applehealth.Import(ctx, app.models.ImportStore(), acc.ID, path, applehealth.Options{
+	app.logger.Info("import started", "account", acc.Email, "file", path, "connector", conn.Name())
+	report, err := conn.Import(ctx, app.models.ImportStore(), acc.ID, path, connector.Options{
 		ArtifactsDir: app.config.artifactsDir(),
 		Exclusions:   exclusions,
 	})
@@ -196,8 +207,8 @@ func (app *application) importCommand(ctx context.Context, args []string) error 
 // renderReport writes a human-readable import summary: one line per Metric with
 // its added/skipped counts, the Unmapped bin broken down by source type, and a
 // grand total.
-func renderReport(w io.Writer, r applehealth.Report) {
-	fmt.Fprintf(w, "\nImported %s\n\n", r.SourceFile)
+func renderReport(w io.Writer, r connector.Report) {
+	fmt.Fprintf(w, "\nImported %s (%s)\n\n", r.SourceFile, r.Connector)
 
 	slugs := make([]string, 0, len(r.PerMetric))
 	for slug := range r.PerMetric {
@@ -234,6 +245,27 @@ func renderReport(w io.Writer, r applehealth.Report) {
 		}
 	}
 
+	// What the archive held and Verve did not read at all. It is not the Unmapped
+	// bin: the bin keeps source data the Catalog has no Metric for, whereas these are
+	// settings, receipts and READMEs, which are not health records and not Verve's to
+	// They are still named, because an import that drops something silently is the
+	// failure mode this report exists to avoid.
+	if len(r.Ignored) > 0 {
+		fmt.Fprintf(w, "\n  Ignored (not health data):\n")
+		dirs := make([]string, 0, len(r.Ignored))
+		for d := range r.Ignored {
+			dirs = append(dirs, d)
+		}
+		sort.Strings(dirs)
+		for _, d := range dirs {
+			noun := "files"
+			if r.Ignored[d] == 1 {
+				noun = "file"
+			}
+			fmt.Fprintf(w, "    %-52s %8d %s\n", d, r.Ignored[d], noun)
+		}
+	}
+
 	fmt.Fprintf(w, "\n  Total: %d measurements, %d states, %d sessions, %d routes added",
 		r.Added, r.StatesAdded, r.SessionsAdded, r.RoutesAdded)
 	fmt.Fprintf(w, " (%d/%d/%d/%d skipped, %d unmapped)\n",
@@ -246,7 +278,7 @@ func renderReport(w io.Writer, r applehealth.Report) {
 
 // renderFamily prints one non-scalar family's per-bucket added/skipped tallies
 // (States by kind, Sessions by activity type), sorted for a stable report.
-func renderFamily(w io.Writer, title string, per map[string]applehealth.Tally) {
+func renderFamily(w io.Writer, title string, per map[string]connector.Tally) {
 	if len(per) == 0 {
 		return
 	}

@@ -34,19 +34,27 @@ Everything below is merged into `main`, tested, and usable today.
 | Cross-metric | Every pinned metric paired against every other over one window, ranked, with a lag — strength and direction, never a cause |
 | History | The whole span in one band, phases behind it and gaps drawn as gaps, over a ledger of every import, note, phase and source |
 | Exclusions | A metric, or a stretch of one, refused at every import and purged from what is stored: one rule that deletes and remembers |
+| Google Health | A second connector, reading a Google Takeout: the connector contract lifted out of Apple's package, a registry that recognizes an export by its content, and source resolution moved to day grain so one export cannot take the years another recorded |
 
 ## Next
 
 Verve is on `0.x`. The leading zero is about the API and the interface, which
 are still moving, and not about the data, which a tag already protects: see
 [ADR 0029](./docs/adr/0029-a-0x-tag-promises-the-data-not-the-interface.md).
-Features land before `1.0`, and the criterion for dropping the zero is a second
+Features land before `1.0`, and the criterion for dropping the zero was a second
 connector having pushed on the Catalog without breaking it, not a feature count.
 
-Cross-metric and History have landed, which closes the reading side of the
-promise: what you have, what it does over years, and what moves with what.
-Nothing is committed in their place yet. What comes next is a choice among the
-entries below, and the one that moves the leading zero is a second connector.
+That has now happened. Google Health pushed exactly where a second source was
+always going to: it reports one undifferentiated distance where Apple splits it by
+activity, and a total energy figure that must not be confused with the one Verve
+derives. Both became their own Metric rather than a guess written into stored
+rows, and the Catalog held. It also found the read path electing one Source for a
+whole window, which a second export turns from a simplification into a way to lose
+years of a curve: hence day-grain resolution, and hence the criterion being about
+a second connector rather than about a count.
+
+Nothing is committed next yet. What comes after is a choice among the entries
+below.
 
 ## Later
 
@@ -70,10 +78,12 @@ entries below, and the one that moves the leading zero is a second connector.
   with the hypnogram above: one intra-day axis, or neither.
 * **Merging sources** rather than only ranking them, for the case where two
   devices have complementary coverage instead of overlapping coverage.
-* **More connectors.** The connector interface and its declarative mapping
-  exist precisely so that a second source is a contribution rather than a
-  rewrite. Garmin, Withings, Health Connect and the rest are welcome as pull
-  requests.
+* **More connectors.** The connector interface and its declarative mapping now
+  exist as code rather than as a plan, so a third source is a package plus one
+  line in the registry. Garmin, Withings and the rest are welcome as pull
+  requests. **Health Connect** is the interesting one: Android's on-device store
+  exports its own database, which is the only path for someone whose history
+  lives on a phone and in no account anywhere.
 * **Forward-auth SSO.** The auth middleware was kept extensible for it.
 * **Invitations**, if closed signup plus CLI account creation turns out to be
   too sharp an edge for households.

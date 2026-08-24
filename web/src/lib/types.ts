@@ -113,6 +113,10 @@ export interface Point {
 
 /** ImportReport is the compact outcome of a finished web import (ADR 0016). */
 export interface ImportReport {
+  /** connector is the source that was read, as a person names it ("Apple Health").
+   *  Two exports look alike on disk (both are a .zip), so the report says which one
+   *  it turned out to be. */
+  connector: string;
   source_file: string;
   added: number;
   skipped: number;

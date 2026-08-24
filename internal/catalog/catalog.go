@@ -64,6 +64,13 @@ func buildMetrics() map[string]Metric {
 		// --- Energy ---
 		{"active_energy", "kcal", Sum},
 		{"basal_energy", "kcal", Sum},
+		// What a source reports as the whole of what a body spent, active and basal
+		// together. Deliberately *not* total_energy_expenditure, the derived Metric
+		// Verve computes from the two operands (ADR 0014): the two routinely
+		// disagree, and folding them into one slug would make the disagreement
+		// invisible: the same reason basal_energy is kept apart from the Basal
+		// estimate. Never put both on one Panel expecting a total.
+		{"total_energy_burned", "kcal", Sum},
 
 		// --- Body ---
 		{"body_mass", "kg", Latest},
@@ -76,6 +83,12 @@ func buildMetrics() map[string]Metric {
 		{"steps", "count", Sum},
 		{"distance_walking_running", "km", Sum},
 		{"distance_cycling", "km", Sum},
+		// Distance with no activity attached, because that is how Google Health
+		// reports it: one series in metres, with the activity (if there was one)
+		// living on a workout somewhere else entirely. Mapping it onto
+		// distance_walking_running would write a guess into stored data, and the
+		// guess is wrong for every ride.
+		{"distance", "km", Sum},
 		{"flights_climbed", "count", Sum},
 		{"physical_effort", "kcal/hr·kg", Average},
 		{"apple_exercise_time", "min", Sum},

@@ -231,7 +231,7 @@ function ImportCta() {
       <div>
         <p className="text-heading font-medium">No data yet</p>
         <p className="text-xs text-muted-foreground">
-          Import your Apple Health export to fill these panels.
+          Import a health export to fill these panels.
         </p>
       </div>
       <Button asChild size="sm">

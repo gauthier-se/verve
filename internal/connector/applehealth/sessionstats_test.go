@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gauthier-se/verve/internal/connector"
 	"github.com/gauthier-se/verve/internal/data"
 )
 
@@ -55,7 +56,7 @@ func TestWorkoutStatisticsAreKeptWhole(t *testing.T) {
 	store, db, acc := openStore(t)
 	ctx := context.Background()
 
-	if _, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(statsXML), Options{ArtifactsDir: t.TempDir()}, fakeOpener{}); err != nil {
+	if _, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(statsXML), connector.Options{ArtifactsDir: t.TempDir()}, fakeOpener{}); err != nil {
 		t.Fatalf("importStream: %v", err)
 	}
 
@@ -92,7 +93,7 @@ func TestWorkoutStatisticsWithoutSum(t *testing.T) {
 	store, db, acc := openStore(t)
 	ctx := context.Background()
 
-	if _, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(statsXML), Options{ArtifactsDir: t.TempDir()}, fakeOpener{}); err != nil {
+	if _, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(statsXML), connector.Options{ArtifactsDir: t.TempDir()}, fakeOpener{}); err != nil {
 		t.Fatalf("importStream: %v", err)
 	}
 
@@ -121,7 +122,7 @@ func TestPromotedColumnsUseTheirOwnUnit(t *testing.T) {
 	store, db, acc := openStore(t)
 	ctx := context.Background()
 
-	if _, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(swimXML), Options{ArtifactsDir: t.TempDir()}, fakeOpener{}); err != nil {
+	if _, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(swimXML), connector.Options{ArtifactsDir: t.TempDir()}, fakeOpener{}); err != nil {
 		t.Fatalf("importStream: %v", err)
 	}
 
@@ -155,7 +156,7 @@ func TestReimportConverges(t *testing.T) {
  <Workout workoutActivityType="HKWorkoutActivityTypeRunning" duration="30" durationUnit="min" sourceName="Apple Watch" startDate="2024-05-01 06:00:00 +0000" endDate="2024-05-01 06:30:00 +0000">
  </Workout>
 </HealthData>`
-	if _, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(bare), Options{ArtifactsDir: t.TempDir()}, fakeOpener{}); err != nil {
+	if _, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(bare), connector.Options{ArtifactsDir: t.TempDir()}, fakeOpener{}); err != nil {
 		t.Fatalf("first import: %v", err)
 	}
 	if got := len(readStats(t, db, acc)); got != 0 {
@@ -163,7 +164,7 @@ func TestReimportConverges(t *testing.T) {
 	}
 
 	// Second import: the same workout, now carrying its statistics.
-	report, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(statsXML), Options{ArtifactsDir: t.TempDir()}, fakeOpener{})
+	report, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(statsXML), connector.Options{ArtifactsDir: t.TempDir()}, fakeOpener{})
 	if err != nil {
 		t.Fatalf("second import: %v", err)
 	}
@@ -191,12 +192,12 @@ func TestReimportCorrectsAValue(t *testing.T) {
 	store, db, acc := openStore(t)
 	ctx := context.Background()
 
-	if _, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(statsXML), Options{ArtifactsDir: t.TempDir()}, fakeOpener{}); err != nil {
+	if _, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(statsXML), connector.Options{ArtifactsDir: t.TempDir()}, fakeOpener{}); err != nil {
 		t.Fatalf("first import: %v", err)
 	}
 
 	corrected := strings.Replace(statsXML, `maximum="178"`, `maximum="181"`, 1)
-	if _, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(corrected), Options{ArtifactsDir: t.TempDir()}, fakeOpener{}); err != nil {
+	if _, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(corrected), connector.Options{ArtifactsDir: t.TempDir()}, fakeOpener{}); err != nil {
 		t.Fatalf("second import: %v", err)
 	}
 
@@ -215,7 +216,7 @@ func TestSessionStatsCascade(t *testing.T) {
 	store, db, acc := openStore(t)
 	ctx := context.Background()
 
-	if _, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(statsXML), Options{ArtifactsDir: t.TempDir()}, fakeOpener{}); err != nil {
+	if _, err := importStream(ctx, store, acc, "export.xml", strings.NewReader(statsXML), connector.Options{ArtifactsDir: t.TempDir()}, fakeOpener{}); err != nil {
 		t.Fatalf("importStream: %v", err)
 	}
 	if _, err := db.ExecContext(ctx, `DELETE FROM sessions WHERE account_id = ?`, acc); err != nil {

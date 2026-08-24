@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gauthier-se/verve/internal/catalog"
+	"github.com/gauthier-se/verve/internal/connector/registry"
 	"github.com/gauthier-se/verve/internal/data"
 	"github.com/gauthier-se/verve/internal/query"
 )
@@ -320,7 +321,12 @@ func (s *Server) historyEvents(ctx context.Context, accountID int64, span data.S
 			day = t.UTC().Format(dayLayout)
 		}
 		events = append(events, historyEventView{
-			Kind: eventImport, Date: day, Label: imp.SourceFile,
+			// The Connector goes in the Label rather than in a field of its own: the
+			// History renders every event through one shape, and a key only one kind
+			// ever sets would be a schema change to say a sentence. With two
+			// Connectors, "export.zip" alone no longer says where a history came from,
+			// which is the one thing this page exists to explain.
+			Kind: eventImport, Date: day, Label: importLabel(imp.Connector, imp.SourceFile),
 			Figures: []historyFigureView{
 				{Key: "added", Value: float64(imp.AddedCount)},
 				{Key: "skipped", Value: float64(imp.SkippedCount)},
@@ -433,4 +439,17 @@ func valueOrEmpty(s *string) string {
 func truncateUTCDay(t time.Time) time.Time {
 	t = t.UTC()
 	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
+}
+
+// importLabel names an Import on the History: the file, and the source it came from
+// as a person names it. An unknown Connector, a row from a future version read by
+// an older binary, degrades to the file alone rather than to an identifier nobody
+// recognizes.
+func importLabel(connectorName, sourceFile string) string {
+	for _, c := range registry.All() {
+		if c.Name() == connectorName {
+			return sourceFile + " · " + c.Label()
+		}
+	}
+	return sourceFile
 }

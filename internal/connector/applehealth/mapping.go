@@ -133,3 +133,26 @@ var typeToMetric = map[string]string{
 	// Miscellaneous
 	"HKQuantityTypeIdentifierNumberOfAlcoholicBeverages": "number_of_alcoholic_beverages",
 }
+
+// MappedSlugs returns the Catalog Metrics this Connector claims: the quantity types
+// above, plus the duration_by_state Metrics fed by the States family, whose mapping
+// is by category *kind* rather than by record type. It exists for the Catalog's
+// coverage test, which asks the registered Connectors rather than one of them: the
+// invariant is that the Catalog has no orphan, not that Apple covers it.
+func MappedSlugs() []string {
+	seen := map[string]bool{}
+	out := []string{}
+	add := func(slug string) {
+		if !seen[slug] {
+			seen[slug] = true
+			out = append(out, slug)
+		}
+	}
+	for _, slug := range typeToMetric {
+		add(slug)
+	}
+	for _, kind := range categoryStateKinds {
+		add(kind)
+	}
+	return out
+}

@@ -166,7 +166,7 @@ func TestHistoryEventsGatherEveryDatedSource(t *testing.T) {
 	if err := models.Annotations.Insert(ctx, note); err != nil {
 		t.Fatalf("insert annotation: %v", err)
 	}
-	imp := &data.Import{AccountID: acc.ID, SourceFile: "export.zip", AddedCount: 412, SkippedCount: 9, UnmappedCount: 14}
+	imp := &data.Import{AccountID: acc.ID, Connector: "googlehealth", SourceFile: "takeout.zip", AddedCount: 412, SkippedCount: 9, UnmappedCount: 14}
 	if err := models.Measurements.RecordImport(ctx, imp); err != nil {
 		t.Fatalf("record import: %v", err)
 	}
@@ -192,6 +192,11 @@ func TestHistoryEventsGatherEveryDatedSource(t *testing.T) {
 	}
 	if len(seen[eventImport].Figures) != 3 {
 		t.Errorf("import figures = %+v, want added/skipped/unmapped", seen[eventImport].Figures)
+	}
+	// With two Connectors, a file name no longer says where a history came from, and
+	// saying so is what this page is for.
+	if seen[eventImport].Label != "takeout.zip · Google Health" {
+		t.Errorf("import label = %q, want the file and the source that read it", seen[eventImport].Label)
 	}
 	// The import happened now; the note in January. Newest first.
 	if view.Events[0].Kind != eventImport {

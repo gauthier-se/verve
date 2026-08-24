@@ -6,9 +6,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/gauthier-se/verve/internal/connector/registry"
 )
 
-// handleCreateImport accepts an Apple Health export .zip, streams it to a temp
+// handleCreateImport accepts a health export .zip, whichever Connector recognizes
+// it, streams it to a temp
 // file under the data dir, and launches a background import (ADR 0016). An oversize
 // upload is refused via Content-Length before any streaming; a second concurrent
 // import for the same Account is refused while one runs. The response carries the
@@ -21,7 +24,7 @@ func (s *Server) handleCreateImport(w http.ResponseWriter, r *http.Request) {
 		filename = "export.zip"
 	}
 	if !strings.EqualFold(filepath.Ext(filename), ".zip") {
-		s.errorResponse(w, r, http.StatusUnsupportedMediaType, "only a .zip Apple Health export is accepted here")
+		s.errorResponse(w, r, http.StatusUnsupportedMediaType, "only a .zip export is accepted here: "+strings.Join(registry.Labels(), " or "))
 		return
 	}
 
@@ -114,9 +117,13 @@ type importJobView struct {
 	Error   string      `json:"error,omitempty"`
 }
 
-// reportView is the compact import outcome the SPA renders: the source file and
-// added / skipped / unmapped / excluded counts across all families.
+// reportView is the compact import outcome the SPA renders: which Connector read
+// it, the source file, and added / skipped / unmapped / excluded counts across all
+// families.
 type reportView struct {
+	// Connector is the source as a person names it ("Apple Health"), not the internal
+	// identifier: it is read on a card, not matched on.
+	Connector  string `json:"connector"`
 	SourceFile string `json:"source_file"`
 	Added      int    `json:"added"`
 	Skipped    int    `json:"skipped"`
@@ -144,6 +151,7 @@ func (job *importJob) view() importJobView {
 	}
 	if job.report != nil {
 		v.Report = &reportView{
+			Connector:  job.connectorLabel,
 			SourceFile: job.sourceFile,
 			Added:      job.report.Added + job.report.StatesAdded + job.report.SessionsAdded,
 			Skipped:    job.report.Skipped + job.report.StatesSkipped + job.report.SessionsSkipped,
