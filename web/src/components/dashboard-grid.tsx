@@ -73,7 +73,7 @@ export function DashboardGrid({
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
       <SortableContext items={panels.map((p) => p.id)} strategy={rectSortingStrategy}>
         <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(20rem,1fr))]">
-          {panels.map((panel) => (
+          {panels.map((panel, i) => (
             <SortablePanel
               key={panel.id}
               panel={panel}
@@ -81,6 +81,7 @@ export function DashboardGrid({
               range={range}
               baseline={baseline}
               showAnnotations={showAnnotations}
+              colorOffset={i}
             />
           ))}
         </div>
@@ -95,12 +96,14 @@ function SortablePanel({
   range,
   baseline,
   showAnnotations,
+  colorOffset,
 }: {
   panel: Panel;
   catalog: Map<string, Metric>;
   range: RangeTokens;
   baseline?: BaselineParams;
   showAnnotations: boolean;
+  colorOffset: number;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: panel.id });
   const style: React.CSSProperties = {
@@ -118,6 +121,7 @@ function SortablePanel({
         range={range}
         baseline={baseline}
         showAnnotations={showAnnotations}
+        colorOffset={colorOffset}
         dragHandle={<DragHandle {...listeners} />}
       />
     </div>

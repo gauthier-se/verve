@@ -1,5 +1,8 @@
 # The Palette roster is chosen for recognition, and named themes are adapted, not reproduced
 
+_Extended by ADR 0036, which runs the ramp two colours past what a Panel can use and
+moves the separation rule below from the reviewer's eye into the build._
+
 Extends ADR 0024, which stays in force: Appearance remains Mode × Palette, the
 Palette set remains closed, and the semantic colors remain immune to the Palette.
 What changes here is *which* palettes ship, and what naming one after somebody

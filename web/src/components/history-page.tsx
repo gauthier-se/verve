@@ -12,7 +12,7 @@ import {
   YAxis,
 } from "recharts";
 import { useHistory } from "@/hooks/use-history";
-import { AXIS, GRID, RECESSED, SERIES_COLORS } from "@/lib/chart";
+import { AXIS, CATEGORY_COLORS, GRID, RECESSED, SERIES_COLORS } from "@/lib/chart";
 import { formatDay, formatDayRange, formatExact } from "@/lib/format";
 import { metricLabel } from "@/lib/metrics";
 import type {
@@ -32,21 +32,27 @@ import { MetricPicker } from "./metric-picker";
  *  does not know which one you wanted (README: it does not color a change good or
  *  bad). Maintenance gets the recessed tone: it is the absence of a direction. */
 const PHASE_COLOR: Record<PhaseKind, string> = {
-  cut: SERIES_COLORS[0],
-  bulk: SERIES_COLORS[2],
+  cut: CATEGORY_COLORS[0],
+  bulk: CATEGORY_COLORS[2],
   maintenance: RECESSED,
 };
 
-/** The dot beside each event on the rail, by what kind of thing happened. */
+/** The dot beside each event on the rail, by what kind of thing happened. One colour
+ *  per kind, off the six-slot ramp: the rail has six kinds and reading it means telling
+ *  them apart, which is precisely what `import` and `phase` sharing a dot prevented.
+ *
+ *  A phase event takes a slot of its own rather than the cut band's colour it used to
+ *  borrow. The dot marks a boundary, and a boundary can open a bulk as easily as a cut,
+ *  so wearing one of the two directions was a claim the event does not make. */
 const EVENT_COLOR: Record<HistoryEventKind, string> = {
-  import: SERIES_COLORS[0],
-  phase: SERIES_COLORS[0],
+  import: CATEGORY_COLORS[0],
+  phase: CATEGORY_COLORS[4],
   // An exclusion is the one event that took data away, so it is the one that gets
   // the destructive colour, the one colour every Palette keeps identical because
   // it carries meaning rather than style (ADR 0024).
   exclusion: "hsl(var(--destructive))",
-  note: SERIES_COLORS[2],
-  source: SERIES_COLORS[1],
+  note: CATEGORY_COLORS[2],
+  source: CATEGORY_COLORS[1],
   origin: RECESSED,
 };
 

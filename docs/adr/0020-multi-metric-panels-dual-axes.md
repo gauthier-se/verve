@@ -1,5 +1,8 @@
 # Multi-Metric Panels on dual axes
 
+_Extended by ADR 0036, which keeps the cap and the colour-by-position rule below and
+changes only which position a Panel starts reading the ramp from._
+
 A Panel gains the roadmap's **cross-metric overlays** (v1.2): it carries one to
 four Metrics, each with its own chart type, rendered as a combo chart on **up to
 two Y axes** — Metrics sharing a unit share an axis, and the first Metric's unit

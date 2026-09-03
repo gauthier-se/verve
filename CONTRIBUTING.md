@@ -225,7 +225,10 @@ Adding one is data: two CSS blocks in `web/src/index.css`, one entry in
 `THIRD-PARTY-NOTICES.md`. What takes the time is the checking below, because
 some of Verve's colors are load-bearing: `--chart-1..4` are the identities of up
 to four Metrics on one Panel (ADR 0020), and an unreadable Panel reads as a
-Verve bug, not as the palette author's choice.
+Verve bug, not as the palette author's choice. `--chart-5..6` extend the ramp for
+the categorical dimensions a Panel does not bound (a Night's stages, the kinds of
+event on the history rail); they never carry a Series, and they are held to the
+same separation rule.
 
 ### What `make ci` checks for you
 
@@ -253,12 +256,16 @@ from its published hues and say so in `THIRD-PARTY-NOTICES.md`.
 | `--accent-foreground` | `--accent` |
 | `--muted-foreground` | `--background` and `--card` |
 
-**Chart ramp separation, in both variants.** Every pair of `--chart-1..4` must
+**Chart ramp separation, in both variants.** Every pair of `--chart-1..6` must
 differ by at least 30 degrees of hue **or** 12 points of lightness, and each
 must clear 3:1 against `--card` (the WCAG floor for a graphical object). Prefer
 the theme's own canonical accents, picked for spread rather than for
-prettiness: a ramp of four neighbouring pastels makes a four-Metric Panel
+prettiness: a ramp of neighbouring pastels makes a four-Metric Panel
 unreadable, which is the failure this rule exists to prevent.
+
+Six is where most themes run out. Expect the fifth and sixth to need moving, and
+expect one or two palettes to have nothing canonical left that stays clear of the
+four: derive those, and record them like any other departure.
 
 **Expect upstream values to miss these.** Building the nine-palette roster
 turned up twelve real failures in colors taken straight from upstream projects.

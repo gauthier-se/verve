@@ -329,7 +329,10 @@ than style — the destructive action, and the diverging surplus/deficit pair of
 signed Metric — which are identical in every Palette (ADR 0024). Like the Catalog,
 the set is **closed**: Verve defines the Palettes, the Account picks one; there is no
 custom color, because a hand-picked hue cannot be checked for contrast or for
-color-vision separation across four series. All but Verve are named after themes
+color-vision separation across the ramp. Four of its colors are the identities of a
+Panel's Metrics, read from an offset so that neighbouring Panels differ; two more
+serve the categorical dimensions a Panel does not bound, a Night's Stages and the
+kinds of event on the history rail (ADR 0036). All but Verve are named after themes
 people already use elsewhere, because the criterion is **recognition**, not variety
 (ADR 0026); a named Palette is a *verified adaptation* of that theme, never a
 certified reproduction, since Verve requires a light and a dark variant of every

@@ -61,6 +61,8 @@
     --chart-2: 199 89% 46%;
     --chart-3: 160 84% 35%;
     --chart-4: 347 77% 50%;
+    --chart-5: 40 96% 37%;
+    --chart-6: 305 70% 48%;
   }
 
   .dark,
@@ -86,6 +88,8 @@
     --chart-2: 199 89% 55%;
     --chart-3: 160 70% 50%;
     --chart-4: 347 79% 62%;
+    --chart-5: 40 90% 58%;
+    --chart-6: 305 75% 68%;
   }
 
   /* ---- Catppuccin: Latte (light) / Mocha (dark).
@@ -112,6 +116,8 @@
     --chart-2: 191 87.4% 31.2%;
     --chart-3: 109 57.6% 39.8%;
     --chart-4: 27 92.2% 45.1%;
+    --chart-5: 316 65% 52%;
+    --chart-6: 231 80% 55%;
   }
 
   .dark[data-palette="catppuccin"] {
@@ -136,6 +142,8 @@
     --chart-2: 189 71% 72.9%;
     --chart-3: 115 54.1% 76.1%;
     --chart-4: 23 92% 75.5%;
+    --chart-5: 316 72% 86%;
+    --chart-6: 232 97% 85%;
   }
 
   /* ---- Dracula: dark from the free palette; the light variant is Verve's
@@ -163,6 +171,8 @@
     --chart-2: 193 82.7% 33.9%;
     --chart-3: 141 63.3% 33.1%;
     --chart-4: 26 92.1% 39.6%;
+    --chart-5: 330 72% 45%;
+    --chart-6: 62 90% 28%;
   }
 
   .dark[data-palette="dracula"] {
@@ -187,6 +197,8 @@
     --chart-2: 191 96.6% 76.9%;
     --chart-3: 135 94.4% 64.7%;
     --chart-4: 31 100% 71.2%;
+    --chart-5: 330 100% 74%;
+    --chart-6: 65 92% 76%;
   }
 
   /* ---- GitHub: Primer Light / Dark (not Dimmed).
@@ -213,6 +225,8 @@
     --chart-2: 261 69.1% 59.4%;
     --chart-3: 137 66% 30%;
     --chart-4: 40 100% 30.2%;
+    --chart-5: 326 55% 48%;
+    --chart-6: 358 71% 45%;
   }
 
   .dark[data-palette="github"] {
@@ -237,6 +251,8 @@
     --chart-2: 262 89.3% 70.6%;
     --chart-3: 128 49.2% 48.6%;
     --chart-4: 41 72.1% 47.8%;
+    --chart-5: 327 62% 62%;
+    --chart-6: 3 92% 63%;
   }
 
   /* ---- Gruvbox: light medium / dark medium.
@@ -263,6 +279,8 @@
     --chart-2: 323 38.8% 40.4%;
     --chart-3: 19 96.6% 34.9%;
     --chart-4: 57 79.3% 26.5%;
+    --chart-5: 156 30% 37%;
+    --chart-6: 250 40% 45%;
   }
 
   .dark[data-palette="gruvbox"] {
@@ -287,6 +305,8 @@
     --chart-2: 344 46.7% 67.6%;
     --chart-3: 27 99.1% 54.7%;
     --chart-4: 61 66.2% 44.1%;
+    --chart-5: 95 33% 62%;
+    --chart-6: 250 45% 68%;
   }
 
   /* ---- Nord. https://www.nordtheme.com, MIT. Verve derives the light variant:
@@ -313,6 +333,8 @@
     --chart-2: 179 40% 34%;
     --chart-3: 38 72% 44%;
     --chart-4: 311 32% 50%;
+    --chart-5: 92 32% 38%;
+    --chart-6: 354 45% 45%;
   }
 
   .dark[data-palette="nord"] {
@@ -337,6 +359,8 @@
     --chart-2: 179 38% 52%;
     --chart-3: 38 70% 63%;
     --chart-4: 311 34% 66%;
+    --chart-5: 92 28% 65%;
+    --chart-6: 354 42% 56%;
   }
 
   /* ---- Rosé Pine: Dawn (light) / Main (dark).
@@ -363,6 +387,8 @@
     --chart-2: 197 53.2% 33.5%;
     --chart-3: 343 35.1% 54.7%;
     --chart-4: 37 92% 39.2%;
+    --chart-5: 150 42% 32%;
+    --chart-6: 232 40% 50%;
   }
 
   .dark[data-palette="rosepine"] {
@@ -387,6 +413,8 @@
     --chart-2: 189 43.5% 72.9%;
     --chart-3: 343 75.6% 67.8%;
     --chart-4: 35 87.6% 71.6%;
+    --chart-5: 150 45% 62%;
+    --chart-6: 225 55% 72%;
   }
 
   /* ---- Solarized: Light / Dark. https://ethanschoonover.com/solarized,
@@ -414,6 +442,8 @@
     --chart-2: 331 64.1% 52%;
     --chart-3: 71 100% 24.3%;
     --chart-4: 18 80.4% 44.1%;
+    --chart-5: 175 65% 33%;
+    --chart-6: 237 43% 50%;
   }
 
   .dark[data-palette="solarized"] {
@@ -438,6 +468,8 @@
     --chart-2: 330 69.2% 60.6%;
     --chart-3: 67 100% 34.5%;
     --chart-4: 20 80.5% 53.7%;
+    --chart-5: 175 59% 45%;
+    --chart-6: 237 45% 62%;
   }
 
   /* ---- Tokyo Night: Day (light) / Night (dark).
@@ -464,6 +496,8 @@
     --chart-2: 266 84.9% 63.7%;
     --chart-3: 89 34.5% 34.1%;
     --chart-4: 31 100% 34.7%;
+    --chart-5: 168 78% 31%;
+    --chart-6: 341 91% 46%;
   }
 
   .dark[data-palette="tokyonight"] {
@@ -488,6 +522,8 @@
     --chart-2: 261 85.3% 78.6%;
     --chart-3: 89 50.5% 61.2%;
     --chart-4: 22 100% 69.6%;
+    --chart-5: 168 57% 65%;
+    --chart-6: 344 85% 71%;
   }
 }
 
