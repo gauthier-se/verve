@@ -18,7 +18,7 @@ import {
 import type { CategoricalChartState } from "recharts/types/chart/types";
 import type { AxisDomain } from "recharts/types/util/types";
 import { projectAnnotations, type AnnotationOverlay } from "@/lib/annotations";
-import { AXIS, GRID, NEGATIVE, POSITIVE, SERIES_COLORS } from "@/lib/chart";
+import { AXIS, GRID, NEGATIVE, POSITIVE, SERIES_COLORS, seriesColor } from "@/lib/chart";
 import { formatDuration } from "@/lib/format";
 import { metricLabel } from "@/lib/metrics";
 import { isSleepSeries, stageColor, stageLabel, stagesPresent } from "@/lib/sleep";
@@ -28,12 +28,12 @@ import type { Annotation, ChartType, PanelMetric, Series } from "@/lib/types";
 export { SERIES_COLORS };
 
 /** Swatch is the small square color key for series i, shared by the legend and
- *  the tooltip so identity reads the same everywhere. */
-export function Swatch({ i }: { i: number }) {
-  return <Key color={SERIES_COLORS[i] ?? SERIES_COLORS[0]} />;
+ *  the tooltip so identity reads the same everywhere. It takes the Panel's ramp
+ *  offset because a key that does not name the colour actually drawn is worse than
+ *  no key at all. */
+export function Swatch({ i, offset = 0 }: { i: number; offset?: number }) {
+  return <Key color={seriesColor(i, offset)} />;
 }
-
-const BAND = SERIES_COLORS[1];
 // The Baseline is one recessed reference line, the same muted/dashed treatment on
 // every chart type (ADR 0015) — never colored by sign or metric.
 const BASELINE = AXIS;
@@ -72,11 +72,16 @@ export function PanelChart({
   baseline,
   annotations,
   onHoverBucket,
+  colorOffset = 0,
 }: {
   list: Series[];
   metrics: PanelMetric[];
   baseline?: Series;
   annotations?: Annotation[];
+  /** colorOffset is where this Panel starts reading the categorical ramp, so a grid
+   *  of single-Metric Panels cycles through the four instead of drawing every card in
+   *  chart-1. Zero for a chart that stands alone on its own page. */
+  colorOffset?: number;
   /** onHoverBucket reports the category under the cursor, so an "Add a note" opened
    *  afterwards can prefill the day the person was actually looking at. */
   onHoverBucket?: (bucket: string | null) => void;
@@ -117,7 +122,15 @@ export function PanelChart({
   const grid = <CartesianGrid stroke={GRID} strokeDasharray="3 3" vertical={false} />;
   const tooltip = (
     <Tooltip
-      content={<ChartTooltip list={list} bucket={list[0].bucket} stages={stages} notes={overlay.byBucket} />}
+      content={
+        <ChartTooltip
+          list={list}
+          bucket={list[0].bucket}
+          stages={stages}
+          notes={overlay.byBucket}
+          offset={colorOffset}
+        />
+      }
       cursor={{ stroke: GRID }}
     />
   );
@@ -153,7 +166,7 @@ export function PanelChart({
         {tooltip}
         {annotationOverlay(overlay)}
         {list.map((s, i) =>
-          marks(metrics[i]?.chart_type ?? "line", i, axisOf(s), data, list.length > 1, stages),
+          marks(metrics[i]?.chart_type ?? "line", i, axisOf(s), data, list.length > 1, stages, colorOffset),
         )}
         {baseline && baselineLine}
       </ComposedChart>
@@ -288,8 +301,14 @@ function marks(
   data: ChartDatum[],
   multi: boolean,
   stages: string[],
+  offset: number,
 ): React.ReactNode {
-  const color = SERIES_COLORS[i] ?? SERIES_COLORS[0];
+  const color = seriesColor(i, offset);
+  // The min/max band of a lone Series takes the next slot of the ramp rather than the
+  // Series' own colour, so the spread reads as a second thing and not as a washed-out
+  // copy of the line. In a combo it takes the identity colour instead: a neighbouring
+  // slot there is already another Series.
+  const band = multi ? color : seriesColor(i + 1, offset);
   const key: `v${number}` = `v${i}`;
   switch (chartType) {
     case "line":
@@ -317,7 +336,7 @@ function marks(
             type="monotone"
             dataKey={`band${i}`}
             stroke="none"
-            fill={multi ? color : BAND}
+            fill={band}
             fillOpacity={0.18}
           />
           <Line yAxisId={yAxisId} type="monotone" dataKey={key} stroke={color} strokeWidth={2} dot={false} />
@@ -398,6 +417,9 @@ interface TooltipProps {
   /** notes are the Annotations covering each drawn bucket (ADR 0030). They belong
    *  in this tooltip rather than beside the marks: one hover target, not two. */
   notes?: Map<string, Annotation[]>;
+  /** offset is the Panel's start in the ramp, so the tooltip's swatches match the
+   *  marks they are naming. */
+  offset?: number;
 }
 
 /** StageRows lists a stacked Night's Stages with their durations, then the night's
@@ -435,7 +457,7 @@ function StageRows({ d, total, stages }: { d: ChartDatum; total: number | undefi
  *  the hovered bucket; a Series without data there shows nothing — a gap is never
  *  a zero (ADR 0014). Single-Metric comparison keeps both windows' own real dates
  *  side by side (ADR 0015). */
-function ChartTooltip({ active, payload, list, bucket, stages, notes }: TooltipProps) {
+function ChartTooltip({ active, payload, list, bucket, stages, notes, offset = 0 }: TooltipProps) {
   if (!active || !payload?.length) return null;
   const d = payload[0].payload;
   const covering = notes?.get(d.bucket) ?? [];
@@ -453,7 +475,7 @@ function ChartTooltip({ active, payload, list, bucket, stages, notes }: TooltipP
           const band = d[`band${i}`];
           return (
             <div key={s.metric} className="flex items-center gap-1.5 text-muted-foreground">
-              {multi && <Swatch i={i} />}
+              {multi && <Swatch i={i} offset={offset} />}
               {multi && <span className="truncate">{metricLabel(s.metric)}</span>}
               <span className="tabular-nums">
                 {formatValue(value)} {s.unit}

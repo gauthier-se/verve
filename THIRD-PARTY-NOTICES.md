@@ -46,5 +46,28 @@ Verve's own derivation rather than an upstream color:
 - **Tokyo Night**, **Catppuccin**: a small number of surface and accent values are
   nudged for the same reason.
 
+Verve's ramp also runs two colors past the four a chart series can use, for the
+categorical dimensions that are not Panel series (a Night's stages, the kinds of
+event on the history rail). Most themes had two accents left over that stay clear of
+the four already in use, and those are the ones taken:
+
+| Palette | 5th | 6th |
+| --- | --- | --- |
+| Catppuccin | pink | lavender |
+| Dracula | pink | yellow |
+| GitHub | pink | red (hue nudged off the pink) |
+| Gruvbox | aqua | **derived** indigo |
+| Nord | nord14 green | nord11 red |
+| Rosé Pine | **derived** green | **derived** blue |
+| Solarized | cyan | violet |
+| Tokyo Night | teal | red |
+
+Several of these are darkened or nudged to clear 3:1 against the card and 30 degrees
+from their neighbour, the same treatment the first four already get. Two palettes had
+nothing left at all that stayed apart from the four. Gruvbox's remaining
+accents are all warm and would sit on top of its orange; Rosé Pine's set is small and
+deliberately narrow in hue. Their extra colors are Verve's own derivation, in the
+theme's register but at hues the theme does not publish.
+
 The full palette definitions, with the checks they must pass, are in
 `web/src/index.css` and `CONTRIBUTING.md`.

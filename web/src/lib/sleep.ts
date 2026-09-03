@@ -2,7 +2,7 @@
 // (CONTEXT.md: Stage, ADR 0027). Kept apart from metrics.ts because it is the only
 // Metric-specific vocabulary in the client, and apart from panel-chart.tsx because
 // the chart imports it.
-import { RECESSED, SERIES_COLORS } from "./chart";
+import { CATEGORY_COLORS, RECESSED } from "./chart";
 import type { Point, Series } from "./types";
 
 /** SLEEP_STAGES is every Stage the server can send, bottom to top in the stack.
@@ -33,17 +33,19 @@ export const STAGE_LABEL: Record<string, string> = {
  *  ramp, so a Stage keeps its colour whatever a given Night happens to contain — a
  *  night with no REM must not repaint deep sleep.
  *
- *  Four slots for six Stages, which costs nothing in practice: `in_bed` never shares
- *  a Night with a Stage, and `asleep` (unspecified) is what a Source sends *instead*
- *  of core/deep/REM, so it takes core's slot. Four concurrent segments is also
- *  exactly what every Palette's ramp is verified for (ADR 0026). */
+ *  One slot each, on the six-slot ramp. The Stages used to double up on four, which
+ *  was defensible — `in_bed` never shares a Night with a Stage, and `asleep`
+ *  (unspecified) is what a Source sends *instead* of core/deep/REM — but it rested on
+ *  a promise about the data rather than on the drawing, and the ramp was only four
+ *  long because a Panel holds four Metrics (ADR 0020), which is not a fact about
+ *  Stages. `awake`'s slot is never drawn: it is recessive, below. */
 export const STAGE_COLOR_INDEX: Record<string, number> = {
   asleep_deep: 0,
   asleep_core: 1,
   asleep_rem: 2,
-  asleep: 1,
-  in_bed: 0,
-  awake: 3,
+  asleep: 3,
+  in_bed: 4,
+  awake: 5,
 };
 
 /** stageLabel humanizes a Stage slug, falling back to the slug for one Verve does
@@ -89,5 +91,5 @@ export const RECESSIVE_STAGES: readonly string[] = ["awake"];
  *  vanishing. */
 export function stageColor(stage: string, fallback: number): string {
   if (RECESSIVE_STAGES.includes(stage)) return RECESSED;
-  return SERIES_COLORS[STAGE_COLOR_INDEX[stage] ?? fallback % SERIES_COLORS.length];
+  return CATEGORY_COLORS[STAGE_COLOR_INDEX[stage] ?? fallback % CATEGORY_COLORS.length];
 }

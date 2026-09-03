@@ -37,6 +37,10 @@ interface PanelCardProps {
    *  the Account, drawing them here belongs to this Dashboard. */
   showAnnotations?: boolean;
   dragHandle?: React.ReactNode;
+  /** colorOffset is the Panel's place in the Dashboard, which is where it starts
+   *  reading the categorical ramp (ADR 0020). It is the grid's to hand down: a Panel
+   *  cannot know what is next to it, and the colour is a property of the slot. */
+  colorOffset?: number;
 }
 
 /** PanelCard renders one Panel: its Metrics combo-charted over the Dashboard's
@@ -50,7 +54,15 @@ interface PanelCardProps {
  *  the chart is what it lands on next (ADR 0019). Everything else on the card —
  *  the rule it was folded by, the grain, the evidence count — is a mono note beside
  *  the title, quiet enough to skip and precise enough to trust. */
-export function PanelCard({ panel, catalog, range, baseline, showAnnotations, dragHandle }: PanelCardProps) {
+export function PanelCard({
+  panel,
+  catalog,
+  range,
+  baseline,
+  showAnnotations,
+  dragHandle,
+  colorOffset = 0,
+}: PanelCardProps) {
   const slugs = panel.metrics.map((m) => m.metric);
   const showNotes = showAnnotations !== false;
   // The last bucket the cursor was on, so an "Add a note" opened from this Panel's
@@ -104,7 +116,7 @@ export function PanelCard({ panel, catalog, range, baseline, showAnnotations, dr
 
       {list &&
         (multi ? (
-          <PanelLegend list={list} comparing={comparing} catalog={catalog} />
+          <PanelLegend list={list} comparing={comparing} catalog={catalog} colorOffset={colorOffset} />
         ) : (
           list[0] && (
             <PanelSummary
@@ -130,6 +142,7 @@ export function PanelCard({ panel, catalog, range, baseline, showAnnotations, dr
             baseline={query.data?.baseline}
             annotations={showNotes ? notes.data : undefined}
             onHoverBucket={setHovered}
+            colorOffset={colorOffset}
           />
         ) : null}
       </div>

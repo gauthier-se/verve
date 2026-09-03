@@ -1,10 +1,12 @@
 package web
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -160,4 +162,142 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// hsl is a parsed `H S% L%` token value, the only colour format index.css uses.
+type hsl struct{ h, s, l float64 }
+
+var hslRe = regexp.MustCompile(`^\s*([\d.]+) ([\d.]+)% ([\d.]+)%\s*$`)
+
+func parseHSL(v string) (hsl, bool) {
+	m := hslRe.FindStringSubmatch(v)
+	if m == nil {
+		return hsl{}, false
+	}
+	h, _ := strconv.ParseFloat(m[1], 64)
+	s, _ := strconv.ParseFloat(m[2], 64)
+	l, _ := strconv.ParseFloat(m[3], 64)
+	return hsl{h, s / 100, l / 100}, true
+}
+
+// rgb converts to sRGB channels in 0..1, per the CSS Color 4 formulation.
+func (c hsl) rgb() [3]float64 {
+	a := c.s * math.Min(c.l, 1-c.l)
+	f := func(n float64) float64 {
+		k := math.Mod(n+c.h/30, 12)
+		return c.l - a*math.Max(-1, math.Min(k-3, math.Min(9-k, 1)))
+	}
+	return [3]float64{f(0), f(8), f(4)}
+}
+
+// luminance is WCAG relative luminance.
+func (c hsl) luminance() float64 {
+	ch := c.rgb()
+	lin := func(v float64) float64 {
+		if v <= 0.03928 {
+			return v / 12.92
+		}
+		return math.Pow((v+0.055)/1.055, 2.4)
+	}
+	return 0.2126*lin(ch[0]) + 0.7152*lin(ch[1]) + 0.0722*lin(ch[2])
+}
+
+func contrastRatio(a, b hsl) float64 {
+	x, y := a.luminance(), b.luminance()
+	if x < y {
+		x, y = y, x
+	}
+	return (x + 0.05) / (y + 0.05)
+}
+
+// hueGap is the shorter way round the wheel.
+func hueGap(a, b float64) float64 {
+	d := math.Mod(math.Abs(a-b), 360)
+	return math.Min(d, 360-d)
+}
+
+// paletteRamps parses index.css into palette id -> variant -> the block's chart ramp
+// and its card, which is what the separation rule is stated against.
+func paletteRamps(t *testing.T) map[string]map[string]map[string]hsl {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Clean(stylesheetPath))
+	if err != nil {
+		t.Fatalf("read %s: %v", stylesheetPath, err)
+	}
+	css := string(raw)
+
+	out := map[string]map[string]map[string]hsl{}
+	for variant, re := range map[string]*regexp.Regexp{"light": lightBlockRe, "dark": darkBlockRe} {
+		for _, loc := range re.FindAllStringSubmatchIndex(css, -1) {
+			id := css[loc[2]:loc[3]]
+			body := blockBody(css[loc[1]:])
+			values := map[string]hsl{}
+			for _, m := range declRe.FindAllStringSubmatch(body, -1) {
+				if c, ok := parseHSL(m[2]); ok {
+					values[m[1]] = c
+				}
+			}
+			if out[id] == nil {
+				out[id] = map[string]map[string]hsl{}
+			}
+			out[id][variant] = values
+		}
+	}
+	return out
+}
+
+var declRe = regexp.MustCompile(`--([a-z0-9-]+):([^;]+);`)
+
+// chartRamp is every categorical slot, in order. chart-1..4 are the identities of up
+// to four Metrics on one Panel (ADR 0020); chart-5..6 extend the ramp for the
+// categorical dimensions a Panel does not bound — a Night's Stages, the kinds of
+// event on the history rail — and never carry a Series.
+var chartRamp = []string{"chart-1", "chart-2", "chart-3", "chart-4", "chart-5", "chart-6"}
+
+// TestChartRampIsSeparated is the separation rule from CONTRIBUTING.md, held by the
+// build instead of by a reviewer with a colour picker.
+//
+// ADR 0026 says the completeness of a palette is tested rather than reviewed, and
+// then leaves this half to the eye — which was defensible at four values a palette
+// and is not at six across eighteen blocks. Two colours a reader cannot tell apart
+// is exactly the silent failure the token-completeness test above exists to catch:
+// nothing errors, the chart is just lying about how many things it is showing.
+func TestChartRampIsSeparated(t *testing.T) {
+	for id, variants := range paletteRamps(t) {
+		for _, variant := range []string{"light", "dark"} {
+			values, ok := variants[variant]
+			if !ok {
+				continue // TestPaletteTokenSetsAreComplete owns the missing-block error.
+			}
+			card, ok := values["card"]
+			if !ok {
+				t.Errorf("palette %q (%s) has no --card to check the ramp against", id, variant)
+				continue
+			}
+			for i, name := range chartRamp {
+				c, ok := values[name]
+				if !ok {
+					t.Errorf("palette %q (%s) has no --%s", id, variant, name)
+					continue
+				}
+				// 3:1 is the WCAG floor for a graphical object: a curve the card
+				// swallows is a Metric the Panel silently stopped showing.
+				if ratio := contrastRatio(c, card); ratio < 3 {
+					t.Errorf("palette %q (%s): --%s is %.2f:1 against --card, under the 3:1 floor",
+						id, variant, name, ratio)
+				}
+				for _, other := range chartRamp[i+1:] {
+					o, ok := values[other]
+					if !ok {
+						continue
+					}
+					dh, dl := hueGap(c.h, o.h), math.Abs(c.l-o.l)*100
+					if dh < 30 && dl < 12 {
+						t.Errorf("palette %q (%s): --%s and --%s differ by %.0f° of hue and %.1f of lightness, under 30° or 12",
+							id, variant, name, other, dh, dl)
+					}
+				}
+			}
+		}
+	}
 }

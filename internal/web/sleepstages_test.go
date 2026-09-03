@@ -30,12 +30,35 @@ var (
 	stageColorRe = regexp.MustCompile(`(?s)STAGE_COLOR_INDEX: Record<string, number> = \{(.*?)\n\}`)
 	tsKeyRe      = regexp.MustCompile(`(?m)^\s*(\w+):`)
 	tsColorRe    = regexp.MustCompile(`(?m)^\s*(\w+):\s*(\d+),`)
+	// The two ramps in chart.ts, so the bound below is read off the ramp itself
+	// rather than restated here where it can quietly stop being true.
+	seriesRampRe   = regexp.MustCompile(`(?s)SERIES_COLORS = \[(.*?)\];`)
+	categoryRampRe = regexp.MustCompile(`(?s)CATEGORY_COLORS = \[\.\.\.SERIES_COLORS,(.*?)\];`)
+	rampTokenRe    = regexp.MustCompile(`token\("chart-\d+"\)`)
 )
 
-// seriesColors is the length of the Palette's categorical ramp, which every Palette
-// is verified against for four-way separation (ADR 0026). A Stage pointing past it
-// would render transparent.
-const seriesColors = 4
+// categoryRampLength is how many slots CATEGORY_COLORS actually has. A Stage pointing
+// past it would render transparent, which is the whole reason for the bound; reading
+// it out of chart.ts rather than restating it keeps the two from drifting the way this
+// file exists to prevent.
+//
+// It is the longer ramp on purpose. SERIES_COLORS is four because a Panel holds four
+// Metrics (ADR 0020) and every Palette is verified for four-way separation across
+// exactly those (ADR 0026); Stages are not Series and were never bound by that count.
+func categoryRampLength(t *testing.T) int {
+	t.Helper()
+	chart := readFileText(t, chartTSPath)
+	series := seriesRampRe.FindStringSubmatch(chart)
+	category := categoryRampRe.FindStringSubmatch(chart)
+	if series == nil || category == nil {
+		t.Fatalf("%s: could not find SERIES_COLORS and CATEGORY_COLORS; the ramps or the parser moved", chartTSPath)
+	}
+	n := len(rampTokenRe.FindAllString(series[1], -1)) + len(rampTokenRe.FindAllString(category[1], -1))
+	if n < 4 {
+		t.Fatalf("%s: parsed a %d-slot category ramp, which cannot be right", chartTSPath, n)
+	}
+	return n
+}
 
 func readFileText(t *testing.T, path string) string {
 	t.Helper()
@@ -100,6 +123,7 @@ func TestSleepStagesCoverTheConnector(t *testing.T) {
 		}
 	}
 
+	ramp := categoryRampLength(t)
 	for stage := range order {
 		if !labels[stage] {
 			t.Errorf("SLEEP_STAGES lists %q with no STAGE_LABEL", stage)
@@ -109,8 +133,8 @@ func TestSleepStagesCoverTheConnector(t *testing.T) {
 			t.Errorf("SLEEP_STAGES lists %q with no STAGE_COLOR_INDEX", stage)
 			continue
 		}
-		if slot < 0 || slot >= seriesColors {
-			t.Errorf("Stage %q takes colour slot %d, outside the %d-colour ramp", stage, slot, seriesColors)
+		if slot < 0 || slot >= ramp {
+			t.Errorf("Stage %q takes colour slot %d, outside the %d-colour ramp", stage, slot, ramp)
 		}
 	}
 }
@@ -119,10 +143,11 @@ func TestSleepStagesCoverTheConnector(t *testing.T) {
 // the ramp.
 //
 // Awake minutes are stacked so a broken night looks broken, and are never counted as
-// sleep (ADR 0027). Giving them a fourth categorical colour would say the opposite —
-// that awake is a fourth kind of sleep — and would put the most saturated treatment
-// on the card's least important segment. So `awake` keeps its slot in the contract
-// above (every Stage must have one) and is painted in the recessed tone instead.
+// sleep (ADR 0027). Giving them a categorical colour would say the opposite — that
+// awake is another kind of sleep — and would put the most saturated treatment on the
+// card's least important segment. So `awake` keeps its slot in the contract above
+// (every Stage must have one) and is painted in the recessed tone instead. Widening
+// the ramp does not change that: the reason was never that colours were scarce.
 func TestAwakeIsDrawnRecessed(t *testing.T) {
 	ts := readFileText(t, sleepTSPath)
 	if !strings.Contains(ts, `RECESSIVE_STAGES: readonly string[] = ["awake"]`) {
@@ -134,7 +159,7 @@ func TestAwakeIsDrawnRecessed(t *testing.T) {
 	// Every consumer must go through stageColor rather than indexing the ramp
 	// directly, or the rule would hold on the chart and not in the tooltip.
 	chart := readFileText(t, panelChartTSXPath)
-	if strings.Contains(chart, "SERIES_COLORS[STAGE_COLOR_INDEX[") {
+	if strings.Contains(chart, "CATEGORY_COLORS[STAGE_COLOR_INDEX[") || strings.Contains(chart, "SERIES_COLORS[STAGE_COLOR_INDEX[") {
 		t.Errorf("%s indexes the ramp by Stage directly: use stageColor, which knows about awake", panelChartTSXPath)
 	}
 }

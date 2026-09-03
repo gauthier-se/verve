@@ -190,10 +190,14 @@ export function PanelLegend({
   list,
   comparing,
   catalog,
+  colorOffset = 0,
 }: {
   list: Series[];
   comparing?: boolean;
   catalog?: Map<string, Metric>;
+  /** colorOffset is the Panel's start in the ramp. The legend doubles as the chart's
+   *  key, so it has to read the ramp from the same place the marks did. */
+  colorOffset?: number;
 }) {
   const { prefs } = useSummaryPrefs();
   return (
@@ -207,7 +211,7 @@ export function PanelLegend({
         const note = modeNote(mode);
         return (
         <span key={s.metric} className="flex items-baseline gap-1.5">
-          <Swatch i={i} />
+          <Swatch i={i} offset={colorOffset} />
           <MetricIcon slug={s.metric} className="size-3 -translate-y-px" />
           <Link to="/data/$metric" params={{ metric: s.metric }} className="text-muted-foreground hover:text-foreground hover:underline">
             {metricLabel(s.metric)}
