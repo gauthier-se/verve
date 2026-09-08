@@ -9,7 +9,6 @@ import (
 
 	"github.com/gauthier-se/verve/internal/catalog"
 	"github.com/gauthier-se/verve/internal/data"
-	"github.com/gauthier-se/verve/internal/query"
 	"github.com/gauthier-se/verve/internal/timeaxis"
 )
 
@@ -590,13 +589,13 @@ func parseBucketOverride(raw json.RawMessage, v *Validator) *string {
 }
 
 // validatePanelBucket resolves an optional bucket override: nil (or explicit
-// null) means auto-derive; a value must be a known bucket (query.ParseBucket, the
+// null) means auto-derive; a value must be a known bucket (timeaxis.ParseBucket, the
 // single bucket vocabulary shared with the read path).
 func validatePanelBucket(v *Validator, raw *string) *string {
 	if raw == nil {
 		return nil
 	}
-	if _, err := query.ParseBucket(*raw); err != nil {
+	if _, err := timeaxis.ParseBucket(*raw); err != nil {
 		v.AddError("bucket", "must be day, week, or month, or omitted to auto-derive")
 		return nil
 	}

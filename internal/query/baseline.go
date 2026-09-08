@@ -3,6 +3,8 @@ package query
 import (
 	"context"
 	"time"
+
+	"github.com/gauthier-se/verve/internal/timeaxis"
 )
 
 // Comparison is a current series overlaid with its Baseline, ordinal-aligned and
@@ -12,24 +14,27 @@ type Comparison struct {
 	Baseline Series `json:"baseline"`
 }
 
-// Compare overlays the current window with a caller-resolved Baseline window
-// (timeaxis owns the rule→window math), running the bucket query for both at the
-// same granularity, then aligning by ordinal position, truncated to the shorter.
-func (e Engine) Compare(ctx context.Context, req Request, baseFrom, baseTo time.Time) (Comparison, error) {
+// Compare overlays the current window with a resolved Baseline window (timeaxis
+// owns the rule→window math), running the bucket query for both at the same
+// granularity, then aligning by ordinal position, truncated to the shorter.
+//
+// The Baseline arrives as one timeaxis.Window rather than as two loose instants:
+// it is one resolved thing, and every caller used to unpack it by hand.
+func (e Engine) Compare(ctx context.Context, req Request, baseline timeaxis.Window) (Comparison, error) {
 	current, err := e.Series(ctx, req)
 	if err != nil {
 		return Comparison{}, err
 	}
 
 	breq := req
-	breq.From, breq.To = baseFrom, baseTo
-	baseline, err := e.Series(ctx, breq)
+	breq.From, breq.To = baseline.From, baseline.To
+	base, err := e.Series(ctx, breq)
 	if err != nil {
 		return Comparison{}, err
 	}
 
-	alignOrdinal(req.Bucket, &current, &baseline, req.From, req.To, baseFrom, baseTo)
-	return Comparison{Current: current, Baseline: baseline}, nil
+	alignOrdinal(req.Bucket, &current, &base, req.From, req.To, baseline.From, baseline.To)
+	return Comparison{Current: current, Baseline: base}, nil
 }
 
 // alignOrdinal overlays the Baseline on the current series by ordinal position
@@ -37,7 +42,7 @@ func (e Engine) Compare(ctx context.Context, req Request, baseFrom, baseTo time.
 // in the window's start sequence (not its slice position, since a query omits
 // empty buckets). Both windows truncate to the shorter's count; a Baseline bucket
 // with no data at an ordinal becomes a dated Gap, never a zero.
-func alignOrdinal(bucket Bucket, current, baseline *Series, curFrom, curTo, baseFrom, baseTo time.Time) {
+func alignOrdinal(bucket timeaxis.Bucket, current, baseline *Series, curFrom, curTo, baseFrom, baseTo time.Time) {
 	curStarts := bucket.Starts(curFrom, curTo)
 	baseStarts := bucket.Starts(baseFrom, baseTo)
 	n := min(len(curStarts), len(baseStarts)) // the shorter window's bucket count

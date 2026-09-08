@@ -4,6 +4,8 @@ import (
 	"context"
 	"math"
 	"testing"
+
+	"github.com/gauthier-se/verve/internal/timeaxis"
 )
 
 func TestSpearmanIsMonotoneNotLinear(t *testing.T) {
@@ -60,7 +62,7 @@ func TestCoVaryLagShiftsTheSecondMetric(t *testing.T) {
 	req := CoVaryRequest{
 		AccountID: acc, Metrics: []string{"steps", "resting_heart_rate"},
 		From: mustTime(t, "2024-01-01T00:00:00Z"), To: mustTime(t, "2024-01-06T00:00:00Z"),
-		Bucket: Day, Lag: 1,
+		Bucket: timeaxis.Day, Lag: 1,
 	}
 	cv, err := e.CoVary(context.Background(), req)
 	if err != nil {
@@ -97,7 +99,7 @@ func TestCoVaryUnrankedPairsSinkButStay(t *testing.T) {
 	cv, err := e.CoVary(context.Background(), CoVaryRequest{
 		AccountID: acc, Metrics: []string{"steps", "body_mass"},
 		From: mustTime(t, "2024-01-01T00:00:00Z"), To: mustTime(t, "2024-01-31T00:00:00Z"),
-		Bucket: Day,
+		Bucket: timeaxis.Day,
 	})
 	if err != nil {
 		t.Fatalf("CoVary: %v", err)
@@ -139,7 +141,7 @@ func TestCoVaryDrawsTheStrongestPair(t *testing.T) {
 	cv, err := e.CoVary(context.Background(), CoVaryRequest{
 		AccountID: acc, Metrics: []string{"steps", "resting_heart_rate"},
 		From: mustTime(t, "2024-01-01T00:00:00Z"), To: mustTime(t, "2024-01-21T00:00:00Z"),
-		Bucket: Day,
+		Bucket: timeaxis.Day,
 	})
 	if err != nil {
 		t.Fatalf("CoVary: %v", err)

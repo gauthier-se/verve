@@ -16,15 +16,13 @@ import (
 	"time"
 
 	"github.com/gauthier-se/verve/internal/catalog"
+	"github.com/gauthier-se/verve/internal/timeaxis"
 )
 
 // Sentinel errors let the HTTP layer map a failed query to a status without
 // depending on message text.
 var (
 	ErrUnknownMetric = errors.New("query: unknown metric")
-	ErrUnknownBucket = errors.New("query: unknown bucket")
-	// ErrBucketTooFine is a recognized bucket below the resolution cap (ADR 0012).
-	ErrBucketTooFine = errors.New("query: bucket below the resolution cap")
 	// ErrInvalidRange is an empty or inverted range (from ≥ to).
 	ErrInvalidRange = errors.New("query: invalid time range")
 	// ErrRangeTooLarge is range ÷ bucket exceeding maxPoints.
@@ -37,107 +35,22 @@ var (
 // larger range is rejected, keeping the payload bounded regardless of history.
 const maxPoints = 1000
 
-// Bucket is a supported time-bucket granularity. Day is the finest the API
-// exposes (ADR 0012); finer names parse to ErrBucketTooFine.
-type Bucket string
-
-const (
-	Day   Bucket = "day"   // calendar day (UTC)
-	Week  Bucket = "week"  // ISO week, keyed on its Monday
-	Month Bucket = "month" // calendar month, keyed on its first day
-)
-
-// ParseBucket maps a query-string bucket name to a Bucket. An empty string is
-// not defaulted (the caller decides); too-fine names yield ErrBucketTooFine.
-func ParseBucket(s string) (Bucket, error) {
-	switch s {
-	case "day":
-		return Day, nil
-	case "week":
-		return Week, nil
-	case "month":
-		return Month, nil
-	case "minute", "second", "hour":
-		return "", ErrBucketTooFine
-	default:
-		return "", fmt.Errorf("%w: %q", ErrUnknownBucket, s)
-	}
-}
-
-// sqlExpr maps a row's RFC 3339 start_at to its bucket-start date (YYYY-MM-DD)
-// for GROUP BY. snap is its Go twin; TestBucketBoundaryGoSQLAgree pins that the
-// two produce the same boundary.
-func (b Bucket) sqlExpr() string {
+// bucketSQL maps a row's RFC 3339 start_at to its bucket-start date (YYYY-MM-DD)
+// for GROUP BY. timeaxis.Bucket.Start is its Go twin; TestBucketBoundaryGoSQLAgree
+// pins that the two produce the same boundary.
+//
+// This is the read engine's private translation of a time-axis grain into SQLite,
+// and the only reason internal/timeaxis does not own it: that module is DB-free.
+func bucketSQL(b timeaxis.Bucket) string {
 	switch b {
-	case Week:
+	case timeaxis.Week:
 		// Back up into the week then snap forward to Monday: the ISO week start.
 		return "date(start_at, '-6 days', 'weekday 1')"
-	case Month:
+	case timeaxis.Month:
 		return "date(start_at, 'start of month')"
 	default: // Day
 		return "date(start_at)"
 	}
-}
-
-// approxDuration is a lower-bound bucket width used only for the point-count
-// guard (a month is at least 28 days). It never affects the SQL bucketing.
-func (b Bucket) approxDuration() time.Duration {
-	switch b {
-	case Week:
-		return 7 * 24 * time.Hour
-	case Month:
-		return 28 * 24 * time.Hour
-	default:
-		return 24 * time.Hour
-	}
-}
-
-// Start is the bucket-start date (YYYY-MM-DD) of the bucket holding t: the key
-// a Point carries and the category a chart's X axis is drawn on. It is snap's
-// exported face, so anything that has to name a position on the grid (a folded
-// Annotation, say) asks the module that owns the boundaries instead of
-// re-deriving them.
-func (b Bucket) Start(t time.Time) string {
-	return b.snap(t).Format("2006-01-02")
-}
-
-// snap rounds t down to the start of its bucket, in UTC.
-func (b Bucket) snap(t time.Time) time.Time {
-	t = t.UTC()
-	y, m, d := t.Date()
-	switch b {
-	case Week:
-		day := time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
-		offset := (int(day.Weekday()) + 6) % 7 // days since Monday (the ISO week start)
-		return day.AddDate(0, 0, -offset)
-	case Month:
-		return time.Date(y, m, 1, 0, 0, 0, 0, time.UTC)
-	default: // Day
-		return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
-	}
-}
-
-// next advances a bucket start to the following bucket start (calendar-aware).
-func (b Bucket) next(t time.Time) time.Time {
-	switch b {
-	case Week:
-		return t.AddDate(0, 0, 7)
-	case Month:
-		return t.AddDate(0, 1, 0)
-	default: // Day
-		return t.AddDate(0, 0, 1)
-	}
-}
-
-// Starts enumerates the bucket-start dates covering [from, to), in order — the
-// ordinal sequence used to align a Baseline by position, not date (ADR 0015), and
-// the grid a dense series is drawn on when the gaps themselves are the subject.
-func (b Bucket) Starts(from, to time.Time) []string {
-	out := []string{}
-	for cur := b.snap(from); cur.Before(to.UTC()); cur = b.next(cur) {
-		out = append(out, cur.Format("2006-01-02"))
-	}
-	return out
 }
 
 // Request is one aggregated-series query: a Metric over [From, To) collapsed
@@ -147,7 +60,7 @@ type Request struct {
 	Metric    string
 	From      time.Time
 	To        time.Time
-	Bucket    Bucket
+	Bucket    timeaxis.Bucket
 }
 
 // Point is one aggregated bucket: Bucket is the start date (YYYY-MM-DD), Value the
@@ -182,7 +95,7 @@ type Series struct {
 	Metric      string              `json:"metric"`
 	Unit        string              `json:"unit"`
 	Aggregation catalog.Aggregation `json:"aggregation"`
-	Bucket      Bucket              `json:"bucket"`
+	Bucket      timeaxis.Bucket     `json:"bucket"`
 	Source      string              `json:"source"`
 	Points      []Point             `json:"points"`
 	// Summary is the Panel summary: the Metric aggregated over the whole window as a
@@ -232,7 +145,7 @@ func (e Engine) Series(ctx context.Context, req Request) (Series, error) {
 	if !req.To.After(req.From) {
 		return Series{}, ErrInvalidRange
 	}
-	if req.To.Sub(req.From)/req.Bucket.approxDuration() > maxPoints {
+	if req.To.Sub(req.From)/req.Bucket.ApproxDuration() > maxPoints {
 		return Series{}, ErrRangeTooLarge
 	}
 
@@ -654,7 +567,7 @@ func dominantSource(slug string, winners []string) string {
 // in play (winning Source, Manual overlay), so every rule below is unchanged by the
 // overlay's existence — that separation is the point of resolving at day grain.
 func (e Engine) aggregate(ctx context.Context, req Request, agg catalog.Aggregation, f sourceFilter) ([]Point, error) {
-	bucket := req.Bucket.sqlExpr()
+	bucket := bucketSQL(req.Bucket)
 	where, args := f.where(req)
 
 	switch agg {

@@ -208,7 +208,7 @@ func importArchive(ctx context.Context, store connector.Store, accountID int64, 
 		return connector.Report{}, err
 	}
 
-	if err := store.RecordImport(ctx, &data.Import{
+	if err := store.Record(ctx, &data.Import{
 		AccountID:     accountID,
 		Connector:     connectorName,
 		SourceFile:    sourceFile,

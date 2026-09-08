@@ -11,6 +11,7 @@ import (
 	"github.com/gauthier-se/verve/internal/auth"
 	"github.com/gauthier-se/verve/internal/data"
 	"github.com/gauthier-se/verve/internal/estimate"
+	"github.com/gauthier-se/verve/internal/history"
 	"github.com/gauthier-se/verve/internal/query"
 )
 
@@ -52,6 +53,7 @@ type Server struct {
 	models        data.Models
 	engine        query.Engine
 	estimates     estimate.Engine
+	history       history.Engine
 	resolver      authResolver
 	loginLimiter  *loginLimiter
 	secureCookies bool
@@ -91,6 +93,7 @@ func New(logger *slog.Logger, models data.Models, engine query.Engine, cfg Confi
 		models:        models,
 		engine:        engine,
 		estimates:     estimate.Engine{Query: engine},
+		history:       history.Engine{Query: engine, Models: models},
 		resolver:      sessionResolver{sessions: models.AuthSessions},
 		loginLimiter:  newLoginLimiter(),
 		secureCookies: cfg.SecureCookies,

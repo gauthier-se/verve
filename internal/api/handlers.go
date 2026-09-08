@@ -190,7 +190,7 @@ func (s *Server) handleSeries(w http.ResponseWriter, r *http.Request) {
 
 	// Comparison mode: the current series plus a baseline series over the resolved
 	// baseline window, aligned and equal length by the engine (ADR 0015).
-	cmp, err := s.engine.Compare(r.Context(), req, resolved.Baseline.From, resolved.Baseline.To)
+	cmp, err := s.engine.Compare(r.Context(), req, *resolved.Baseline)
 	if err != nil {
 		s.respondSeriesError(w, r, err)
 		return

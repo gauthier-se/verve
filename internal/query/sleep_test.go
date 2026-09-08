@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"testing"
+
+	"github.com/gauthier-se/verve/internal/timeaxis"
 	"time"
 
 	"github.com/gauthier-se/verve/internal/data"
@@ -33,7 +35,7 @@ func seedSleep(t *testing.T, models data.Models, acc int64, rows []interval) {
 }
 
 // sleepSeries runs a day-bucket sleep query over [from, to).
-func sleepSeries(t *testing.T, e Engine, acc int64, from, to string, bucket Bucket) Series {
+func sleepSeries(t *testing.T, e Engine, acc int64, from, to string, bucket timeaxis.Bucket) Series {
 	t.Helper()
 	s, err := e.Series(context.Background(), Request{
 		AccountID: acc, Metric: "sleep", Bucket: bucket,
@@ -53,7 +55,7 @@ func TestSleepNightSpansMidnight(t *testing.T) {
 		{"asleep_core", "2024-01-03T23:00:00Z", "2024-01-04T06:00:00Z", "Watch"},
 	})
 
-	s := sleepSeries(t, e, acc, "2024-01-01T00:00:00Z", "2024-01-08T00:00:00Z", Day)
+	s := sleepSeries(t, e, acc, "2024-01-01T00:00:00Z", "2024-01-08T00:00:00Z", timeaxis.Day)
 	if len(s.Points) != 1 {
 		t.Fatalf("points = %+v, want one night", s.Points)
 	}
@@ -82,7 +84,7 @@ func TestSleepFragmentedNightStaysOneBucket(t *testing.T) {
 		{"asleep_rem", "2024-01-04T03:00:00Z", "2024-01-04T06:00:00Z", "Watch"},  // 180
 	})
 
-	s := sleepSeries(t, e, acc, "2024-01-01T00:00:00Z", "2024-01-08T00:00:00Z", Day)
+	s := sleepSeries(t, e, acc, "2024-01-01T00:00:00Z", "2024-01-08T00:00:00Z", timeaxis.Day)
 	if len(s.Points) != 1 {
 		t.Fatalf("points = %+v, want one night, not one per side of midnight", s.Points)
 	}
@@ -104,7 +106,7 @@ func TestSleepAwakeIsReportedNotCounted(t *testing.T) {
 		{"asleep_rem", "2024-01-04T02:20:00Z", "2024-01-04T06:00:00Z", "Watch"},  // 220
 	})
 
-	s := sleepSeries(t, e, acc, "2024-01-01T00:00:00Z", "2024-01-08T00:00:00Z", Day)
+	s := sleepSeries(t, e, acc, "2024-01-01T00:00:00Z", "2024-01-08T00:00:00Z", timeaxis.Day)
 	want := Point{Bucket: "2024-01-04", Value: 400, States: map[string]float64{
 		"asleep_core": 180, "asleep_rem": 220, "awake": 20,
 	}}
@@ -127,7 +129,7 @@ func TestSleepInBedResolvedPerNight(t *testing.T) {
 		{"in_bed", "2024-01-04T23:00:00Z", "2024-01-05T07:00:00Z", "iPhone"},
 	})
 
-	s := sleepSeries(t, e, acc, "2024-01-01T00:00:00Z", "2024-01-08T00:00:00Z", Day)
+	s := sleepSeries(t, e, acc, "2024-01-01T00:00:00Z", "2024-01-08T00:00:00Z", timeaxis.Day)
 	if len(s.Points) != 2 {
 		t.Fatalf("points = %+v, want both nights", s.Points)
 	}
@@ -153,7 +155,7 @@ func TestSleepStagedSourceWinsTheTie(t *testing.T) {
 		{"asleep_core", "2024-01-03T23:30:00Z", "2024-01-04T05:00:00Z", "iPhone"},      // 330
 	})
 
-	s := sleepSeries(t, e, acc, "2024-01-01T00:00:00Z", "2024-01-08T00:00:00Z", Day)
+	s := sleepSeries(t, e, acc, "2024-01-01T00:00:00Z", "2024-01-08T00:00:00Z", timeaxis.Day)
 	if len(s.Points) != 1 || s.Points[0].Value != 420 {
 		t.Fatalf("points = %+v, want the Watch's 420 min alone", s.Points)
 	}
@@ -174,7 +176,7 @@ func TestSleepWeekBucketSumsItsNights(t *testing.T) {
 		{"asleep_core", "2024-01-07T23:00:00Z", "2024-01-08T06:00:00Z", "Watch"}, // 420
 	})
 
-	s := sleepSeries(t, e, acc, "2024-01-01T00:00:00Z", "2024-01-15T00:00:00Z", Week)
+	s := sleepSeries(t, e, acc, "2024-01-01T00:00:00Z", "2024-01-15T00:00:00Z", timeaxis.Week)
 	if len(s.Points) != 2 {
 		t.Fatalf("points = %+v, want two weeks", s.Points)
 	}
@@ -198,13 +200,13 @@ func TestSleepNightBelongsToAWindowWhole(t *testing.T) {
 		{"asleep_core", "2024-01-08T00:00:00Z", "2024-01-08T06:00:00Z", "Watch"},
 	})
 
-	s := sleepSeries(t, e, acc, "2024-01-01T00:00:00Z", "2024-01-08T00:00:00Z", Day)
+	s := sleepSeries(t, e, acc, "2024-01-01T00:00:00Z", "2024-01-08T00:00:00Z", timeaxis.Day)
 	if len(s.Points) != 0 {
 		t.Errorf("points = %+v, want none: the night wakes outside the window", s.Points)
 	}
 
 	// The same night, in the window it wakes into, is whole — both halves.
-	next := sleepSeries(t, e, acc, "2024-01-08T00:00:00Z", "2024-01-15T00:00:00Z", Day)
+	next := sleepSeries(t, e, acc, "2024-01-08T00:00:00Z", "2024-01-15T00:00:00Z", timeaxis.Day)
 	if len(next.Points) != 1 || next.Points[0].Value != 419 {
 		t.Errorf("points = %+v, want one whole 419 min night", next.Points)
 	}
@@ -217,7 +219,7 @@ func TestSleepEmptyWindow(t *testing.T) {
 		{"asleep_core", "2024-01-03T23:00:00Z", "2024-01-04T06:00:00Z", "Watch"},
 	})
 
-	s := sleepSeries(t, e, acc, "2024-02-01T00:00:00Z", "2024-02-08T00:00:00Z", Day)
+	s := sleepSeries(t, e, acc, "2024-02-01T00:00:00Z", "2024-02-08T00:00:00Z", timeaxis.Day)
 	if s.Points == nil || len(s.Points) != 0 {
 		t.Errorf("points = %+v, want empty and non-nil", s.Points)
 	}
@@ -237,7 +239,7 @@ func TestSleepSummaryAndNights(t *testing.T) {
 		// 2024-01-05 and 01-06: the watch was off. Three days, two nights.
 	})
 
-	s := sleepSeries(t, e, acc, "2024-01-01T00:00:00Z", "2024-01-08T00:00:00Z", Day)
+	s := sleepSeries(t, e, acc, "2024-01-01T00:00:00Z", "2024-01-08T00:00:00Z", timeaxis.Day)
 	if s.Summary == nil || s.Summary.Value != 780 {
 		t.Fatalf("summary = %+v, want 780 min over the window", s.Summary)
 	}
@@ -267,7 +269,7 @@ func TestSleepAccountIsolation(t *testing.T) {
 		{"asleep_core", "2024-01-03T23:00:00Z", "2024-01-04T06:00:00Z", "Watch"},
 	})
 
-	s := sleepSeries(t, e, acc, "2024-01-01T00:00:00Z", "2024-01-08T00:00:00Z", Day)
+	s := sleepSeries(t, e, acc, "2024-01-01T00:00:00Z", "2024-01-08T00:00:00Z", timeaxis.Day)
 	if len(s.Points) != 0 {
 		t.Errorf("points = %+v, want none of the other Account's sleep", s.Points)
 	}
@@ -283,9 +285,9 @@ func TestSleepComparesLikeAnyMetric(t *testing.T) {
 	})
 
 	cmp, err := e.Compare(context.Background(), Request{
-		AccountID: acc, Metric: "sleep", Bucket: Day,
+		AccountID: acc, Metric: "sleep", Bucket: timeaxis.Day,
 		From: mustTime(t, "2024-01-08T00:00:00Z"), To: mustTime(t, "2024-01-15T00:00:00Z"),
-	}, mustTime(t, "2024-01-01T00:00:00Z"), mustTime(t, "2024-01-08T00:00:00Z"))
+	}, timeaxis.Window{From: mustTime(t, "2024-01-01T00:00:00Z"), To: mustTime(t, "2024-01-08T00:00:00Z")})
 	if err != nil {
 		t.Fatalf("Compare: %v", err)
 	}
@@ -303,10 +305,10 @@ func TestNonSleepPointsCarryNoStates(t *testing.T) {
 	e, models, acc := setup(t)
 	seed(t, e.DB, models, acc, []meas{{"steps", 100, "2024-01-01T08:00:00Z", "Watch"}})
 
-	s := sleepSeries(t, e, acc, "2024-01-01T00:00:00Z", "2024-01-02T00:00:00Z", Day)
+	s := sleepSeries(t, e, acc, "2024-01-01T00:00:00Z", "2024-01-02T00:00:00Z", timeaxis.Day)
 	_ = s
 	steps, err := e.Series(context.Background(), Request{
-		AccountID: acc, Metric: "steps", Bucket: Day,
+		AccountID: acc, Metric: "steps", Bucket: timeaxis.Day,
 		From: mustTime(t, "2024-01-01T00:00:00Z"), To: mustTime(t, "2024-01-02T00:00:00Z"),
 	})
 	if err != nil {
@@ -333,7 +335,7 @@ func TestSleepNowRelativeWindowKeepsLastNight(t *testing.T) {
 	})
 
 	s, err := e.Series(context.Background(), Request{
-		AccountID: acc, Metric: "sleep", Bucket: Day,
+		AccountID: acc, Metric: "sleep", Bucket: timeaxis.Day,
 		From: now.AddDate(0, 0, -7), To: now,
 	})
 	if err != nil {

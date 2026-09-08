@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/gauthier-se/verve/internal/data"
 )
@@ -134,4 +135,10 @@ func TestCoVaryNamesWhatItSkipped(t *testing.T) {
 	if view.Skipped[0].Reason == "" {
 		t.Error("skipped metric carries no reason")
 	}
+}
+
+// daysAgo renders an RFC 3339 UTC timestamp n days before now, for seeding
+// measurements against a now-relative window.
+func daysAgo(n int) string {
+	return time.Now().UTC().AddDate(0, 0, -n).Format(time.RFC3339)
 }

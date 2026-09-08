@@ -5,8 +5,6 @@ package timeaxis
 
 import (
 	"time"
-
-	"github.com/gauthier-se/verve/internal/query"
 )
 
 // allFloor is the lower bound the "all" preset expands to — earlier than any
@@ -39,7 +37,7 @@ type Window struct {
 // "all".
 type Resolved struct {
 	Current  Window
-	Bucket   query.Bucket
+	Bucket   Bucket
 	Baseline *Window
 }
 
@@ -93,9 +91,9 @@ func Resolve(t Tokens, now time.Time) (Resolved, error) {
 		return Resolved{}, err
 	}
 
-	bucket := autoBucket(cur)
+	bucket := AutoBucket(cur)
 	if t.Bucket != nil {
-		b, _ := query.ParseBucket(*t.Bucket) // validated above
+		b, _ := ParseBucket(*t.Bucket) // validated above
 		bucket = b
 	}
 
@@ -150,20 +148,6 @@ func baselineWindow(t Tokens, cur Window) Window {
 	}
 }
 
-// autoBucket derives the bucket from a span: ≤31d→day, ≤366d→week, else month,
-// keeping the point count bounded without a per-Panel choice.
-func autoBucket(w Window) query.Bucket {
-	days := int(w.To.Sub(w.From) / (24 * time.Hour))
-	switch {
-	case days <= 31:
-		return query.Day
-	case days <= 366:
-		return query.Week
-	default:
-		return query.Month
-	}
-}
-
 func validateRange(v Invalid, t Tokens) {
 	if !rangePresets[t.RangePreset] {
 		v["range_preset"] = "must be one of 7d, 30d, 3m, 1y, all, custom"
@@ -213,7 +197,7 @@ func validateOverride(v Invalid, bucket *string) {
 	if bucket == nil {
 		return
 	}
-	if _, err := query.ParseBucket(*bucket); err != nil {
+	if _, err := ParseBucket(*bucket); err != nil {
 		v["bucket"] = "must be day, week, or month, or omitted to auto-derive"
 	}
 }

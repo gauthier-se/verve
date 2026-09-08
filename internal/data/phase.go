@@ -23,6 +23,22 @@ type Phase struct {
 	CreatedAt      string
 }
 
+// Kind is the word a signed Target rate makes the Phase: a surplus is a bulk, a
+// deficit a cut, and zero a maintenance stretch (CONTEXT.md: Phase, Target rate).
+//
+// It is a method on the row rather than a helper beside whichever read happens to
+// need it, so "cut" and "bulk" mean the same thing on every screen that says them.
+func (p Phase) Kind() string {
+	switch {
+	case p.RatePctPerWeek > 0:
+		return "bulk"
+	case p.RatePctPerWeek < 0:
+		return "cut"
+	default:
+		return "maintenance"
+	}
+}
+
 // PhaseModel is the DAO for phases.
 type PhaseModel struct {
 	DB *sql.DB

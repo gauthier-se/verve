@@ -72,10 +72,11 @@ Create a local account either from the first-run screen in the browser, or with
 ```
 cmd/verve/              CLI entry point: serve, migrate, account, import
 internal/catalog/       the closed set of canonical Metrics, units, formulas
-internal/connector/     sources of data; applehealth/ is the only one so far
+internal/connector/     sources of data; applehealth/ and googlehealth/
 internal/units/         unit conversion at import time
 internal/data/          storage: SQLite, embedded migrations, one model per family
 internal/query/         the read engine: aggregated buckets, source resolution
+internal/history/       the long view: the band plus the events that explain it
 internal/timeaxis/      time range, baseline and bucket resolution, pure and DB-free
 internal/estimate/      inferred quantities: basal and expenditure estimates
 internal/api/           HTTP handlers, auth, rate limiting, import jobs

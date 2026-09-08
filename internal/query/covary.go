@@ -5,6 +5,8 @@ import (
 	"math"
 	"sort"
 	"time"
+
+	"github.com/gauthier-se/verve/internal/timeaxis"
 )
 
 // Co-variation is the read that answers "does this move with that" (CONTEXT.md):
@@ -38,7 +40,7 @@ type CoVaryRequest struct {
 	Metrics   []string
 	From      time.Time
 	To        time.Time
-	Bucket    Bucket
+	Bucket    timeaxis.Bucket
 	// Lag shifts the second Metric of a pair forward by that many buckets, so a
 	// pair reads "A now against B one bucket later". A non-zero Lag makes the
 	// matrix directional: (sleep → resting heart rate) is not (resting heart rate
@@ -100,7 +102,7 @@ type ScatterFit struct {
 type CoVariation struct {
 	Metrics   []string          `json:"metrics"`
 	Units     map[string]string `json:"units"`
-	Bucket    Bucket            `json:"bucket"`
+	Bucket    timeaxis.Bucket   `json:"bucket"`
 	Lag       int               `json:"lag"`
 	Pairs     []Pair            `json:"pairs"`
 	MinShared int               `json:"min_shared"`
@@ -211,19 +213,16 @@ func (e Engine) scatter(p Pair, values map[string]map[string]float64, units map[
 // The later bucket is found by advancing a's bucket start on the grid, not by
 // adding seven days to a date: the boundaries belong to the Bucket, and a lag that
 // computed its own would land between buckets in the week a month changes length.
-func alignPair(a, b map[string]float64, bucket Bucket, lag int) (xs, ys []float64, buckets []string) {
+func alignPair(a, b map[string]float64, bucket timeaxis.Bucket, lag int) (xs, ys []float64, buckets []string) {
 	xs, ys, buckets = []float64{}, []float64{}, []string{}
 	for _, key := range sortedKeys(a) {
 		target := key
 		if lag != 0 {
-			start, err := time.Parse(dayLayout, key)
-			if err != nil {
+			shifted, ok := bucket.Shift(key, lag)
+			if !ok {
 				continue
 			}
-			for i := 0; i < lag; i++ {
-				start = bucket.next(start)
-			}
-			target = start.Format(dayLayout)
+			target = shifted
 		}
 		y, ok := b[target]
 		if !ok {
@@ -240,7 +239,7 @@ func alignPair(a, b map[string]float64, bucket Bucket, lag int) (xs, ys []float6
 // a share of the window's own bucket count, never below the floor. It scales with
 // the range so a three-month window is not silently unrankable, and it is returned
 // to the client so the rule can be stated in the interface rather than implied.
-func thresholdShared(bucket Bucket, from, to time.Time) int {
+func thresholdShared(bucket timeaxis.Bucket, from, to time.Time) int {
 	total := len(bucket.Starts(from, to))
 	want := int(math.Ceil(float64(total) * minSharedFraction))
 	if want < minSharedBuckets {

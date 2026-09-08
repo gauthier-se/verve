@@ -9,6 +9,8 @@ import (
 	"log/slog"
 	"path/filepath"
 	"testing"
+
+	"github.com/gauthier-se/verve/internal/timeaxis"
 	"time"
 
 	"github.com/gauthier-se/verve/internal/data"
@@ -75,7 +77,7 @@ func TestSeriesSumPerDay(t *testing.T) {
 	})
 
 	s, err := e.Series(context.Background(), Request{
-		AccountID: acc, Metric: "steps", Bucket: Day,
+		AccountID: acc, Metric: "steps", Bucket: timeaxis.Day,
 		From: mustTime(t, "2024-01-01T00:00:00Z"), To: mustTime(t, "2024-01-03T00:00:00Z"),
 	})
 	if err != nil {
@@ -106,7 +108,7 @@ func TestSeriesLatestCarriesWindowMean(t *testing.T) {
 	})
 
 	s, err := e.Series(context.Background(), Request{
-		AccountID: acc, Metric: "body_mass", Bucket: Day,
+		AccountID: acc, Metric: "body_mass", Bucket: timeaxis.Day,
 		From: mustTime(t, "2024-01-01T00:00:00Z"), To: mustTime(t, "2024-01-04T00:00:00Z"),
 	})
 	if err != nil {
@@ -132,9 +134,9 @@ func TestCompareCarriesPerWindowDays(t *testing.T) {
 
 	// Current window is 3 days; the Baseline window is 7 days.
 	cmp, err := e.Compare(context.Background(), Request{
-		AccountID: acc, Metric: "steps", Bucket: Day,
+		AccountID: acc, Metric: "steps", Bucket: timeaxis.Day,
 		From: mustTime(t, "2024-01-10T00:00:00Z"), To: mustTime(t, "2024-01-13T00:00:00Z"),
-	}, mustTime(t, "2024-01-01T00:00:00Z"), mustTime(t, "2024-01-08T00:00:00Z"))
+	}, timeaxis.Window{From: mustTime(t, "2024-01-01T00:00:00Z"), To: mustTime(t, "2024-01-08T00:00:00Z")})
 	if err != nil {
 		t.Fatalf("Compare: %v", err)
 	}
@@ -154,7 +156,7 @@ func TestSeriesAverageBand(t *testing.T) {
 		{"heart_rate", 100, "2024-01-01T10:00:00Z", "Watch"},
 	})
 	s, err := e.Series(context.Background(), Request{
-		AccountID: acc, Metric: "heart_rate", Bucket: Day,
+		AccountID: acc, Metric: "heart_rate", Bucket: timeaxis.Day,
 		From: mustTime(t, "2024-01-01T00:00:00Z"), To: mustTime(t, "2024-01-02T00:00:00Z"),
 	})
 	if err != nil {
@@ -177,7 +179,7 @@ func TestSeriesLatestPerBucket(t *testing.T) {
 		{"body_mass", 79.0, "2024-01-05T07:00:00Z", "Scale"},
 	})
 	s, err := e.Series(context.Background(), Request{
-		AccountID: acc, Metric: "body_mass", Bucket: Day,
+		AccountID: acc, Metric: "body_mass", Bucket: timeaxis.Day,
 		From: mustTime(t, "2024-01-01T00:00:00Z"), To: mustTime(t, "2024-01-06T00:00:00Z"),
 	})
 	if err != nil {
@@ -198,7 +200,7 @@ func TestSeriesSourceResolutionNoDoubleCount(t *testing.T) {
 		{"steps", 280, "2024-01-01T08:00:00Z", "Gauthier's iPhone"},
 	})
 	s, err := e.Series(context.Background(), Request{
-		AccountID: acc, Metric: "steps", Bucket: Day,
+		AccountID: acc, Metric: "steps", Bucket: timeaxis.Day,
 		From: mustTime(t, "2024-01-01T00:00:00Z"), To: mustTime(t, "2024-01-02T00:00:00Z"),
 	})
 	if err != nil {
@@ -222,7 +224,7 @@ func TestSeriesAccountScoped(t *testing.T) {
 	seed(t, e.DB, models, other.ID, []meas{{"steps", 9999, "2024-01-01T09:00:00Z", "Watch"}})
 
 	s, err := e.Series(context.Background(), Request{
-		AccountID: acc, Metric: "steps", Bucket: Day,
+		AccountID: acc, Metric: "steps", Bucket: timeaxis.Day,
 		From: mustTime(t, "2024-01-01T00:00:00Z"), To: mustTime(t, "2024-01-02T00:00:00Z"),
 	})
 	if err != nil {
@@ -241,7 +243,7 @@ func TestSeriesWeekAndMonthBuckets(t *testing.T) {
 		{"steps", 30, "2024-01-08T08:00:00Z", "Watch"}, // Mon, next week
 	})
 	week, err := e.Series(context.Background(), Request{
-		AccountID: acc, Metric: "steps", Bucket: Week,
+		AccountID: acc, Metric: "steps", Bucket: timeaxis.Week,
 		From: mustTime(t, "2024-01-01T00:00:00Z"), To: mustTime(t, "2024-02-01T00:00:00Z"),
 	})
 	if err != nil {
@@ -253,7 +255,7 @@ func TestSeriesWeekAndMonthBuckets(t *testing.T) {
 	}
 
 	month, err := e.Series(context.Background(), Request{
-		AccountID: acc, Metric: "steps", Bucket: Month,
+		AccountID: acc, Metric: "steps", Bucket: timeaxis.Month,
 		From: mustTime(t, "2024-01-01T00:00:00Z"), To: mustTime(t, "2024-02-01T00:00:00Z"),
 	})
 	if err != nil {
@@ -280,7 +282,7 @@ func TestSeriesOneYearBounded(t *testing.T) {
 	seed(t, e.DB, models, acc, ms)
 
 	s, err := e.Series(context.Background(), Request{
-		AccountID: acc, Metric: "steps", Bucket: Day,
+		AccountID: acc, Metric: "steps", Bucket: timeaxis.Day,
 		From: day, To: day.AddDate(1, 0, 0),
 	})
 	if err != nil {
@@ -297,7 +299,7 @@ func TestSeriesOneYearBounded(t *testing.T) {
 func TestSeriesNoData(t *testing.T) {
 	e, _, acc := setup(t)
 	s, err := e.Series(context.Background(), Request{
-		AccountID: acc, Metric: "steps", Bucket: Day,
+		AccountID: acc, Metric: "steps", Bucket: timeaxis.Day,
 		From: mustTime(t, "2024-01-01T00:00:00Z"), To: mustTime(t, "2024-01-02T00:00:00Z"),
 	})
 	if err != nil {
@@ -310,7 +312,7 @@ func TestSeriesNoData(t *testing.T) {
 
 func TestSeriesErrors(t *testing.T) {
 	e, _, acc := setup(t)
-	base := Request{AccountID: acc, Metric: "steps", Bucket: Day,
+	base := Request{AccountID: acc, Metric: "steps", Bucket: timeaxis.Day,
 		From: mustTime(t, "2024-01-01T00:00:00Z"), To: mustTime(t, "2024-01-02T00:00:00Z")}
 
 	t.Run("unknown metric", func(t *testing.T) {
@@ -342,16 +344,16 @@ func TestSeriesErrors(t *testing.T) {
 func TestSeriesDerivedCalorieBalance(t *testing.T) {
 	e, models, acc := setup(t)
 	seed(t, e.DB, models, acc, []meas{
-		// Day 1: food logged → a real balance.
+		// timeaxis.Day 1: food logged → a real balance.
 		{"dietary_energy", 1800, "2024-01-01T12:00:00Z", "MyFitnessPal"},
 		{"active_energy", 400, "2024-01-01T18:00:00Z", "Watch"},
 		{"basal_energy", 1600, "2024-01-01T23:00:00Z", "Watch"},
-		// Day 2: expenditure recorded but no food logged → gap, not a huge deficit.
+		// timeaxis.Day 2: expenditure recorded but no food logged → gap, not a huge deficit.
 		{"active_energy", 500, "2024-01-02T18:00:00Z", "Watch"},
 		{"basal_energy", 1500, "2024-01-02T23:00:00Z", "Watch"},
 	})
 	s, err := e.Series(context.Background(), Request{
-		AccountID: acc, Metric: "calorie_balance", Bucket: Day,
+		AccountID: acc, Metric: "calorie_balance", Bucket: timeaxis.Day,
 		From: mustTime(t, "2024-01-01T00:00:00Z"), To: mustTime(t, "2024-01-03T00:00:00Z"),
 	})
 	if err != nil {
@@ -373,15 +375,15 @@ func TestSeriesDerivedCalorieBalance(t *testing.T) {
 func TestSeriesDerivedProteinPerKg(t *testing.T) {
 	e, models, acc := setup(t)
 	seed(t, e.DB, models, acc, []meas{
-		// Day 1: protein logged and a weigh-in → a ratio.
+		// timeaxis.Day 1: protein logged and a weigh-in → a ratio.
 		{"dietary_protein", 60, "2024-01-01T09:00:00Z", "MyFitnessPal"},
 		{"dietary_protein", 60, "2024-01-01T19:00:00Z", "MyFitnessPal"}, // summed → 120
 		{"body_mass", 80, "2024-01-01T07:00:00Z", "Scale"},
-		// Day 2: protein logged but no weigh-in → gap (missing denominator).
+		// timeaxis.Day 2: protein logged but no weigh-in → gap (missing denominator).
 		{"dietary_protein", 100, "2024-01-02T09:00:00Z", "MyFitnessPal"},
 	})
 	s, err := e.Series(context.Background(), Request{
-		AccountID: acc, Metric: "protein_per_kg", Bucket: Day,
+		AccountID: acc, Metric: "protein_per_kg", Bucket: timeaxis.Day,
 		From: mustTime(t, "2024-01-01T00:00:00Z"), To: mustTime(t, "2024-01-03T00:00:00Z"),
 	})
 	if err != nil {
@@ -412,7 +414,7 @@ func TestSeriesDerivedWeeklyRecomputesFromOperands(t *testing.T) {
 		{"body_mass", 78, "2024-01-02T07:00:00Z", "Scale"}, // latest in the week → 78
 	})
 	req := Request{
-		AccountID: acc, Bucket: Week,
+		AccountID: acc, Bucket: timeaxis.Week,
 		From: mustTime(t, "2024-01-01T00:00:00Z"), To: mustTime(t, "2024-01-08T00:00:00Z"),
 	}
 
@@ -452,7 +454,7 @@ func TestSeriesDerivedNoBandNoSource(t *testing.T) {
 		{"basal_energy", 1600, "2024-01-01T23:00:00Z", "Watch"},
 	})
 	s, err := e.Series(context.Background(), Request{
-		AccountID: acc, Metric: "calorie_balance", Bucket: Day,
+		AccountID: acc, Metric: "calorie_balance", Bucket: timeaxis.Day,
 		From: mustTime(t, "2024-01-01T00:00:00Z"), To: mustTime(t, "2024-01-02T00:00:00Z"),
 	})
 	if err != nil {
@@ -481,7 +483,7 @@ func TestResolveOperandAverageDropsBand(t *testing.T) {
 		{"heart_rate", 100, "2024-01-01T10:00:00Z", "Watch"}, // avg 80, band 60..100
 	})
 	req := Request{
-		AccountID: acc, Bucket: Day,
+		AccountID: acc, Bucket: timeaxis.Day,
 		From: mustTime(t, "2024-01-01T00:00:00Z"), To: mustTime(t, "2024-01-02T00:00:00Z"),
 	}
 	vals, err := e.resolveOperand(context.Background(), req, "heart_rate")
@@ -492,29 +494,6 @@ func TestResolveOperandAverageDropsBand(t *testing.T) {
 	// derived Point.
 	if got, want := vals["2024-01-01"], 80.0; got != want {
 		t.Errorf("resolved average operand = %v, want %v (bare mean, no band)", got, want)
-	}
-}
-
-func TestParseBucket(t *testing.T) {
-	tests := map[string]struct {
-		want Bucket
-		err  error
-	}{
-		"day":    {Day, nil},
-		"week":   {Week, nil},
-		"month":  {Month, nil},
-		"hour":   {"", ErrBucketTooFine},
-		"minute": {"", ErrBucketTooFine},
-		"year":   {"", ErrUnknownBucket},
-		"":       {"", ErrUnknownBucket},
-	}
-	for in, tc := range tests {
-		t.Run(in, func(t *testing.T) {
-			got, err := ParseBucket(in)
-			if got != tc.want || !errors.Is(err, tc.err) {
-				t.Errorf("ParseBucket(%q) = %q, %v; want %q, %v", in, got, err, tc.want, tc.err)
-			}
-		})
 	}
 }
 
@@ -577,7 +556,7 @@ func TestSeriesCountsTheRowsBehindEachBucket(t *testing.T) {
 	}
 	for _, tc := range cases {
 		s, err := e.Series(context.Background(), Request{
-			AccountID: acc, Metric: tc.metric, Bucket: Day, From: from, To: to,
+			AccountID: acc, Metric: tc.metric, Bucket: timeaxis.Day, From: from, To: to,
 		})
 		if err != nil {
 			t.Fatalf("Series(%s): %v", tc.metric, err)
@@ -605,7 +584,7 @@ func TestSeriesDerivedCarriesNoCount(t *testing.T) {
 	})
 
 	s, err := e.Series(context.Background(), Request{
-		AccountID: acc, Metric: "calorie_balance", Bucket: Day,
+		AccountID: acc, Metric: "calorie_balance", Bucket: timeaxis.Day,
 		From: mustTime(t, "2024-01-01T00:00:00Z"), To: mustTime(t, "2024-01-02T00:00:00Z"),
 	})
 	if err != nil {

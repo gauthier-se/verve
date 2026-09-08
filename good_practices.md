@@ -14,12 +14,16 @@ Standard Go layout for a web service that ships as a single binary:
   projects:
   - `internal/catalog/` — the canonical Metric Catalog (declarative mapping
     data + unit conversions + aggregation rules).
-  - `internal/connector/` — source Connectors (`applehealth` first); reading a
-    source and emitting canonical families.
+  - `internal/connector/` — source Connectors (`applehealth`, `googlehealth`);
+    reading a source and emitting canonical families.
   - `internal/data/` — the storage layer (SQLite access, DAO-style models per
     family: Measurement, State, Session, plus Account, Import).
-  - `internal/query/` — the aggregated-bucket query engine.
-  - `internal/validator/` — reusable validation for incoming data.
+  - `internal/query/` — the aggregated-bucket query engine, plus the reads about
+    what an Account holds (Sources, Metrics with data).
+  - `internal/history/` — the long view: the dense band plus the dated events
+    that explain it. The one read that spans every family (ADR 0037).
+  - `internal/timeaxis/` — Time range, Baseline and Bucket resolution. Pure and
+    DB-free; owns every bucket boundary rule (ADR 0037).
 
 **Dependency injection.** No global state. Dependencies (`*sql.DB`,
 `*slog.Logger`, config, Catalog) are injected into a central `application`

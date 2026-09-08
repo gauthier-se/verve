@@ -10,6 +10,7 @@ import (
 	"github.com/gauthier-se/verve/internal/data"
 	"github.com/gauthier-se/verve/internal/estimate"
 	"github.com/gauthier-se/verve/internal/query"
+	"github.com/gauthier-se/verve/internal/timeaxis"
 )
 
 // Profile endpoints: the Account attributes that are not Measurements. Date of birth and
@@ -261,6 +262,6 @@ func trustFromAccount(a *data.Account) estimate.Trust {
 func seriesOverYears(accountID int64, metric string, now time.Time) query.Request {
 	return query.Request{
 		AccountID: accountID, Metric: metric,
-		From: now.AddDate(-30, 0, 0), To: now, Bucket: query.Month,
+		From: now.AddDate(-30, 0, 0), To: now, Bucket: timeaxis.Month,
 	}
 }
