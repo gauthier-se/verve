@@ -3,6 +3,8 @@ package query
 import (
 	"context"
 	"time"
+
+	"github.com/gauthier-se/verve/internal/timeaxis"
 )
 
 // Comparison is a current series overlaid with its Baseline, ordinal-aligned and
@@ -37,7 +39,7 @@ func (e Engine) Compare(ctx context.Context, req Request, baseFrom, baseTo time.
 // in the window's start sequence (not its slice position, since a query omits
 // empty buckets). Both windows truncate to the shorter's count; a Baseline bucket
 // with no data at an ordinal becomes a dated Gap, never a zero.
-func alignOrdinal(bucket Bucket, current, baseline *Series, curFrom, curTo, baseFrom, baseTo time.Time) {
+func alignOrdinal(bucket timeaxis.Bucket, current, baseline *Series, curFrom, curTo, baseFrom, baseTo time.Time) {
 	curStarts := bucket.Starts(curFrom, curTo)
 	baseStarts := bucket.Starts(baseFrom, baseTo)
 	n := min(len(curStarts), len(baseStarts)) // the shorter window's bucket count

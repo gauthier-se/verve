@@ -4,8 +4,6 @@ import (
 	"errors"
 	"testing"
 	"time"
-
-	"github.com/gauthier-se/verve/internal/query"
 )
 
 func ptr(s string) *string { return &s }
@@ -26,13 +24,13 @@ func TestResolvePresetWindows(t *testing.T) {
 	cases := []struct {
 		preset   string
 		from, to string
-		bucket   query.Bucket
+		bucket   Bucket
 	}{
-		{"7d", "2026-07-02", "2026-07-09", query.Day},
-		{"30d", "2026-06-09", "2026-07-09", query.Day},
-		{"3m", "2026-04-09", "2026-07-09", query.Week},
-		{"1y", "2025-07-09", "2026-07-09", query.Week},
-		{"all", "2000-01-01", "2026-07-09", query.Month},
+		{"7d", "2026-07-02", "2026-07-09", Day},
+		{"30d", "2026-06-09", "2026-07-09", Day},
+		{"3m", "2026-04-09", "2026-07-09", Week},
+		{"1y", "2025-07-09", "2026-07-09", Week},
+		{"all", "2000-01-01", "2026-07-09", Month},
 	}
 	for _, c := range cases {
 		got, err := Resolve(Tokens{RangePreset: c.preset}, now)
@@ -60,7 +58,7 @@ func TestResolveCustomWindow(t *testing.T) {
 	if !got.Current.From.Equal(day(t, "2024-01-01")) || !got.Current.To.Equal(day(t, "2024-02-01")) {
 		t.Errorf("window = [%s,%s)", got.Current.From, got.Current.To)
 	}
-	if got.Bucket != query.Day { // 31 days
+	if got.Bucket != Day { // 31 days
 		t.Errorf("bucket = %s, want day", got.Bucket)
 	}
 }
@@ -70,7 +68,7 @@ func TestResolveOverrideBucketWins(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
-	if got.Bucket != query.Month {
+	if got.Bucket != Month {
 		t.Errorf("bucket = %s, want month (override)", got.Bucket)
 	}
 }
@@ -173,42 +171,42 @@ func TestFoldOntoBucketGrid(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		bucket      query.Bucket
+		bucket      Bucket
 		from, to    string
 		start, end  string
 		wantOK      bool
 		wantIsRange bool
 	}{
-		{name: "a day is its own bucket at the day grain", bucket: query.Day,
+		{name: "a day is its own bucket at the day grain", bucket: Day,
 			from: "2026-03-12", to: "2026-03-12", start: "2026-03-12", end: "2026-03-12", wantOK: true},
-		{name: "a Thursday folds back to its Monday", bucket: query.Week,
+		{name: "a Thursday folds back to its Monday", bucket: Week,
 			from: "2026-03-12", to: "2026-03-12", start: "2026-03-09", end: "2026-03-09", wantOK: true},
-		{name: "a Monday is its own week", bucket: query.Week,
+		{name: "a Monday is its own week", bucket: Week,
 			from: "2026-03-09", to: "2026-03-09", start: "2026-03-09", end: "2026-03-09", wantOK: true},
-		{name: "a Sunday folds back six days", bucket: query.Week,
+		{name: "a Sunday folds back six days", bucket: Week,
 			from: "2026-03-15", to: "2026-03-15", start: "2026-03-09", end: "2026-03-09", wantOK: true},
-		{name: "any day folds to the first of its month", bucket: query.Month,
+		{name: "any day folds to the first of its month", bucket: Month,
 			from: "2026-03-12", to: "2026-03-31", start: "2026-03-01", end: "2026-03-01", wantOK: true},
-		{name: "a span keeps both ends at the day grain", bucket: query.Day,
+		{name: "a span keeps both ends at the day grain", bucket: Day,
 			from: "2026-03-12", to: "2026-03-19", start: "2026-03-12", end: "2026-03-19", wantOK: true,
 			wantIsRange: true},
-		{name: "a span crossing a Monday spans two weeks", bucket: query.Week,
+		{name: "a span crossing a Monday spans two weeks", bucket: Week,
 			from: "2026-03-12", to: "2026-03-19", start: "2026-03-09", end: "2026-03-16", wantOK: true,
 			wantIsRange: true},
 		// A span that started before the range is still on screen for the days it
 		// overlaps, and must be drawn there rather than dropped.
-		{name: "a span starting before the window is clamped to its first bucket", bucket: query.Day,
+		{name: "a span starting before the window is clamped to its first bucket", bucket: Day,
 			from: "2026-02-20", to: "2026-03-03", start: "2026-03-01", end: "2026-03-03", wantOK: true,
 			wantIsRange: true},
-		{name: "a span running past the window is clamped to its last day", bucket: query.Day,
+		{name: "a span running past the window is clamped to its last day", bucket: Day,
 			from: "2026-03-28", to: "2026-04-15", start: "2026-03-28", end: "2026-03-31", wantOK: true,
 			wantIsRange: true},
 		// The window is half-open: 2026-04-01 is the first day of the next window.
-		{name: "the last day of the window is inside it", bucket: query.Day,
+		{name: "the last day of the window is inside it", bucket: Day,
 			from: "2026-03-31", to: "2026-03-31", start: "2026-03-31", end: "2026-03-31", wantOK: true},
-		{name: "the day the window ends on is outside it", bucket: query.Day,
+		{name: "the day the window ends on is outside it", bucket: Day,
 			from: "2026-04-01", to: "2026-04-01", wantOK: false},
-		{name: "a day before the window is outside it", bucket: query.Day,
+		{name: "a day before the window is outside it", bucket: Day,
 			from: "2026-02-28", to: "2026-02-28", wantOK: false},
 	}
 
@@ -241,7 +239,7 @@ func TestFoldOntoBucketGrid(t *testing.T) {
 // belt and braces, but a silent inversion here would mean a ReferenceArea drawn
 // from right to left, which Recharts renders as nothing at all.
 func TestFoldNormalizesAnInvertedSpan(t *testing.T) {
-	r := Resolved{Current: Window{day(t, "2026-03-01"), day(t, "2026-04-01")}, Bucket: query.Day}
+	r := Resolved{Current: Window{day(t, "2026-03-01"), day(t, "2026-04-01")}, Bucket: Day}
 	start, end, ok := r.Fold(day(t, "2026-03-19"), day(t, "2026-03-12"))
 	if !ok || start != "2026-03-12" || end != "2026-03-19" {
 		t.Errorf("Fold(19th, 12th) = (%s, %s, %v), want (2026-03-12, 2026-03-19, true)", start, end, ok)

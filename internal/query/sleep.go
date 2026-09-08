@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gauthier-se/verve/internal/catalog"
+	"github.com/gauthier-se/verve/internal/timeaxis"
 )
 
 // This file is the read path for the States family: the one Metric whose values are
@@ -296,16 +297,16 @@ func reportedSleepSource(slug string, winners map[string]string) string {
 // recorded. In such a mixed bucket the stacked segments therefore add up to more
 // than the bar's value — the only case where they can — because in-bed time and
 // staged time overlap by nature.
-func foldNights(bucket Bucket, nights map[string]night) []Point {
+func foldNights(bucket timeaxis.Bucket, nights map[string]night) []Point {
 	byBucket := map[string]*Point{}
 	for label, n := range nights {
 		key := label
-		if bucket != Day {
+		if bucket != timeaxis.Day {
 			day, err := time.Parse(dayLayout, label)
 			if err != nil {
 				continue
 			}
-			key = bucket.snap(day).Format(dayLayout)
+			key = bucket.Start(day)
 		}
 		p, ok := byBucket[key]
 		if !ok {

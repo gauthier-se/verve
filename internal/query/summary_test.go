@@ -3,13 +3,15 @@ package query
 import (
 	"context"
 	"testing"
+
+	"github.com/gauthier-se/verve/internal/timeaxis"
 )
 
 // summaryReq is a day-bucketed Request over [from, to) for the summary tests.
 func summaryReq(t *testing.T, acc int64, metric, from, to string) Request {
 	t.Helper()
 	return Request{
-		AccountID: acc, Metric: metric, Bucket: Day,
+		AccountID: acc, Metric: metric, Bucket: timeaxis.Day,
 		From: mustTime(t, from), To: mustTime(t, to),
 	}
 }

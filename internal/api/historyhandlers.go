@@ -10,6 +10,7 @@ import (
 	"github.com/gauthier-se/verve/internal/connector/registry"
 	"github.com/gauthier-se/verve/internal/data"
 	"github.com/gauthier-se/verve/internal/query"
+	"github.com/gauthier-se/verve/internal/timeaxis"
 )
 
 // defaultHistoryMetric is the Metric the long band draws when none is asked for.
@@ -186,7 +187,9 @@ func (s *Server) historyBand(ctx context.Context, accountID int64, metric catalo
 	// Without that, a history whose last reading is at 08:00 gets a sixteenth bucket
 	// for a fifteen-day span, and it is drawn as a gap.
 	first, last = truncateUTCDay(first), truncateUTCDay(last)
-	bucket := historyBucket(first, last)
+	// The same thresholds a Dashboard auto-bucket uses, from the module that owns
+	// them: an unexported copy here is how the two silently drift apart.
+	bucket := timeaxis.AutoBucket(timeaxis.Window{From: first, To: last})
 	to := last.AddDate(0, 0, 1) // the window is half-open; include the last day
 
 	series, err := s.engine.Series(ctx, query.Request{
@@ -237,24 +240,10 @@ func (s *Server) historyBand(ctx context.Context, accountID int64, metric catalo
 	return view, nil
 }
 
-// historyBucket picks the band's grain from the span it has to cover, on the same
-// thresholds the Dashboard's auto-bucket uses.
-func historyBucket(first, last time.Time) query.Bucket {
-	days := int(last.Sub(first).Hours() / 24)
-	switch {
-	case days <= 31:
-		return query.Day
-	case days <= 366:
-		return query.Week
-	default:
-		return query.Month
-	}
-}
-
 // foldPhases places each Phase on the band's grid, dropping the ones that fall
 // entirely outside it and clamping the ones that overlap it at either end. An open
 // Phase runs to the last bucket, which is where "still cutting" is drawn.
-func foldPhases(phases []data.Phase, bucket query.Bucket, grid []string, last time.Time) []historyPhaseView {
+func foldPhases(phases []data.Phase, bucket timeaxis.Bucket, grid []string, last time.Time) []historyPhaseView {
 	out := []historyPhaseView{}
 	if len(grid) == 0 {
 		return out

@@ -9,6 +9,7 @@ import (
 
 	"github.com/gauthier-se/verve/internal/catalog"
 	"github.com/gauthier-se/verve/internal/query"
+	"github.com/gauthier-se/verve/internal/timeaxis"
 )
 
 // Ledger overview windows (ADR 0021): the scoreboard's fixed columns are the last
@@ -116,7 +117,7 @@ func (s *Server) withSleep(ctx context.Context, accountID int64, slugs []string)
 // figure and delta, and a 30-day series for the month figure and the latest value.
 // It returns ok=false for a Metric whose aggregation the engine does not serve.
 func (s *Server) ledgerRow(ctx context.Context, accountID int64, metric catalog.Metric, now time.Time) (ledgerRow, bool, error) {
-	req := query.Request{AccountID: accountID, Metric: metric.Slug, Bucket: query.Day}
+	req := query.Request{AccountID: accountID, Metric: metric.Slug, Bucket: timeaxis.Day}
 
 	weekReq := req
 	weekReq.From, weekReq.To = now.AddDate(0, 0, -ledgerWeekDays), now

@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/gauthier-se/verve/internal/query"
+	"github.com/gauthier-se/verve/internal/timeaxis"
 )
 
 // energyPerKgMass is the assumed energy content of a kilogram of body-mass change.
@@ -447,7 +448,7 @@ func (e Engine) ActualRate(ctx context.Context, accountID int64, now time.Time) 
 // to notice it.
 func (e Engine) dailyPoints(ctx context.Context, accountID int64, metric string, from, to time.Time) ([]query.Point, error) {
 	s, err := e.Query.Series(ctx, query.Request{
-		AccountID: accountID, Metric: metric, From: from, To: to, Bucket: query.Day,
+		AccountID: accountID, Metric: metric, From: from, To: to, Bucket: timeaxis.Day,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("estimate: series %s: %w", metric, err)
@@ -461,7 +462,7 @@ func (e Engine) dailyPoints(ctx context.Context, accountID int64, metric string,
 func (e Engine) recentMean(ctx context.Context, accountID int64, metric string, now time.Time) (*float64, error) {
 	s, err := e.Query.Series(ctx, query.Request{
 		AccountID: accountID, Metric: metric,
-		From: now.AddDate(0, 0, -recentWindowDays), To: now, Bucket: query.Day,
+		From: now.AddDate(0, 0, -recentWindowDays), To: now, Bucket: timeaxis.Day,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("estimate: series %s: %w", metric, err)
@@ -484,7 +485,7 @@ func (e Engine) recentMean(ctx context.Context, accountID int64, metric string, 
 func (e Engine) everLatest(ctx context.Context, accountID int64, metric string, now time.Time) (*float64, error) {
 	s, err := e.Query.Series(ctx, query.Request{
 		AccountID: accountID, Metric: metric,
-		From: now.AddDate(-profileLookbackYears, 0, 0), To: now, Bucket: query.Month,
+		From: now.AddDate(-profileLookbackYears, 0, 0), To: now, Bucket: timeaxis.Month,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("estimate: series %s: %w", metric, err)

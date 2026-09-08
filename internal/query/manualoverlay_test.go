@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/gauthier-se/verve/internal/timeaxis"
+
 	"github.com/gauthier-se/verve/internal/catalog"
 )
 
@@ -14,7 +16,7 @@ import (
 
 func day(t *testing.T, from, to string) Request {
 	t.Helper()
-	return Request{Bucket: Day, From: mustTime(t, from), To: mustTime(t, to)}
+	return Request{Bucket: timeaxis.Day, From: mustTime(t, from), To: mustTime(t, to)}
 }
 
 // TestOverlayReplacesOnlyItsOwnDay is the test the whole issue exists for. Ranking
