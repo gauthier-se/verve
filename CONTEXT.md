@@ -205,7 +205,9 @@ the Dashboard's stored tokens (`range_preset`, `baseline_rule`, a Panel's bucket
 override…) at read time. The Dashboard owns the time axis; Panels own the metric
 axis (ADR 0015). Resolution — preset→window, rule→window, span→bucket — lives in
 one module (`internal/timeaxis`), so the client forwards tokens instead of
-computing dates.
+computing dates. The **bucket** is part of that axis and not of the read drawn on
+it, so its type and its boundary rules live there too; the read engine owns only
+the translation into SQL (ADR 0037).
 _Avoid_: Timeframe (reads as a synonym of Time range), Time window (that's one
 resolved bound pair, not the axis).
 
@@ -266,6 +268,10 @@ Phases, Annotations, the arrival of each Source, and the earliest record itself.
 It is the one read where a **gap** is the subject rather than a rule about
 drawing: elsewhere a bucket with no data is simply absent (ADR 0014), and here
 the grid is materialised so an empty stretch can be shown as one (ADR 0032).
+It is also the one read that spans every family at once — the band is aggregated
+Measurements or States, the events are Imports, Phases, Exclusions and
+Annotations — which is why it is its own module (`internal/history`) rather than a
+question the read engine or the storage layer could answer alone (ADR 0037).
 _Avoid_: Timeline (the rendering, not the concept), Activity feed, Log, Audit
 trail (it explains data, it does not police access), Journal (that is closer to
 Annotations).
