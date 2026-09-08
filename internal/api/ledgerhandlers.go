@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"slices"
 	"time"
 
 	"github.com/gauthier-se/verve/internal/catalog"
@@ -19,10 +18,6 @@ const (
 	ledgerWeekDays  = 7
 	ledgerMonthDays = 30
 )
-
-// sleepSlug is the Catalog Metric read from the States family, and also the
-// states.kind that feeds it (ADR 0027).
-const sleepSlug = "sleep"
 
 // ledgerValue is a Metric's most recent daily value with the day it fell on.
 type ledgerValue struct {
@@ -54,16 +49,7 @@ type ledgerRow struct {
 func (s *Server) handleLedger(w http.ResponseWriter, r *http.Request) {
 	accountID, _ := s.accountID(r)
 
-	slugs, err := s.models.Measurements.DistinctMetrics(r.Context(), accountID)
-	if err != nil {
-		s.serverErrorResponse(w, r, err)
-		return
-	}
-
-	// Sleep is read from the States family (ADR 0027), which DistinctMetrics cannot
-	// see. Without this the one page that promises the numbers behind the curves
-	// would be the one page missing sleep.
-	slugs, err = s.withSleep(r.Context(), accountID, slugs)
+	slugs, err := s.engine.MetricsWithData(r.Context(), accountID)
 	if err != nil {
 		s.serverErrorResponse(w, r, err)
 		return
@@ -89,27 +75,6 @@ func (s *Server) handleLedger(w http.ResponseWriter, r *http.Request) {
 	if err := writeJSON(w, http.StatusOK, envelope{"rows": rows}, nil); err != nil {
 		s.serverErrorResponse(w, r, err)
 	}
-}
-
-// withSleep adds the sleep slug to a Ledger row set when the Account has any sleep
-// State, keeping the listing sorted. It is a no-op for an Account with none, and for
-// the slug already being present — nothing writes a sleep Measurement (the Manual
-// entry path refuses it), but a row set must not gain a duplicate on the day
-// something does.
-func (s *Server) withSleep(ctx context.Context, accountID int64, slugs []string) ([]string, error) {
-	if slices.Contains(slugs, sleepSlug) {
-		return slugs, nil
-	}
-	has, err := s.models.States.HasStates(ctx, accountID, sleepSlug)
-	if err != nil {
-		return nil, err
-	}
-	if !has {
-		return slugs, nil
-	}
-	slugs = append(slugs, sleepSlug)
-	slices.Sort(slugs)
-	return slugs, nil
 }
 
 // ledgerRow folds one Metric over the Ledger's fixed windows. It runs two engine

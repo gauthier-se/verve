@@ -342,7 +342,7 @@ func importStream(ctx context.Context, store connector.Store, accountID int64, s
 		SkippedCount:  report.Skipped,
 		UnmappedCount: report.Unmapped,
 	}
-	if err := store.RecordImport(ctx, imp); err != nil {
+	if err := store.Record(ctx, imp); err != nil {
 		return connector.Report{}, fmt.Errorf("applehealth: record import: %w", err)
 	}
 	return report, nil

@@ -130,7 +130,7 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	span, err := s.models.Measurements.Span(ctx, accountID)
+	span, err := s.models.Span(ctx, accountID)
 	if err != nil {
 		s.serverErrorResponse(w, r, err)
 		return
@@ -276,31 +276,18 @@ func foldPhases(phases []data.Phase, bucket timeaxis.Bucket, grid []string, last
 			to = lastKey
 		}
 		out = append(out, historyPhaseView{
-			ID: p.ID, Kind: phaseKind(p.RatePctPerWeek), RatePctPerWeek: p.RatePctPerWeek,
+			ID: p.ID, Kind: p.Kind(), RatePctPerWeek: p.RatePctPerWeek,
 			StartedOn: p.StartedAt, EndedOn: p.EndedAt, From: from, To: to,
 		})
 	}
 	return out
 }
 
-// phaseKind names a Phase by the sign of its rate: the same three words the Plan
-// page uses, derived from the one number that decides them.
-func phaseKind(rate float64) string {
-	switch {
-	case rate > 0:
-		return "bulk"
-	case rate < 0:
-		return "cut"
-	default:
-		return "maintenance"
-	}
-}
-
 // historyEvents gathers every dated event into one list, most recent first.
 func (s *Server) historyEvents(ctx context.Context, accountID int64, span data.Span) ([]historyEventView, error) {
 	events := []historyEventView{}
 
-	imports, err := s.models.Measurements.ListImports(ctx, accountID)
+	imports, err := s.models.Imports.List(ctx, accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -332,7 +319,7 @@ func (s *Server) historyEvents(ctx context.Context, accountID int64, span data.S
 		rate := p.RatePctPerWeek
 		events = append(events, historyEventView{
 			Kind: eventPhase, Date: p.StartedAt, EndsOn: p.EndedAt,
-			Label: phaseKind(rate), Rate: &rate,
+			Label: p.Kind(), Rate: &rate,
 		})
 	}
 
@@ -368,7 +355,7 @@ func (s *Server) historyEvents(ctx context.Context, accountID int64, span data.S
 		})
 	}
 
-	sources, err := s.models.Measurements.Sources(ctx, accountID)
+	sources, err := s.engine.Sources(ctx, accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -392,7 +379,7 @@ func (s *Server) historyEvents(ctx context.Context, accountID int64, span data.S
 		if t, err := time.Parse(time.RFC3339, span.First); err == nil {
 			day = t.UTC().Format(dayLayout)
 		}
-		unmapped, err := s.models.Measurements.CountUnmapped(ctx, accountID)
+		unmapped, err := s.models.Imports.CountUnmapped(ctx, accountID)
 		if err != nil {
 			return nil, err
 		}

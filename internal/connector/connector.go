@@ -52,7 +52,7 @@ type Store interface {
 	InsertSession(ctx context.Context, s *data.Session) (bool, error)
 	InsertSessionStats(ctx context.Context, sessionID int64, stats []data.SessionStat) error
 	InsertRoute(ctx context.Context, r *data.Route) (bool, error)
-	RecordImport(ctx context.Context, imp *data.Import) error
+	Record(ctx context.Context, imp *data.Import) error
 }
 
 // Progress reports decode progress during an import: decoded is how much of the

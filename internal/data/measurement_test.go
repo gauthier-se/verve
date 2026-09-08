@@ -136,10 +136,10 @@ func TestInsertUnmappedBatchIdempotent(t *testing.T) {
 	batch := []UnmappedRecord{
 		{AccountID: acc, SourceType: "HKCategoryTypeIdentifierSleepAnalysis", Value: "HKCategoryValueSleepAnalysisAsleep", Unit: "", StartAt: "2024-01-01T00:00:00Z", EndAt: "2024-01-01T08:00:00Z", Source: "Watch", ContentKey: "u1"},
 	}
-	if _, err := models.Measurements.InsertUnmappedBatch(ctx, batch); err != nil {
+	if _, err := models.Imports.InsertUnmappedBatch(ctx, batch); err != nil {
 		t.Fatalf("first InsertUnmappedBatch: %v", err)
 	}
-	inserted, err := models.Measurements.InsertUnmappedBatch(ctx, batch)
+	inserted, err := models.Imports.InsertUnmappedBatch(ctx, batch)
 	if err != nil {
 		t.Fatalf("second InsertUnmappedBatch: %v", err)
 	}
@@ -154,7 +154,7 @@ func TestRecordImport(t *testing.T) {
 	acc := seedAccount(t, models)
 
 	imp := &Import{AccountID: acc, SourceFile: "export.xml", AddedCount: 10, SkippedCount: 2, UnmappedCount: 3}
-	if err := models.Measurements.RecordImport(ctx, imp); err != nil {
+	if err := models.Imports.Record(ctx, imp); err != nil {
 		t.Fatalf("RecordImport: %v", err)
 	}
 	if imp.ID == 0 {

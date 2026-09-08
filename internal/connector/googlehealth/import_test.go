@@ -22,6 +22,7 @@ type testStore struct {
 	data.MeasurementModel
 	data.StateModel
 	data.SessionModel
+	data.ImportModel
 }
 
 // openStore opens a fresh migrated DB and returns a Store over every family plus
@@ -42,7 +43,7 @@ func openStore(t *testing.T) (testStore, *sql.DB, int64) {
 	if err := models.Accounts.Insert(context.Background(), acc); err != nil {
 		t.Fatalf("seed account: %v", err)
 	}
-	return testStore{models.Measurements, models.States, models.Sessions}, db, acc.ID
+	return testStore{models.Measurements, models.States, models.Sessions, models.Imports}, db, acc.ID
 }
 
 // sampleArchive is the reference export in miniature: the same directory layout,

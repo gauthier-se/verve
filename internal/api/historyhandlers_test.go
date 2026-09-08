@@ -167,7 +167,7 @@ func TestHistoryEventsGatherEveryDatedSource(t *testing.T) {
 		t.Fatalf("insert annotation: %v", err)
 	}
 	imp := &data.Import{AccountID: acc.ID, Connector: "googlehealth", SourceFile: "takeout.zip", AddedCount: 412, SkippedCount: 9, UnmappedCount: 14}
-	if err := models.Measurements.RecordImport(ctx, imp); err != nil {
+	if err := models.Imports.Record(ctx, imp); err != nil {
 		t.Fatalf("record import: %v", err)
 	}
 
@@ -247,7 +247,7 @@ func TestHistoryImportEventIsDatedToday(t *testing.T) {
 		t.Fatalf("get account: %v", err)
 	}
 	imp := &data.Import{AccountID: acc.ID, SourceFile: "export.zip"}
-	if err := models.Measurements.RecordImport(ctx, imp); err != nil {
+	if err := models.Imports.Record(ctx, imp); err != nil {
 		t.Fatalf("record import: %v", err)
 	}
 

@@ -18,6 +18,7 @@ type Models struct {
 	Pins         PinModel
 	Annotations  AnnotationModel
 	Exclusions   ExclusionModel
+	Imports      ImportModel
 
 	db *sql.DB // for cross-cutting needs (e.g. health checks) that want the handle itself
 }
@@ -36,6 +37,7 @@ func NewModels(db *sql.DB) Models {
 		Pins:         PinModel{DB: db},
 		Annotations:  AnnotationModel{DB: db},
 		Exclusions:   ExclusionModel{DB: db},
+		Imports:      ImportModel{DB: db},
 		db:           db,
 	}
 }
@@ -53,9 +55,10 @@ type ImportStore struct {
 	MeasurementModel
 	StateModel
 	SessionModel
+	ImportModel
 }
 
 // ImportStore returns the family models bundled for a Connector import.
 func (m Models) ImportStore() ImportStore {
-	return ImportStore{m.Measurements, m.States, m.Sessions}
+	return ImportStore{m.Measurements, m.States, m.Sessions, m.Imports}
 }
