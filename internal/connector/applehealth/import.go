@@ -51,10 +51,7 @@ func Import(ctx context.Context, store connector.Store, accountID int64, path st
 		}
 		defer rc.Close()
 
-		var r io.Reader = rc
-		if opts.Progress != nil {
-			r = &countingReader{r: rc, total: int64(entry.UncompressedSize64), progress: opts.Progress}
-		}
+		r := connector.NewProgressCounter(int64(entry.UncompressedSize64), opts.Progress).Wrap(rc)
 		return importStream(ctx, store, accountID, sourceFile, r, opts, zipRouteOpener{&zr.Reader})
 	}
 
@@ -64,22 +61,6 @@ func Import(ctx context.Context, store connector.Store, accountID int64, path st
 	}
 	defer f.Close()
 	return importStream(ctx, store, accountID, sourceFile, f, opts, dirRouteOpener{filepath.Dir(path)})
-}
-
-// countingReader wraps the export.xml reader to report decode progress on every
-// Read against the entry's declared uncompressed size (no pre-count pass, ADR 0016).
-type countingReader struct {
-	r        io.Reader
-	n        int64
-	total    int64
-	progress connector.Progress
-}
-
-func (c *countingReader) Read(p []byte) (int, error) {
-	n, err := c.r.Read(p)
-	c.n += int64(n)
-	c.progress(c.n, c.total)
-	return n, err
 }
 
 // findExportXML returns the archive entry for the export's XML (Apple nests it
@@ -98,21 +79,10 @@ func findExportXML(zr *zip.Reader) *zip.File {
 // its routes, flushing in bounded batches. Split from Import so tests can feed an
 // in-memory reader and a fake route opener.
 func importStream(ctx context.Context, store connector.Store, accountID int64, sourceFile string, r io.Reader, opts connector.Options, opener routeOpener) (connector.Report, error) {
-	report := connector.Report{
-		Connector:     connectorName,
-		SourceFile:    sourceFile,
-		PerMetric:     make(map[string]connector.Tally),
-		UnmappedTypes: make(map[string]int),
-		PerState:      make(map[string]connector.Tally),
-		PerActivity:   make(map[string]connector.Tally),
-	}
+	sink := connector.NewSink(store, accountID, connectorName, sourceFile, opts)
 
 	dec := xml.NewDecoder(r)
 	dec.Strict = false // Apple's export carries a DTD and locale text; be lenient.
-
-	measurements := make([]data.Measurement, 0, connector.BatchSize)
-	unmapped := make([]data.UnmappedRecord, 0, connector.BatchSize)
-	states := make([]data.State, 0, connector.BatchSize)
 
 	// stack tracks nesting so we process only top-level Records (children of
 	// HealthData); nested ones are duplicated at top level per Apple's note. wb is
@@ -120,96 +90,12 @@ func importStream(ctx context.Context, store connector.Store, accountID int64, s
 	var stack []string
 	var wb *workoutBuilder
 
-	flushMeasurements := func() error {
-		if len(measurements) == 0 {
-			return nil
-		}
-		mask, err := store.InsertBatch(ctx, measurements)
-		if err != nil {
-			return err
-		}
-		for i, added := range mask {
-			c := report.PerMetric[measurements[i].Metric]
-			if added {
-				c.Added++
-				report.Added++
-			} else {
-				c.Skipped++
-				report.Skipped++
-			}
-			report.PerMetric[measurements[i].Metric] = c
-		}
-		measurements = measurements[:0]
-		return nil
-	}
-
-	flushUnmapped := func() error {
-		if len(unmapped) == 0 {
-			return nil
-		}
-		mask, err := store.InsertUnmappedBatch(ctx, unmapped)
-		if err != nil {
-			return err
-		}
-		for i, added := range mask {
-			if added {
-				report.Unmapped++
-				report.UnmappedTypes[unmapped[i].SourceType]++
-			}
-		}
-		unmapped = unmapped[:0]
-		return nil
-	}
-
-	flushStates := func() error {
-		if len(states) == 0 {
-			return nil
-		}
-		mask, err := store.InsertStateBatch(ctx, states)
-		if err != nil {
-			return err
-		}
-		for i, added := range mask {
-			c := report.PerState[states[i].Kind]
-			if added {
-				c.Added++
-				report.StatesAdded++
-			} else {
-				c.Skipped++
-				report.StatesSkipped++
-			}
-			report.PerState[states[i].Kind] = c
-		}
-		states = states[:0]
-		return nil
-	}
-
-	// finishWorkout writes one Session on its closing tag, then attaches its
-	// summary stats and copies and records each of its GPX routes. The Session id
-	// (new or pre-existing) is needed for both, so this runs per workout rather
-	// than batched.
+	// finishWorkout writes one Session on its closing tag, then copies and records
+	// each of its GPX routes. The Session id is needed to attach a route, so this
+	// runs per workout rather than batched.
 	finishWorkout := func() error {
 		sess := wb.session(accountID)
-		inserted, err := store.InsertSession(ctx, &sess)
-		if err != nil {
-			return err
-		}
-		c := report.PerActivity[sess.ActivityType]
-		if inserted {
-			c.Added++
-			report.SessionsAdded++
-		} else {
-			c.Skipped++
-			report.SessionsSkipped++
-		}
-		report.PerActivity[sess.ActivityType] = c
-
-		// Stats and routes are attached whether or not the Session is new, which is
-		// what makes a re-import converge: a workout already in the database still
-		// gains what a widened import now captures. Skipping them on the
-		// already-present branch would leave every existing database stat-less
-		// forever, and quietly make the README promise of a painless re-import false.
-		if err := store.InsertSessionStats(ctx, sess.ID, wb.stats); err != nil {
+		if err := sink.Session(ctx, &sess, wb.stats); err != nil {
 			return err
 		}
 
@@ -218,23 +104,15 @@ func importStream(ctx context.Context, store connector.Store, accountID int64, s
 			if err != nil {
 				return err
 			}
-			route := data.Route{
-				AccountID:  accountID,
+			if err := sink.Route(ctx, &data.Route{
 				SessionID:  sess.ID,
 				Artifact:   artifact,
 				StartAt:    ref.start,
 				EndAt:      ref.end,
 				Source:     ref.source,
 				ContentKey: key,
-			}
-			rInserted, err := store.InsertRoute(ctx, &route)
-			if err != nil {
+			}); err != nil {
 				return err
-			}
-			if rInserted {
-				report.RoutesAdded++
-			} else {
-				report.RoutesSkipped++
 			}
 		}
 		return nil
@@ -272,42 +150,19 @@ func importStream(ctx context.Context, store connector.Store, accountID int64, s
 			case t.Name.Local == "Record" && parent == "HealthData":
 				attrs := parseAttrs(t.Attr)
 				if kind, ok := stateKind(attrs.typ); ok {
-					states = append(states, buildState(accountID, kind, attrs))
-					if len(states) >= connector.BatchSize {
-						if err := flushStates(); err != nil {
-							return connector.Report{}, err
-						}
+					if err := sink.State(ctx, buildState(accountID, kind, attrs)); err != nil {
+						return connector.Report{}, err
 					}
 					continue
 				}
 				m, u, isMeasurement := classifyRecord(accountID, attrs)
 				if isMeasurement {
-					// The Exclusion check sits here, after classification and before
-					// the batch: an Exclusion names a Catalog Metric, so there is
-					// nothing to check until the Record has one. A refused Record is
-					// counted and dropped, and deliberately does not fall through to
-					// the Unmapped bin: that bin exists so no source data is lost to a
-					// Catalog gap (ADR 0002), and routing a refusal there would keep,
-					// row for row, exactly what was asked to be dropped (ADR 0033).
-					if opts.Exclusions.Excludes(m.Metric, m.StartAt) {
-						c := report.PerMetric[m.Metric]
-						c.Excluded++
-						report.PerMetric[m.Metric] = c
-						report.Excluded++
-						continue
-					}
-					measurements = append(measurements, m)
-					if len(measurements) >= connector.BatchSize {
-						if err := flushMeasurements(); err != nil {
-							return connector.Report{}, err
-						}
+					if err := sink.Measurement(ctx, m); err != nil {
+						return connector.Report{}, err
 					}
 				} else {
-					unmapped = append(unmapped, u)
-					if len(unmapped) >= connector.BatchSize {
-						if err := flushUnmapped(); err != nil {
-							return connector.Report{}, err
-						}
+					if err := sink.Unmapped(ctx, u); err != nil {
+						return connector.Report{}, err
 					}
 				}
 			}
@@ -324,28 +179,7 @@ func importStream(ctx context.Context, store connector.Store, accountID int64, s
 		}
 	}
 
-	if err := flushMeasurements(); err != nil {
-		return connector.Report{}, err
-	}
-	if err := flushUnmapped(); err != nil {
-		return connector.Report{}, err
-	}
-	if err := flushStates(); err != nil {
-		return connector.Report{}, err
-	}
-
-	imp := &data.Import{
-		AccountID:     accountID,
-		Connector:     connectorName,
-		SourceFile:    sourceFile,
-		AddedCount:    report.Added,
-		SkippedCount:  report.Skipped,
-		UnmappedCount: report.Unmapped,
-	}
-	if err := store.Record(ctx, imp); err != nil {
-		return connector.Report{}, fmt.Errorf("applehealth: record import: %w", err)
-	}
-	return report, nil
+	return sink.Close(ctx)
 }
 
 // recordAttrs are the Record attributes the Connector reads.

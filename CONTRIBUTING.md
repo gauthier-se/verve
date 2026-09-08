@@ -197,10 +197,34 @@ its mapping (source type to Catalog metric, plus unit conversion) is
 declarative data, so most of a connector is a table and the code is only "how
 to read this format" (ADR 0009).
 
-`internal/connector/applehealth/` is the reference: `mapping.go` is the table,
-`families.go` decides which family each record becomes, `import.go` streams the
-archive, and a test keeps the mapping in lock-step with the Catalog so a typo
-in a slug fails the build rather than silently dropping data.
+`internal/connector/` holds the contract; `applehealth/` and `googlehealth/` are
+the two implementations. `mapping.go` is the table, `import.go` reads the format,
+and a test keeps each mapping in lock-step with the Catalog so a typo in a slug
+fails the build rather than silently dropping data.
+
+What you implement is four methods (`connector.Connector`): `Name`, `Label`,
+`Accepts`, and `Import`. `Accepts` decides by looking **inside** the file, never
+at its extension, because every export so far is a `.zip` (ADR 0035). Then add
+one line to `internal/connector/registry`.
+
+What you do **not** implement is everything between parsing a row and storing it.
+Your `Import` builds a `connector.Sink` and offers rows to it:
+
+```go
+sink := connector.NewSink(store, accountID, connectorName, sourceFile, opts)
+// ... for each row you parse:
+if err := sink.Measurement(ctx, m); err != nil {
+    return connector.Report{}, err
+}
+return sink.Close(ctx)
+```
+
+The Sink batches writes, refuses what the Account's Exclusions name and counts
+the refusal (ADR 0033), tallies every write into the Report, and records the
+Import last. `sink.Unmapped`, `sink.State`, `sink.Session` and `sink.Route` take
+the other families; `sink.Ignored` counts an archive entry that is not health
+data at all. Use `connector.NewProgressCounter(total, opts.Progress).Wrap(r)` for
+the web import's progress bar, and leave `opts.Progress` nil on the CLI path.
 
 Two things to know before starting:
 
@@ -208,10 +232,9 @@ Two things to know before starting:
   `internal/catalog/`, you do not invent slugs inside a connector, and anything
   a source emits that Verve has no metric for lands in the unmapped bin instead
   of being discarded (ADR 0002).
-* The interface and registry ADR 0009 describes are not built yet, because with
-  a single connector there is nothing to abstract over. The second connector is
-  what introduces that seam, so open an issue first and let us design it with
-  you rather than around you.
+* A Connector reads a **file the owner exported**, never a vendor API (ADR 0035).
+  Open an issue first with a description of the export's shape, so the mapping
+  can be reviewed against the Catalog before you write the reader.
 
 ## Contributing a Palette
 
