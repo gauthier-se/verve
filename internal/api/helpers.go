@@ -47,3 +47,12 @@ func readJSON(w http.ResponseWriter, r *http.Request, dst any) error {
 	}
 	return nil
 }
+
+// valueOrEmpty renders a nullable text column as a string, an absent value being
+// the empty one for a JSON field that omits it.
+func valueOrEmpty(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}

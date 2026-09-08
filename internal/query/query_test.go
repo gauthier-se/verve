@@ -136,7 +136,7 @@ func TestCompareCarriesPerWindowDays(t *testing.T) {
 	cmp, err := e.Compare(context.Background(), Request{
 		AccountID: acc, Metric: "steps", Bucket: timeaxis.Day,
 		From: mustTime(t, "2024-01-10T00:00:00Z"), To: mustTime(t, "2024-01-13T00:00:00Z"),
-	}, mustTime(t, "2024-01-01T00:00:00Z"), mustTime(t, "2024-01-08T00:00:00Z"))
+	}, timeaxis.Window{From: mustTime(t, "2024-01-01T00:00:00Z"), To: mustTime(t, "2024-01-08T00:00:00Z")})
 	if err != nil {
 		t.Fatalf("Compare: %v", err)
 	}

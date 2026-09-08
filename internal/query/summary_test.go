@@ -161,7 +161,7 @@ func TestCompareCarriesBothSummaries(t *testing.T) {
 	})
 	cmp, err := e.Compare(context.Background(),
 		summaryReq(t, acc, "steps", "2024-01-08T00:00:00Z", "2024-01-15T00:00:00Z"),
-		mustTime(t, "2024-01-01T00:00:00Z"), mustTime(t, "2024-01-08T00:00:00Z"))
+		timeaxis.Window{From: mustTime(t, "2024-01-01T00:00:00Z"), To: mustTime(t, "2024-01-08T00:00:00Z")})
 	if err != nil {
 		t.Fatalf("Compare: %v", err)
 	}

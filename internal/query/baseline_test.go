@@ -27,7 +27,7 @@ func TestComparePrevious(t *testing.T) {
 	cmp, err := e.Compare(context.Background(), Request{
 		AccountID: acc, Metric: "steps", Bucket: timeaxis.Day,
 		From: mustTime(t, "2024-01-08T00:00:00Z"), To: mustTime(t, "2024-01-11T00:00:00Z"),
-	}, mustTime(t, "2024-01-05T00:00:00Z"), mustTime(t, "2024-01-08T00:00:00Z"))
+	}, timeaxis.Window{From: mustTime(t, "2024-01-05T00:00:00Z"), To: mustTime(t, "2024-01-08T00:00:00Z")})
 	if err != nil {
 		t.Fatalf("Compare: %v", err)
 	}
@@ -73,7 +73,7 @@ func TestCompareTruncatesLongerBaseline(t *testing.T) {
 	cmp, err := e.Compare(context.Background(), Request{
 		AccountID: acc, Metric: "steps", Bucket: timeaxis.Day,
 		From: mustTime(t, "2024-02-01T00:00:00Z"), To: mustTime(t, "2024-02-04T00:00:00Z"),
-	}, mustTime(t, "2024-03-01T00:00:00Z"), mustTime(t, "2024-03-06T00:00:00Z"))
+	}, timeaxis.Window{From: mustTime(t, "2024-03-01T00:00:00Z"), To: mustTime(t, "2024-03-06T00:00:00Z")})
 	if err != nil {
 		t.Fatalf("Compare: %v", err)
 	}
@@ -104,7 +104,7 @@ func TestCompareTruncatesCurrentToShorter(t *testing.T) {
 	cmp, err := e.Compare(context.Background(), Request{
 		AccountID: acc, Metric: "steps", Bucket: timeaxis.Day,
 		From: mustTime(t, "2024-02-01T00:00:00Z"), To: mustTime(t, "2024-02-05T00:00:00Z"),
-	}, mustTime(t, "2024-03-01T00:00:00Z"), mustTime(t, "2024-03-03T00:00:00Z"))
+	}, timeaxis.Window{From: mustTime(t, "2024-03-01T00:00:00Z"), To: mustTime(t, "2024-03-03T00:00:00Z")})
 	if err != nil {
 		t.Fatalf("Compare: %v", err)
 	}
@@ -132,7 +132,7 @@ func TestCompareEmptyWindow(t *testing.T) {
 	cmp, err := e.Compare(context.Background(), Request{
 		AccountID: acc, Metric: "steps", Bucket: timeaxis.Day,
 		From: mustTime(t, "2024-01-08T00:00:00Z"), To: mustTime(t, "2024-01-11T00:00:00Z"),
-	}, mustTime(t, "2024-01-05T00:00:00Z"), mustTime(t, "2024-01-08T00:00:00Z"))
+	}, timeaxis.Window{From: mustTime(t, "2024-01-05T00:00:00Z"), To: mustTime(t, "2024-01-08T00:00:00Z")})
 	if err != nil {
 		t.Fatalf("Compare: %v", err)
 	}
@@ -173,7 +173,7 @@ func TestCompareGapInCurrentAligns(t *testing.T) {
 	cmp, err := e.Compare(context.Background(), Request{
 		AccountID: acc, Metric: "steps", Bucket: timeaxis.Day,
 		From: mustTime(t, "2024-01-08T00:00:00Z"), To: mustTime(t, "2024-01-11T00:00:00Z"),
-	}, mustTime(t, "2024-01-05T00:00:00Z"), mustTime(t, "2024-01-08T00:00:00Z"))
+	}, timeaxis.Window{From: mustTime(t, "2024-01-05T00:00:00Z"), To: mustTime(t, "2024-01-08T00:00:00Z")})
 	if err != nil {
 		t.Fatalf("Compare: %v", err)
 	}
@@ -207,7 +207,7 @@ func TestCompareGapInBaseline(t *testing.T) {
 	cmp, err := e.Compare(context.Background(), Request{
 		AccountID: acc, Metric: "steps", Bucket: timeaxis.Day,
 		From: mustTime(t, "2024-01-08T00:00:00Z"), To: mustTime(t, "2024-01-11T00:00:00Z"),
-	}, mustTime(t, "2024-01-05T00:00:00Z"), mustTime(t, "2024-01-08T00:00:00Z"))
+	}, timeaxis.Window{From: mustTime(t, "2024-01-05T00:00:00Z"), To: mustTime(t, "2024-01-08T00:00:00Z")})
 	if err != nil {
 		t.Fatalf("Compare: %v", err)
 	}
@@ -240,7 +240,7 @@ func TestCompareWeekBuckets(t *testing.T) {
 	cmp, err := e.Compare(context.Background(), Request{
 		AccountID: acc, Metric: "steps", Bucket: timeaxis.Week,
 		From: mustTime(t, "2024-01-08T00:00:00Z"), To: mustTime(t, "2024-01-15T00:00:00Z"),
-	}, mustTime(t, "2024-01-01T00:00:00Z"), mustTime(t, "2024-01-08T00:00:00Z"))
+	}, timeaxis.Window{From: mustTime(t, "2024-01-01T00:00:00Z"), To: mustTime(t, "2024-01-08T00:00:00Z")})
 	if err != nil {
 		t.Fatalf("Compare: %v", err)
 	}
@@ -268,7 +268,7 @@ func TestCompareDerived(t *testing.T) {
 	cmp, err := e.Compare(context.Background(), Request{
 		AccountID: acc, Metric: "calorie_balance", Bucket: timeaxis.Day,
 		From: mustTime(t, "2024-01-02T00:00:00Z"), To: mustTime(t, "2024-01-03T00:00:00Z"),
-	}, mustTime(t, "2024-01-01T00:00:00Z"), mustTime(t, "2024-01-02T00:00:00Z"))
+	}, timeaxis.Window{From: mustTime(t, "2024-01-01T00:00:00Z"), To: mustTime(t, "2024-01-02T00:00:00Z")})
 	if err != nil {
 		t.Fatalf("Compare: %v", err)
 	}
