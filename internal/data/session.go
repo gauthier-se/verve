@@ -144,7 +144,17 @@ func (m SessionModel) InsertSessionStats(ctx context.Context, sessionID int64, s
 		INSERT INTO session_stats (session_id, metric, stat, value)
 		VALUES (?, ?, ?, ?)
 		ON CONFLICT (session_id, metric, stat) DO UPDATE SET value = excluded.value`
-	stmt, err := m.DB.PrepareContext(ctx, query)
+	// One transaction, like every other multi-statement write here: a workout's
+	// stats are one fact about it, and a failure halfway through would otherwise
+	// leave a Session carrying some of its figures and not others, which nothing
+	// downstream can tell from a workout that genuinely recorded only those.
+	tx, err := m.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("data: begin session stats: %w", err)
+	}
+	defer tx.Rollback() // no-op after Commit
+
+	stmt, err := tx.PrepareContext(ctx, query)
 	if err != nil {
 		return fmt.Errorf("data: prepare session stats: %w", err)
 	}
@@ -153,6 +163,9 @@ func (m SessionModel) InsertSessionStats(ctx context.Context, sessionID int64, s
 		if _, err := stmt.ExecContext(ctx, sessionID, s.Metric, s.Stat, s.Value); err != nil {
 			return fmt.Errorf("data: insert session stat %s/%s: %w", s.Metric, s.Stat, err)
 		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("data: commit session stats: %w", err)
 	}
 	return nil
 }

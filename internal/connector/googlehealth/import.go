@@ -141,19 +141,17 @@ func Import(ctx context.Context, store connector.Store, accountID int64, p strin
 	return importArchive(ctx, store, accountID, path.Base(p), &zr.Reader, opts)
 }
 
-// importer carries the state one import accumulates: the report, the pending
-// batches, and the progress counters. It exists so the per-entry readers stay small
-// and so a batch flush is one method rather than the same twelve lines per family.
+// importer carries what one archive walk needs beyond the Sink: the progress
+// counters, which are measured against the entries this Connector will actually
+// read rather than against the whole archive.
 type importer struct {
-	store     connector.Store
+	sink      *connector.Sink
 	accountID int64
 	opts      connector.Options
-	report    connector.Report
 
-	measurements []data.Measurement
-	unmapped     []data.UnmappedRecord
-
-	readBytes  int64
+	// progress counts across every entry the walk opens, so the ratio is the
+	// archive's and not the current file's.
+	progress   *connector.ProgressCounter
 	totalBytes int64
 }
 
@@ -162,20 +160,9 @@ type importer struct {
 // that is not a health record to the ignored tally.
 func importArchive(ctx context.Context, store connector.Store, accountID int64, sourceFile string, zr *zip.Reader, opts connector.Options) (connector.Report, error) {
 	imp := &importer{
-		store:     store,
+		sink:      connector.NewSink(store, accountID, connectorName, sourceFile, opts),
 		accountID: accountID,
 		opts:      opts,
-		report: connector.Report{
-			Connector:     connectorName,
-			SourceFile:    sourceFile,
-			PerMetric:     make(map[string]connector.Tally),
-			UnmappedTypes: make(map[string]int),
-			PerState:      make(map[string]connector.Tally),
-			PerActivity:   make(map[string]connector.Tally),
-			Ignored:       make(map[string]int),
-		},
-		measurements: make([]data.Measurement, 0, connector.BatchSize),
-		unmapped:     make([]data.UnmappedRecord, 0, connector.BatchSize),
 	}
 
 	// Entries are read in name order so the report is the same for the same archive,
@@ -192,6 +179,10 @@ func importArchive(ctx context.Context, store connector.Store, accountID int64, 
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
 
+	// The denominator is known only once the walk has been planned, so the counter
+	// is built here rather than with the importer.
+	imp.progress = connector.NewProgressCounter(imp.totalBytes, opts.Progress)
+
 	for _, f := range entries {
 		if err := ctx.Err(); err != nil {
 			return connector.Report{}, err
@@ -201,24 +192,7 @@ func importArchive(ctx context.Context, store connector.Store, accountID int64, 
 		}
 	}
 
-	if err := imp.flushMeasurements(ctx); err != nil {
-		return connector.Report{}, err
-	}
-	if err := imp.flushUnmapped(ctx); err != nil {
-		return connector.Report{}, err
-	}
-
-	if err := store.Record(ctx, &data.Import{
-		AccountID:     accountID,
-		Connector:     connectorName,
-		SourceFile:    sourceFile,
-		AddedCount:    imp.report.Added,
-		SkippedCount:  imp.report.Skipped,
-		UnmappedCount: imp.report.Unmapped,
-	}); err != nil {
-		return connector.Report{}, fmt.Errorf("googlehealth: record import: %w", err)
-	}
-	return imp.report, nil
+	return imp.sink.Close(ctx)
 }
 
 // reads reports whether an entry holds data this Connector reads at all, which is
@@ -240,7 +214,7 @@ func (imp *importer) reads(rel string) bool {
 func (imp *importer) entry(ctx context.Context, f *zip.File) error {
 	rel := relative(f.Name)
 	if !imp.reads(rel) {
-		imp.report.Ignored[path.Dir(rel)]++
+		imp.sink.Ignored(path.Dir(rel))
 		return nil
 	}
 
@@ -250,10 +224,7 @@ func (imp *importer) entry(ctx context.Context, f *zip.File) error {
 	}
 	defer rc.Close()
 
-	var r io.Reader = rc
-	if imp.opts.Progress != nil {
-		r = &countingReader{r: rc, imp: imp}
-	}
+	r := imp.progress.Wrap(rc)
 
 	if strings.HasPrefix(rel, legacyDir) {
 		return imp.legacy(ctx, rel, r)
@@ -285,7 +256,7 @@ func (imp *importer) series(ctx context.Context, rel string, r io.Reader) error 
 	if !ok {
 		// A file with no timestamp column is not a series: the "no data" placeholders
 		// Google writes for features never used land here.
-		imp.report.Ignored[path.Dir(rel)]++
+		imp.sink.Ignored(path.Dir(rel))
 		return nil
 	}
 	srcCol, hasSource := cols["data source"]
@@ -328,21 +299,11 @@ func (imp *importer) series(ctx context.Context, rel string, r io.Reader) error 
 		}
 
 		if !mapped {
-			imp.addUnmapped(rowJSON(header, row), "", at, source, fam)
-		} else if valCol < len(row) {
-			imp.addMeasurement(m, strings.TrimSpace(row[valCol]), at, source, fam)
-		}
-
-		// Bounded batches, as every Connector writes: the reference export's energy
-		// series alone is a hundred thousand rows, and a flush per file would hold
-		// them all before the first write.
-		if len(imp.measurements) >= connector.BatchSize {
-			if err := imp.flushMeasurements(ctx); err != nil {
+			if err := imp.addUnmapped(ctx, rowJSON(header, row), "", at, source, fam); err != nil {
 				return err
 			}
-		}
-		if len(imp.unmapped) >= connector.BatchSize {
-			if err := imp.flushUnmapped(ctx); err != nil {
+		} else if valCol < len(row) {
+			if err := imp.addMeasurement(ctx, m, strings.TrimSpace(row[valCol]), at, source, fam); err != nil {
 				return err
 			}
 		}
@@ -353,35 +314,22 @@ func (imp *importer) series(ctx context.Context, rel string, r io.Reader) error 
 // its value is not a number the Catalog's unit can hold, the same fallback the
 // Apple Connector makes, for the same reason: a row Verve cannot read is still a row
 // the Account owns.
-func (imp *importer) addMeasurement(m csvMetric, raw, at, source, fam string) {
+func (imp *importer) addMeasurement(ctx context.Context, m csvMetric, raw, at, source, fam string) error {
 	metric, ok := catalog.Lookup(m.Metric)
 	if !ok {
-		imp.addUnmapped(raw, m.Unit, at, source, fam)
-		return
+		return imp.addUnmapped(ctx, raw, m.Unit, at, source, fam)
 	}
 	parsed, err := strconv.ParseFloat(raw, 64)
 	if err != nil {
-		imp.addUnmapped(raw, m.Unit, at, source, fam)
-		return
+		return imp.addUnmapped(ctx, raw, m.Unit, at, source, fam)
 	}
 	value, err := units.Convert(parsed, m.Unit, metric.Unit)
 	if err != nil {
-		imp.addUnmapped(raw, m.Unit, at, source, fam)
-		return
+		return imp.addUnmapped(ctx, raw, m.Unit, at, source, fam)
 	}
 
-	// An Exclusion is checked once the slug is known and before the row is queued:
-	// what it names is never written, and is counted rather than swallowed (ADR 0033).
-	if imp.opts.Exclusions.Excludes(m.Metric, at) {
-		t := imp.report.PerMetric[m.Metric]
-		t.Excluded++
-		imp.report.PerMetric[m.Metric] = t
-		imp.report.Excluded++
-		return
-	}
-
-	imp.measurements = append(imp.measurements, data.Measurement{
-		AccountID:    imp.accountID,
+	// The Exclusion is the Sink.s to refuse and to count (ADR 0033).
+	return imp.sink.Measurement(ctx, data.Measurement{
 		Metric:       m.Metric,
 		Value:        value,
 		OriginalUnit: m.Unit,
@@ -411,10 +359,9 @@ func canonical(v float64) string {
 // addUnmapped queues one row for the Unmapped bin under a source type naming this
 // Connector and the family it came from, so the bin stays readable once two
 // Connectors write into it.
-func (imp *importer) addUnmapped(value, unit, at, source, fam string) {
+func (imp *importer) addUnmapped(ctx context.Context, value, unit, at, source, fam string) error {
 	typ := "google_health/" + fam
-	imp.unmapped = append(imp.unmapped, data.UnmappedRecord{
-		AccountID:  imp.accountID,
+	return imp.sink.Unmapped(ctx, data.UnmappedRecord{
 		SourceType: typ,
 		Value:      value,
 		Unit:       unit,
@@ -434,7 +381,7 @@ func (imp *importer) legacy(ctx context.Context, rel string, r io.Reader) error 
 	if err := json.NewDecoder(r).Decode(&elements); err != nil {
 		// Google ships several shapes here and adds to them; an unreadable one is one
 		// ignored file, not a failed import.
-		imp.report.Ignored[path.Dir(rel)]++
+		imp.sink.Ignored(path.Dir(rel))
 		return nil
 	}
 
@@ -447,11 +394,8 @@ func (imp *importer) legacy(ctx context.Context, rel string, r io.Reader) error 
 		if err != nil {
 			continue
 		}
-		imp.addUnmapped(string(raw), "", legacyTime(el), legacySource, fam)
-		if len(imp.unmapped) >= connector.BatchSize {
-			if err := imp.flushUnmapped(ctx); err != nil {
-				return err
-			}
+		if err := imp.addUnmapped(ctx, string(raw), "", legacyTime(el), legacySource, fam); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -472,49 +416,6 @@ func legacyTime(el map[string]any) string {
 		}
 	}
 	return raw
-}
-
-// flushMeasurements writes the pending Measurements and tallies what was new.
-func (imp *importer) flushMeasurements(ctx context.Context) error {
-	if len(imp.measurements) == 0 {
-		return nil
-	}
-	added, err := imp.store.InsertBatch(ctx, imp.measurements)
-	if err != nil {
-		return fmt.Errorf("googlehealth: insert measurements: %w", err)
-	}
-	for i, isNew := range added {
-		t := imp.report.PerMetric[imp.measurements[i].Metric]
-		if isNew {
-			t.Added++
-			imp.report.Added++
-		} else {
-			t.Skipped++
-			imp.report.Skipped++
-		}
-		imp.report.PerMetric[imp.measurements[i].Metric] = t
-	}
-	imp.measurements = imp.measurements[:0]
-	return nil
-}
-
-// flushUnmapped writes the pending bin rows and tallies what was new.
-func (imp *importer) flushUnmapped(ctx context.Context) error {
-	if len(imp.unmapped) == 0 {
-		return nil
-	}
-	added, err := imp.store.InsertUnmappedBatch(ctx, imp.unmapped)
-	if err != nil {
-		return fmt.Errorf("googlehealth: insert unmapped: %w", err)
-	}
-	for i, isNew := range added {
-		if isNew {
-			imp.report.Unmapped++
-			imp.report.UnmappedTypes[imp.unmapped[i].SourceType]++
-		}
-	}
-	imp.unmapped = imp.unmapped[:0]
-	return nil
 }
 
 // index maps a header's cells to their positions, lowercased and trimmed so a
@@ -558,19 +459,4 @@ func normalizeTime(s string) string {
 		return strings.TrimSpace(s)
 	}
 	return t.UTC().Format(time.RFC3339)
-}
-
-// countingReader reports progress in bytes consumed against the summed size of the
-// entries this import will read, so the web import's second phase means the same
-// thing here as it does for a streamed XML export.
-type countingReader struct {
-	r   io.Reader
-	imp *importer
-}
-
-func (c *countingReader) Read(p []byte) (int, error) {
-	n, err := c.r.Read(p)
-	c.imp.readBytes += int64(n)
-	c.imp.opts.Progress(c.imp.readBytes, c.imp.totalBytes)
-	return n, err
 }
