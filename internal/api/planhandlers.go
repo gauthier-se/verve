@@ -112,9 +112,7 @@ func (s *Server) handlePlan(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		out.Insufficient = true
-		if err := writeJSON(w, http.StatusOK, envelope{"plan": out}, nil); err != nil {
-			s.serverErrorResponse(w, r, err)
-		}
+		s.respond(w, r, http.StatusOK, envelope{"plan": out})
 		return
 	}
 	out.Expenditure = &exp
@@ -164,9 +162,7 @@ func (s *Server) handlePlan(w http.ResponseWriter, r *http.Request) {
 		out.Guardrails = estimate.Guardrails(targets, out.Rate, basalKcal, adherence)
 	}
 
-	if err := writeJSON(w, http.StatusOK, envelope{"plan": out}, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
+	s.respond(w, r, http.StatusOK, envelope{"plan": out})
 }
 
 // resolveRate picks the rate the page renders: an explicit preview, the open Phase's
@@ -205,9 +201,7 @@ func (s *Server) handleListPhases(w http.ResponseWriter, r *http.Request) {
 	for _, p := range phases {
 		out = append(out, newPhaseView(p))
 	}
-	if err := writeJSON(w, http.StatusOK, envelope{"phases": out}, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
+	s.respond(w, r, http.StatusOK, envelope{"phases": out})
 }
 
 // handleOpenPhase starts a Phase, closing whatever was open. It never edits the previous
@@ -243,9 +237,7 @@ func (s *Server) handleOpenPhase(w http.ResponseWriter, r *http.Request) {
 		s.serverErrorResponse(w, r, err)
 		return
 	}
-	if err := writeJSON(w, http.StatusCreated, envelope{"phase": newPhaseView(*phase)}, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
+	s.respond(w, r, http.StatusCreated, envelope{"phase": newPhaseView(*phase)})
 }
 
 // handleClosePhase ends an open Phase without starting another — stepping off a plan
@@ -265,9 +257,7 @@ func (s *Server) handleClosePhase(w http.ResponseWriter, r *http.Request) {
 		s.respondRecordError(w, r, err, "phase")
 		return
 	}
-	if err := writeJSON(w, http.StatusOK, envelope{"phase": newPhaseView(*phase)}, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
+	s.respond(w, r, http.StatusOK, envelope{"phase": newPhaseView(*phase)})
 }
 
 // handleDeletePhase removes a Phase outright — for a mis-typed rate, where closing it

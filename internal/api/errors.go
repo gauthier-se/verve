@@ -1,6 +1,12 @@
 package api
 
-import "net/http"
+import (
+	"errors"
+	"net/http"
+
+	"github.com/gauthier-se/verve/internal/data"
+	"github.com/gauthier-se/verve/internal/query"
+)
 
 // errorResponse is the single choke point for error payloads: a JSON {"error":
 // message} at the given status. message is a string or a field→msg map (422).
@@ -71,4 +77,48 @@ func (s *Server) signupClosedResponse(w http.ResponseWriter, r *http.Request) {
 // login attempts too quickly.
 func (s *Server) rateLimitExceededResponse(w http.ResponseWriter, r *http.Request) {
 	s.errorResponse(w, r, http.StatusTooManyRequests, "too many requests — slow down and try again shortly")
+}
+
+// respondRecordError maps a storage-layer record error to a 404 and anything else
+// to a 500: the shared tail of every by-id handler. noun names the resource.
+//
+// Not every ErrRecordNotFound is a 404, which is why this is a helper rather than
+// a rule applied everywhere. A session cookie pointing at an account that no
+// longer exists is an authentication failure (handleMe), and a Phase or a profile
+// that is simply absent is often not an error at all. Those read the sentinel
+// themselves, deliberately.
+func (s *Server) respondRecordError(w http.ResponseWriter, r *http.Request, err error, noun string) {
+	if errors.Is(err, data.ErrRecordNotFound) {
+		s.notFoundResponse(w, r, "the requested "+noun+" could not be found")
+		return
+	}
+	s.serverErrorResponse(w, r, err)
+}
+
+// respondSeriesError maps read-engine errors to HTTP responses. The input errors
+// are semantic (422) rather than parse failures; genuine faults are 500, and an
+// aggregation the engine does not serve yet is a 501 because the request was
+// well-formed and Verve simply cannot answer it.
+func (s *Server) respondSeriesError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, query.ErrUnknownMetric):
+		s.failedValidationResponse(w, r, map[string]string{"metric": unknownMetricMsg})
+	case errors.Is(err, query.ErrInvalidRange):
+		s.failedValidationResponse(w, r, map[string]string{"range_preset": "the range is empty or inverted"})
+	case errors.Is(err, query.ErrRangeTooLarge):
+		s.failedValidationResponse(w, r, map[string]string{"bucket": "too many buckets for this range; use a coarser bucket"})
+	case errors.Is(err, query.ErrUnsupportedAggregation):
+		s.errorResponse(w, r, http.StatusNotImplemented, "this metric's aggregation is not served yet")
+	default:
+		s.serverErrorResponse(w, r, err)
+	}
+}
+
+// respond writes a JSON success payload, and answers 500 if the write itself
+// fails. It is the success twin of errorResponse: a handler's last act in one
+// line rather than the same three at every endpoint.
+func (s *Server) respond(w http.ResponseWriter, r *http.Request, status int, body envelope) {
+	if err := writeJSON(w, status, body, nil); err != nil {
+		s.serverErrorResponse(w, r, err)
+	}
 }

@@ -18,7 +18,5 @@ func (s *Server) handleLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := writeJSON(w, http.StatusOK, envelope{"rows": rows}, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
+	s.respond(w, r, http.StatusOK, envelope{"rows": rows})
 }

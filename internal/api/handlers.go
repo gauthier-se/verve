@@ -1,12 +1,10 @@
 package api
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"sort"
-	"time"
 
 	"github.com/gauthier-se/verve/internal/catalog"
 	"github.com/gauthier-se/verve/internal/query"
@@ -23,9 +21,7 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 		s.serverErrorResponse(w, r, err)
 		return
 	}
-	if err := writeJSON(w, http.StatusOK, envelope{"status": "ok"}, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
+	s.respond(w, r, http.StatusOK, envelope{"status": "ok"})
 }
 
 // metricView is one Catalog entry as exposed by the API. A derived Metric reports
@@ -63,9 +59,7 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Slice(views, func(i, j int) bool { return views[i].Slug < views[j].Slug })
 
-	if err := writeJSON(w, http.StatusOK, envelope{"metrics": views}, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
+	s.respond(w, r, http.StatusOK, envelope{"metrics": views})
 }
 
 // metricToView projects a Catalog Metric to its API shape. Aggregation is empty
@@ -126,7 +120,7 @@ func (s *Server) handleSeries(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	resolved, err := timeaxis.Resolve(timeaxis.Tokens{
+	resolved, ok := s.resolveAxis(w, r, v, timeaxis.Tokens{
 		RangePreset:  qs.Get("range_preset"),
 		RangeFrom:    optionalParam(qs, "range_from"),
 		RangeTo:      optionalParam(qs, "range_to"),
@@ -134,13 +128,8 @@ func (s *Server) handleSeries(w http.ResponseWriter, r *http.Request) {
 		BaselineFrom: optionalParam(qs, "baseline_from"),
 		BaselineTo:   optionalParam(qs, "baseline_to"),
 		Bucket:       optionalParam(qs, "bucket"),
-	}, time.Now())
-	if inv, ok := err.(timeaxis.Invalid); ok {
-		for field, msg := range inv {
-			v.AddError(field, msg)
-		}
-	} else if err != nil {
-		s.serverErrorResponse(w, r, err)
+	})
+	if !ok {
 		return
 	}
 
@@ -169,9 +158,7 @@ func (s *Server) handleSeries(w http.ResponseWriter, r *http.Request) {
 			}
 			list = append(list, series)
 		}
-		if err := writeJSON(w, http.StatusOK, envelope{"series": list}, nil); err != nil {
-			s.serverErrorResponse(w, r, err)
-		}
+		s.respond(w, r, http.StatusOK, envelope{"series": list})
 		return
 	}
 
@@ -182,9 +169,7 @@ func (s *Server) handleSeries(w http.ResponseWriter, r *http.Request) {
 			s.respondSeriesError(w, r, err)
 			return
 		}
-		if err := writeJSON(w, http.StatusOK, envelope{"series": series}, nil); err != nil {
-			s.serverErrorResponse(w, r, err)
-		}
+		s.respond(w, r, http.StatusOK, envelope{"series": series})
 		return
 	}
 
@@ -195,9 +180,7 @@ func (s *Server) handleSeries(w http.ResponseWriter, r *http.Request) {
 		s.respondSeriesError(w, r, err)
 		return
 	}
-	if err := writeJSON(w, http.StatusOK, envelope{"series": cmp.Current, "baseline": cmp.Baseline}, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
+	s.respond(w, r, http.StatusOK, envelope{"series": cmp.Current, "baseline": cmp.Baseline})
 }
 
 // optionalParam returns the query value for key, or nil when it is absent or
@@ -207,21 +190,4 @@ func optionalParam(qs url.Values, key string) *string {
 		return &val
 	}
 	return nil
-}
-
-// respondSeriesError maps query-engine errors to HTTP responses. The input
-// errors are semantic (422) rather than parse failures; genuine faults are 500.
-func (s *Server) respondSeriesError(w http.ResponseWriter, r *http.Request, err error) {
-	switch {
-	case errors.Is(err, query.ErrUnknownMetric):
-		s.failedValidationResponse(w, r, map[string]string{"metric": unknownMetricMsg})
-	case errors.Is(err, query.ErrInvalidRange):
-		s.failedValidationResponse(w, r, map[string]string{"range_preset": "the range is empty or inverted"})
-	case errors.Is(err, query.ErrRangeTooLarge):
-		s.failedValidationResponse(w, r, map[string]string{"bucket": "too many buckets for this range; use a coarser bucket"})
-	case errors.Is(err, query.ErrUnsupportedAggregation):
-		s.errorResponse(w, r, http.StatusNotImplemented, "this metric's aggregation is not served yet")
-	default:
-		s.serverErrorResponse(w, r, err)
-	}
 }

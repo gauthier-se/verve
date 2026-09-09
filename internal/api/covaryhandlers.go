@@ -3,7 +3,6 @@ package api
 import (
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/gauthier-se/verve/internal/catalog"
 	"github.com/gauthier-se/verve/internal/data"
@@ -90,13 +89,8 @@ func (s *Server) handleCoVary(w http.ResponseWriter, r *http.Request) {
 		bucket := lag.Bucket
 		tokens.Bucket = &bucket
 	}
-	resolved, err := timeaxis.Resolve(tokens, time.Now())
-	if inv, ok := err.(timeaxis.Invalid); ok {
-		for field, msg := range inv {
-			v.AddError(field, msg)
-		}
-	} else if err != nil {
-		s.serverErrorResponse(w, r, err)
+	resolved, ok := s.resolveAxis(w, r, v, tokens)
+	if !ok {
 		return
 	}
 	if !v.Valid() {
@@ -140,9 +134,7 @@ func (s *Server) handleCoVary(w http.ResponseWriter, r *http.Request) {
 		Metrics: covary.Metrics, Units: covary.Units, Pairs: covary.Pairs,
 		MinShared: covary.MinShared, Strongest: covary.Strongest, Skipped: skipped,
 	}
-	if err := writeJSON(w, http.StatusOK, envelope{"covary": view}, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
+	s.respond(w, r, http.StatusOK, envelope{"covary": view})
 }
 
 // coVaryInputs turns the Account's Pins into the Metric list to pair, dropping

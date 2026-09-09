@@ -102,9 +102,7 @@ func (s *Server) writeImportStatus(w http.ResponseWriter, r *http.Request, statu
 		v := job.view()
 		view = &v
 	}
-	if err := writeJSON(w, status, envelope{"job": view, "has_data": hasData}, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
+	s.respond(w, r, status, envelope{"job": view, "has_data": hasData})
 }
 
 // importJobView is a job as exposed by the API: lifecycle status, phase, a single

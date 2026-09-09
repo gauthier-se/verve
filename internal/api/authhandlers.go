@@ -67,9 +67,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		s.serverErrorResponse(w, r, err)
 		return
 	}
-	if err := writeJSON(w, http.StatusOK, envelope{"account": meView(acc)}, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
+	s.respond(w, r, http.StatusOK, envelope{"account": meView(acc)})
 }
 
 // openSession mints a session token, records the server-side session, and sets
@@ -102,9 +100,7 @@ func (s *Server) handleAuthState(w http.ResponseWriter, r *http.Request) {
 		s.serverErrorResponse(w, r, err)
 		return
 	}
-	if err := writeJSON(w, http.StatusOK, envelope{"needs_bootstrap": !exists}, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
+	s.respond(w, r, http.StatusOK, envelope{"needs_bootstrap": !exists})
 }
 
 // handleRegister is the first-run bootstrap: while the instance has zero
@@ -168,9 +164,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		s.serverErrorResponse(w, r, err)
 		return
 	}
-	if err := writeJSON(w, http.StatusCreated, envelope{"account": meView(acc)}, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
+	s.respond(w, r, http.StatusCreated, envelope{"account": meView(acc)})
 }
 
 // credentialsValid reports whether password authenticates acc. A missing account
@@ -198,9 +192,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.clearSessionCookie(w)
-	if err := writeJSON(w, http.StatusOK, envelope{"status": "logged out"}, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
+	s.respond(w, r, http.StatusOK, envelope{"status": "logged out"})
 }
 
 // handleMe returns the authenticated Account and its `Me` profile. It sits behind
@@ -227,9 +219,7 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	if s.mapTiles != "" {
 		body["map"] = mapView{Tiles: s.mapTiles, Attribution: s.mapAttrib}
 	}
-	if err := writeJSON(w, http.StatusOK, body, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
+	s.respond(w, r, http.StatusOK, body)
 }
 
 // mapView is the configured basemap, present only when one is configured. Its

@@ -2,7 +2,6 @@ package api
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -109,9 +108,7 @@ func (s *Server) handleListDashboards(w http.ResponseWriter, r *http.Request) {
 		}
 		views = append(views, dashboardToView(d, panels))
 	}
-	if err := writeJSON(w, http.StatusOK, envelope{"dashboards": views}, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
+	s.respond(w, r, http.StatusOK, envelope{"dashboards": views})
 }
 
 // handleCreateDashboard creates an empty dashboard for the Account and returns it.
@@ -140,9 +137,7 @@ func (s *Server) handleCreateDashboard(w http.ResponseWriter, r *http.Request) {
 		s.serverErrorResponse(w, r, err)
 		return
 	}
-	if err := writeJSON(w, http.StatusCreated, envelope{"dashboard": dashboardToView(*d, nil)}, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
+	s.respond(w, r, http.StatusCreated, envelope{"dashboard": dashboardToView(*d, nil)})
 }
 
 // handleGetDashboard returns one of the Account's dashboards with its panels.
@@ -157,9 +152,7 @@ func (s *Server) handleGetDashboard(w http.ResponseWriter, r *http.Request) {
 		s.serverErrorResponse(w, r, err)
 		return
 	}
-	if err := writeJSON(w, http.StatusOK, envelope{"dashboard": dashboardToView(*d, panels)}, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
+	s.respond(w, r, http.StatusOK, envelope{"dashboard": dashboardToView(*d, panels)})
 }
 
 // handleUpdateDashboard patches a dashboard's name and/or Time range. Absent
@@ -232,14 +225,10 @@ func (s *Server) handleUpdateDashboard(w http.ResponseWriter, r *http.Request) {
 	if input.Name != nil {
 		validateName(v, d.Name)
 	}
-	if inv, ok := timeaxis.Validate(timeaxis.Tokens{
+	mergeInvalid(v, timeaxis.Validate(timeaxis.Tokens{
 		RangePreset: d.RangePreset, RangeFrom: d.RangeFrom, RangeTo: d.RangeTo,
 		BaselineRule: d.BaselineRule, BaselineFrom: d.BaselineFrom, BaselineTo: d.BaselineTo,
-	}).(timeaxis.Invalid); ok {
-		for field, msg := range inv {
-			v.AddError(field, msg)
-		}
-	}
+	}))
 	if !v.Valid() {
 		s.failedValidationResponse(w, r, v.Errors)
 		return
@@ -254,9 +243,7 @@ func (s *Server) handleUpdateDashboard(w http.ResponseWriter, r *http.Request) {
 		s.serverErrorResponse(w, r, err)
 		return
 	}
-	if err := writeJSON(w, http.StatusOK, envelope{"dashboard": dashboardToView(*d, panels)}, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
+	s.respond(w, r, http.StatusOK, envelope{"dashboard": dashboardToView(*d, panels)})
 }
 
 // handleDeleteDashboard removes a dashboard (its panels cascade in SQL).
@@ -329,9 +316,7 @@ func (s *Server) handleCreatePanel(w http.ResponseWriter, r *http.Request) {
 		s.serverErrorResponse(w, r, err)
 		return
 	}
-	if err := writeJSON(w, http.StatusCreated, envelope{"panel": panelToView(*p)}, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
+	s.respond(w, r, http.StatusCreated, envelope{"panel": panelToView(*p)})
 }
 
 // handleUpdatePanel patches a panel's presentation (chart type, bucket, width).
@@ -393,9 +378,7 @@ func (s *Server) handleUpdatePanel(w http.ResponseWriter, r *http.Request) {
 		s.respondRecordError(w, r, err, "panel")
 		return
 	}
-	if err := writeJSON(w, http.StatusOK, envelope{"panel": panelToView(*p)}, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
+	s.respond(w, r, http.StatusOK, envelope{"panel": panelToView(*p)})
 }
 
 // handleDeletePanel removes one of the Account's panels.
@@ -439,9 +422,7 @@ func (s *Server) handleReorderPanels(w http.ResponseWriter, r *http.Request) {
 		s.serverErrorResponse(w, r, err)
 		return
 	}
-	if err := writeJSON(w, http.StatusOK, envelope{"dashboard": dashboardToView(*d, panels)}, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
+	s.respond(w, r, http.StatusOK, envelope{"dashboard": dashboardToView(*d, panels)})
 }
 
 // lookupDashboard resolves the {id} path value to one of the Account's
@@ -469,16 +450,6 @@ func (s *Server) pathID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 		return 0, false
 	}
 	return id, true
-}
-
-// respondRecordError maps a data-layer record error to a 404 and anything else to
-// a 500 — the shared tail of every by-id handler. noun names the resource.
-func (s *Server) respondRecordError(w http.ResponseWriter, r *http.Request, err error, noun string) {
-	if errors.Is(err, data.ErrRecordNotFound) {
-		s.notFoundResponse(w, r, "the requested "+noun+" could not be found")
-		return
-	}
-	s.serverErrorResponse(w, r, err)
 }
 
 // panelMetricInput is one entry of a Panel's metrics list as the client sends

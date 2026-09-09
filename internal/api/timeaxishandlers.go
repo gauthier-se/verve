@@ -2,7 +2,6 @@ package api
 
 import (
 	"net/http"
-	"time"
 
 	"github.com/gauthier-se/verve/internal/timeaxis"
 )
@@ -42,7 +41,7 @@ func (s *Server) handleTimeAxis(w http.ResponseWriter, r *http.Request) {
 	qs := r.URL.Query()
 	v := NewValidator()
 
-	resolved, err := timeaxis.Resolve(timeaxis.Tokens{
+	resolved, ok := s.resolveAxis(w, r, v, timeaxis.Tokens{
 		RangePreset:  qs.Get("range_preset"),
 		RangeFrom:    optionalParam(qs, "range_from"),
 		RangeTo:      optionalParam(qs, "range_to"),
@@ -50,13 +49,8 @@ func (s *Server) handleTimeAxis(w http.ResponseWriter, r *http.Request) {
 		BaselineFrom: optionalParam(qs, "baseline_from"),
 		BaselineTo:   optionalParam(qs, "baseline_to"),
 		Bucket:       optionalParam(qs, "bucket"),
-	}, time.Now())
-	if inv, ok := err.(timeaxis.Invalid); ok {
-		for field, msg := range inv {
-			v.AddError(field, msg)
-		}
-	} else if err != nil {
-		s.serverErrorResponse(w, r, err)
+	})
+	if !ok {
 		return
 	}
 	if !v.Valid() {
@@ -70,9 +64,7 @@ func (s *Server) handleTimeAxis(w http.ResponseWriter, r *http.Request) {
 		view.Baseline = &base
 	}
 
-	if err := writeJSON(w, http.StatusOK, envelope{"time_axis": view}, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
+	s.respond(w, r, http.StatusOK, envelope{"time_axis": view})
 }
 
 // toWindowView projects a resolved window to its API shape, naming both its
