@@ -9,6 +9,13 @@ import path from "node:path";
 // session cookie flows normally.
 export default defineConfig({
   plugins: [react()],
+  // The suite covers the pure modules: what a chart is handed, where a marker
+  // lands, how a figure reads. Those need no DOM, so there is no environment to
+  // configure and no setup file. A component test would need one, and would be
+  // the moment to add it.
+  test: {
+    include: ["src/**/*.test.ts"],
+  },
   resolve: {
     alias: { "@": path.resolve(__dirname, "src") },
   },

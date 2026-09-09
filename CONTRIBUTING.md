@@ -21,9 +21,9 @@ make ci        # fmt-check, vet, build, test -race, then the SPA build
 ```
 
 A green `make ci` locally means a green CI, because the `ci` target mirrors
-`.github/workflows/ci.yml` exactly: its two jobs are the Go checks and
-`npm run build`, which is `tsc --noEmit && vite build` and so typechecks the
-front end as well as bundling it.
+`.github/workflows/ci.yml` exactly: its two jobs are the Go checks and the
+web ones: `npm run build` is `tsc --noEmit && vite build`, so it typechecks the
+front end as well as bundling it, and `npm run test` runs the front-end suite.
 
 If you have no Node installed and your change is Go-only, `make ci-go` runs
 just the Go half. It is a real subset and not a shortcut: the binary embeds
@@ -37,6 +37,7 @@ Day to day:
 make run ARGS="serve --secure-cookie=false"   # API + whatever SPA is embedded
 make ui-dev                                   # Vite dev server, proxies /v1
 make ui                                       # build the SPA into internal/web/dist
+make ui-test                                  # front-end unit tests (the pure modules)
 make dist                                     # SPA then binary: the real artifact
 make test                                     # go test -race ./...
 make cover                                    # coverage report in the browser
@@ -105,7 +106,14 @@ Issues live as markdown under `.scratch/<milestone>/`, with a PRD next to them
 (see `docs/agents/issue-tracker.md`). The loop is:
 
 1. One issue, one branch: `feat/...` or `fix/...`.
-2. Implement, with tests at the seams the issue names.
+2. Implement, with tests at the seams the issue names. Go code is tested in its
+   own package; the front end has two layers, and they answer different
+   questions. `web/src/**/*.test.ts` (vitest) tests the pure modules by value:
+   what a chart is handed, where a marker lands, how a figure reads.
+   `internal/web/*_test.go` reads the SPA as text, for the two things a runner
+   cannot do: pin a contract that spans Go and TypeScript (the palettes, the
+   sleep Stages, the Activity catalog), and forbid a shape rather than test a
+   result (no colour literals, no date arithmetic in the placement code).
 3. Open a pull request referencing the issue.
 4. CI green, review, merge.
 

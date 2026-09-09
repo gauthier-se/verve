@@ -19,6 +19,7 @@ import type { CategoricalChartState } from "recharts/types/chart/types";
 import type { AxisDomain } from "recharts/types/util/types";
 import { projectAnnotations, type AnnotationOverlay } from "@/lib/annotations";
 import { AXIS, GRID, NEGATIVE, POSITIVE, SERIES_COLORS, seriesColor } from "@/lib/chart";
+import { mergeSeries, stageKey, type ChartDatum } from "@/lib/chart-data";
 import { formatDuration } from "@/lib/format";
 import { metricLabel } from "@/lib/metrics";
 import { isSleepSeries, stageColor, stageLabel, stagesPresent } from "@/lib/sleep";
@@ -43,23 +44,6 @@ const ANNOTATION = AXIS;
 // Diverging-bar sign colors: surplus (≥ 0) warm, deficit (< 0) cool (ADR 0014).
 const SURPLUS = POSITIVE;
 const DEFICIT = NEGATIVE;
-
-/** ChartDatum is one x-position: per-series values keyed v0…v3 (band0… for the
- *  min/max band), sparse — a Series without data in that bucket has no key (a gap,
- *  ADR 0014). Single-Metric comparison adds the Baseline bucket keyed to the same
- *  ordinal index with its own date for the tooltip (ADR 0015). */
-interface ChartDatum {
-  bucket: string;
-  baselineValue?: number;
-  baselineBucket?: string;
-  [seriesKey: `v${number}` | `band${number}` | `stage:${string}`]: number | number[] | undefined;
-}
-
-/** stageKey namespaces a Stage's minutes on the datum, so a Stage slug can never
- *  collide with a series key. */
-function stageKey(stage: string): `stage:${string}` {
-  return `stage:${stage}`;
-}
 
 /** PanelChart renders a Panel's Series as one combo chart: each Series with its
  *  own mark and color by position, on the Y axis of its unit group — the first
@@ -172,43 +156,6 @@ export function PanelChart({
       </ComposedChart>
     </ResponsiveContainer>
   );
-}
-
-/** mergeSeries folds sparse Series into per-bucket rows, keyed by the shared
- *  bucket grid's dates (the server resolves the time axis once, ADR 0020). With a
- *  single Series the rows are its points in order, so the Baseline stays
- *  index-aligned exactly as the server built it (ADR 0015). */
-function mergeSeries(list: Series[], baseline?: Series): ChartDatum[] {
-  if (list.length === 1) {
-    return list[0].points.map((p, i) => {
-      const bp = baseline?.points[i];
-      const d: ChartDatum = { bucket: p.bucket, v0: p.value };
-      if (p.min !== undefined && p.max !== undefined) d.band0 = [p.min, p.max];
-      // The Stage breakdown a stacked bar reads, carried beside the value the
-      // tooltip and the Baseline still use (ADR 0027).
-      for (const [stage, minutes] of Object.entries(p.states ?? {})) d[stageKey(stage)] = minutes;
-      if (bp) {
-        d.baselineBucket = bp.bucket;
-        if (!bp.gap) d.baselineValue = bp.value;
-      }
-      return d;
-    });
-  }
-
-  const rows = new Map<string, ChartDatum>();
-  list.forEach((s, i) => {
-    for (const p of s.points) {
-      let row = rows.get(p.bucket);
-      if (!row) {
-        row = { bucket: p.bucket };
-        rows.set(p.bucket, row);
-      }
-      row[`v${i}`] = p.value;
-      if (p.min !== undefined && p.max !== undefined) row[`band${i}`] = [p.min, p.max];
-    }
-  });
-  // Bucket dates are YYYY-MM-DD, so lexical order is chronological.
-  return [...rows.values()].sort((a, b) => (a.bucket < b.bucket ? -1 : 1));
 }
 
 /** axisDomain spans zero for an axis carrying a diverging bar, whose "balance

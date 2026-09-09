@@ -19,6 +19,7 @@ const (
 	annotationsTSPath = "../../web/src/lib/annotations.ts"
 	panelChartTSXPath = "../../web/src/components/panel-chart.tsx"
 	chartTSPath       = "../../web/src/lib/chart.ts"
+	chartDataTSPath   = "../../web/src/lib/chart-data.ts"
 )
 
 var (
@@ -45,7 +46,7 @@ var dateArithmetic = []string{
 // folded buckets and compares them as strings (YYYY-MM-DD is chronological when
 // compared lexically). It must never derive one.
 func TestAnnotationPlacementDoesNoDateArithmetic(t *testing.T) {
-	for _, path := range []string{annotationsTSPath, panelChartTSXPath} {
+	for _, path := range []string{annotationsTSPath, panelChartTSXPath, chartDataTSPath} {
 		src := readFileText(t, path)
 		for _, banned := range dateArithmetic {
 			if strings.Contains(src, banned) {
