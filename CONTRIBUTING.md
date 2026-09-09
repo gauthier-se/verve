@@ -74,7 +74,7 @@ cmd/verve/              CLI entry point: serve, migrate, account, import
 internal/catalog/       the closed set of canonical Metrics, units, formulas
 internal/connector/     sources of data; applehealth/ and googlehealth/
 internal/units/         unit conversion at import time
-internal/data/          storage: SQLite, embedded migrations, one model per family
+internal/data/          storage: SQLite, migrations, one model per family, Tx
 internal/query/         the read engine: aggregated buckets, source resolution
 internal/history/       the long view: the band plus the events that explain it
 internal/timeaxis/      time range, baseline and bucket resolution, pure and DB-free
