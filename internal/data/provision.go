@@ -29,28 +29,18 @@ var defaultPanels = []struct {
 // without a starting board and seeding cannot be forgotten by a caller (ADR
 // 0018). A taken email yields ErrDuplicateEmail and nothing is written.
 func (m Models) CreateAccount(ctx context.Context, a *Account) error {
-	tx, err := m.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("data: begin create account: %w", err)
-	}
-	defer tx.Rollback() // no-op after Commit
-
-	if err := insertAccount(ctx, tx, a); err != nil {
-		return err
-	}
-	if err := seedDefaultDashboard(ctx, tx, a.ID); err != nil {
-		return err
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("data: commit create account: %w", err)
-	}
-	return nil
+	return m.Tx(ctx, func(tx Models) error {
+		if err := insertAccount(ctx, tx.Accounts.DB, a); err != nil {
+			return err
+		}
+		return seedDefaultDashboard(ctx, tx.Accounts.DB, a.ID)
+	})
 }
 
 // seedDefaultDashboard inserts the "Overview" Dashboard and its template Panels for
 // accountID, in template order, reusing the ordinary Dashboard/Panel insert path
 // (ADR 0012) so a seeded board is an ordinary, editable Dashboard afterward.
-func seedDefaultDashboard(ctx context.Context, q querier, accountID int64) error {
+func seedDefaultDashboard(ctx context.Context, q Handle, accountID int64) error {
 	d := &Dashboard{AccountID: accountID, Name: defaultDashboardName, RangePreset: "30d"}
 	if err := insertDashboard(ctx, q, d); err != nil {
 		return fmt.Errorf("data: seed default dashboard: %w", err)

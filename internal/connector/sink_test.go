@@ -74,25 +74,24 @@ func (f *fakeStore) InsertStateBatch(_ context.Context, ss []data.State) ([]bool
 	return f.mask(keys), nil
 }
 
-func (f *fakeStore) InsertSession(_ context.Context, s *data.Session) (bool, error) {
-	isNew := !f.seen[s.ContentKey]
+func (f *fakeStore) InsertWorkout(_ context.Context, s *data.Session, stats []data.SessionStat, routes []data.Route) (data.WorkoutWrite, error) {
+	out := data.WorkoutWrite{RoutesAdded: make([]bool, len(routes))}
+
+	out.SessionAdded = !f.seen[s.ContentKey]
 	f.seen[s.ContentKey] = true
 	s.ID = f.nextID
 	f.nextID++
 	f.sessions = append(f.sessions, *s)
-	return isNew, nil
-}
 
-func (f *fakeStore) InsertSessionStats(_ context.Context, sessionID int64, stats []data.SessionStat) error {
-	f.stats[sessionID] = append(f.stats[sessionID], stats...)
-	return nil
-}
+	f.stats[s.ID] = append(f.stats[s.ID], stats...)
 
-func (f *fakeStore) InsertRoute(_ context.Context, r *data.Route) (bool, error) {
-	isNew := !f.seen[r.ContentKey]
-	f.seen[r.ContentKey] = true
-	f.routes = append(f.routes, *r)
-	return isNew, nil
+	for i := range routes {
+		routes[i].SessionID = s.ID
+		out.RoutesAdded[i] = !f.seen[routes[i].ContentKey]
+		f.seen[routes[i].ContentKey] = true
+		f.routes = append(f.routes, routes[i])
+	}
+	return out, nil
 }
 
 func (f *fakeStore) Record(_ context.Context, imp *data.Import) error {
@@ -304,8 +303,8 @@ func TestSinkAttachesSessionStatsOnAReimport(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		sink := connector.NewSink(store, 7, "test", "export.zip", connector.Options{})
 		sess := data.Session{ActivityType: "running", ContentKey: "w1"}
-		if err := sink.Session(ctx, &sess, stats); err != nil {
-			t.Fatalf("Session: %v", err)
+		if err := sink.Workout(ctx, &sess, stats, nil); err != nil {
+			t.Fatalf("Workout: %v", err)
 		}
 		report, err := sink.Close(ctx)
 		if err != nil {

@@ -55,7 +55,7 @@ type Panel struct {
 
 // DashboardModel is the DAO for dashboards.
 type DashboardModel struct {
-	DB *sql.DB
+	DB Handle
 }
 
 // Insert appends a dashboard at the end of the Account's list (position computed
@@ -65,7 +65,7 @@ func (m DashboardModel) Insert(ctx context.Context, d *Dashboard) error {
 }
 
 // insertDashboard inserts a dashboard through any querier.
-func insertDashboard(ctx context.Context, q querier, d *Dashboard) error {
+func insertDashboard(ctx context.Context, q Handle, d *Dashboard) error {
 	// Default the Baseline to comparison-off so a zero value never hits the NOT NULL column.
 	if d.BaselineRule == "" {
 		d.BaselineRule = "none"
@@ -157,7 +157,7 @@ func (m DashboardModel) Delete(ctx context.Context, accountID, id int64) error {
 
 // PanelModel is the DAO for panels.
 type PanelModel struct {
-	DB *sql.DB
+	DB Handle
 }
 
 // Insert appends a panel at the end of its dashboard's grid (position computed
@@ -165,25 +165,15 @@ type PanelModel struct {
 // already-authorized owning dashboard. The panel row and its metric rows are
 // written in one transaction.
 func (m PanelModel) Insert(ctx context.Context, p *Panel) error {
-	tx, err := m.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("data: begin insert panel: %w", err)
-	}
-	defer tx.Rollback() // no-op after Commit
-
-	if err := insertPanel(ctx, tx, p); err != nil {
-		return err
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("data: commit insert panel: %w", err)
-	}
-	return nil
+	return atomically(ctx, m.DB, func(tx Handle) error {
+		return insertPanel(ctx, tx, p)
+	})
 }
 
 // insertPanel inserts a panel and its metric rows through any querier. Callers
 // own the transaction boundary: multiple statements are only atomic when q is
 // a *sql.Tx.
-func insertPanel(ctx context.Context, q querier, p *Panel) error {
+func insertPanel(ctx context.Context, q Handle, p *Panel) error {
 	const query = `
 		INSERT INTO panels (dashboard_id, account_id, bucket, width, position)
 		VALUES (?, ?, ?, ?, (SELECT COALESCE(MAX(position)+1, 0) FROM panels WHERE dashboard_id = ?))
@@ -197,7 +187,7 @@ func insertPanel(ctx context.Context, q querier, p *Panel) error {
 }
 
 // insertPanelMetrics writes p.Metrics in slice order; position is the index.
-func insertPanelMetrics(ctx context.Context, q querier, p *Panel) error {
+func insertPanelMetrics(ctx context.Context, q Handle, p *Panel) error {
 	const query = `
 		INSERT INTO panel_metrics (panel_id, account_id, metric, chart_type, position)
 		VALUES (?, ?, ?, ?, ?)`
@@ -335,31 +325,21 @@ func (m PanelModel) loadPanelMetrics(ctx context.Context, accountID, panelID int
 // no such panel belongs to the Account. Dashboard membership is fixed at
 // creation.
 func (m PanelModel) Update(ctx context.Context, p *Panel) error {
-	tx, err := m.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("data: begin update panel: %w", err)
-	}
-	defer tx.Rollback() // no-op after Commit
-
-	const query = `
+	return atomically(ctx, m.DB, func(tx Handle) error {
+		const query = `
 		UPDATE panels
 		SET bucket = ?, width = ?,
 		    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 		WHERE id = ? AND account_id = ?`
-	if err := execExpectingRow(ctx, tx, query, p.Bucket, p.Width, p.ID, p.AccountID); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx,
-		`DELETE FROM panel_metrics WHERE panel_id = ? AND account_id = ?`, p.ID, p.AccountID); err != nil {
-		return fmt.Errorf("data: clear panel metrics: %w", err)
-	}
-	if err := insertPanelMetrics(ctx, tx, p); err != nil {
-		return err
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("data: commit update panel: %w", err)
-	}
-	return nil
+		if err := execExpectingRow(ctx, tx, query, p.Bucket, p.Width, p.ID, p.AccountID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx,
+			`DELETE FROM panel_metrics WHERE panel_id = ? AND account_id = ?`, p.ID, p.AccountID); err != nil {
+			return fmt.Errorf("data: clear panel metrics: %w", err)
+		}
+		return insertPanelMetrics(ctx, tx, p)
+	})
 }
 
 // Delete removes the Account's panel, scoped by Account. It returns
@@ -372,36 +352,29 @@ func (m PanelModel) Delete(ctx context.Context, accountID, id int64) error {
 // Reorder rewrites panel positions in one transaction (each row set to its index in
 // orderedIDs). Scoped to (dashboard, account), so a foreign id matches nothing.
 func (m PanelModel) Reorder(ctx context.Context, accountID, dashboardID int64, orderedIDs []int64) error {
-	tx, err := m.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("data: begin reorder: %w", err)
-	}
-	defer tx.Rollback() // no-op after Commit
-
-	const query = `
-		UPDATE panels
-		SET position = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-		WHERE id = ? AND dashboard_id = ? AND account_id = ?`
-	stmt, err := tx.PrepareContext(ctx, query)
-	if err != nil {
-		return fmt.Errorf("data: prepare reorder: %w", err)
-	}
-	defer stmt.Close()
-
-	for pos, id := range orderedIDs {
-		if _, err := stmt.ExecContext(ctx, pos, id, dashboardID, accountID); err != nil {
-			return fmt.Errorf("data: reorder panel %d: %w", id, err)
+	return atomically(ctx, m.DB, func(tx Handle) error {
+		const query = `
+			UPDATE panels
+			SET position = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+			WHERE id = ? AND dashboard_id = ? AND account_id = ?`
+		stmt, err := tx.PrepareContext(ctx, query)
+		if err != nil {
+			return fmt.Errorf("data: prepare reorder: %w", err)
 		}
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("data: commit reorder: %w", err)
-	}
-	return nil
+		defer stmt.Close()
+
+		for pos, id := range orderedIDs {
+			if _, err := stmt.ExecContext(ctx, pos, id, dashboardID, accountID); err != nil {
+				return fmt.Errorf("data: reorder panel %d: %w", id, err)
+			}
+		}
+		return nil
+	})
 }
 
 // execExpectingRow runs an Account-scoped UPDATE/DELETE that must affect one row,
 // mapping "no row affected" to ErrRecordNotFound.
-func execExpectingRow(ctx context.Context, q querier, query string, args ...any) error {
+func execExpectingRow(ctx context.Context, q Handle, query string, args ...any) error {
 	res, err := q.ExecContext(ctx, query, args...)
 	if err != nil {
 		return err

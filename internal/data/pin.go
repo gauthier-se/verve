@@ -20,7 +20,7 @@ type Pin struct {
 
 // PinModel is the DAO for pins.
 type PinModel struct {
-	DB *sql.DB
+	DB Handle
 }
 
 // ListByAccount returns the Account's Pins in sidebar (position) order.

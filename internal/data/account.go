@@ -35,7 +35,7 @@ type Account struct {
 
 // AccountModel is the DAO for accounts.
 type AccountModel struct {
-	DB *sql.DB
+	DB Handle
 }
 
 // Insert creates the account and populates its generated ID and timestamps.
@@ -45,7 +45,7 @@ func (m AccountModel) Insert(ctx context.Context, a *Account) error {
 }
 
 // insertAccount inserts an account through any querier.
-func insertAccount(ctx context.Context, q querier, a *Account) error {
+func insertAccount(ctx context.Context, q Handle, a *Account) error {
 	const query = `
 		INSERT INTO accounts (email, password_hash, date_of_birth, biological_sex, blood_type)
 		VALUES (?, ?, ?, ?, ?)

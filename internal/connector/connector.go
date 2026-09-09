@@ -49,9 +49,10 @@ type Store interface {
 	InsertBatch(ctx context.Context, ms []data.Measurement) ([]bool, error)
 	InsertUnmappedBatch(ctx context.Context, us []data.UnmappedRecord) ([]bool, error)
 	InsertStateBatch(ctx context.Context, ss []data.State) ([]bool, error)
-	InsertSession(ctx context.Context, s *data.Session) (bool, error)
-	InsertSessionStats(ctx context.Context, sessionID int64, stats []data.SessionStat) error
-	InsertRoute(ctx context.Context, r *data.Route) (bool, error)
+	// InsertWorkout writes a Session, its stats and its Routes as one unit: a
+	// workout is one thing an Account did, not three rows that happen to arrive
+	// together.
+	InsertWorkout(ctx context.Context, s *data.Session, stats []data.SessionStat, routes []data.Route) (data.WorkoutWrite, error)
 	Record(ctx context.Context, imp *data.Import) error
 }
 

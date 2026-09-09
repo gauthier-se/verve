@@ -24,7 +24,7 @@ type AuthSession struct {
 
 // AuthSessionModel is the DAO for login sessions.
 type AuthSessionModel struct {
-	DB *sql.DB
+	DB Handle
 }
 
 // Insert stores a new login session.

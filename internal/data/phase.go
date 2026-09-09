@@ -41,7 +41,7 @@ func (p Phase) Kind() string {
 
 // PhaseModel is the DAO for phases.
 type PhaseModel struct {
-	DB *sql.DB
+	DB Handle
 }
 
 const phaseColumns = `id, account_id, rate_pct_per_week, started_at, ended_at, created_at`
@@ -51,31 +51,27 @@ const phaseColumns = `id, account_id, rate_pct_per_week, started_at, ended_at, c
 // one was closed but the new one never landed, would make every later adherence figure
 // ambiguous. The partial unique index is the backstop if two callers race.
 func (m PhaseModel) Open(ctx context.Context, accountID int64, rate float64, startedAt string) (*Phase, error) {
-	tx, err := m.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, fmt.Errorf("data: begin open phase: %w", err)
-	}
-	defer tx.Rollback() // no-op after Commit
-
-	if _, err := tx.ExecContext(ctx,
-		`UPDATE phases SET ended_at = ? WHERE account_id = ? AND ended_at IS NULL`,
-		startedAt, accountID); err != nil {
-		return nil, fmt.Errorf("data: close current phase: %w", err)
-	}
-
 	var p Phase
-	err = tx.QueryRowContext(ctx, `
-		INSERT INTO phases (account_id, rate_pct_per_week, started_at)
-		VALUES (?, ?, ?)
-		RETURNING `+phaseColumns,
-		accountID, rate, startedAt,
-	).Scan(&p.ID, &p.AccountID, &p.RatePctPerWeek, &p.StartedAt, &p.EndedAt, &p.CreatedAt)
-	if err != nil {
-		return nil, fmt.Errorf("data: insert phase: %w", err)
-	}
+	err := atomically(ctx, m.DB, func(tx Handle) error {
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE phases SET ended_at = ? WHERE account_id = ? AND ended_at IS NULL`,
+			startedAt, accountID); err != nil {
+			return fmt.Errorf("data: close current phase: %w", err)
+		}
 
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("data: commit open phase: %w", err)
+		err := tx.QueryRowContext(ctx, `
+			INSERT INTO phases (account_id, rate_pct_per_week, started_at)
+			VALUES (?, ?, ?)
+			RETURNING `+phaseColumns,
+			accountID, rate, startedAt,
+		).Scan(&p.ID, &p.AccountID, &p.RatePctPerWeek, &p.StartedAt, &p.EndedAt, &p.CreatedAt)
+		if err != nil {
+			return fmt.Errorf("data: insert phase: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return &p, nil
 }
