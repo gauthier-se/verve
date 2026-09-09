@@ -116,24 +116,21 @@ func (s *Sink) State(ctx context.Context, st data.State) error {
 	return nil
 }
 
-// Session writes one Session with the summary stats it carries, and fills in its
-// ID. Unlike the scalar families it is not batched: the ID is needed to attach
-// anything to it, so the write happens when the Connector finishes reading it.
-//
-// Stats are attached whether or not the Session is new, which is what makes a
-// re-import converge: a workout already in the database still gains what a widened
-// import now captures. Skipping them on the already-present branch would leave
-// every existing database stat-less forever.
-func (s *Sink) Session(ctx context.Context, sess *data.Session, stats []data.SessionStat) error {
+// Workout writes one Session with the summary stats and Routes it carries, as one
+// unit. Unlike the scalar families it is not batched: a workout is written when
+// the Connector finishes reading it, because everything attached to it needs the
+// ID the write assigns.
+func (s *Sink) Workout(ctx context.Context, sess *data.Session, stats []data.SessionStat, routes []data.Route) error {
 	if sess.AccountID == 0 {
 		sess.AccountID = s.accountID
 	}
-	inserted, err := s.store.InsertSession(ctx, sess)
+	wrote, err := s.store.InsertWorkout(ctx, sess, stats, routes)
 	if err != nil {
-		return fmt.Errorf("connector: insert session: %w", err)
+		return fmt.Errorf("connector: insert workout: %w", err)
 	}
+
 	t := s.report.PerActivity[sess.ActivityType]
-	if inserted {
+	if wrote.SessionAdded {
 		t.Added++
 		s.report.SessionsAdded++
 	} else {
@@ -142,25 +139,12 @@ func (s *Sink) Session(ctx context.Context, sess *data.Session, stats []data.Ses
 	}
 	s.report.PerActivity[sess.ActivityType] = t
 
-	if err := s.store.InsertSessionStats(ctx, sess.ID, stats); err != nil {
-		return fmt.Errorf("connector: insert session stats: %w", err)
-	}
-	return nil
-}
-
-// Route records one artifact-backed Route against a Session already written.
-func (s *Sink) Route(ctx context.Context, r *data.Route) error {
-	if r.AccountID == 0 {
-		r.AccountID = s.accountID
-	}
-	inserted, err := s.store.InsertRoute(ctx, r)
-	if err != nil {
-		return fmt.Errorf("connector: insert route: %w", err)
-	}
-	if inserted {
-		s.report.RoutesAdded++
-	} else {
-		s.report.RoutesSkipped++
+	for _, added := range wrote.RoutesAdded {
+		if added {
+			s.report.RoutesAdded++
+		} else {
+			s.report.RoutesSkipped++
+		}
 	}
 	return nil
 }

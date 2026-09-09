@@ -105,3 +105,45 @@ func TestInsertRouteIdempotent(t *testing.T) {
 		t.Error("re-inserting the same route should skip")
 	}
 }
+
+// TestInsertWorkoutIsAtomic: a workout is one thing an Account did. If any part of
+// the write fails, none of it stands, so nothing downstream can read a Session
+// carrying half its figures and mistake it for one that recorded only those.
+func TestInsertWorkoutIsAtomic(t *testing.T) {
+	_, models := openTestDB(t)
+	ctx := context.Background()
+	acc := seedAccount(t, models)
+
+	sess := Session{
+		AccountID: acc, ActivityType: "running",
+		StartAt: "2024-01-01T08:00:00Z", EndAt: "2024-01-01T09:00:00Z",
+		Source: "Watch", ContentKey: "w1",
+	}
+	// A Route naming an Account that does not exist: routes.account_id is a foreign
+	// key, so the third of the three writes fails after the other two succeeded.
+	// Set explicitly, because an unset one is filled in from the Session.
+	routes := []Route{{
+		AccountID: 999999, Artifact: "abc.gpx",
+		StartAt: "2024-01-01T08:00:00Z", EndAt: "2024-01-01T09:00:00Z",
+		Source: "Watch", ContentKey: "r1",
+	}}
+	stats := []SessionStat{{Metric: "heart_rate", Stat: "average", Value: 142}}
+
+	if _, err := models.Sessions.InsertWorkout(ctx, &sess, stats, routes); err == nil {
+		t.Fatal("the route insert was accepted: the foreign key this test relies on is gone")
+	}
+
+	// Nothing stands: not the Session, not its stats.
+	var sessions, statRows int
+	if err := models.Sessions.DB.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM sessions WHERE account_id = ?`, acc).Scan(&sessions); err != nil {
+		t.Fatalf("count sessions: %v", err)
+	}
+	if err := models.Sessions.DB.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM session_stats`).Scan(&statRows); err != nil {
+		t.Fatalf("count stats: %v", err)
+	}
+	if sessions != 0 || statRows != 0 {
+		t.Errorf("after a failed workout write: %d sessions, %d stats; want none of it to stand", sessions, statRows)
+	}
+}

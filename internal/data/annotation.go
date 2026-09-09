@@ -24,7 +24,7 @@ type Annotation struct {
 
 // AnnotationModel is the DAO for annotations.
 type AnnotationModel struct {
-	DB *sql.DB
+	DB Handle
 }
 
 const annotationColumns = `id, account_id, label, body, starts_on, ends_on, created_at, updated_at`

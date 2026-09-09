@@ -30,7 +30,7 @@ type Measurement struct {
 
 // MeasurementModel is the DAO for measurements and the Unmapped bin.
 type MeasurementModel struct {
-	DB *sql.DB
+	DB Handle
 }
 
 // InsertBatch inserts Measurements in one transaction, skipping existing
@@ -38,45 +38,13 @@ type MeasurementModel struct {
 // parallel to ms: inserted[i] is true iff ms[i] was new. Batching bounds memory
 // and the WAL during a large import.
 func (m MeasurementModel) InsertBatch(ctx context.Context, ms []Measurement) ([]bool, error) {
-	inserted := make([]bool, len(ms))
-	if len(ms) == 0 {
-		return inserted, nil
-	}
-
-	tx, err := m.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, fmt.Errorf("data: begin measurement batch: %w", err)
-	}
-	defer tx.Rollback() // no-op after Commit
-
 	const query = `
 		INSERT OR IGNORE INTO measurements
 			(account_id, metric, value, original_unit, start_at, end_at, source, content_key)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-	stmt, err := tx.PrepareContext(ctx, query)
-	if err != nil {
-		return nil, fmt.Errorf("data: prepare measurement insert: %w", err)
-	}
-	defer stmt.Close()
-
-	for i, row := range ms {
-		res, err := stmt.ExecContext(ctx,
-			row.AccountID, row.Metric, row.Value, row.OriginalUnit,
-			row.StartAt, row.EndAt, row.Source, row.ContentKey)
-		if err != nil {
-			return nil, fmt.Errorf("data: insert measurement: %w", err)
-		}
-		n, err := res.RowsAffected()
-		if err != nil {
-			return nil, fmt.Errorf("data: measurement rows affected: %w", err)
-		}
-		inserted[i] = n == 1
-	}
-
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("data: commit measurement batch: %w", err)
-	}
-	return inserted, nil
+	return insertBatch(ctx, m.DB, "measurement", query, ms, func(r Measurement) []any {
+		return []any{r.AccountID, r.Metric, r.Value, r.OriginalUnit, r.StartAt, r.EndAt, r.Source, r.ContentKey}
+	})
 }
 
 // InsertOne inserts a single Measurement — the Manual entry path (ADR 0022) — and
@@ -168,7 +136,7 @@ func spanArgs(accountID int64, metric, startsOn, endsOn string) []any {
 //
 // It lives here, beside Delete, because Delete's comment states an invariant this
 // statement breaks. Anywhere else and that comment stays true-looking and wrong.
-func deleteMeasurementsInSpan(ctx context.Context, q querier, accountID int64, metric, startsOn, endsOn string) (int64, error) {
+func deleteMeasurementsInSpan(ctx context.Context, q Handle, accountID int64, metric, startsOn, endsOn string) (int64, error) {
 	res, err := q.ExecContext(ctx, `DELETE FROM measurements WHERE `+measurementSpanFilter,
 		spanArgs(accountID, metric, startsOn, endsOn)...)
 	if err != nil {

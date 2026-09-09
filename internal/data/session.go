@@ -66,7 +66,7 @@ const (
 
 // SessionModel is the DAO for sessions (workouts), their stats and their routes.
 type SessionModel struct {
-	DB *sql.DB
+	DB Handle
 }
 
 // InsertSession inserts one Session, deduped per account by content key. It sets
@@ -144,30 +144,23 @@ func (m SessionModel) InsertSessionStats(ctx context.Context, sessionID int64, s
 		INSERT INTO session_stats (session_id, metric, stat, value)
 		VALUES (?, ?, ?, ?)
 		ON CONFLICT (session_id, metric, stat) DO UPDATE SET value = excluded.value`
-	// One transaction, like every other multi-statement write here: a workout's
-	// stats are one fact about it, and a failure halfway through would otherwise
-	// leave a Session carrying some of its figures and not others, which nothing
-	// downstream can tell from a workout that genuinely recorded only those.
-	tx, err := m.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("data: begin session stats: %w", err)
-	}
-	defer tx.Rollback() // no-op after Commit
-
-	stmt, err := tx.PrepareContext(ctx, query)
-	if err != nil {
-		return fmt.Errorf("data: prepare session stats: %w", err)
-	}
-	defer stmt.Close()
-	for _, s := range stats {
-		if _, err := stmt.ExecContext(ctx, sessionID, s.Metric, s.Stat, s.Value); err != nil {
-			return fmt.Errorf("data: insert session stat %s/%s: %w", s.Metric, s.Stat, err)
+	// One unit, like every other multi-statement write here: a workout's stats are
+	// one fact about it, and a failure halfway through would otherwise leave a
+	// Session carrying some of its figures and not others, which nothing downstream
+	// can tell from a workout that genuinely recorded only those.
+	return atomically(ctx, m.DB, func(h Handle) error {
+		stmt, err := h.PrepareContext(ctx, query)
+		if err != nil {
+			return fmt.Errorf("data: prepare session stats: %w", err)
 		}
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("data: commit session stats: %w", err)
-	}
-	return nil
+		defer stmt.Close()
+		for _, s := range stats {
+			if _, err := stmt.ExecContext(ctx, sessionID, s.Metric, s.Stat, s.Value); err != nil {
+				return fmt.Errorf("data: insert session stat %s/%s: %w", s.Metric, s.Stat, err)
+			}
+		}
+		return nil
+	})
 }
 
 // SessionFilter narrows a workout listing. From and To are RFC 3339 UTC bounds
@@ -372,4 +365,58 @@ func (m SessionModel) RoutesForSession(ctx context.Context, accountID, sessionID
 		routes = append(routes, r)
 	}
 	return routes, rows.Err()
+}
+
+// WorkoutWrite reports what one workout write did, part by part, so an import can
+// tally added against skipped without a second read.
+type WorkoutWrite struct {
+	SessionAdded bool
+	RoutesAdded  []bool
+}
+
+// InsertWorkout writes a Session, the summary stats it carries and the Routes
+// attached to it as one unit, filling in the Session's ID and each Route's
+// SessionID.
+//
+// A workout is one thing an Account did, and it was previously three uncoordinated
+// writes: a crash between them left a Session with some of its figures, or with a
+// route file on disk that no row pointed at. The Session's ID is what forced the
+// order, and it still does, but now inside a transaction rather than across three.
+//
+// Stats and Routes are attached whether or not the Session is new, which is what
+// makes a re-import converge: a workout already stored still gains what a widened
+// import now captures.
+func (m SessionModel) InsertWorkout(ctx context.Context, s *Session, stats []SessionStat, routes []Route) (WorkoutWrite, error) {
+	out := WorkoutWrite{RoutesAdded: make([]bool, len(routes))}
+
+	err := atomically(ctx, m.DB, func(h Handle) error {
+		tm := SessionModel{DB: h}
+
+		added, err := tm.InsertSession(ctx, s)
+		if err != nil {
+			return err
+		}
+		out.SessionAdded = added
+
+		if err := tm.InsertSessionStats(ctx, s.ID, stats); err != nil {
+			return err
+		}
+
+		for i := range routes {
+			routes[i].SessionID = s.ID
+			if routes[i].AccountID == 0 {
+				routes[i].AccountID = s.AccountID
+			}
+			ok, err := tm.InsertRoute(ctx, &routes[i])
+			if err != nil {
+				return err
+			}
+			out.RoutesAdded[i] = ok
+		}
+		return nil
+	})
+	if err != nil {
+		return WorkoutWrite{}, err
+	}
+	return out, nil
 }

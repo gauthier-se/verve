@@ -90,32 +90,27 @@ func importStream(ctx context.Context, store connector.Store, accountID int64, s
 	var stack []string
 	var wb *workoutBuilder
 
-	// finishWorkout writes one Session on its closing tag, then copies and records
-	// each of its GPX routes. The Session id is needed to attach a route, so this
-	// runs per workout rather than batched.
+	// finishWorkout writes one Session on its closing tag with everything attached
+	// to it. The artifacts are copied first, because a Route row needs the content
+	// key the copy produces, and the write is then one unit.
 	finishWorkout := func() error {
 		sess := wb.session(accountID)
-		if err := sink.Session(ctx, &sess, wb.stats); err != nil {
-			return err
-		}
 
+		routes := make([]data.Route, 0, len(wb.routes))
 		for _, ref := range wb.routes {
 			key, artifact, err := copyRouteArtifact(opener, ref.path, opts.ArtifactsDir)
 			if err != nil {
 				return err
 			}
-			if err := sink.Route(ctx, &data.Route{
-				SessionID:  sess.ID,
+			routes = append(routes, data.Route{
 				Artifact:   artifact,
 				StartAt:    ref.start,
 				EndAt:      ref.end,
 				Source:     ref.source,
 				ContentKey: key,
-			}); err != nil {
-				return err
-			}
+			})
 		}
-		return nil
+		return sink.Workout(ctx, &sess, wb.stats, routes)
 	}
 
 	for {

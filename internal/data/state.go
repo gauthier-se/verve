@@ -2,7 +2,6 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 )
 
@@ -22,7 +21,7 @@ type State struct {
 
 // StateModel is the DAO for states (sleep, stand hours).
 type StateModel struct {
-	DB *sql.DB
+	DB Handle
 }
 
 // HasStates reports whether the Account has any State of a kind. It answers the one
@@ -46,43 +45,11 @@ func (m StateModel) HasStates(ctx context.Context, accountID int64, kind string)
 // new row. Batching bounds memory and keeps the WAL small during a large import,
 // exactly like measurements — sleep alone is tens of thousands of rows.
 func (m StateModel) InsertStateBatch(ctx context.Context, ss []State) ([]bool, error) {
-	inserted := make([]bool, len(ss))
-	if len(ss) == 0 {
-		return inserted, nil
-	}
-
-	tx, err := m.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, fmt.Errorf("data: begin state batch: %w", err)
-	}
-	defer tx.Rollback() // no-op after Commit
-
 	const query = `
 		INSERT OR IGNORE INTO states
 			(account_id, kind, state_value, start_at, end_at, source, content_key)
 		VALUES (?, ?, ?, ?, ?, ?, ?)`
-	stmt, err := tx.PrepareContext(ctx, query)
-	if err != nil {
-		return nil, fmt.Errorf("data: prepare state insert: %w", err)
-	}
-	defer stmt.Close()
-
-	for i, row := range ss {
-		res, err := stmt.ExecContext(ctx,
-			row.AccountID, row.Kind, row.StateValue,
-			row.StartAt, row.EndAt, row.Source, row.ContentKey)
-		if err != nil {
-			return nil, fmt.Errorf("data: insert state: %w", err)
-		}
-		n, err := res.RowsAffected()
-		if err != nil {
-			return nil, fmt.Errorf("data: state rows affected: %w", err)
-		}
-		inserted[i] = n == 1
-	}
-
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("data: commit state batch: %w", err)
-	}
-	return inserted, nil
+	return insertBatch(ctx, m.DB, "state", query, ss, func(r State) []any {
+		return []any{r.AccountID, r.Kind, r.StateValue, r.StartAt, r.EndAt, r.Source, r.ContentKey}
+	})
 }

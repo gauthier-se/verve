@@ -20,25 +20,35 @@ type Models struct {
 	Exclusions   ExclusionModel
 	Imports      ImportModel
 
-	db *sql.DB // for cross-cutting needs (e.g. health checks) that want the handle itself
+	db *sql.DB // for cross-cutting needs (health checks, beginning a transaction)
+	// tx is non-nil on a Models handed to Tx's callback: every model above is bound
+	// to it, and Tx uses it to know it is already inside one.
+	tx *sql.Tx
 }
 
-// NewModels wires the models to a database handle.
+// NewModels wires the models to the connection pool.
 func NewModels(db *sql.DB) Models {
+	m := newModels(db)
+	m.db = db
+	return m
+}
+
+// newModels binds every model to one Handle, which is the pool for NewModels and
+// the transaction for Tx.
+func newModels(h Handle) Models {
 	return Models{
-		Accounts:     AccountModel{DB: db},
-		AuthSessions: AuthSessionModel{DB: db},
-		Measurements: MeasurementModel{DB: db},
-		States:       StateModel{DB: db},
-		Sessions:     SessionModel{DB: db},
-		Dashboards:   DashboardModel{DB: db},
-		Panels:       PanelModel{DB: db},
-		Phases:       PhaseModel{DB: db},
-		Pins:         PinModel{DB: db},
-		Annotations:  AnnotationModel{DB: db},
-		Exclusions:   ExclusionModel{DB: db},
-		Imports:      ImportModel{DB: db},
-		db:           db,
+		Accounts:     AccountModel{DB: h},
+		AuthSessions: AuthSessionModel{DB: h},
+		Measurements: MeasurementModel{DB: h},
+		States:       StateModel{DB: h},
+		Sessions:     SessionModel{DB: h},
+		Dashboards:   DashboardModel{DB: h},
+		Panels:       PanelModel{DB: h},
+		Phases:       PhaseModel{DB: h},
+		Pins:         PinModel{DB: h},
+		Annotations:  AnnotationModel{DB: h},
+		Exclusions:   ExclusionModel{DB: h},
+		Imports:      ImportModel{DB: h},
 	}
 }
 

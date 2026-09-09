@@ -73,6 +73,13 @@ struct; HTTP handlers hang off it as methods. Keeps things testable.
   user. Track applied version in a schema-version table.
 - **Prepared statements / parameterized queries** everywhere (`?` placeholders)
   to immunize against SQL injection.
+- **Transactions through one seam.** Models run against a `Handle` (satisfied by
+  both `*sql.DB` and `*sql.Tx`), and `Models.Tx` runs a callback against a
+  `Models` bound to one transaction. It is reentrant, so a write that is atomic
+  on its own still composes when a caller wraps several together. The pool is
+  capped at one connection, so a transaction must never be mixed with a
+  pool-issued statement: that deadlocks rather than failing, which is why `Tx`
+  hands back a bound `Models` instead of a bare `*sql.Tx` (ADR 0038).
 - **Account-scoped queries:** Verve is multi-user with strict isolation — every
   query filters by the owning Account; nothing is ever cross-Account.
 - **Portable-ish SQL:** keep queries reasonably standard so a future move to

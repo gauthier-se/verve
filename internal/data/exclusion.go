@@ -26,7 +26,7 @@ type Exclusion struct {
 
 // ExclusionModel is the DAO for exclusions.
 type ExclusionModel struct {
-	DB *sql.DB
+	DB Handle
 }
 
 const exclusionColumns = `id, account_id, metric, starts_on, ends_on, purged, created_at`
@@ -74,49 +74,47 @@ func (m ExclusionModel) ListByAccount(ctx context.Context, accountID int64) ([]E
 // gives a re-typed Measurement. Re-reporting the first purge would tell an owner
 // that 431 more readings just went.
 func (m ExclusionModel) Insert(ctx context.Context, e *Exclusion) (bool, error) {
-	tx, err := m.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return false, fmt.Errorf("data: begin exclusion: %w", err)
-	}
-	defer tx.Rollback() // no-op after a successful Commit
-
-	const insert = `
-		INSERT INTO exclusions (account_id, metric, starts_on, ends_on)
-		VALUES (?, ?, ?, ?)
-		ON CONFLICT (account_id, metric, starts_on, ends_on) DO NOTHING
-		RETURNING id, created_at`
-	err = tx.QueryRowContext(ctx, insert, e.AccountID, e.Metric, e.StartsOn, e.EndsOn).
-		Scan(&e.ID, &e.CreatedAt)
-	if errors.Is(err, sql.ErrNoRows) {
-		// DO NOTHING suppressed the insert, so RETURNING yielded no row: this
-		// Exclusion already stands, and its purge already ran.
-		const existing = `
-			SELECT ` + exclusionColumns + `
-			FROM exclusions
-			WHERE account_id = ? AND metric = ? AND starts_on = ? AND ends_on = ?`
-		if err := tx.QueryRowContext(ctx, existing, e.AccountID, e.Metric, e.StartsOn, e.EndsOn).
-			Scan(&e.ID, &e.AccountID, &e.Metric, &e.StartsOn, &e.EndsOn, &e.Purged, &e.CreatedAt); err != nil {
-			return false, fmt.Errorf("data: resolve existing exclusion: %w", err)
+	created := false
+	err := atomically(ctx, m.DB, func(tx Handle) error {
+		const insert = `
+			INSERT INTO exclusions (account_id, metric, starts_on, ends_on)
+			VALUES (?, ?, ?, ?)
+			ON CONFLICT (account_id, metric, starts_on, ends_on) DO NOTHING
+			RETURNING id, created_at`
+		err := tx.QueryRowContext(ctx, insert, e.AccountID, e.Metric, e.StartsOn, e.EndsOn).
+			Scan(&e.ID, &e.CreatedAt)
+		if errors.Is(err, sql.ErrNoRows) {
+			// DO NOTHING suppressed the insert, so RETURNING yielded no row: this
+			// Exclusion already stands, and its purge already ran.
+			const existing = `
+				SELECT ` + exclusionColumns + `
+				FROM exclusions
+				WHERE account_id = ? AND metric = ? AND starts_on = ? AND ends_on = ?`
+			if err := tx.QueryRowContext(ctx, existing, e.AccountID, e.Metric, e.StartsOn, e.EndsOn).
+				Scan(&e.ID, &e.AccountID, &e.Metric, &e.StartsOn, &e.EndsOn, &e.Purged, &e.CreatedAt); err != nil {
+				return fmt.Errorf("data: resolve existing exclusion: %w", err)
+			}
+			return nil
 		}
-		return false, nil
-	}
-	if err != nil {
-		return false, fmt.Errorf("data: insert exclusion: %w", err)
-	}
+		if err != nil {
+			return fmt.Errorf("data: insert exclusion: %w", err)
+		}
 
-	purged, err := deleteMeasurementsInSpan(ctx, tx, e.AccountID, e.Metric, e.StartsOn, e.EndsOn)
+		purged, err := deleteMeasurementsInSpan(ctx, tx, e.AccountID, e.Metric, e.StartsOn, e.EndsOn)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE exclusions SET purged = ? WHERE id = ?`, purged, e.ID); err != nil {
+			return fmt.Errorf("data: record purge count: %w", err)
+		}
+		e.Purged = purged
+		created = true
+		return nil
+	})
 	if err != nil {
 		return false, err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE exclusions SET purged = ? WHERE id = ?`, purged, e.ID); err != nil {
-		return false, fmt.Errorf("data: record purge count: %w", err)
-	}
-	e.Purged = purged
-
-	if err := tx.Commit(); err != nil {
-		return false, fmt.Errorf("data: commit exclusion: %w", err)
-	}
-	return true, nil
+	return created, nil
 }
 
 // Delete removes the Account's Exclusion, scoped by Account so one Account can never
