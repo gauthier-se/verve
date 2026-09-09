@@ -100,9 +100,7 @@ func (s *Server) handleCreateMeasurement(w http.ResponseWriter, r *http.Request)
 	if created {
 		status = http.StatusCreated
 	}
-	if err := writeJSON(w, status, envelope{"measurement": newMeasurementResponse(row)}, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
+	s.respond(w, r, status, envelope{"measurement": newMeasurementResponse(row)})
 }
 
 // handleListMeasurements lists the Account's Manual entries, newest first. Only
@@ -148,9 +146,7 @@ func (s *Server) handleListMeasurements(w http.ResponseWriter, r *http.Request) 
 	for _, row := range rows {
 		out = append(out, newMeasurementResponse(row))
 	}
-	if err := writeJSON(w, http.StatusOK, envelope{"measurements": out}, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
+	s.respond(w, r, http.StatusOK, envelope{"measurements": out})
 }
 
 // handleDeleteMeasurement removes one Manual entry. It reads the row first so the three

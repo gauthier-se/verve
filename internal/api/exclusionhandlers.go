@@ -48,9 +48,7 @@ func (s *Server) handleListExclusions(w http.ResponseWriter, r *http.Request) {
 	for _, e := range exclusions {
 		views = append(views, exclusionToView(e))
 	}
-	if err := writeJSON(w, http.StatusOK, envelope{"exclusions": views}, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
+	s.respond(w, r, http.StatusOK, envelope{"exclusions": views})
 }
 
 // exclusionInput is the create body. Absent bounds mean unbounded on that side, so
@@ -93,9 +91,7 @@ func (s *Server) handleCreateExclusion(w http.ResponseWriter, r *http.Request) {
 	if created {
 		status = http.StatusCreated
 	}
-	if err := writeJSON(w, status, envelope{"exclusion": exclusionToView(e)}, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
+	s.respond(w, r, status, envelope{"exclusion": exclusionToView(e)})
 }
 
 // handleDeleteExclusion removes one of the Account's Exclusions, and only the rule:
@@ -139,9 +135,7 @@ func (s *Server) handlePreviewExclusion(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	body := envelope{"metric": metric, "starts_on": startsOn, "ends_on": endsOn, "measurements": n}
-	if err := writeJSON(w, http.StatusOK, body, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
+	s.respond(w, r, http.StatusOK, body)
 }
 
 // validateExclusionMetric refuses the slugs an Exclusion cannot name and returns the

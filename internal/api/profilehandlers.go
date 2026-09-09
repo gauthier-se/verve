@@ -48,9 +48,7 @@ func (s *Server) handleGetProfile(w http.ResponseWriter, r *http.Request) {
 		s.serverErrorResponse(w, r, err)
 		return
 	}
-	if err := writeJSON(w, http.StatusOK, envelope{"profile": view}, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
+	s.respond(w, r, http.StatusOK, envelope{"profile": view})
 }
 
 // handleUpdateProfile applies a partial update. Fields absent from the body are left
@@ -135,9 +133,7 @@ func (s *Server) handleUpdateProfile(w http.ResponseWriter, r *http.Request) {
 		s.serverErrorResponse(w, r, err)
 		return
 	}
-	if err := writeJSON(w, http.StatusOK, envelope{"profile": view}, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
+	s.respond(w, r, http.StatusOK, envelope{"profile": view})
 }
 
 // errMalformedProfileField is returned when a present key holds something that is neither

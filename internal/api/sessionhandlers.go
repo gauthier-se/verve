@@ -131,17 +131,12 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 	if preset == "" && qs.Get("range_from") == "" {
 		preset = "all"
 	}
-	resolved, err := timeaxis.Resolve(timeaxis.Tokens{
+	resolved, ok := s.resolveAxis(w, r, v, timeaxis.Tokens{
 		RangePreset: preset,
 		RangeFrom:   optionalParam(qs, "range_from"),
 		RangeTo:     optionalParam(qs, "range_to"),
-	}, time.Now())
-	if inv, ok := err.(timeaxis.Invalid); ok {
-		for field, msg := range inv {
-			v.AddError(field, msg)
-		}
-	} else if err != nil {
-		s.serverErrorResponse(w, r, err)
+	})
+	if !ok {
 		return
 	}
 
@@ -220,9 +215,7 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 	if next != "" {
 		body["next_cursor"] = next
 	}
-	if err := writeJSON(w, http.StatusOK, body, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
+	s.respond(w, r, http.StatusOK, body)
 }
 
 // handleGetSession answers one workout: its figures, its stats and its Route
@@ -265,9 +258,7 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 		"stats":   statViews,
 		"routes":  routeViews,
 	}
-	if err := writeJSON(w, http.StatusOK, body, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
+	s.respond(w, r, http.StatusOK, body)
 }
 
 // handleSessionRoutes answers a workout's geometry: every Route simplified, with
@@ -314,9 +305,7 @@ func (s *Server) handleSessionRoutes(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	if err := writeJSON(w, http.StatusOK, envelope{"routes": views}, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
+	s.respond(w, r, http.StatusOK, envelope{"routes": views})
 }
 
 // handleDownloadRoute serves a Route's stored GPX bytes. "Your data is yours"
@@ -369,18 +358,13 @@ func (s *Server) artifactPath(artifact string) string {
 // Another Account's id is a 404 and never a 403: whether that id exists is not
 // this Account's business (ADR 0007).
 func (s *Server) sessionOr404(w http.ResponseWriter, r *http.Request, accountID int64) (data.Session, bool) {
-	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	if err != nil {
-		s.notFoundResponse(w, r, "workout not found")
+	id, ok := s.pathID(w, r)
+	if !ok {
 		return data.Session{}, false
 	}
 	session, err := s.models.Sessions.GetSession(r.Context(), accountID, id)
-	if errors.Is(err, data.ErrRecordNotFound) {
-		s.notFoundResponse(w, r, "workout not found")
-		return data.Session{}, false
-	}
 	if err != nil {
-		s.serverErrorResponse(w, r, err)
+		s.respondRecordError(w, r, err, "workout")
 		return data.Session{}, false
 	}
 	return session, true

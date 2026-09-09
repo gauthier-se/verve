@@ -70,12 +70,13 @@ func (s *Server) handleListAnnotations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resolved, err := timeaxis.Resolve(annotationTokens(qs), time.Now())
-	if inv, ok := err.(timeaxis.Invalid); ok {
-		s.failedValidationResponse(w, r, inv)
+	v := NewValidator()
+	resolved, ok := s.resolveAxis(w, r, v, annotationTokens(qs))
+	if !ok {
 		return
-	} else if err != nil {
-		s.serverErrorResponse(w, r, err)
+	}
+	if !v.Valid() {
+		s.failedValidationResponse(w, r, v.Errors)
 		return
 	}
 
@@ -127,9 +128,7 @@ func annotationTokens(qs url.Values) timeaxis.Tokens {
 }
 
 func (s *Server) writeAnnotations(w http.ResponseWriter, r *http.Request, views []annotationView) {
-	if err := writeJSON(w, http.StatusOK, envelope{"annotations": views}, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
+	s.respond(w, r, http.StatusOK, envelope{"annotations": views})
 }
 
 // annotationInput is the create/update body. An absent field is left unchanged by a
@@ -174,9 +173,7 @@ func (s *Server) handleCreateAnnotation(w http.ResponseWriter, r *http.Request) 
 		s.serverErrorResponse(w, r, err)
 		return
 	}
-	if err := writeJSON(w, http.StatusCreated, envelope{"annotation": annotationToView(a)}, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
+	s.respond(w, r, http.StatusCreated, envelope{"annotation": annotationToView(a)})
 }
 
 // handleUpdateAnnotation patches an Annotation's label, body or span. Absent fields
@@ -222,9 +219,7 @@ func (s *Server) handleUpdateAnnotation(w http.ResponseWriter, r *http.Request) 
 		s.respondRecordError(w, r, err, "annotation")
 		return
 	}
-	if err := writeJSON(w, http.StatusOK, envelope{"annotation": annotationToView(*a)}, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
+	s.respond(w, r, http.StatusOK, envelope{"annotation": annotationToView(*a)})
 }
 
 // handleDeleteAnnotation removes one of the Account's Annotations. Unlike a

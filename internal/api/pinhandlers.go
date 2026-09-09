@@ -26,9 +26,7 @@ func (s *Server) handleListPins(w http.ResponseWriter, r *http.Request) {
 	for _, p := range pins {
 		views = append(views, pinView{Metric: p.Metric, Position: p.Position})
 	}
-	if err := writeJSON(w, http.StatusOK, envelope{"pins": views}, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
+	s.respond(w, r, http.StatusOK, envelope{"pins": views})
 }
 
 // handleCreatePin pins a Catalog Metric. It answers 200 for an already-pinned
@@ -61,9 +59,7 @@ func (s *Server) handleCreatePin(w http.ResponseWriter, r *http.Request) {
 		s.serverErrorResponse(w, r, err)
 		return
 	}
-	if err := writeJSON(w, http.StatusOK, envelope{"pin": pinView{Metric: p.Metric, Position: p.Position}}, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
+	s.respond(w, r, http.StatusOK, envelope{"pin": pinView{Metric: p.Metric, Position: p.Position}})
 }
 
 // handleDeletePin unpins a Metric. It answers 204 whether or not the Pin existed,
