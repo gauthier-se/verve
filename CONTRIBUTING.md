@@ -113,7 +113,10 @@ Issues live as markdown under `.scratch/<milestone>/`, with a PRD next to them
    `internal/web/*_test.go` reads the SPA as text, for the two things a runner
    cannot do: pin a contract that spans Go and TypeScript (the palettes, the
    sleep Stages, the Activity catalog), and forbid a shape rather than test a
-   result (no colour literals, no date arithmetic in the placement code).
+   result (no colour literals, no date arithmetic in the placement code). The
+   wire contract is pinned the same way, in `internal/api/contract_test.go`:
+   every json tag has to be a field `web/src/lib/types.ts` declares, and every
+   field it declares has to be one the server sends.
 3. Open a pull request referencing the issue.
 4. CI green, review, merge.
 
