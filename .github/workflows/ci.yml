@@ -65,3 +65,9 @@ jobs:
 
       - name: Typecheck and build
         run: npm --prefix web run build
+
+      # The pure modules: what a chart is handed, where a marker lands, how a
+      # figure reads. A Go test can read the SPA as text (internal/web) but only
+      # a runner can say whether any of it is right.
+      - name: Test
+        run: npm --prefix web run test

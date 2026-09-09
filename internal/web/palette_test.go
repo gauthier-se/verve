@@ -12,8 +12,11 @@ import (
 )
 
 // The Appearance stylesheet and the TypeScript roster that must agree with it.
-// Both are read as text from the repo: this package already owns the SPA, and a
-// Go test needs no front-end toolchain (web/ has none) while running in `make ci`.
+// Both are read as text from the repo, because the contract spans two languages
+// and neither side can assert it alone: the SPA has its own suite now (`make
+// ui-test`), but a vitest run cannot see a Go file and a Go test cannot execute
+// TypeScript. Reading both as text is what is left, and it is enough here because
+// what must agree is a set of names and a set of colour values, not a behaviour.
 const (
 	stylesheetPath = "../../web/src/index.css"
 	rosterPath     = "../../web/src/components/appearance.tsx"

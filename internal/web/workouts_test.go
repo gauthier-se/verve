@@ -13,8 +13,9 @@ import (
 // filter; the SPA owns only the icons, and the map's tile layer. Nothing at
 // either end fails when they drift: an Activity group with no icon renders a
 // hole, and a tile layer that stops being conditional starts making outbound
-// requests that nobody notices from the inside. Both files are read as text, so
-// this runs in `make ci` with no front-end toolchain.
+// requests that nobody notices from the inside. Both files are read as text: the
+// first pair is a cross-language contract, and the tile-layer guard is a lexical
+// one, forbidding a shape rather than testing a result.
 const (
 	activitiesTSPath  = "../../web/src/lib/activities.ts"
 	routeMapTSXPath   = "../../web/src/components/route-map.tsx"

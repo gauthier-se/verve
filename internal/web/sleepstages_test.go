@@ -14,7 +14,8 @@ import (
 // labelled and coloured. Nothing at either end fails when they drift — a Stage the
 // client has never heard of simply vanishes from the stack, which is the failure
 // mode a chart cannot show you. Both files are read as text, like the palette
-// contract next door, so this runs in `make ci` with no front-end toolchain.
+// contract next door: what must agree is a set of slugs, which spans two languages
+// and so belongs to neither suite alone.
 const (
 	familiesPath = "../connector/applehealth/families.go"
 	sleepTSPath  = "../../web/src/lib/sleep.ts"

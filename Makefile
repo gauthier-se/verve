@@ -40,6 +40,11 @@ ui:
 	rm -rf internal/web/dist/assets
 	npm --prefix web run build
 
+## ui-test: run the front-end unit tests (the pure modules; no DOM needed)
+.PHONY: ui-test
+ui-test:
+	npm --prefix web run test
+
 ## ui-dev: run the Vite dev server (proxies /v1 to `make run ARGS=serve`)
 .PHONY: ui-dev
 ui-dev:
@@ -106,6 +111,7 @@ ci: fmt-check vet
 	$(GO) build ./...
 	$(GO) test -race ./...
 	$(MAKE) ui
+	$(MAKE) ui-test
 
 ## ci-go: the Go half of CI only — no Node required
 .PHONY: ci-go

@@ -9,7 +9,7 @@ const nf = (opts: Intl.NumberFormatOptions) => new Intl.NumberFormat(LOCALE, opt
 // A sum only abbreviates once it is genuinely large; below this it reads fine in full.
 const COMPACT_FROM = 10_000;
 
-/** formatSummaryValue renders a summary figure: a large `sum` abbreviates ("245 k"),
+/** formatSummaryValue renders a summary figure: a large `sum` abbreviates ("245,3 k"),
  *  everything else keeps full precision ("58", "74,2"). */
 export function formatSummaryValue(value: number, aggregation: Aggregation | ""): string {
   if (aggregation === "sum" && Math.abs(value) >= COMPACT_FROM) {
