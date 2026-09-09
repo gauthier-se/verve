@@ -282,7 +282,7 @@ func reportedSleepSource(slug string, winners map[string]string) string {
 	for _, s := range winners {
 		distinct[s] = true
 	}
-	return dominantSource(slug, sortedKeys(distinct))
+	return reportedSource(slug, sortedKeys(distinct))
 }
 
 // foldNights folds the resolved Nights into the requested bucket and returns the
