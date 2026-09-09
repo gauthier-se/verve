@@ -33,13 +33,11 @@ type panelMetricView struct {
 // scalar metric/chart_type mirror the first Metrics entry for the pre-ADR-0020
 // client; they go away with the SPA cutover (issue 03).
 type panelView struct {
-	ID        int64             `json:"id"`
-	Metric    string            `json:"metric"`
-	ChartType string            `json:"chart_type"`
-	Metrics   []panelMetricView `json:"metrics"`
-	Bucket    *string           `json:"bucket"`
-	Width     int               `json:"width"`
-	Position  int               `json:"position"`
+	ID       int64             `json:"id"`
+	Metrics  []panelMetricView `json:"metrics"`
+	Bucket   *string           `json:"bucket"`
+	Width    int               `json:"width"`
+	Position int               `json:"position"`
 }
 
 // dashboardView is one Dashboard with its ordered Panels, so a client loads a
@@ -69,10 +67,6 @@ func panelToView(p data.Panel) panelView {
 	}
 	for _, pm := range p.Metrics {
 		view.Metrics = append(view.Metrics, panelMetricView{Metric: pm.Metric, ChartType: pm.ChartType})
-	}
-	if len(p.Metrics) > 0 {
-		view.Metric = p.Metrics[0].Metric
-		view.ChartType = p.Metrics[0].ChartType
 	}
 	return view
 }

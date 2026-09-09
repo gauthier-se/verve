@@ -107,7 +107,7 @@ func TestCreatePanelDefaultsChartTypeFromAggregation(t *testing.T) {
 	if err := json.Unmarshal(body["panel"], &p); err != nil {
 		t.Fatalf("decode panel: %v", err)
 	}
-	if p.Metric != "steps" || p.ChartType != "bar" || p.Width != 1 || p.Bucket != nil {
+	if firstMetric(t, p).Metric != "steps" || firstMetric(t, p).ChartType != "bar" || p.Width != 1 || p.Bucket != nil {
 		t.Errorf("panel = %+v, want steps/bar/width1/auto-bucket", p)
 	}
 
@@ -115,8 +115,8 @@ func TestCreatePanelDefaultsChartTypeFromAggregation(t *testing.T) {
 	_, body2 := doReq(t, srv, http.MethodPost, "/v1/dashboards/"+itoa(d.ID)+"/panels", `{"metric":"heart_rate"}`, cookie)
 	var hr panelView
 	_ = json.Unmarshal(body2["panel"], &hr)
-	if hr.ChartType != "band" {
-		t.Errorf("heart_rate default chart = %q, want band", hr.ChartType)
+	if firstMetric(t, hr).ChartType != "band" {
+		t.Errorf("heart_rate default chart = %q, want band", firstMetric(t, hr).ChartType)
 	}
 }
 
@@ -133,7 +133,7 @@ func TestCreatePanelDefaultsDivergingBarForSignedMetric(t *testing.T) {
 	if err := json.Unmarshal(body["panel"], &p); err != nil {
 		t.Fatalf("decode panel: %v", err)
 	}
-	if p.Metric != "calorie_balance" || p.ChartType != "diverging_bar" {
+	if firstMetric(t, p).Metric != "calorie_balance" || firstMetric(t, p).ChartType != "diverging_bar" {
 		t.Errorf("panel = %+v, want calorie_balance/diverging_bar", p)
 	}
 }
@@ -382,7 +382,7 @@ func TestUpdatePanelBucketOverrideAndClear(t *testing.T) {
 	_, body = doReq(t, srv, http.MethodPatch, "/v1/panels/"+itoa(p.ID), `{"bucket":"week","chart_type":"line"}`, cookie)
 	var got panelView
 	_ = json.Unmarshal(body["panel"], &got)
-	if got.Bucket == nil || *got.Bucket != "week" || got.ChartType != "line" {
+	if got.Bucket == nil || *got.Bucket != "week" || firstMetric(t, got).ChartType != "line" {
 		t.Errorf("panel = %+v, want week/line", got)
 	}
 	// Clear it back to auto.
@@ -427,8 +427,8 @@ func TestCreatePanelWithMetricsList(t *testing.T) {
 		}
 	}
 	// The legacy scalar fields mirror the first entry until the SPA cutover.
-	if p.Metric != "dietary_energy" || p.ChartType != "bar" {
-		t.Errorf("legacy fields = %s/%s, want dietary_energy/bar", p.Metric, p.ChartType)
+	if firstMetric(t, p).Metric != "dietary_energy" || firstMetric(t, p).ChartType != "bar" {
+		t.Errorf("legacy fields = %s/%s, want dietary_energy/bar", firstMetric(t, p).Metric, firstMetric(t, p).ChartType)
 	}
 }
 
@@ -566,4 +566,16 @@ func TestUpdateDashboardAnnotationsToggle(t *testing.T) {
 	if !got.Annotations {
 		t.Errorf("dashboard = %+v, want annotations back on", got)
 	}
+}
+
+// firstMetric is a Panel's first Metric entry, which is what a single-Metric
+// Panel is. The view carried a flattened copy of it until the wire-contract pin
+// showed the SPA had stopped reading that copy when Panels went multi-Metric
+// (ADR 0020).
+func firstMetric(t *testing.T, p panelView) panelMetricView {
+	t.Helper()
+	if len(p.Metrics) == 0 {
+		t.Fatalf("panel %+v carries no metrics", p)
+	}
+	return p.Metrics[0]
 }
