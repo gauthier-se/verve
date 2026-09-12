@@ -8,7 +8,7 @@
 # Vite writes its output into internal/web/dist (see web/vite.config.ts), the
 # directory the Go `web` package embeds. package-lock.json is copied first so the
 # dependency layer caches across source-only changes.
-FROM node:22-alpine AS web
+FROM --platform=$BUILDPLATFORM node:22-alpine AS web
 WORKDIR /src
 COPY web/package.json web/package-lock.json ./web/
 RUN npm --prefix web ci
@@ -19,7 +19,7 @@ RUN npm --prefix web run build
 # CGO_ENABLED=0 gives a fully static binary (pure-Go SQLite driver, no libc),
 # which is what makes the distroless/scratch final image clean. go.mod/go.sum are
 # copied first so the module-download layer caches independently of source edits.
-FROM golang:1.26-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -29,7 +29,15 @@ COPY . .
 COPY --from=web /src/internal/web/dist ./internal/web/dist
 # version defaults to "docker"; a release build overrides it with the git tag.
 ARG VERSION=docker
-RUN CGO_ENABLED=0 go build -trimpath \
+# Both builder stages are pinned to BUILDPLATFORM and the Go binary is
+# cross-compiled to TARGETARCH, so a multi-platform build runs the toolchains
+# natively on the runner instead of emulating them. Without this, building the
+# arm64 image means npm and the Go compiler crawling under QEMU; with it, only
+# the final distroless layer is arch-specific, and the SPA stage is shared
+# because its output is JavaScript and has no architecture at all.
+ARG TARGETOS
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath \
     -ldflags="-s -w -X main.version=${VERSION}" \
     -o /verve ./cmd/verve
 # The data dir is baked in with nonroot ownership so a fresh named volume mounted

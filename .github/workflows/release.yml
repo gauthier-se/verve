@@ -49,10 +49,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # linux/amd64 only for now. arm64 is wanted and is cheap when it comes (the
-  # build is CGO_ENABLED=0, so GOARCH cross-compiles natively rather than running
-  # under QEMU), but the first thing to establish is that a tag yields a pullable
-  # image at all.
+  # linux/amd64 and linux/arm64. arm64 was deferred until a tag had yielded a
+  # pullable image at all (ADR 0029); it has, twice. It costs one build and no
+  # emulation: the Dockerfile pins both builder stages to BUILDPLATFORM and
+  # cross-compiles the Go binary to TARGETARCH, so only the distroless layer is
+  # architecture-specific. A Pi and a homelab NAS are the median deployment for
+  # a self-hosted health warehouse, which is why this is not a nicety.
   image:
     name: Container image
     runs-on: ubuntu-latest
@@ -92,6 +94,7 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

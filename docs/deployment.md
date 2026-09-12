@@ -198,9 +198,10 @@ in `compose.yml` for the `build: .` beneath it.
 Images are published to `ghcr.io/gauthier-se/verve` on every tag, as
 `0.1.0`, `0.1` and `latest`. `latest` follows the newest tag and never `main`.
 
-Currently **`linux/amd64` only**. An arm64 image is planned; until then, a Pi or
-an Apple-silicon host builds its own with `docker build -t verve .`, which works
-because the binary is CGo-free (ADR 0004) and needs no toolchain beyond Docker.
+Built for **`linux/amd64` and `linux/arm64`**, so a Pi, an Apple-silicon host and
+an x86 server all pull the same tag and Docker picks the right one. Building your
+own still works and needs no toolchain beyond Docker (`docker build -t verve .`),
+because the binary is CGo-free (ADR 0004).
 
 ### Upgrading
 
