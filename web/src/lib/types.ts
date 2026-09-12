@@ -1,7 +1,7 @@
 // Shared shapes mirroring the Go JSON API (the versioned contract, ADR 0005).
 
 /** Aggregation is a Metric's Catalog rule for collapsing points into a bucket. */
-export type Aggregation = "sum" | "average" | "latest" | "duration_by_state";
+export type Aggregation = "sum" | "average" | "latest" | "duration_by_state" | "sum_by_state";
 
 /** ChartType is how a Panel renders its Metric (diverging-bar is signed-only, ADR 0014). */
 export type ChartType = "bar" | "line" | "area" | "band" | "stacked_bar" | "diverging_bar";

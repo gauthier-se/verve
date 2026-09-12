@@ -4,7 +4,8 @@ import { useSeries } from "@/hooks/use-series";
 import { computeDelta, formatBucketKey, formatDuration, formatExact } from "@/lib/format";
 import { copyTsv, tsvNumber } from "@/lib/clipboard";
 import { seriesCsvHref } from "@/lib/series-url";
-import { stageLabel, stagesPresent } from "@/lib/sleep";
+import { useActivityMap } from "@/hooks/use-catalog";
+import { buildSegments } from "@/lib/breakdown";
 import type { RangeTokens } from "@/lib/time-range";
 import type { Aggregation, Bucket, Point } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -43,13 +44,22 @@ export function LedgerDetailTable({
   const query = useSeries({ metrics: [metric], range, bucket });
   const points = query.data?.series[0]?.points ?? [];
   const isAverage = aggregation === "average";
-  // A duration_by_state Metric decomposes into Stages, so the table grows one column
-  // per Stage present — the same shape the average rule's min/max columns already
-  // take. A stacked bar is the chart whose segments are least readable by eye, which
-  // makes "the numbers behind the curves" load-bearing here rather than nice to have.
-  const isDuration = aggregation === "duration_by_state";
-  const stages = React.useMemo(() => (isDuration ? stagesPresent(points) : []), [isDuration, points]);
+  // A Metric with a breakdown decomposes into segments, so the table grows one
+  // column per segment present — the same shape the average rule's min/max columns
+  // already take. A stacked bar is the chart whose parts are least readable by eye,
+  // which makes "the numbers behind the curves" load-bearing here rather than nice
+  // to have: a Night's Stages (ADR 0027), a bucket's Activities (ADR 0040).
+  const isDuration = unit === "min";
+  const activities = useActivityMap();
+  const segments = React.useMemo(
+    () => buildSegments(query.data?.series[0], activities),
+    [query.data, activities],
+  );
   const showValue = (v: number) => (isDuration ? formatDuration(v) : formatExact(v));
+  // What the count column counts, which is not the same evidence in each family:
+  // nights for sleep, workouts for a volume, readings for a Measurement.
+  const countLabel =
+    aggregation === "duration_by_state" ? "Nights" : aggregation === "sum_by_state" ? "Workouts" : "Readings";
 
   // Delta is versus the previous chronological Point, so it is computed on ascending
   // order before any display sort. Rows then sort by the chosen column.
@@ -73,8 +83,8 @@ export function LedgerDetailTable({
       "Date",
       "Value",
       ...(isAverage ? ["Min", "Max"] : []),
-      ...stages.map(stageLabel),
-      isDuration ? "Nights" : "Readings",
+      ...segments.map((s) => s.label),
+      countLabel,
     ];
     // The copied rows carry the raw bucket start, not the key: a spreadsheet reads
     // "2026-08-17" as a date and "2026-W34" as a string.
@@ -82,7 +92,7 @@ export function LedgerDetailTable({
       point.bucket,
       tsvNumber(point.value),
       ...(isAverage ? [numOrEmpty(point.min), numOrEmpty(point.max)] : []),
-      ...stages.map((stage) => numOrEmpty(point.states?.[stage])),
+      ...segments.map((s) => numOrEmpty(point.states?.[s.key])),
       point.count === undefined ? "" : String(point.count),
     ]);
     await copyTsv(headers, body);
@@ -151,15 +161,15 @@ export function LedgerDetailTable({
               />
               {isAverage && <TableHead className="text-right">Min</TableHead>}
               {isAverage && <TableHead className="text-right">Max</TableHead>}
-              {stages.map((stage) => (
-                <TableHead key={stage} className="text-right">
-                  {stageLabel(stage)}
+              {segments.map((segment) => (
+                <TableHead key={segment.key} className="text-right">
+                  {segment.label}
                 </TableHead>
               ))}
               {/* The evidence behind each row. An average of 52 over three hundred
                   readings and an average of 52 over two are the same number and not
                   the same fact, and this is the column that says which one it is. */}
-              <TableHead className="text-right">{isDuration ? "Nights" : "Readings"}</TableHead>
+              <TableHead className="text-right">{countLabel}</TableHead>
               <TableHead className="text-right">Δ vs previous</TableHead>
             </TableRow>
           </TableHeader>
@@ -172,9 +182,11 @@ export function LedgerDetailTable({
                 <TableCell className="text-right font-mono tabular-nums">{showValue(point.value)}</TableCell>
                 {isAverage && <TableCell className="text-right tabular-nums text-muted-foreground">{bandCell(point.min)}</TableCell>}
                 {isAverage && <TableCell className="text-right tabular-nums text-muted-foreground">{bandCell(point.max)}</TableCell>}
-                {stages.map((stage) => (
-                  <TableCell key={stage} className="text-right font-mono tabular-nums text-muted-foreground">
-                    {point.states?.[stage] === undefined ? "—" : formatDuration(point.states[stage])}
+                {segments.map((segment) => (
+                  <TableCell key={segment.key} className="text-right font-mono tabular-nums text-muted-foreground">
+                    {point.states?.[segment.key] === undefined
+                      ? "—"
+                      : showValue(point.states[segment.key])}
                   </TableCell>
                 ))}
                 <TableCell className="text-right font-mono tabular-nums text-muted-foreground">

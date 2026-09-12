@@ -6,7 +6,8 @@ import { useAnnotations } from "@/hooks/use-annotations";
 import { useSeries, type BaselineParams } from "@/hooks/use-series";
 import { NEGATIVE, POSITIVE } from "@/lib/chart";
 import { CHART_TYPE_LABEL, compatibleChartTypes, metricLabel } from "@/lib/metrics";
-import { isSleepSeries, stageColor, stageLabel, stagesPresent } from "@/lib/sleep";
+import { useActivityMap } from "@/hooks/use-catalog";
+import { buildSegments, type Segment } from "@/lib/breakdown";
 import type { RangeTokens } from "@/lib/time-range";
 import type { Bucket, ChartType, Metric, Panel, PanelMetric, Series } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -87,7 +88,8 @@ export function PanelCard({
   const title = slugs.map(metricLabel).join(" · ");
   const series = multi ? undefined : list?.[0];
   const chartType = panel.metrics[0]?.chart_type;
-  const stages = series && isSleepSeries(series) ? stagesPresent(series.points) : [];
+  const activities = useActivityMap();
+  const segments = buildSegments(series, activities);
 
   return (
     // A wider Panel is a taller Panel: a card given two columns was given them to
@@ -105,11 +107,11 @@ export function PanelCard({
             <SectionTitle title={multi ? title : undefined}>{title}</SectionTitle>
           )}
           {metric?.formula && <FormulaHint formula={metric.formula} />}
-          <Meta className="hidden sm:inline">{panelNote({ series, metric, list, bucket, stages })}</Meta>
+          <Meta className="hidden sm:inline">{panelNote({ series, metric, list, bucket, segments })}</Meta>
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
-          {stages.length > 0 && <StageLegend stages={stages} />}
+          {segments.length > 0 && <SegmentLegend segments={segments} />}
           <PanelSettings panel={panel} catalog={catalog} onAddNote={() => setNoteOpen(true)} />
         </div>
       </div>
@@ -168,13 +170,13 @@ function panelNote({
   metric,
   list,
   bucket,
-  stages,
+  segments,
 }: {
   series?: Series;
   metric?: Metric;
   list?: Series[];
   bucket: Bucket | null;
-  stages: string[];
+  segments: Segment[];
 }): string {
   const grain = bucket ? `${grainWord(bucket)} buckets` : "";
 
@@ -186,11 +188,20 @@ function panelNote({
   }
   if (!series) return grain;
 
-  if (stages.length > 0) {
-    // Nights recorded, not days elapsed: the honest denominator behind the figure
-    // above it, and the reason a sparse month is not a shortfall (ADR 0027).
+  if (segments.length > 0) {
+    // What the stack is folded from, which is the denominator behind the figure
+    // above it: Nights recorded for sleep, and the reason a sparse month is not a
+    // shortfall (ADR 0027); workouts for a volume, where the count is the number
+    // of sessions and not of days (ADR 0040).
     const nights = series.nights ?? 0;
-    return ["stacked", nights > 0 ? `${nights} nights recorded` : grain].filter(Boolean).join(" · ");
+    if (nights > 0) {
+      return ["stacked", `${nights} nights recorded`].join(" · ");
+    }
+    const sessions = series.summary?.count ?? 0;
+    if (sessions > 0) {
+      return ["stacked", `${sessions} ${sessions === 1 ? "workout" : "workouts"}`].join(" · ");
+    }
+    return ["stacked", grain].filter(Boolean).join(" · ");
   }
   if (metric?.nature === "derived") {
     const ratio = (metric.formula?.denominator?.length ?? 0) > 0;
@@ -212,14 +223,16 @@ function grainWord(bucket: Bucket): string {
   return bucket === "day" ? "daily" : bucket === "week" ? "weekly" : "monthly";
 }
 
-/** StageLegend names the segments of a stacked Night. A stacked bar is the one
- *  chart whose parts cannot be told apart by eye, so its key is not optional. */
-function StageLegend({ stages }: { stages: string[] }) {
+/** SegmentLegend names the parts of a stacked bar, a Night's Stages or a bucket's
+ *  Activities. A stacked bar is the one chart whose parts cannot be told apart by
+ *  eye, so its key is not optional, and it reads the same resolved segments the
+ *  bars are drawn from. */
+function SegmentLegend({ segments }: { segments: Segment[] }) {
   return (
     <div className="hidden items-center gap-2.5 md:flex">
-      {stages.map((stage, i) => (
-        <LegendItem key={stage} color={stageColor(stage, i)}>
-          {stageLabel(stage)}
+      {segments.map((segment) => (
+        <LegendItem key={segment.key} color={segment.color}>
+          {segment.label}
         </LegendItem>
       ))}
     </div>

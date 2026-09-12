@@ -271,3 +271,21 @@ func TestLedgerTrainingDividesByCalendarDays(t *testing.T) {
 		t.Errorf("week figure = %v, want 70 minutes over 7 days", got)
 	}
 }
+
+// An Account that only lifts has workouts and no kilometres. It gets the time row
+// and not the distance one, because a row of dashes is the empty row the Ledger
+// exists not to show (ADR 0021).
+func TestMetricsWithDataOmitsDistanceWithoutOne(t *testing.T) {
+	e, models, acc := setup(t)
+	seedWorkouts(t, models, acc, []workout{
+		{activity: "traditional_strength_training", start: daysBefore(2), minutes: 60},
+	})
+
+	got, err := e.MetricsWithData(context.Background(), acc)
+	if err != nil {
+		t.Fatalf("MetricsWithData: %v", err)
+	}
+	if len(got) != 1 || got[0] != "training_time" {
+		t.Fatalf("metrics = %v, want training_time alone", got)
+	}
+}

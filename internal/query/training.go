@@ -254,15 +254,22 @@ func reportedTrainingSource(slug string, rows []trainingRow) string {
 	return reportedSource(slug, sortedKeys(distinct))
 }
 
-// hasSessions reports whether the Account recorded any workout. It is the Sessions
-// twin of hasStates, and it exists for the same reason: the Ledger's row set is a
-// DISTINCT over measurements, which structurally cannot see a Metric read from
-// another family.
-func (e Engine) hasSessions(ctx context.Context, accountID int64) (bool, error) {
-	const q = `SELECT EXISTS(SELECT 1 FROM sessions WHERE account_id = ?)`
+// hasTrainingData reports whether the Account has workouts this Metric can show.
+// It is the Sessions twin of hasStates, and it exists for the same reason: the
+// Ledger's row set is a DISTINCT over measurements, which structurally cannot see
+// a Metric read from another family.
+//
+// Distance asks the sharper question. An Account that only lifts has workouts and
+// no kilometres, and a `training_distance` row whose every cell is a dash is
+// exactly the empty row the Ledger exists not to show (ADR 0021).
+func (e Engine) hasTrainingData(ctx context.Context, accountID int64, slug string) (bool, error) {
+	q := `SELECT EXISTS(SELECT 1 FROM sessions WHERE account_id = ?)`
+	if slug == metricTrainingDistance {
+		q = `SELECT EXISTS(SELECT 1 FROM sessions WHERE account_id = ? AND total_distance IS NOT NULL)`
+	}
 	var found bool
 	if err := e.DB.QueryRowContext(ctx, q, accountID).Scan(&found); err != nil {
-		return false, fmt.Errorf("query: has sessions: %w", err)
+		return false, fmt.Errorf("query: has training data: %w", err)
 	}
 	return found, nil
 }

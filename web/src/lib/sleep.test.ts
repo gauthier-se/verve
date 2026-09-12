@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { isSleepSeries, stageColor, stageLabel, stagesPresent } from "./sleep";
-import type { Point, Series } from "./types";
+import { stageColor, stageLabel, stagesPresent } from "./sleep";
+import type { Point } from "./types";
 
 const point = (bucket: string, states: Record<string, number>): Point => ({
   bucket,
@@ -78,15 +78,5 @@ describe("stageColor", () => {
   it("gives every known Stage a colour of its own", () => {
     const stages = ["asleep_deep", "asleep_core", "asleep_rem", "asleep", "in_bed", "awake"];
     expect(new Set(stages.map((s) => stageColor(s, 0))).size).toBe(stages.length);
-  });
-});
-
-describe("isSleepSeries", () => {
-  it("keys off the aggregation rule rather than the Metric slug", () => {
-    // Any duration_by_state Metric stacks, which is what lets training volume use
-    // the same shape later without naming it here.
-    expect(isSleepSeries({ aggregation: "duration_by_state" } as Series)).toBe(true);
-    expect(isSleepSeries({ aggregation: "sum" } as Series)).toBe(false);
-    expect(isSleepSeries(undefined)).toBe(false);
   });
 });

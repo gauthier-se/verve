@@ -22,7 +22,8 @@ import { AXIS, GRID, NEGATIVE, POSITIVE, SERIES_COLORS, seriesColor } from "@/li
 import { mergeSeries, stageKey, type ChartDatum } from "@/lib/chart-data";
 import { formatDuration } from "@/lib/format";
 import { metricLabel } from "@/lib/metrics";
-import { isSleepSeries, stageColor, stageLabel, stagesPresent } from "@/lib/sleep";
+import { useActivityMap } from "@/hooks/use-catalog";
+import { buildSegments, type Segment } from "@/lib/breakdown";
 import { Key } from "./ui/figure";
 import type { Annotation, ChartType, PanelMetric, Series } from "@/lib/types";
 
@@ -76,10 +77,16 @@ export function PanelChart({
     () => projectAnnotations(annotations, data.map((d) => d.bucket)),
     [annotations, data],
   );
-  // The Stages to stack, empty for every Panel that is not a lone sleep Metric.
-  const stages = React.useMemo(
-    () => (list.length === 1 && isSleepSeries(list[0]) ? stagesPresent(list[0].points) : []),
-    [list],
+  // The segments to stack, empty for every Panel that is not a lone Metric with a
+  // breakdown: a Night's Stages, or a bucket's Activities (ADR 0027, ADR 0040).
+  // They are resolved once, name and colour together, so the bars, the tooltip and
+  // the legend cannot disagree about which swatch is which.
+  const activities = useActivityMap();
+  const segments = React.useMemo(
+    // A decomposition owns the colour ramp only when it owns the Panel, so a combo
+    // stacks nothing (ADR 0020).
+    () => buildSegments(list.length === 1 ? list[0] : undefined, activities),
+    [list, activities],
   );
 
   if (data.length === 0) {
@@ -97,9 +104,11 @@ export function PanelChart({
   // 10px mono ticks: an axis label is a coordinate, not prose, and it has to stay
   // out of the way of the curve it is labelling.
   const axisProps = { stroke: AXIS, fontSize: 10, tickLine: false, axisLine: false } as const;
-  // An axis carrying minutes of sleep is labelled as a duration: "7h 12m", not "432".
+  // An axis carrying minutes is labelled as a duration: "7h 12m", not "432". The
+  // unit decides and not the Metric, because two Metrics now read in minutes and a
+  // third breaks down into kilometres.
   const tickFormatter = (axis: "left" | "right") =>
-    list.some((s) => axisOf(s) === axis && isSleepSeries(s)) ? formatDuration : formatValue;
+    list.some((s) => axisOf(s) === axis && s.unit === "min") ? formatDuration : formatValue;
   const xAxis = (
     <XAxis dataKey="bucket" tickFormatter={formatTick(list[0].bucket)} minTickGap={24} {...axisProps} />
   );
@@ -110,7 +119,9 @@ export function PanelChart({
         <ChartTooltip
           list={list}
           bucket={list[0].bucket}
-          stages={stages}
+          segments={segments}
+          unit={list[0].unit}
+          totalLabel={list[0].metric === "sleep" ? "Asleep" : "Total"}
           notes={overlay.byBucket}
           offset={colorOffset}
         />
@@ -150,7 +161,7 @@ export function PanelChart({
         {tooltip}
         {annotationOverlay(overlay)}
         {list.map((s, i) =>
-          marks(metrics[i]?.chart_type ?? "line", i, axisOf(s), data, list.length > 1, stages, colorOffset),
+          marks(metrics[i]?.chart_type ?? "line", i, axisOf(s), data, list.length > 1, segments, colorOffset),
         )}
         {baseline && baselineLine}
       </ComposedChart>
@@ -247,7 +258,7 @@ function marks(
   yAxisId: "left" | "right",
   data: ChartDatum[],
   multi: boolean,
-  stages: string[],
+  segments: Segment[],
   offset: number,
 ): React.ReactNode {
   const color = seriesColor(i, offset);
@@ -312,17 +323,17 @@ function marks(
     // moment a second Metric joined. In a combo it is one plain bar of time asleep
     // in its own position colour, which is what the `bar` branch below already does.
     case "stacked_bar":
-      if (multi || stages.length === 0) break;
+      if (multi || segments.length === 0) break;
       return (
         <React.Fragment key={key}>
-          {stages.map((stage, s) => (
+          {segments.map((segment, s) => (
             <Bar
-              key={stage}
+              key={segment.key}
               yAxisId={yAxisId}
-              dataKey={stageKey(stage)}
+              dataKey={stageKey(segment.key)}
               stackId="stages"
-              fill={stageColor(stage, s)}
-              radius={s === stages.length - 1 ? [3, 3, 0, 0] : undefined}
+              fill={segment.color}
+              radius={s === segments.length - 1 ? [3, 3, 0, 0] : undefined}
               isAnimationActive={false}
             />
           ))}
@@ -360,7 +371,13 @@ interface TooltipProps {
   payload?: { payload: ChartDatum }[];
   list: Series[];
   bucket: Series["bucket"];
-  stages: string[];
+  segments: Segment[];
+  /** unit is the stacked Metric's unit, which is what decides whether a segment
+   *  reads as a duration or as a figure. */
+  unit?: string;
+  /** totalLabel names the row under the segments: a Night's is "Asleep", because
+   *  the figure deliberately excludes the awake segment above it (ADR 0027). */
+  totalLabel?: string;
   /** notes are the Annotations covering each drawn bucket (ADR 0030). They belong
    *  in this tooltip rather than beside the marks: one hover target, not two. */
   notes?: Map<string, Annotation[]>;
@@ -369,31 +386,47 @@ interface TooltipProps {
   offset?: number;
 }
 
-/** StageRows lists a stacked Night's Stages with their durations, then the night's
- *  total asleep. A stacked bar is the one chart whose segments cannot be read by eye,
- *  so the hover has to name them; and the total has to be shown separately because it
- *  is not the height of the bar — `awake` is stacked and never counted (ADR 0027). */
-function StageRows({ d, total, stages }: { d: ChartDatum; total: number | undefined; stages: string[] }) {
+/** SegmentRows lists a stacked bucket's parts with their values, then the bucket's
+ *  own figure. A stacked bar is the one chart whose segments cannot be read by eye,
+ *  so the hover has to name them; and the figure is listed separately because for
+ *  sleep it is not the height of the bar, `awake` being stacked and never counted
+ *  (ADR 0027). For a volume the two agree and the row reads as the total it is. */
+function SegmentRows({
+  d,
+  total,
+  segments,
+  unit,
+  totalLabel,
+}: {
+  d: ChartDatum;
+  total: number | undefined;
+  segments: Segment[];
+  unit: string;
+  totalLabel: string;
+}) {
+  // Minutes read as a duration, everything else as a figure with its unit: what
+  // decides is the unit, not the Metric, now that two of them stack.
+  const show = (v: number) => (unit === "min" ? formatDuration(v) : `${formatValue(v)} ${unit}`.trim());
   return (
     <>
-      {stages.map((stage) => {
-        const minutes = d[stageKey(stage)];
-        if (typeof minutes !== "number") return null;
+      {segments.map((segment) => {
+        const value = d[stageKey(segment.key)];
+        if (typeof value !== "number") return null;
         return (
-          <div key={stage} className="flex items-center gap-1.5 text-muted-foreground">
+          <div key={segment.key} className="flex items-center gap-1.5 text-muted-foreground">
             <span
               className="inline-block size-2 shrink-0 rounded-[2px]"
-              style={{ background: stageColor(stage, 0) }}
+              style={{ background: segment.color }}
             />
-            <span className="truncate">{stageLabel(stage)}</span>
-            <span className="ml-auto tabular-nums">{formatDuration(minutes)}</span>
+            <span className="truncate">{segment.label}</span>
+            <span className="ml-auto tabular-nums">{show(value)}</span>
           </div>
         );
       })}
       {typeof total === "number" && (
         <div className="mt-1 flex items-center gap-3 border-t pt-1">
-          <span>Asleep</span>
-          <span className="ml-auto tabular-nums">{formatDuration(total)}</span>
+          <span>{totalLabel}</span>
+          <span className="ml-auto tabular-nums">{show(total)}</span>
         </div>
       )}
     </>
@@ -404,17 +437,35 @@ function StageRows({ d, total, stages }: { d: ChartDatum; total: number | undefi
  *  the hovered bucket; a Series without data there shows nothing — a gap is never
  *  a zero (ADR 0014). Single-Metric comparison keeps both windows' own real dates
  *  side by side (ADR 0015). */
-function ChartTooltip({ active, payload, list, bucket, stages, notes, offset = 0 }: TooltipProps) {
+function ChartTooltip({
+  active,
+  payload,
+  list,
+  bucket,
+  segments,
+  unit = "",
+  totalLabel = "Total",
+  notes,
+  offset = 0,
+}: TooltipProps) {
   if (!active || !payload?.length) return null;
   const d = payload[0].payload;
   const covering = notes?.get(d.bucket) ?? [];
   const hasBaseline = d.baselineBucket !== undefined;
   const multi = list.length > 1;
-  const stacked = stages.length > 0;
+  const stacked = segments.length > 0;
   return (
     <div className="rounded-md border bg-popover px-2.5 py-1.5 text-xs shadow-md">
       <div className="font-medium">{formatBucket(d.bucket, bucket)}</div>
-      {stacked && <StageRows d={d} total={d.v0 as number | undefined} stages={stages} />}
+      {stacked && (
+        <SegmentRows
+          d={d}
+          total={d.v0 as number | undefined}
+          segments={segments}
+          unit={unit}
+          totalLabel={totalLabel}
+        />
+      )}
       {!stacked &&
         list.map((s, i) => {
           const value = d[`v${i}`];

@@ -1,6 +1,9 @@
 package catalog
 
-import "strings"
+import (
+	"sort"
+	"strings"
+)
 
 // Activity display: what a Session was, as a screen can show it.
 //
@@ -207,4 +210,24 @@ func prettifySlug(slug string) string {
 		words[i] = strings.ToUpper(w[:1]) + w[1:]
 	}
 	return strings.Join(words, " ")
+}
+
+// Activities returns the curated display table, ordered by slug.
+//
+// It is served as reference data beside the Metric Catalog because a screen now
+// needs to label an Activity it did not receive inside a Session: training volume
+// breaks a bucket down by Activity (ADR 0040), and the breakdown keys are bare
+// slugs. The alternative was for the client to prettify them itself, which is the
+// one thing this table exists to prevent: "high_intensity_interval_training" reads
+// as HIIT here and as four words anywhere else.
+//
+// An Activity outside the table is still never blank, since LookupActivity
+// prettifies it; a client meeting an unlisted slug does the same.
+func Activities() []Activity {
+	out := make([]Activity, 0, len(activities))
+	for _, a := range activities {
+		out = append(out, a)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Slug < out[j].Slug })
+	return out
 }
