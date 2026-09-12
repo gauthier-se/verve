@@ -34,6 +34,7 @@ func (app *application) serveCommand(ctx context.Context, args []string) error {
 		MaxUploadBytes: *maxUploadMB << 20,
 		MapTiles:       envOr("VERVE_MAP_TILES", ""),
 		MapAttribution: envOr("VERVE_MAP_ATTRIBUTION", ""),
+		Version:        version,
 	})
 	if err != nil {
 		return err
