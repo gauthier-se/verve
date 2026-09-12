@@ -40,8 +40,9 @@ Test against the newest tag or against `main`, and say which in your report.
 * Authentication or session handling flaws: bypass, fixation, tokens that
   survive logout, signup reopening after bootstrap.
 * Remote code execution or arbitrary file access, including anything reachable
-  through a crafted Apple Health export (XML parsing, zip entry paths, GPX
-  route extraction).
+  through a crafted import file: an Apple Health export, a Google Takeout, or a
+  Verve Archive (XML and CSV parsing, zip entry paths, GPX route extraction,
+  artifact names).
 * Injection into the query engine or the storage layer.
 * Stored or reflected cross-site scripting in the web UI, and cross-site
   request forgery against a state-changing endpoint.
@@ -103,6 +104,11 @@ binary.
 * Treat `VERVE_DATA_DIR` as the crown jewels. It contains every reading you
   own, unencrypted at rest, plus the artifacts directory. Restrict its
   permissions and encrypt your backups.
+* Treat an **Archive** the same way. `verve export`, and the download behind
+  the Import page, produce one file holding an account's whole history in
+  clear. Verve does not encrypt it and will not: `verve export --account=you -`
+  writes to standard output, so `| age -r …` or `| gpg -e` is one pipe and uses
+  a tool you already trust.
 * Create additional accounts from the CLI, and remember that Verve has no
   account recovery: a lost password is reset with
   `verve account passwd --email=...` by whoever has shell access.

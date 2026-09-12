@@ -11,6 +11,9 @@ artifacts/
 
 # --- Go ---
 /bin/
+# goreleaser writes here, including on the dry run CONTRIBUTING prescribes
+# before a tag. Hundreds of MB of cross-compiled binaries, none of them source.
+/dist/
 # Root-level built binary (anchored so it doesn't match the cmd/verve/ source dir).
 /verve
 *.test
