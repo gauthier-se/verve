@@ -206,6 +206,11 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /v1/exclusions", s.requireAuth(s.handleCreateExclusion))
 	mux.Handle("DELETE /v1/exclusions/{id}", s.requireAuth(s.handleDeleteExclusion))
 
+	// A Night as an entity: the shape of one, not a bucket of it (ADR 0041). It is
+	// addressed by the morning it woke on, takes no range, and is the only sleep
+	// read finer than a day.
+	mux.Handle("GET /v1/nights/{date}", s.requireAuth(s.handleNight))
+
 	// History: the long view — everything the Account holds, and the dated events that
 	// explain its shape. One call, because the band, its Phases and the ledger all have
 	// to agree about one axis.

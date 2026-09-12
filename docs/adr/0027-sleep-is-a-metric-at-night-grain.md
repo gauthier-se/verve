@@ -139,6 +139,12 @@ shortfall the Account never had, with the confidence of a computed number.
 - A hypnogram — one night's stages on a time-of-day axis — is still not
   possible, and not because of this decision: the API caps resolution at the day
   (ADR 0012). It needs an intra-day read path, which is its own decision.
+
+  > Taken in ADR 0041: the axis exists inside an entity and never on a Panel, so
+  > a Night became addressable rather than the Series contract becoming finer.
+  > The hypnogram reads through this ADR's own resolution, not beside it: one
+  > `resolveNight`, two readers, because a page contradicting the bar above it is
+  > the failure that matters here.
 - Sleep onset, wake time and sleep efficiency are now one step away rather than
   blocked, but none of them is expressible as a Formula over Metrics (ADR 0014),
   so each needs its own answer.

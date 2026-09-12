@@ -16,6 +16,14 @@ with a **capped maximum resolution** (never below, e.g., per-minute for heart
 rate) so the raw series is never shipped. Waveforms (deferred ECG) are the sole
 exception — read whole from their file, outside this path.
 
+> Clarified by ADR 0041. In practice the Series contract settled at a day as its
+> finest bucket, and that has not changed: `/v1/series` takes no sub-day grain,
+> and no Panel, Ledger row or CSV can ask for one. What ADR 0041 records is that
+> this cap was always about the Series contract rather than about the data: an
+> entity with a start and an end (a Route since ADR 0028, and now a Night and a
+> workout) serves its own shape on its own page, at a grain the server derives
+> from the entity's span rather than one a caller picks.
+
 Because charts therefore only ever see bucketed data, chart-library performance
 is a non-issue. The front-end uses **shadcn/ui** (Radix + Tailwind, copied into
 the repo → no lock-in) for the whole UI system and **Recharts** (which shadcn's
