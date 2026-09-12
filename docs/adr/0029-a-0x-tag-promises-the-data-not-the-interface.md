@@ -104,6 +104,16 @@ release because the thing being established is that a tag yields a pullable
 image at all, and a second platform is a second way for that to fail before it
 has succeeded once.
 
+> Landed after v0.1.1, and the deferral was right for a reason this option did
+> not predict: the first tag published no image at all, because the job asked for
+> a build cache without ever setting up buildx. The container driver that fixed
+> that is the same one a second platform needs. The sentence above was also half
+> wrong: `CGO_ENABLED=0` makes the Go *build* cross-compile, but the Dockerfile
+> pinned neither builder stage to `BUILDPLATFORM` and passed no `GOARCH`, so an
+> arm64 image would have run npm and the compiler under QEMU. Both stages are
+> pinned now and the binary is built for `TARGETARCH`, so the claim is true as
+> written rather than aspirational.
+
 **Signing, SBOM and provenance.** Deferred, not rejected. Cosign and SLSA
 attestation are self-contained work and are worse when rushed into a release
 that is itself running for the first time.

@@ -176,7 +176,8 @@ docker compose up -d
 ```
 
 The image is [distroless](https://github.com/GoogleContainerTools/distroless)
-and runs as a non-root user, and it is `linux/amd64` for now. `latest` follows
+and runs as a non-root user, and it is built for `linux/amd64` and `linux/arm64`,
+so a Pi or an Apple-silicon host pulls the same tag. `latest` follows
 the newest tag; pin a version if you would rather decide when to upgrade.
 Upgrading is pulling the new tag and restarting: migrations apply themselves.
 
