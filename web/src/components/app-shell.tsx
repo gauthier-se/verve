@@ -31,7 +31,7 @@ const TOOLS = [
   { to: "/history", label: "History", short: "History", icon: History },
   { to: "/workouts", label: "Workouts", short: "Workouts", icon: Dumbbell },
   { to: "/plan", label: "Plan", short: "Plan", icon: Target },
-  { to: "/import", label: "Import data", short: "Import", icon: Download },
+  { to: "/import", label: "Import & export", short: "Import", icon: Download },
 ] as const;
 
 /** AppShell is the persistent frame: a sidebar listing the Account's dashboards

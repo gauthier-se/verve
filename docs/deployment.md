@@ -146,6 +146,28 @@ sqlite3 /srv/verve/verve.db ".backup '/backups/verve.db'"
 Restore by stopping Verve and putting the directory (or the `.db` file plus
 `artifacts/`) back in place; migrations reconcile the schema on the next start.
 
+### Backup and Archive are two different things
+
+Copying the data dir backs up the **instance**: every account, the login
+credentials, the artifacts, the WAL. It restores onto the same Verve and is the
+thing to automate.
+
+An **Archive** is one **account's** canonical data as a portable zip (ADR 0039).
+It carries no credentials and no dashboards, it is readable without Verve (JSON
+lines plus the GPX files), and any Verve reads it back as an import:
+
+```sh
+verve -data-dir=/srv/verve export --account=you@example.com verve-account.zip
+
+# or to stdout, which is where encryption belongs if you want it
+verve -data-dir=/srv/verve export --account=you@example.com - | age -r … > verve.age
+```
+
+Take one to move an account to another machine, to hand your history to a tool
+that is not Verve, or to keep a copy of the manual entries a purge would
+otherwise end (ADR 0033). Re-import is idempotent, so restoring an Archive onto
+an account that already holds some of it adds only what is missing.
+
 ## Deployment options
 
 ### Docker Compose (recommended for a homelab)

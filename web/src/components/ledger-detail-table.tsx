@@ -1,8 +1,9 @@
 import * as React from "react";
-import { ArrowDown, ArrowUp, Check, Copy } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, Copy, Download } from "lucide-react";
 import { useSeries } from "@/hooks/use-series";
 import { computeDelta, formatBucketKey, formatDuration, formatExact } from "@/lib/format";
 import { copyTsv, tsvNumber } from "@/lib/clipboard";
+import { seriesCsvHref } from "@/lib/series-url";
 import { stageLabel, stagesPresent } from "@/lib/sleep";
 import type { RangeTokens } from "@/lib/time-range";
 import type { Aggregation, Bucket, Point } from "@/lib/types";
@@ -95,7 +96,7 @@ export function LedgerDetailTable({
         <div className="flex min-w-0 items-baseline gap-2.5">
           <SectionTitle>The numbers behind the curve</SectionTitle>
           <Meta>
-            {bucket === "day" ? "daily" : bucket === "week" ? "weekly" : "monthly"} buckets · copyable
+            {bucket === "day" ? "daily" : bucket === "week" ? "weekly" : "monthly"} buckets · copyable · downloadable
           </Meta>
         </div>
         <div className="flex items-center gap-2">
@@ -105,9 +106,25 @@ export function LedgerDetailTable({
             className="h-7 gap-1.5 px-2.5 text-xs"
             onClick={onCopy}
             disabled={points.length === 0}
+            title="Put the table, sorted as you see it, on the clipboard"
           >
             {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
             {copied ? "Copied" : "Copy"}
+          </Button>
+          {/* Copy is the table in front of you; CSV is the whole window as the
+              server computed it, at the grain on screen (ADR 0039). Two files,
+              two questions, so both controls stay. A link rather than a fetch:
+              the browser owns the download. */}
+          <Button
+            asChild
+            variant="outline"
+            size="sm"
+            className="h-7 gap-1.5 px-2.5 text-xs"
+            title="Download this window as a CSV file"
+          >
+            <a href={seriesCsvHref({ metrics: [metric], range, bucket })} download>
+              <Download className="size-3.5" /> CSV
+            </a>
           </Button>
         </div>
       </div>

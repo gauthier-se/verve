@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { seriesParams } from "@/lib/series-url";
 import type { RangeTokens } from "@/lib/time-range";
 import type { BaselineRule, Bucket, Series } from "@/lib/types";
 
@@ -49,21 +50,9 @@ export function useSeries(params: {
       comparing && baseline.to ? baseline.to : null,
     ],
     queryFn: async (): Promise<SeriesResult> => {
-      const qs = new URLSearchParams({ range_preset: range.preset });
-      for (const metric of metrics) qs.append("metric", metric);
-      // Only a custom range carries bounds; relative presets resolve server-side.
-      if (range.preset === "custom") {
-        if (range.from) qs.set("range_from", range.from);
-        if (range.to) qs.set("range_to", range.to);
-      }
-      if (bucket) qs.set("bucket", bucket);
-      if (comparing) {
-        qs.set("baseline_rule", baseline.rule);
-        if (baseline.rule === "custom") {
-          if (baseline.from) qs.set("baseline_from", baseline.from);
-          if (baseline.to) qs.set("baseline_to", baseline.to);
-        }
-      }
+      // The same builder the CSV download uses, so the file and the curve ask
+      // the same question (lib/series-url.ts).
+      const qs = seriesParams({ metrics, range, bucket, baseline: comparing ? baseline : undefined });
       // One metric keeps the scalar envelope; several come back as an array
       // (ADR 0020). Normalize to a list either way.
       const raw = await api<{ series: Series | Series[]; baseline?: Series }>(
