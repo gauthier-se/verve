@@ -60,7 +60,10 @@ snapshot:
 changelog:
   sort: asc
   filters:
+    # Scope-tolerant on purpose: the anchored "^docs:" these three replace matched
+    # a bare `docs:` and nothing else, so `docs(api):` and `chore(release):` were
+    # in the first release notes. Nearly every commit here carries a scope.
     exclude:
-      - "^docs:"
-      - "^test:"
-      - "^chore:"
+      - "^docs(\\(.+\\))?:"
+      - "^test(\\(.+\\))?:"
+      - "^chore(\\(.+\\))?:"
