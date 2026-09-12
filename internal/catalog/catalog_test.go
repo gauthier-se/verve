@@ -36,7 +36,7 @@ func TestCatalogIsBroad(t *testing.T) {
 // Metrics have mutually exclusive shapes: an imported Metric has a valid
 // aggregation rule and no Formula; a derived Metric has a Formula and no rule.
 func TestCatalogWellFormed(t *testing.T) {
-	valid := map[Aggregation]bool{Sum: true, Average: true, Latest: true, DurationByState: true}
+	valid := map[Aggregation]bool{Sum: true, Average: true, Latest: true, DurationByState: true, SumByState: true}
 	for slug, m := range All() {
 		if m.Slug != slug {
 			t.Errorf("metric keyed %q has Slug %q", slug, m.Slug)

@@ -20,7 +20,8 @@ import (
 // not split by activity, is what made the difference visible.
 //
 // Derived Metrics are excluded: they are computed from other Metrics and have no
-// source to be mapped from (ADR 0014).
+// source to be mapped from (ADR 0014). So are the Metrics folded from a whole
+// family rather than from a mapped source type: see familyBacked below.
 func TestCatalogHasNoOrphan(t *testing.T) {
 	claimed := map[string]bool{}
 	for _, slug := range applehealth.MappedSlugs() {
@@ -30,8 +31,16 @@ func TestCatalogHasNoOrphan(t *testing.T) {
 		claimed[slug] = true
 	}
 
+	// familyBacked Metrics are read from a family a Connector writes rather than
+	// from a source type it maps: training volume is folded from the Sessions a
+	// workout import creates (ADR 0040), so no mapping table names either slug and
+	// the loop below cannot see them. They are not orphans, they are claimed one
+	// level up: a Connector that writes no Session produces no rows for them, which
+	// is what already happens to any Metric a given source does not report.
+	familyBacked := map[string]bool{"training_time": true, "training_distance": true}
+
 	for slug, m := range catalog.All() {
-		if m.Nature != catalog.Imported {
+		if m.Nature != catalog.Imported || familyBacked[slug] {
 			continue
 		}
 		if !claimed[slug] {

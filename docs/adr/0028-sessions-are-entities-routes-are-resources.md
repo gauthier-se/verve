@@ -36,6 +36,11 @@ what makes that visible.
 page: a list, a detail, a map. It gets no Panel, no Pin, no Catalog entry, no
 Ledger row.
 
+> Still true after ADR 0040. What that ADR puts on a Panel is `training_time`
+> and `training_distance`, which are *aggregates of* Sessions: a bar is the fold
+> of the workouts in a bucket, with no identity, no route and no detail view. No
+> Session gained a Panel, a Pin or a Ledger row of its own.
+
 The line is what the question is *about*. Sleep is a quantity that happens to
 arrive as intervals, so "how much did I sleep on the 12th" is a question about a
 bucket, and a bucket is exactly what a Series serves. A workout has identity:

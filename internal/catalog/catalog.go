@@ -14,7 +14,20 @@ const (
 	Average         Aggregation = "average"           // mean, with a min/max band (heart rate)
 	Latest          Aggregation = "latest"            // most recent point (body mass, height)
 	DurationByState Aggregation = "duration_by_state" // time per Stage over a Night (sleep, ADR 0027)
+	// SumByState is a summed quantity per breakdown key, in the Metric's own unit:
+	// minutes or kilometres per Activity, folded from the Sessions family (ADR 0040).
+	// It is a second rule rather than a rename of the one above, because that one is
+	// the honest name for minutes per Stage and renaming it would churn the wire
+	// contract, types.ts and ADR 0027's prose to save an enum value.
+	SumByState Aggregation = "sum_by_state"
 )
+
+// ByState reports whether an Aggregation folds into a per-key breakdown rather than
+// into one figure. Both such rules carry their Points the same way (Point.States),
+// are refused by the same callers (a Formula operand, an Exclusion, a Manual entry)
+// and are drawn by the same chart, so those places ask this rather than naming one
+// rule and forgetting the other.
+func (a Aggregation) ByState() bool { return a == DurationByState || a == SumByState }
 
 // Nature distinguishes Metrics produced by a Connector from those computed on read.
 type Nature string
@@ -112,6 +125,14 @@ func buildMetrics() map[string]Metric {
 		// The only duration_by_state Metric: read from the States family, not from
 		// measurements, and bucketed by Night rather than by calendar day (ADR 0027).
 		{"sleep", "min", DurationByState},
+
+		// --- Training ---
+		// Folded from the Sessions family rather than from measurements, broken down
+		// by Activity and capped at the ramp (internal/query/training.go, ADR 0040).
+		// A workout keeps its identity on the Workouts page; what a Panel carries is
+		// an aggregate of workouts, which has none (ADR 0028).
+		{"training_time", "min", SumByState},
+		{"training_distance", "km", SumByState},
 
 		// --- Heart & circulation ---
 		{"heart_rate", "count/min", Average},
