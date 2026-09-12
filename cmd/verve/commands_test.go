@@ -1,13 +1,17 @@
 package main
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/gauthier-se/verve/internal/archive"
 	"github.com/gauthier-se/verve/internal/auth"
 	"github.com/gauthier-se/verve/internal/data"
 )
@@ -268,5 +272,89 @@ func TestImportCommandRequiresArgs(t *testing.T) {
 	}
 	if err := app.importCommand(ctx, []string{"--account=me@example.com"}); err == nil {
 		t.Error("import without a file argument should error")
+	}
+}
+
+// The CLI round trip is the pair this milestone exists to make: import an
+// export, export an Archive, and get a file the other half can read back.
+func TestExportCommand(t *testing.T) {
+	app := newTestApp(t)
+	ctx := context.Background()
+	feedStdin(t, app, testPassword+"\n")
+	if err := app.accountCreate(ctx, []string{"--email=me@example.com", "--password-stdin"}); err != nil {
+		t.Fatalf("accountCreate: %v", err)
+	}
+	if err := app.importCommand(ctx, []string{"--account=me@example.com", writeExport(t, t.TempDir())}); err != nil {
+		t.Fatalf("importCommand: %v", err)
+	}
+
+	out := filepath.Join(t.TempDir(), "verve.zip")
+	if err := app.exportCommand(ctx, []string{"--account=me@example.com", out}); err != nil {
+		t.Fatalf("exportCommand: %v", err)
+	}
+
+	zr, err := zip.OpenReader(out)
+	if err != nil {
+		t.Fatalf("open archive: %v", err)
+	}
+	defer zr.Close()
+
+	names := map[string]bool{}
+	for _, f := range zr.File {
+		names[f.Name] = true
+	}
+	for _, want := range []string{archive.ManifestName, archive.MeasurementsName, archive.StatesName, archive.ImportsName} {
+		if !names[want] {
+			t.Errorf("archive is missing %s", want)
+		}
+	}
+
+	f, err := zr.Open(archive.MeasurementsName)
+	if err != nil {
+		t.Fatalf("open measurements: %v", err)
+	}
+	defer f.Close()
+	body, err := io.ReadAll(f)
+	if err != nil {
+		t.Fatalf("read measurements: %v", err)
+	}
+	if !strings.Contains(string(body), `"metric":"steps"`) {
+		t.Errorf("measurements.ndjson does not hold the imported steps row:\n%s", body)
+	}
+}
+
+func TestExportCommandWritesToStdout(t *testing.T) {
+	app := newTestApp(t)
+	ctx := context.Background()
+	var buf bytes.Buffer
+	app.stdout = &buf
+	feedStdin(t, app, testPassword+"\n")
+	if err := app.accountCreate(ctx, []string{"--email=me@example.com", "--password-stdin"}); err != nil {
+		t.Fatalf("accountCreate: %v", err)
+	}
+
+	if err := app.exportCommand(ctx, []string{"--account=me@example.com", "-"}); err != nil {
+		t.Fatalf("exportCommand: %v", err)
+	}
+
+	// A zip and nothing else: the summary goes to stderr when the Archive is on
+	// stdout, or a pipe receives a report glued to the end of the file.
+	raw := buf.Bytes()
+	if _, err := zip.NewReader(bytes.NewReader(raw), int64(len(raw))); err != nil {
+		t.Fatalf("stdout is not a readable archive: %v", err)
+	}
+}
+
+func TestExportCommandRequiresArgs(t *testing.T) {
+	app := newTestApp(t)
+	ctx := context.Background()
+	if err := app.exportCommand(ctx, []string{"out.zip"}); err == nil {
+		t.Error("export without --account should error")
+	}
+	if err := app.exportCommand(ctx, []string{"--account=me@example.com"}); err == nil {
+		t.Error("export without a file argument should error")
+	}
+	if err := app.exportCommand(ctx, []string{"--account=ghost@example.com", "out.zip"}); err == nil {
+		t.Error("export for a nonexistent account should error")
 	}
 }
