@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 Blocked by: 01
 
 # 02: api, data: what a by-state Metric cannot be asked, and where it shows up
@@ -61,3 +61,21 @@ The Ledger paragraph is a decision, not a note. A volume divided by active days
 is a per-session average wearing a per-day label, and the Ledger's columns are
 fixed by ADR 0021 so that one Metric cannot mean something different from its
 neighbours.
+
+## Comments
+
+Shipped. The Exclusion and Manual-entry refusals, the default chart type and the
+`stacked_bar` validation now ask `Aggregation.ByState()`; the Ledger's row set
+probes the Sessions family; its per-day divisor treats a volume like any other
+`sum`, with the comment saying why active days would be wrong. Tests: the two
+422s in their existing tables, the row set in `ledger_test.go`, the per-day
+figure, and the CSV's per-Activity rows in `exporthandlers_test.go`.
+
+Two notes:
+
+- **The CSV needed no code at all**, as predicted, and the test is the point: the
+  export milestone generalized `csvRows` to "any breakdown" by accident of good
+  shape, and training volume is the first Metric whose keys are an open set.
+- **Co-variation needed nothing either.** It reads `Point.Value`, which is the
+  bucket's total across every Activity, so a pinned `training_time` pairs on the
+  only figure that has a meaning. No test was added where there is no branch.

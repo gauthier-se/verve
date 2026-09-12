@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 Blocked by: 01
 
 # 03: web: the stack stops being about sleep
@@ -51,3 +51,31 @@ model of the code.
 The labels come from the Activity catalog rather than from a second table in the
 client for the reason the server keeps that table at all: a curated label, an
 icon and a group are one set of facts, and the Workouts page already reads them.
+
+## Comments
+
+Shipped. `web/src/lib/breakdown.ts` with `breakdown.test.ts`, `lib/sleep.ts`
+reduced to what is about a Night, and the three components reading resolved
+segments instead of Stage slugs. Typecheck, build and the 74 vitest cases pass,
+and the read path was smoke-tested on the real binary.
+
+Four things came out of the implementation that the spec did not anticipate:
+
+- **The labels were not in the client.** The spec said they come from
+  `lib/activities.ts`, which the Workouts page reads; that module holds icons
+  only, and the curated label reaches the client inside each Session. A
+  breakdown key is a bare slug, so `GET /v1/metrics` now carries the Activity
+  table beside the Catalog, as reference data cached for the session. The
+  alternative was prettifying slugs in the client, which prints four words where
+  the table says HIIT and puts a curated name in two places.
+- **Segments are resolved once, name and colour together.** The spec had three
+  helpers called from three components; a `Segment {key,label,color}` built by
+  one `buildSegments` is what makes it impossible for the legend's swatch and the
+  bar's fill to disagree, which was the actual risk in spreading it.
+- **The formatter follows the unit everywhere**, not only in the tooltip: the Y
+  axis did too, keyed on sleep. Two Metrics read in minutes now and a third in
+  kilometres, so the unit is the only thing that can decide.
+- **`isSleepSeries` is gone** rather than kept as a wrapper. Its own test said it
+  keyed off the rule "so training volume can use the same shape later"; that
+  shape is `hasBreakdown`, and keeping both would have left two answers to one
+  question.

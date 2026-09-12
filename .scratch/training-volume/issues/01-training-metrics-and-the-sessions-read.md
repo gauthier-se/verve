@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 
 # 01: catalog, query: two Metrics folded from Sessions, capped at the ramp
 
@@ -98,3 +98,24 @@ the window rather than per bucket, or the legend stops describing the chart.
 `Point.Value` counting the folded-away activities is the difference between a cap
 that is a display choice and a cap that changes the answer. The total is the
 Metric; the breakdown is how it is drawn.
+
+## Comments
+
+Shipped. `catalog.SumByState` with `Aggregation.ByState()`, the two Catalog rows,
+`internal/query/training.go`, the dispatch in `Series`, ADR 0040, the **Training
+volume** entry in CONTEXT.md with the sentence added to **Activity**, and the
+forward pointer on ADR 0028. Tests: `internal/query/training_test.go`.
+
+Three things came out of the implementation that the spec did not anticipate:
+
+- **`hasSessions` is an Engine method, not a `SessionModel` one.** The spec said
+  the data layer, following `StateModel.HasStates`; the Ledger's actual probe is
+  `Engine.hasStates`, which runs its own SQL. Following the code rather than the
+  spec kept one pattern instead of introducing a second.
+- **`TestCatalogHasNoOrphan` needed an exemption.** Every imported Metric must be
+  claimed by a Connector's mapping table, and no source type maps to a slug that
+  is folded from a whole family. A named `familyBacked` set says so; the
+  alternative was a Connector claiming a slug it does not write.
+- **It later grew a per-Metric probe.** See issue 03's comments: an Account that
+  only lifts has workouts and no kilometres, and one probe for both Metrics put
+  an empty row on the scoreboard.
