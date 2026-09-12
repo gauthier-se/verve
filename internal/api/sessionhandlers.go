@@ -13,6 +13,7 @@ import (
 
 	"github.com/gauthier-se/verve/internal/catalog"
 	"github.com/gauthier-se/verve/internal/data"
+	"github.com/gauthier-se/verve/internal/query"
 	"github.com/gauthier-se/verve/internal/route"
 	"github.com/gauthier-se/verve/internal/timeaxis"
 )
@@ -391,4 +392,63 @@ func decodeSessionCursor(raw string) (string, int64, error) {
 		return "", 0, err
 	}
 	return startAt, id, nil
+}
+
+// handleSessionSeries answers one Metric's curve inside one workout: the ride's
+// heart rate on the ride's own axis (ADR 0041).
+//
+// It is a sibling of handleSessionRoutes and for the same reason: an intra-day
+// shape belongs to the entity whose span bounds it. There is no range parameter
+// and there cannot be one, which is what leaves ADR 0012's cap on the Series
+// contract untouched rather than merely unenforced.
+//
+// One Metric per request. Two units inside a ride is the dual-axis question a
+// Panel answers, and a workout page is not a Panel.
+func (s *Server) handleSessionSeries(w http.ResponseWriter, r *http.Request) {
+	accountID, _ := s.accountID(r)
+
+	session, ok := s.sessionOr404(w, r, accountID)
+	if !ok {
+		return
+	}
+
+	metric := r.URL.Query().Get("metric")
+	if metric == "" {
+		s.failedValidationResponse(w, r, map[string]string{"metric": "must be provided"})
+		return
+	}
+	from, err := time.Parse(time.RFC3339, session.StartAt)
+	if err != nil {
+		s.serverErrorResponse(w, r, err)
+		return
+	}
+	to, err := time.Parse(time.RFC3339, session.EndAt)
+	if err != nil {
+		s.serverErrorResponse(w, r, err)
+		return
+	}
+
+	series, err := s.engine.WorkoutSeriesFor(r.Context(), query.WorkoutRequest{
+		AccountID: accountID, Metric: metric, From: from, To: to,
+	})
+	switch {
+	case errors.Is(err, query.ErrUnknownMetric):
+		s.failedValidationResponse(w, r, map[string]string{"metric": unknownMetricMsg})
+		return
+	case errors.Is(err, query.ErrUnsupportedInWorkout):
+		s.failedValidationResponse(w, r, map[string]string{
+			"metric": "has no curve inside a workout: only measured metrics with a sum or average rule do",
+		})
+		return
+	case errors.Is(err, query.ErrInvalidRange):
+		// A workout whose stored end is not after its start. The row is wrong, not
+		// the request, and the honest answer is that there is no axis to draw on.
+		s.failedValidationResponse(w, r, map[string]string{"metric": "this workout has no duration to read along"})
+		return
+	case err != nil:
+		s.serverErrorResponse(w, r, err)
+		return
+	}
+
+	s.respond(w, r, http.StatusOK, envelope{"series": series})
 }

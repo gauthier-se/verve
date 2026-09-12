@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 
 # 02: query, api: the Measurements inside one workout, bucketed by its own span
 
@@ -73,3 +73,24 @@ simplifying a polyline server-side (ADR 0028): a screen gets a shape it can draw
 and the stored rows stay untouched. It is a mean rather than a sample because a
 heart-rate curve's whole content is where it sat, not which instants were
 picked.
+
+## Comments
+
+Shipped. `internal/query/workoutseries.go`, `handleSessionSeries` beside the
+routes handler, the route, and the `WorkoutSeries`/`WorkoutPoint` types pinned
+by the contract test. Tests: `workoutseries_test.go` and four cases in
+`sessionhandlers_test.go`.
+
+Three notes:
+
+- **The Source election is its own small function** rather than a reuse of
+  `resolveSource`. That one answers a different question, per day and with the
+  Manual overlay folded in, and bending it to a single window would have made
+  both callers harder to read than the eight lines it replaces. The priority
+  table itself is shared, which is the part that must not diverge.
+- **The bucket floor is one second.** `span / 300` on a two-minute warm-up is
+  400ms, finer than any stored timestamp, so the curve would have been one
+  reading per bucket with a misleading number of them.
+- **A workout whose stored end is not after its start answers 422**, not 500.
+  The row is wrong rather than the request, and the message says there is no
+  axis to read along.

@@ -669,3 +669,25 @@ export interface ExclusionPreview {
   ends_on: string;
   measurements: number;
 }
+
+/** WorkoutPoint is one bucket of a workout's curve: the mean of the readings it
+ *  holds and how many there were. An empty bucket is an absent Point, never a
+ *  zero (ADR 0014). */
+export interface WorkoutPoint {
+  at: string;
+  value: number;
+  count: number;
+}
+
+/** WorkoutSeries is GET /v1/sessions/{id}/series: one Metric read inside one
+ *  workout, on the workout's own axis (ADR 0041). `start_at` and `end_at` are
+ *  the workout's bounds, echoed so a chart draws an axis without inventing one,
+ *  and there is no range to ask for: the grain is derived from the span. */
+export interface WorkoutSeries {
+  metric: string;
+  unit: string;
+  source: string;
+  start_at: string;
+  end_at: string;
+  points: WorkoutPoint[];
+}

@@ -190,6 +190,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /v1/sessions", s.requireAuth(s.handleListSessions))
 	mux.Handle("GET /v1/sessions/{id}", s.requireAuth(s.handleGetSession))
 	mux.Handle("GET /v1/sessions/{id}/routes", s.requireAuth(s.handleSessionRoutes))
+	mux.Handle("GET /v1/sessions/{id}/series", s.requireAuth(s.handleSessionSeries))
 	mux.Handle("GET /v1/sessions/{id}/routes/{routeID}", s.requireAuth(s.handleDownloadRoute))
 
 	// Pins: the Metrics the Account keeps in the sidebar. A Pin is a shortcut to a
