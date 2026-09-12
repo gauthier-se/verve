@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 Blocked by: 02
 
 # 04: web: the curve under the map, and the paragraph that is no longer true
@@ -46,3 +46,31 @@ half of it is still true would be worse than leaving it.
 The Metric picker is scoped to the workout's own stats rather than to the
 Catalog because that is the list that answers the question being asked. It also
 happens to be free: the Session detail payload already carries them.
+
+## Comments
+
+Shipped. `web/src/lib/workout-series.ts` with its test,
+`hooks/use-workout-series.ts`, the `CurveSection` on the Session page, and the
+docs pass across README.md and ROADMAP.md.
+
+Two notes:
+
+- **The picker comes from the workout's own stats**, as specified, and it turns
+  out to be exactly right for a second reason: the stats are the Metrics this
+  device reported *for this workout*, so a strength session offers energy and a
+  ride offers heart rate, with no request made to find out.
+- **The axis is elapsed time, labelled "12:30 in"**, while the route profiles
+  stay on distance. Forcing one shared axis would have meant resampling one of
+  them against the other, which invents points; two axes and one word of
+  labelling is the honest version.
+
+Smoke-tested on the real binary: `/v1/nights/2024-01-02` answers the imported
+night with its onset, wake and efficiency, a night nothing recorded is a 404, a
+malformed date is a 422, a workout with no heart rate is a 200 with no points,
+and `body_mass` inside a workout is refused with the sentence that names why.
+
+One payload detail worth recording: a staged night with no interruption reports
+`awake: 0` rather than omitting it. That is a fact and not a fabricated zero,
+because the resolved stages tile the night: the absence of an awake interval
+between onset and waking is the evidence that there was none. An in-bed-only
+night omits the field entirely, which is the case where there is no evidence.

@@ -67,13 +67,16 @@ infrastructure, no telemetry.
   stacked by stage, labelled with the morning you woke up on. Time awake is
   shown and never counted as sleep, and a night your Watch spent on a charger
   is a gap rather than a zero — the per-night average divides by the nights you
-  actually recorded.
+  actually recorded. Open one night and you get its shape: the stages against
+  the clock from the moment you fell asleep to the moment you woke, with the
+  time awake in between, and an efficiency that says what it was divided by.
 * **Workouts, listed and opened.** Every workout you recorded, filtered by
   activity over a range of its own, with the totals for that period named
   rather than summed from the page on screen. Open one and you get every
   statistic your device reported, plus the GPX trace as a map with an elevation
-  and a pace profile. The basemap is opt-in: configure no tile server and the
-  browser makes no outbound request at all.
+  and a pace profile, and the curve of whatever your device measured during it,
+  heart rate included, on the ride's own axis. The basemap is opt-in: configure
+  no tile server and the browser makes no outbound request at all.
 * **Training volume, on the time axis.** The hours and the kilometres those
   workouts come to, per day, week or month, stacked by activity so a month of
   running and a month of cycling do not read the same. It is a metric like any
@@ -126,12 +129,11 @@ infrastructure, no telemetry.
 ### What Verve does not do
 
 Verve is not a medical device and gives no diagnosis or medical advice. It does
-not phone home, does not sync to a cloud, and has no hosted version. Sleep is
-read as durations per night, not as a hypnogram: the shape of a single night
-needs an intra-day axis Verve does not serve, and for the same reason a
-workout's detail view shows its recorded statistics and its trace but no heart
-rate curve. ECG waveforms are kept as files without a viewer. See
-[ROADMAP.md](./ROADMAP.md).
+not phone home, does not sync to a cloud, and has no hosted version. A dashboard
+reads days: the finest bucket a panel, a ledger row or a CSV can ask for is one
+day, and an axis finer than that exists only inside a thing with a start and an
+end, which is a night, a workout or a route. ECG waveforms are kept as files
+without a viewer. See [ROADMAP.md](./ROADMAP.md).
 
 ## Getting started
 
