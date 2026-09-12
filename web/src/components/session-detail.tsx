@@ -6,6 +6,8 @@ import { useSession, useSessionRoutes } from "@/hooks/use-sessions";
 import { activityIcon } from "@/lib/activities";
 import { formatExact, formatPace, formatSessionDuration, formatSpeed } from "@/lib/format";
 import { metricLabel } from "@/lib/metrics";
+import { useWorkoutSeries } from "@/hooks/use-workout-series";
+import { curveMetrics, formatElapsed, workoutData } from "@/lib/workout-series";
 import type { RouteGeometry, SessionStat } from "@/lib/types";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
@@ -114,6 +116,8 @@ export function SessionDetailPage() {
         {routes.data && routes.data.length > 0 && (
           <RouteSection sessionId={id} routes={routes.data} reading={session.activity.reading} />
         )}
+
+        <CurveSection sessionId={id} stats={stats} />
       </div>
     </div>
   );
@@ -220,5 +224,97 @@ function Profile({
         </LineChart>
       </ResponsiveContainer>
     </div>
+  );
+}
+
+/** CurveSection is one Metric read inside this workout, on the workout's own
+ *  axis (ADR 0041): where your pulse sat on the climb, rather than what it
+ *  averaged over the day.
+ *
+ *  The Metric picker lists what this workout measured, from the stats the device
+ *  reported, rather than the Catalog: a hundred options answering "no data" is
+ *  the empty-row problem in a dropdown (ADR 0021). The x axis is elapsed time
+ *  while the route profiles are drawn against distance, which is a real
+ *  difference between the two questions and is labelled rather than forced into
+ *  one shared axis. */
+function CurveSection({ sessionId, stats }: { sessionId: number; stats: SessionStat[] }) {
+  const options = curveMetrics(stats);
+  const [metric, setMetric] = React.useState(options[0] ?? "");
+  const series = useWorkoutSeries(sessionId, metric, metric !== "");
+  const data = workoutData(series.data);
+
+  if (options.length === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="text-sm">
+          During the workout
+          {series.data?.source && (
+            <span className="ml-2 font-normal text-muted-foreground">recorded by {series.data.source}</span>
+          )}
+        </CardTitle>
+        {options.length > 1 && (
+          <div className="flex flex-wrap gap-1">
+            {options.map((slug) => (
+              <Button
+                key={slug}
+                variant={slug === metric ? "secondary" : "ghost"}
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={() => setMetric(slug)}
+              >
+                {metricLabel(slug)}
+              </Button>
+            ))}
+          </div>
+        )}
+      </CardHeader>
+      <CardContent>
+        {series.isLoading ? (
+          <div className="h-36 w-full" />
+        ) : data.length < 2 ? (
+          // No curve rather than an empty one: a strength session from a phone
+          // has no heart rate, and an empty axis suggests a failure that did not
+          // happen.
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            No {metricLabel(metric).toLowerCase()} was recorded during this workout.
+          </p>
+        ) : (
+          <ResponsiveContainer width="100%" height={160}>
+            <LineChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
+              <XAxis
+                dataKey="elapsed"
+                type="number"
+                domain={["dataMin", "dataMax"]}
+                tickFormatter={formatElapsed}
+                tick={{ fontSize: 11 }}
+                className="fill-muted-foreground"
+              />
+              <YAxis
+                tick={{ fontSize: 11 }}
+                width={44}
+                className="fill-muted-foreground"
+                tickFormatter={(v: number) => String(Math.round(v))}
+              />
+              <Tooltip
+                contentStyle={{ fontSize: 12 }}
+                labelFormatter={(v: number) => `${formatElapsed(v)} in`}
+                formatter={(v: number) => [`${formatExact(v)} ${series.data?.unit ?? ""}`, metricLabel(metric)]}
+              />
+              <Line
+                type="monotone"
+                dataKey="value"
+                dot={false}
+                stroke="hsl(var(--chart-1))"
+                strokeWidth={2}
+                isAnimationActive={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        )}
+      </CardContent>
+    </Card>
   );
 }

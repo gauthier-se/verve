@@ -193,6 +193,37 @@ export interface Series {
   nights?: number;
 }
 
+/** NightInterval is one stage of a Night as it was recorded, against the clock
+ *  rather than folded into a bucket (ADR 0041). */
+export interface NightInterval {
+  state: string;
+  start_at: string;
+  end_at: string;
+}
+
+/** NightDetail is GET /v1/nights/{date}: one Night read as an entity, keyed by
+ *  the morning it woke on. Its intervals are the ones the sleep Metric folded
+ *  for that night, resolved by the same rule, so this page and the bar above it
+ *  cannot disagree (ADR 0027).
+ *
+ *  Every figure past `asleep` is optional because absent evidence is absent and
+ *  never zero: an iPhone-only night has minutes in bed and no onset, and saying
+ *  so with an omission beats naming a moment nothing recorded. */
+export interface NightDetail {
+  night: string;
+  source: string;
+  intervals: NightInterval[];
+  asleep: number;
+  awake?: number;
+  onset?: string;
+  wake?: string;
+  efficiency?: number;
+  /** efficiency_basis names the denominator the percentage was computed over, so
+   *  it is never read as the classic time-in-bed one: "onset_to_wake" is the span
+   *  available once the in-bed rows a richer Source supersedes are dropped. */
+  efficiency_basis?: string;
+}
+
 /** ManualMeasurement is one Manual entry: a Measurement the Account typed rather than
  *  a Connector imported (ADR 0022). Unlike a Series point it carries an `id`, because
  *  it is the only kind of Measurement Verve will delete and deleting needs an address.
@@ -637,4 +668,26 @@ export interface ExclusionPreview {
   starts_on: string;
   ends_on: string;
   measurements: number;
+}
+
+/** WorkoutPoint is one bucket of a workout's curve: the mean of the readings it
+ *  holds and how many there were. An empty bucket is an absent Point, never a
+ *  zero (ADR 0014). */
+export interface WorkoutPoint {
+  at: string;
+  value: number;
+  count: number;
+}
+
+/** WorkoutSeries is GET /v1/sessions/{id}/series: one Metric read inside one
+ *  workout, on the workout's own axis (ADR 0041). `start_at` and `end_at` are
+ *  the workout's bounds, echoed so a chart draws an axis without inventing one,
+ *  and there is no range to ask for: the grain is derived from the span. */
+export interface WorkoutSeries {
+  metric: string;
+  unit: string;
+  source: string;
+  start_at: string;
+  end_at: string;
+  points: WorkoutPoint[];
 }

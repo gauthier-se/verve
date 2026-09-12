@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gauthier-se/verve/internal/data"
+	"github.com/gauthier-se/verve/internal/query"
 )
 
 // seedSession inserts one workout for an Account and returns it.
@@ -454,5 +455,88 @@ func TestMapConfigReachesTheClient(t *testing.T) {
 	}
 	if cfg.Attribution != srv.mapAttrib {
 		t.Errorf("attribution = %q, want %q: a tile source's credit line is not optional", cfg.Attribution, srv.mapAttrib)
+	}
+}
+
+// A workout's own curve, on its own axis (ADR 0041): no range parameter, and
+// the window echoed so a client draws an axis without inventing one.
+func TestSessionSeries(t *testing.T) {
+	srv, models, cookie := newTestServer(t)
+	acc := accountOf(t, models, testEmail)
+	session := seedSession(t, models, acc, "cycling", "2024-01-01T06:00:00Z", nil)
+
+	if _, err := models.Measurements.InsertBatch(context.Background(), []data.Measurement{
+		{AccountID: acc, Metric: "heart_rate", Value: 120, OriginalUnit: "count/min",
+			StartAt: "2024-01-01T06:10:00Z", EndAt: "2024-01-01T06:10:00Z", Source: "Apple Watch", ContentKey: "hr1"},
+		{AccountID: acc, Metric: "heart_rate", Value: 160, OriginalUnit: "count/min",
+			StartAt: "2024-01-01T06:40:00Z", EndAt: "2024-01-01T06:40:00Z", Source: "Apple Watch", ContentKey: "hr2"},
+		// Outside the workout: after its end.
+		{AccountID: acc, Metric: "heart_rate", Value: 60, OriginalUnit: "count/min",
+			StartAt: "2024-01-01T08:00:00Z", EndAt: "2024-01-01T08:00:00Z", Source: "Apple Watch", ContentKey: "hr3"},
+	}); err != nil {
+		t.Fatalf("seed readings: %v", err)
+	}
+
+	res, body := do(t, srv, fmt.Sprintf("/v1/sessions/%d/series?metric=heart_rate", session.ID), cookie)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", res.StatusCode, body["error"])
+	}
+	var series query.WorkoutSeries
+	if err := json.Unmarshal(body["series"], &series); err != nil {
+		t.Fatalf("decode series: %v", err)
+	}
+	if series.StartAt != session.StartAt || series.EndAt != session.EndAt {
+		t.Errorf("window = %s..%s, want the workout's own", series.StartAt, series.EndAt)
+	}
+	if len(series.Points) != 2 {
+		t.Fatalf("points = %+v, want the two readings inside the workout", series.Points)
+	}
+	if series.Points[0].Value != 120 || series.Points[1].Value != 160 {
+		t.Errorf("points = %+v, want 120 then 160", series.Points)
+	}
+}
+
+func TestSessionSeriesRefusals(t *testing.T) {
+	srv, models, cookie := newTestServer(t)
+	acc := accountOf(t, models, testEmail)
+	session := seedSession(t, models, acc, "running", "2024-01-01T06:00:00Z", nil)
+
+	tests := map[string]struct {
+		target string
+		want   int
+	}{
+		"no metric":          {fmt.Sprintf("/v1/sessions/%d/series", session.ID), http.StatusUnprocessableEntity},
+		"an unknown metric":  {fmt.Sprintf("/v1/sessions/%d/series?metric=not_a_metric", session.ID), http.StatusUnprocessableEntity},
+		"a latest metric":    {fmt.Sprintf("/v1/sessions/%d/series?metric=body_mass", session.ID), http.StatusUnprocessableEntity},
+		"a by-state metric":  {fmt.Sprintf("/v1/sessions/%d/series?metric=sleep", session.ID), http.StatusUnprocessableEntity},
+		"an unknown session": {"/v1/sessions/4242/series?metric=heart_rate", http.StatusNotFound},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			res, _ := do(t, srv, tc.target, cookie)
+			if res.StatusCode != tc.want {
+				t.Errorf("status = %d, want %d", res.StatusCode, tc.want)
+			}
+		})
+	}
+}
+
+// A workout with no readings of that Metric is a 200 with no points: the
+// workout exists, the curve does not.
+func TestSessionSeriesWithoutReadings(t *testing.T) {
+	srv, models, cookie := newTestServer(t)
+	acc := accountOf(t, models, testEmail)
+	session := seedSession(t, models, acc, "traditional_strength_training", "2024-01-01T06:00:00Z", nil)
+
+	res, body := do(t, srv, fmt.Sprintf("/v1/sessions/%d/series?metric=heart_rate", session.ID), cookie)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", res.StatusCode)
+	}
+	var series query.WorkoutSeries
+	if err := json.Unmarshal(body["series"], &series); err != nil {
+		t.Fatalf("decode series: %v", err)
+	}
+	if len(series.Points) != 0 {
+		t.Errorf("points = %+v, want none", series.Points)
 	}
 }

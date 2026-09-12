@@ -310,7 +310,12 @@ the intervals, so a Night is never in a different week than the day it is named
 after. It is also the grain at which sleep's evidence is resolved — which
 **Stage** rows and which **Source** count — for the same reason the **Manual
 overlay**'s grain is the day: it is the grain at which the evidence actually
-changes (ADR 0027).
+changes (ADR 0027). A Night is also **addressable**: `/v1/nights/2026-03-02` is
+the night that woke on that morning, read as an entity rather than as a bucket,
+carrying its intervals against the clock and the figures a fold destroys (onset,
+wake, time awake between them, efficiency). Addressable is not the same as being
+a **Metric**: a Night has no bucket, no window and no comparison, and it appears
+on no **Panel** (ADR 0041).
 _Avoid_: Sleep day (reads as a day spent sleeping), Session (that's the workout
 family), Bedtime, Sleep period.
 

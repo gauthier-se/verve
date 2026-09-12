@@ -66,6 +66,10 @@ var contract = []struct {
 	// own json tags and go straight onto the wire (ADR 0037).
 	{"Point", query.Point{}},
 	{"Series", query.Series{}},
+	{"NightDetail", query.NightDetail{}},
+	{"NightInterval", query.NightInterval{}},
+	{"WorkoutSeries", query.WorkoutSeries{}},
+	{"WorkoutPoint", query.WorkoutPoint{}},
 	{"LedgerRow", query.LedgerRow{}},
 	{"LedgerValue", query.LedgerValue{}},
 	{"HistorySpan", query.Span{}},

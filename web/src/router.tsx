@@ -10,6 +10,7 @@ import { MetricPage } from "./components/metric-page";
 import { PlanPage } from "./components/plan-page";
 import { SessionDetailPage } from "./components/session-detail";
 import { SessionsPage } from "./components/sessions-page";
+import { NightPage } from "./components/night-page";
 
 // Code-based routes (no file router / codegen) keep the build a plain Vite SPA
 // (ADR 0013). The Go server serves index.html on every non-/v1 path, so a deep
@@ -75,6 +76,14 @@ const workoutRoute = createRoute({
   component: SessionDetailPage,
 });
 
+// A Night is addressable, so it has a URL like any other entity: one night can
+// be linked to and reloaded, which a bucket on a Panel never can (ADR 0041).
+const nightRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/nights/$date",
+  component: NightPage,
+});
+
 const planRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/plan",
@@ -96,6 +105,7 @@ const routeTree = rootRoute.addChildren([
   historyRoute,
   workoutsRoute,
   workoutRoute,
+  nightRoute,
   planRoute,
   importRoute,
 ]);

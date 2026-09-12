@@ -37,6 +37,7 @@ Everything below is merged into `main`, tested, and usable today.
 | Google Health | A second connector, reading a Google Takeout: the connector contract lifted out of Apple's package, a registry that recognizes an export by its content, and source resolution moved to day grain so one export cannot take the years another recorded |
 | Export | A way out: one account as a portable zip any Verve reads back as an import, and the numbers behind any curve as a CSV at the grain on screen |
 | Training volume | The hours and kilometres your workouts come to, per bucket and stacked by activity: the aggregate side of the Sessions the list already holds |
+| Intra-day | The shape of one night and the curve of one workout, on their own axes: an entity serves what a bucket destroys |
 
 ## Next
 
@@ -66,14 +67,6 @@ below.
 * **Meals.** The link between the nutrients logged together is preserved at
   import. Surfacing it answers "what did I eat", which is a different question
   from "how much protein did I get".
-* **A hypnogram, and the questions around a night.** Durations per Night are on
-  screen; the shape of a single night — stages against the clock — needs an
-  intra-day axis the API deliberately does not serve. Sleep onset, wake time and
-  efficiency belong with it, and none of them is expressible as a derived
-  Metric's Formula.
-* **Intra-workout series.** Heart rate during a ride lives in `measurements`,
-  and reading it per workout is the sub-day read ADR 0012 refuses. It belongs
-  with the hypnogram above: one intra-day axis, or neither.
 * **Sharing a Dashboard as JSON.** An Archive deliberately holds data and not
   arrangement (ADR 0039). A Dashboard that exports and imports as a file is the
   other half, and the same shape as a contributed palette: declarative data a

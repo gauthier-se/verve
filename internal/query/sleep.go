@@ -29,6 +29,11 @@ const sleepKind = "sleep"
 // every night, so it survives only in a Night that has no stages at all.
 const stageInBed = "in_bed"
 
+// stageAwake is the interruption: stacked so a broken night looks broken, never
+// counted as sleep (ADR 0027), and the figure a Night's own page reports as time
+// awake *between* falling asleep and waking (ADR 0041).
+const stageAwake = "awake"
+
 // asleepPrefix marks the Stages that count as sleep: asleep, asleep_core,
 // asleep_deep, asleep_rem. `awake` and `in_bed` are reported in the breakdown and
 // never summed into the Point's value.
@@ -232,45 +237,64 @@ func resolveNights(slug string, rows []sleepRow) (map[string]night, map[string]s
 	kept := make(map[string]night, len(byNight))
 	winners := make(map[string]string, len(byNight))
 	for label, nightRows := range byNight {
-		// Sources with a staged row are the richest evidence; absent any, every
-		// Source present competes on its in-bed (and awake) rows alone.
-		staged := map[string]bool{}
-		present := map[string]bool{}
-		for _, r := range nightRows {
-			present[r.source] = true
-			if r.isAsleep() {
-				staged[r.source] = true
-			}
-		}
-		candidates := staged
-		if len(candidates) == 0 {
-			candidates = present
-		}
-		winner, ok := catalog.ResolveSource(slug, sortedKeys(candidates))
+		resolved, _, winner, ok := resolveNight(slug, nightRows)
 		if !ok {
 			continue
 		}
-
-		hasStages := staged[winner]
-		stages := map[string]float64{}
-		for _, r := range nightRows {
-			if r.source != winner {
-				continue
-			}
-			if hasStages && r.stage == stageInBed {
-				continue
-			}
-			if m := r.minutes(); m > 0 {
-				stages[r.stage] += m
-			}
-		}
-		if len(stages) == 0 {
-			continue
-		}
-		kept[label] = night{stages: stages, value: nightValue(stages)}
+		kept[label] = resolved
 		winners[label] = winner
 	}
 	return kept, winners
+}
+
+// resolveNight is the rule for one Night: elect its Source, drop what the richer
+// evidence supersedes, and fold what is left. It returns the Night, the rows it
+// was folded from, and the Source that won.
+//
+// The rows come back because the Night is also read as an entity, for the shape
+// of it rather than for its total (ADR 0041), and that page must show the very
+// intervals this figure was computed from. Two resolutions over the same night
+// would be two answers about it, and the one thing a hypnogram must not do is
+// disagree with the bar above it.
+func resolveNight(slug string, nightRows []sleepRow) (night, []sleepRow, string, bool) {
+	// Sources with a staged row are the richest evidence; absent any, every
+	// Source present competes on its in-bed (and awake) rows alone.
+	staged := map[string]bool{}
+	present := map[string]bool{}
+	for _, r := range nightRows {
+		present[r.source] = true
+		if r.isAsleep() {
+			staged[r.source] = true
+		}
+	}
+	candidates := staged
+	if len(candidates) == 0 {
+		candidates = present
+	}
+	winner, ok := catalog.ResolveSource(slug, sortedKeys(candidates))
+	if !ok {
+		return night{}, nil, "", false
+	}
+
+	hasStages := staged[winner]
+	stages := map[string]float64{}
+	var keptRows []sleepRow
+	for _, r := range nightRows {
+		if r.source != winner {
+			continue
+		}
+		if hasStages && r.stage == stageInBed {
+			continue
+		}
+		if m := r.minutes(); m > 0 {
+			stages[r.stage] += m
+			keptRows = append(keptRows, r)
+		}
+	}
+	if len(stages) == 0 {
+		return night{}, nil, "", false
+	}
+	return night{stages: stages, value: nightValue(stages)}, keptRows, winner, true
 }
 
 // reportedSleepSource is the one Source name the Series carries when resolution ran

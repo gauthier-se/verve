@@ -1,4 +1,5 @@
 import * as React from "react";
+import { Link } from "@tanstack/react-router";
 import { ArrowDown, ArrowUp, Check, Copy, Download } from "lucide-react";
 import { useSeries } from "@/hooks/use-series";
 import { computeDelta, formatBucketKey, formatDuration, formatExact } from "@/lib/format";
@@ -177,7 +178,20 @@ export function LedgerDetailTable({
             {rows.map(({ point, delta }) => (
               <TableRow key={point.bucket}>
                 <TableCell className="whitespace-nowrap font-mono tabular-nums text-muted-foreground">
-                  {formatBucketKey(point.bucket, bucket)}
+                  {/* A day bucket of sleep is a Night, and a Night is addressable
+                      (ADR 0041): the row is the way into the shape of it. Any
+                      other Metric's bucket is not an entity and stays plain. */}
+                  {metric === "sleep" && bucket === "day" ? (
+                    <Link
+                      to="/nights/$date"
+                      params={{ date: point.bucket }}
+                      className="underline decoration-dotted underline-offset-4 hover:text-foreground"
+                    >
+                      {formatBucketKey(point.bucket, bucket)}
+                    </Link>
+                  ) : (
+                    formatBucketKey(point.bucket, bucket)
+                  )}
                 </TableCell>
                 <TableCell className="text-right font-mono tabular-nums">{showValue(point.value)}</TableCell>
                 {isAverage && <TableCell className="text-right tabular-nums text-muted-foreground">{bandCell(point.min)}</TableCell>}
