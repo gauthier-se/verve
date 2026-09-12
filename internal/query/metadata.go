@@ -104,6 +104,22 @@ func (e Engine) MetricsWithData(ctx context.Context, accountID int64) ([]string,
 		}
 	}
 
+	// Training volume is folded from the Sessions family (ADR 0040), which the
+	// DISTINCT above cannot see either. One probe serves both Metrics: they read
+	// the same rows and an Account with workouts has data for both, even if a
+	// history of strength sessions alone gives training_distance nothing to show.
+	hasSessions, err := e.hasSessions(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	if hasSessions {
+		for _, slug := range []string{metricTrainingTime, metricTrainingDistance} {
+			if !seen[slug] {
+				out = append(out, slug)
+			}
+		}
+	}
+
 	sort.Strings(out)
 	return out, nil
 }

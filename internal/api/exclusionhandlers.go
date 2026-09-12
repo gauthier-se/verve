@@ -161,8 +161,11 @@ func validateExclusionMetric(v *Validator, slug string) string {
 		v.AddError("metric", "is a derived Metric and owns no stored rows: exclude the operands it is computed from")
 		return slug
 	}
-	if metric.Aggregation == catalog.DurationByState {
-		v.AddError("metric", "is stored as States rather than Measurements: excluding it is not supported yet")
+	// Both by-state rules are refused, and the check asks the rule rather than
+	// naming sleep: a slug accepted here and then silently never excluded is the
+	// one outcome this feature was built to avoid (ADR 0033).
+	if metric.Aggregation.ByState() {
+		v.AddError("metric", "is stored as States or Sessions rather than Measurements: excluding it is not supported yet")
 		return slug
 	}
 	return slug

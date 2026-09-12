@@ -196,8 +196,8 @@ func (s *Server) validateManualMetric(v *Validator, slug string) (catalog.Metric
 		v.AddError("metric", "is a derived Metric, computed from other Metrics — enter its operands instead")
 		return metric, metric.Unit
 	}
-	if metric.Aggregation == catalog.DurationByState {
-		v.AddError("metric", "is not a Measurement — states and sessions cannot be entered by hand yet")
+	if metric.Aggregation.ByState() {
+		v.AddError("metric", "is not a Measurement — a night is imported from states and a workout from sessions, and neither is entered by hand")
 		return metric, metric.Unit
 	}
 	return metric, metric.Unit

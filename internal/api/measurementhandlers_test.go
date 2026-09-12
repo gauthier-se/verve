@@ -114,6 +114,8 @@ func TestCreateMeasurementRejectsBadInput(t *testing.T) {
 		// Sleep is read from the States family: a typed row would land in measurements,
 		// where the sleep read path never looks at it again (ADR 0027).
 		{"duration-by-state metric", map[string]any{"metric": "sleep", "value": 420}, "metric"},
+		// And a workout is imported from the Sessions family, not typed (ADR 0040).
+		{"sum-by-state metric", map[string]any{"metric": "training_time", "value": 45}, "metric"},
 		{"missing metric", map[string]any{"value": 1}, "metric"},
 		{"missing value", map[string]any{"metric": "body_mass"}, "value"},
 		{"future date", map[string]any{"metric": "body_mass", "value": 91, "measured_at": "2030-01-01T00:00:00Z"}, "measured_at"},

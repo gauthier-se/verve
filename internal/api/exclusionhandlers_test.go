@@ -241,13 +241,16 @@ func TestExcludeSameMetricDifferentSpans(t *testing.T) {
 func TestExcludeRejectsUnusableMetrics(t *testing.T) {
 	srv, _, cookie := newTestServer(t)
 	for name, body := range map[string]string{
-		"unknown":       `{"metric":"not_a_metric"}`,
-		"missing":       `{"metric":""}`,
-		"derived":       `{"metric":"calorie_balance"}`,
-		"state-backed":  `{"metric":"sleep"}`,
-		"bad start":     `{"metric":"steps","starts_on":"01/01/2026"}`,
-		"bad end":       `{"metric":"steps","ends_on":"2026-13-40"}`,
-		"inverted span": `{"metric":"steps","starts_on":"2026-03-31","ends_on":"2026-03-01"}`,
+		"unknown":      `{"metric":"not_a_metric"}`,
+		"missing":      `{"metric":""}`,
+		"derived":      `{"metric":"calorie_balance"}`,
+		"state-backed": `{"metric":"sleep"}`,
+		// Training volume is folded from the Sessions family, so the same refusal
+		// covers it: the check asks the rule rather than naming sleep (ADR 0040).
+		"session-backed": `{"metric":"training_time"}`,
+		"bad start":      `{"metric":"steps","starts_on":"01/01/2026"}`,
+		"bad end":        `{"metric":"steps","ends_on":"2026-13-40"}`,
+		"inverted span":  `{"metric":"steps","starts_on":"2026-03-31","ends_on":"2026-03-01"}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			res, _ := doReq(t, srv, http.MethodPost, "/v1/exclusions", body, cookie)

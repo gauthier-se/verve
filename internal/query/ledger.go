@@ -137,7 +137,12 @@ func foldFigure(s Series) *float64 {
 	}
 	v := s.Summary.Value
 	switch s.Aggregation {
-	case catalog.Sum:
+	case catalog.Sum, catalog.SumByState:
+		// Training volume divides by every calendar day, rest days included, which
+		// is the honest reading of a volume and the one this column's header
+		// implies. Dividing by active days instead would be a per-session average
+		// wearing a per-day label, and the Ledger's columns are fixed (ADR 0021)
+		// precisely so one Metric cannot mean something else than its neighbours.
 		if s.Days == 0 {
 			return nil
 		}

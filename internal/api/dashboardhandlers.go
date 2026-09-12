@@ -503,7 +503,7 @@ func defaultChartType(m catalog.Metric) string {
 		return "bar"
 	case catalog.Average:
 		return "band"
-	case catalog.DurationByState:
+	case catalog.DurationByState, catalog.SumByState:
 		return "stacked_bar"
 	default: // Latest, and unsigned derived Metrics
 		return "line"
@@ -532,7 +532,7 @@ func validateChartType(v *Validator, chartType string, m catalog.Metric) {
 	case "band":
 		v.Check(m.Aggregation == catalog.Average, "chart_type", "the band variant is only for average metrics")
 	case "stacked_bar":
-		v.Check(m.Aggregation == catalog.DurationByState, "chart_type", "the stacked-bar variant is only for duration-by-state metrics")
+		v.Check(m.Aggregation.ByState(), "chart_type", "the stacked-bar variant is only for metrics with a breakdown")
 	case "diverging_bar":
 		v.Check(m.Signed, "chart_type", "the diverging-bar variant is only for signed metrics")
 	}
