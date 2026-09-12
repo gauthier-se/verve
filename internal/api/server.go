@@ -45,6 +45,10 @@ type Config struct {
 	// MapAttribution is the credit line the configured tile source requires. It is
 	// not optional in practice: every public tile server asks for one.
 	MapAttribution string
+	// Version is the build version, stamped into an Archive manifest so a file can
+	// say which Verve wrote it (ADR 0039). Empty is "dev", the same default the CLI
+	// carries.
+	Version string
 }
 
 // Server holds the HTTP layer's dependencies. It owns no global state.
@@ -60,6 +64,7 @@ type Server struct {
 	sessionTTL    time.Duration
 	spa           http.Handler
 	artifactsDir  string
+	version       string
 	mapTiles      string
 	mapAttrib     string
 	imports       *importRegistry
@@ -75,6 +80,10 @@ func New(logger *slog.Logger, models data.Models, engine query.Engine, cfg Confi
 	ttl := cfg.SessionTTL
 	if ttl <= 0 {
 		ttl = defaultSessionTTL
+	}
+	version := cfg.Version
+	if version == "" {
+		version = "dev"
 	}
 	// A failed login always costs an argon2 verify against decoyHash, so timing
 	// doesn't reveal whether the email exists.
@@ -100,6 +109,7 @@ func New(logger *slog.Logger, models data.Models, engine query.Engine, cfg Confi
 		sessionTTL:    ttl,
 		spa:           cfg.SPA,
 		artifactsDir:  cfg.ArtifactsDir,
+		version:       version,
 		mapTiles:      cfg.MapTiles,
 		mapAttrib:     cfg.MapAttribution,
 		imports:       imports,
@@ -135,6 +145,11 @@ func (s *Server) Handler() http.Handler {
 
 	// The Ledger overview: one folded row per Metric with data (ADR 0021).
 	mux.Handle("GET /v1/ledger", s.requireAuth(s.handleLedger))
+
+	// Data on its way out (ADR 0039): the Archive is a transfer of the store, the
+	// CSV is a download of a read. Both are Account-scoped like every read above.
+	mux.Handle("GET /v1/export/archive", s.requireAuth(s.handleExportArchive))
+	mux.Handle("GET /v1/series.csv", s.requireAuth(s.handleSeriesCSV))
 
 	// Manual entries: the Account's own write path into the measurement store
 	// (ADR 0022). DELETE refuses anything but a Manual row.

@@ -103,38 +103,8 @@ func termsToView(terms []catalog.Term) []termView {
 func (s *Server) handleSeries(w http.ResponseWriter, r *http.Request) {
 	accountID, _ := s.accountID(r)
 
-	qs := r.URL.Query()
-	v := NewValidator()
-
-	metrics := qs["metric"]
-	v.Check(len(metrics) > 0, "metric", "must be provided")
-	v.Check(len(metrics) <= maxPanelMetrics, "metric",
-		fmt.Sprintf("at most %d metrics per request", maxPanelMetrics))
-	for _, metric := range metrics {
-		if metric == "" {
-			v.AddError("metric", "must be provided")
-			continue
-		}
-		if _, ok := catalog.Lookup(metric); !ok {
-			v.AddError("metric", unknownMetricMsg)
-		}
-	}
-
-	resolved, ok := s.resolveAxis(w, r, v, timeaxis.Tokens{
-		RangePreset:  qs.Get("range_preset"),
-		RangeFrom:    optionalParam(qs, "range_from"),
-		RangeTo:      optionalParam(qs, "range_to"),
-		BaselineRule: qs.Get("baseline_rule"),
-		BaselineFrom: optionalParam(qs, "baseline_from"),
-		BaselineTo:   optionalParam(qs, "baseline_to"),
-		Bucket:       optionalParam(qs, "bucket"),
-	})
+	metrics, resolved, ok := s.seriesParams(w, r, NewValidator())
 	if !ok {
-		return
-	}
-
-	if !v.Valid() {
-		s.failedValidationResponse(w, r, v.Errors)
 		return
 	}
 
@@ -181,6 +151,52 @@ func (s *Server) handleSeries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.respond(w, r, http.StatusOK, envelope{"series": cmp.Current, "baseline": cmp.Baseline})
+}
+
+// seriesParams parses and validates what /v1/series and /v1/series.csv both
+// take: the Metrics and the time-axis tokens. It answers ok=false having already
+// written the response.
+//
+// It is one function rather than two copies because the CSV has to be the same
+// read as the chart, and a second validator is how "the same read" becomes
+// "almost the same read" three commits later (ADR 0037). The Validator is the
+// caller's so a handler can add its own refusal first and still get one 422:
+// the CSV rejects a baseline that way.
+func (s *Server) seriesParams(w http.ResponseWriter, r *http.Request, v *Validator) ([]string, timeaxis.Resolved, bool) {
+	qs := r.URL.Query()
+
+	metrics := qs["metric"]
+	v.Check(len(metrics) > 0, "metric", "must be provided")
+	v.Check(len(metrics) <= maxPanelMetrics, "metric",
+		fmt.Sprintf("at most %d metrics per request", maxPanelMetrics))
+	for _, metric := range metrics {
+		if metric == "" {
+			v.AddError("metric", "must be provided")
+			continue
+		}
+		if _, ok := catalog.Lookup(metric); !ok {
+			v.AddError("metric", unknownMetricMsg)
+		}
+	}
+
+	resolved, ok := s.resolveAxis(w, r, v, timeaxis.Tokens{
+		RangePreset:  qs.Get("range_preset"),
+		RangeFrom:    optionalParam(qs, "range_from"),
+		RangeTo:      optionalParam(qs, "range_to"),
+		BaselineRule: qs.Get("baseline_rule"),
+		BaselineFrom: optionalParam(qs, "baseline_from"),
+		BaselineTo:   optionalParam(qs, "baseline_to"),
+		Bucket:       optionalParam(qs, "bucket"),
+	})
+	if !ok {
+		return nil, resolved, false
+	}
+
+	if !v.Valid() {
+		s.failedValidationResponse(w, r, v.Errors)
+		return nil, resolved, false
+	}
+	return metrics, resolved, true
 }
 
 // optionalParam returns the query value for key, or nil when it is absent or

@@ -37,6 +37,11 @@ infrastructure, no telemetry.
   inspectable bin instead of being dropped.
 * **Backup is copying a folder.** One directory holds the database and the
   large files. No dump step, no external database.
+* **And a way out.** Take your whole account as one zip: every measurement,
+  night, workout and GPX trace, plus what the catalog could not read, as JSON
+  lines anything can read. Drop it back on the import page of another Verve and
+  it reads it like any other export, down to the manual entries you typed. The
+  numbers behind any curve download as a CSV at the grain on screen.
 
 ### Look at it properly
 
@@ -195,6 +200,13 @@ an already unzipped folder or a bare `export.xml`:
 
 ```sh
 verve -data-dir=/srv/verve import --account=you@example.com export.zip
+```
+
+The way out is its mirror, and `-` writes the archive to standard output, which
+is where encryption belongs if you want it:
+
+```sh
+verve -data-dir=/srv/verve export --account=you@example.com verve-account.zip
 ```
 
 Full configuration, flags, first-run and backup notes:

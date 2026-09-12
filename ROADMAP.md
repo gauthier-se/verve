@@ -35,6 +35,7 @@ Everything below is merged into `main`, tested, and usable today.
 | History | The whole span in one band, phases behind it and gaps drawn as gaps, over a ledger of every import, note, phase and source |
 | Exclusions | A metric, or a stretch of one, refused at every import and purged from what is stored: one rule that deletes and remembers |
 | Google Health | A second connector, reading a Google Takeout: the connector contract lifted out of Apple's package, a registry that recognizes an export by its content, and source resolution moved to day grain so one export cannot take the years another recorded |
+| Export | A way out: one account as a portable zip any Verve reads back as an import, and the numbers behind any curve as a CSV at the grain on screen |
 
 ## Next
 
@@ -76,6 +77,10 @@ below.
 * **Intra-workout series.** Heart rate during a ride lives in `measurements`,
   and reading it per workout is the sub-day read ADR 0012 refuses. It belongs
   with the hypnogram above: one intra-day axis, or neither.
+* **Sharing a Dashboard as JSON.** An Archive deliberately holds data and not
+  arrangement (ADR 0039). A Dashboard that exports and imports as a file is the
+  other half, and the same shape as a contributed palette: declarative data a
+  pull request can carry.
 * **Merging sources** rather than only ranking them, for the case where two
   devices have complementary coverage instead of overlapping coverage.
 * **More connectors.** The connector interface and its declarative mapping now

@@ -9,7 +9,9 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
+	"github.com/gauthier-se/verve/internal/archive"
 	"github.com/gauthier-se/verve/internal/auth"
 	"github.com/gauthier-se/verve/internal/connector"
 	"github.com/gauthier-se/verve/internal/connector/registry"
@@ -27,6 +29,8 @@ Commands:
   account passwd --email=EMAIL     set an account's password
   import --account=EMAIL FILE      import a health export (Apple Health .zip/export.xml,
                                    Google Health Takeout .zip)
+  export --account=EMAIL FILE      write the account's data as a Verve Archive
+                                   (FILE may be - for standard output)
   serve [--addr=:8080] [--secure-cookie]
                                    run the JSON API server
   version                          print the build version
@@ -51,6 +55,8 @@ func (app *application) dispatch(ctx context.Context, args []string) error {
 		return app.accountCommand(ctx, args[1:])
 	case "import":
 		return app.importCommand(ctx, args[1:])
+	case "export":
+		return app.exportCommand(ctx, args[1:])
 	case "serve":
 		return app.serveCommand(ctx, args[1:])
 	case "help", "-h", "--help":
@@ -202,6 +208,102 @@ func (app *application) importCommand(ctx context.Context, args []string) error 
 	}
 	renderReport(os.Stdout, report)
 	return nil
+}
+
+// exportCommand writes one Account's canonical data as a Verve Archive: every
+// Measurement, State, workout and Unmapped record it holds, with the GPX files
+// the workouts reference (ADR 0039).
+//
+// It is the counterpart of importCommand and deliberately its mirror, down to
+// the flag and the error messages: the pair is one round trip, and a person who
+// has run one should be able to guess the other.
+func (app *application) exportCommand(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("export", flag.ContinueOnError)
+	email := fs.String("account", "", "email of the owning account")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *email == "" {
+		return errors.New("export: --account=EMAIL is required")
+	}
+	if fs.NArg() != 1 {
+		return errors.New("export: exactly one output file argument is required\n\nusage: verve export --account=EMAIL FILE")
+	}
+	path := fs.Arg(0)
+
+	acc, err := app.models.Accounts.GetByEmail(ctx, *email)
+	if err != nil {
+		if errors.Is(err, data.ErrRecordNotFound) {
+			return fmt.Errorf("no account with email %q", *email)
+		}
+		return err
+	}
+
+	// "-" writes to standard output, which is what makes the encryption this
+	// feature does not implement somebody else's job:
+	//   verve export --account=me - | age -r … > verve.age
+	out := io.Writer(app.stdout)
+	if path != "-" {
+		f, err := os.Create(path)
+		if err != nil {
+			return fmt.Errorf("export: create %s: %w", path, err)
+		}
+		defer f.Close()
+		out = f
+	}
+
+	// One read transaction for the whole export, so an import running beside it
+	// cannot land half of itself in the middle of the file (ADR 0038). It holds
+	// the single connection for the duration, which is the price of an Archive
+	// that is one consistent moment rather than several.
+	var summary archive.Summary
+	err = app.models.Tx(ctx, func(tx data.Models) error {
+		src := archive.NewModelSource(tx, acc.ID, app.config.artifactsDir())
+		summary, err = archive.Write(ctx, out, src, version, time.Now())
+		return err
+	})
+	if err != nil {
+		return err
+	}
+
+	// The summary goes to stderr when the Archive itself is on stdout, or the
+	// pipe gets a report glued to the end of a zip.
+	w := io.Writer(os.Stderr)
+	if path != "-" {
+		w = app.stdout
+	}
+	renderArchiveSummary(w, path, summary)
+	return nil
+}
+
+// renderArchiveSummary writes what an export contained, in the columns the
+// import report uses.
+func renderArchiveSummary(w io.Writer, path string, s archive.Summary) {
+	where := path
+	if path == "-" {
+		where = "standard output"
+	}
+	fmt.Fprintf(w, "\nExported to %s\n\n", where)
+	rows := []struct {
+		label string
+		n     int64
+	}{
+		{"measurements", s.Counts.Measurements},
+		{"states", s.Counts.States},
+		{"sessions", s.Counts.Sessions},
+		{"session stats", s.Counts.SessionStats},
+		{"routes", s.Counts.Routes},
+		{"unmapped", s.Counts.Unmapped},
+		{"imports", s.Counts.Imports},
+		{"route files", int64(s.Artifacts)},
+	}
+	for _, r := range rows {
+		fmt.Fprintf(w, "  %-38s %8d\n", r.label, r.n)
+	}
+	for _, warning := range s.Warnings {
+		fmt.Fprintf(w, "\n  warning: %s\n", warning)
+	}
+	fmt.Fprintln(w)
 }
 
 // renderReport writes a human-readable import summary: one line per Metric with

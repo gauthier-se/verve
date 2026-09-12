@@ -73,6 +73,13 @@ when it starts that import.
 brings back whatever the export still holds. That is the recovery path for
 imported rows, and there is none for Manual ones.
 
+> Amended by ADR 0039: an Archive taken before the purge is a copy, and the
+> Connector that reads one back is the single Connector allowed to write the
+> `Manual` Source, so a Manual row is no longer unrecoverable in principle. It
+> is still refused while the Exclusion stands, and for the reason this ADR gives
+> in the first place: a standing refusal is the more recent statement about that
+> Metric than the day the value was typed.
+
 Scope: **Measurements**. A slug that is derived (no rows of its own, ADR 0014) or
 State-backed (`sleep`, ADR 0027) is refused with a 422 that says which it is.
 

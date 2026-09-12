@@ -539,8 +539,33 @@ not the thing its owner creates).
 The deduplication identity of a Measurement, derived by hashing
 `(metric, source, startDate, endDate, value, unit)` — because Apple records
 carry no stable ID. `creationDate` is deliberately excluded (it shifts between
-exports). A row whose content key already exists is skipped on re-import.
+exports). A row whose content key already exists is skipped on re-import. Its
+preimage is what the **Source** said and not only what Verve stored, since it
+hashes the raw value string and raw unit rather than the normalized value, which
+is why an **Archive** carries the key rather than leaving it to be recomputed:
+a second derivation would give the same reading a second identity (ADR 0039).
 _Avoid_: Fingerprint, Dedup key, Hash.
+
+**Archive**:
+The file Verve writes holding one **Account**'s canonical data as stored, plus
+the GPX artifacts its workouts reference and a manifest stating the format
+version and the row counts. It is a *transfer*, not a read: it hands over rows
+with the timestamps they were stored with, which is why the day-resolution cap
+on the series contract does not bind it (ADR 0012 caps an axis, and an Archive
+serves none). It carries no row ids, because an id is a position in one
+database's tables, and it does carry the **Content key**, because nothing
+downstream can recompute one. Reading it back is a **Connector** like any other,
+so it dedups, records an **Import**, and honours the Account's **Exclusions**;
+it is also the one Connector that may write the `Manual` **Source**, since it
+restores what the owner typed. It holds no **Dashboard**, **Panel**, **Pin**,
+**Phase** or **Annotation**: those are arrangement and commentary, and they stay
+with the instance. Copying `VERVE_DATA_DIR` remains the backup, an Archive is
+portability (ADR 0039).
+_Avoid_: Export (taken, and precisely: an Export is what a *source* produces and
+a Connector reads, which is what an Archive becomes once it is read back),
+Backup (copying the data directory is the backup), Dump (names the storage format
+rather than the canonical model), Snapshot (implies restoring an instance to a
+point in time, which an Archive cannot do).
 
 **Source priority**:
 A per-Metric ordering of Sources used to resolve overlap at read time. Verve

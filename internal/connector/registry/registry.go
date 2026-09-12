@@ -14,6 +14,7 @@ import (
 	"github.com/gauthier-se/verve/internal/connector"
 	"github.com/gauthier-se/verve/internal/connector/applehealth"
 	"github.com/gauthier-se/verve/internal/connector/googlehealth"
+	"github.com/gauthier-se/verve/internal/connector/verve"
 )
 
 // connectors is every compiled-in Connector, in the order they are asked. Their
@@ -22,6 +23,7 @@ import (
 var connectors = []connector.Connector{
 	applehealth.Connector{},
 	googlehealth.Connector{},
+	verve.Connector{},
 }
 
 // All returns the registered Connectors. The returned slice must not be mutated.

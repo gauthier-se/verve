@@ -1,12 +1,13 @@
 import * as React from "react";
 import { Link } from "@tanstack/react-router";
-import { Ban, Check, Plus, Upload, X, XCircle } from "lucide-react";
+import { ArrowDownToLine, Ban, Check, Plus, Upload, X, XCircle } from "lucide-react";
 import { useOnImportDone, useImportStatus, useUploadImport } from "@/hooks/use-import";
 import { useDashboards } from "@/hooks/use-dashboards";
 import { useExclusions, useRemoveExclusion } from "@/hooks/use-exclusions";
 import { ApiError } from "@/lib/api";
 import { formatDay } from "@/lib/format";
 import { metricLabel } from "@/lib/metrics";
+import { archiveHref } from "@/lib/series-url";
 import type { Exclusion, ImportJob } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
@@ -60,7 +61,7 @@ export function ImportPage() {
   return (
     <div className="flex h-full flex-col">
       <header className="border-b px-6 py-3.5">
-        <ScreenTitle>Import data</ScreenTitle>
+        <ScreenTitle>Import & export</ScreenTitle>
       </header>
 
       <div className="flex-1 overflow-y-auto px-6 py-8">
@@ -77,9 +78,41 @@ export function ImportPage() {
 
           {!busy && job?.status === "done" && job.report && <ReportCard job={job} />}
           {!busy && job?.status === "failed" && <FailureCard message={job.error} />}
+
+          <ExportCard />
         </div>
       </div>
     </div>
+  );
+}
+
+/** ExportCard is the way out (ADR 0039). It sits under the drop zone because the
+ *  page reads top to bottom as data coming in and then data going out, and because
+ *  a person looking for their data will not look for it under a settings screen.
+ *
+ *  A link, not a button with a fetch behind it: the response has no Content-Length,
+ *  so the browser download bar is the only honest progress there is. */
+function ExportCard() {
+  return (
+    <Card className="flex flex-col gap-3 p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <SectionTitle>Take your data out</SectionTitle>
+        <Button asChild variant="outline" size="sm" className="h-7 gap-1.5 px-2.5 text-xs">
+          <a href={archiveHref} download>
+            <ArrowDownToLine className="size-3.5" /> Download archive
+          </a>
+        </Button>
+      </div>
+      <p className="text-2xs leading-relaxed text-muted-foreground/70">
+        One zip holding every measurement, night, workout and GPX trace this account
+        holds, plus what the catalog could not read. Drop it back on this page to read
+        it into another Verve: it is an export like any other.
+      </p>
+      <p className="text-2xs leading-relaxed text-muted-foreground/70">
+        Dashboards, panels and pins stay with this instance. The file is your whole
+        history in clear, and nothing encrypts it for you.
+      </p>
+    </Card>
   );
 }
 
