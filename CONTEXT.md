@@ -65,7 +65,9 @@ is what closes: a curated table maps a known Activity to a label, an icon, a
 group (`cardio`, `strength`, `water`, `winter`, `other`) and whether it reads in
 pace or in speed, and an unknown one falls back to its own prettified slug
 (ADR 0002). The group is a server-side filter and not a decoration, which is why
-the table is Catalog data rather than a web asset.
+the table is Catalog data rather than a web asset. It is also a breakdown
+dimension and not only a filter and a label: **Training volume** stacks a bucket
+by Activity, which is why the open set has to be capped somewhere (ADR 0040).
 _Avoid_: Sport, Type (too generic), Workout type, Discipline.
 
 **Session stat**:
@@ -79,6 +81,23 @@ promoted to columns on the Session, deliberately duplicated so the list sorts
 and displays without a join per row (ADR 0028).
 _Avoid_: Statistic (unqualified, it reads as a computed figure Verve derives),
 Summary (that is the Panel term), Total (only one of the four aggregates).
+
+**Training volume**:
+The aggregate of an Account's **Sessions** over a time axis, read as a
+**Metric**: `training_time` in minutes and `training_distance` in kilometres,
+folded per bucket and broken down by **Activity**. It is the aggregate side of
+the data the Workouts list shows and it carries none of a Session's identity, so
+ADR 0028 is untouched: a bar is a fold of the workouts in a bucket, not a
+workout. The breakdown keeps the five largest Activities over the window and
+folds the rest into `other`, six segments being the ramp's length (ADR 0036); the
+capped-away Activities still count in every total, because the cap is how a bar
+is drawn and never what it says. A bucket is the day the workout started, with
+none of the **Night**'s noon shift, since a workout that runs past midnight is
+one its owner names by the evening it began (ADR 0040).
+_Avoid_: Training load (it names a computed stress model, TSS or ACWR, which
+Verve does not compute and will not, for the same reason it does not interpret),
+Load, Volume unqualified (it collides with audio exposure), Activity time (reads
+as one Activity's), Workout metrics (**Session stat** has that job).
 
 **Route**:
 A GPS track attached to a **Session**, stored as its GPX file under

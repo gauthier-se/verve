@@ -59,7 +59,10 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Slice(views, func(i, j int) bool { return views[i].Slug < views[j].Slug })
 
-	s.respond(w, r, http.StatusOK, envelope{"metrics": views})
+	// The Activity table travels with the Catalog: it is reference data, not
+	// Account data, and a chart that breaks a bucket down by Activity needs to
+	// label a bare slug (ADR 0040). The client caches both for the session.
+	s.respond(w, r, http.StatusOK, envelope{"metrics": views, "activities": catalog.Activities()})
 }
 
 // metricToView projects a Catalog Metric to its API shape. Aggregation is empty

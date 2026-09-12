@@ -202,3 +202,90 @@ func seedRows(t *testing.T, models data.Models, acc int64, ms []data.Measurement
 		t.Fatalf("seed measurements: %v", err)
 	}
 }
+
+// Training volume is folded from the Sessions family (ADR 0040), which the
+// DISTINCT over measurements cannot see any more than it sees sleep. An Account
+// whose only data is workouts still gets its rows.
+func TestMetricsWithDataSeesTheSessionsFamily(t *testing.T) {
+	e, models, acc := setup(t)
+	seedWorkouts(t, models, acc, []workout{
+		{activity: "running", start: daysBefore(2), minutes: 45, km: km(9)},
+	})
+
+	got, err := e.MetricsWithData(context.Background(), acc)
+	if err != nil {
+		t.Fatalf("MetricsWithData: %v", err)
+	}
+	want := []string{"training_distance", "training_time"} // sorted
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("metrics = %v, want %v", got, want)
+	}
+}
+
+// An Account with no workouts gets neither row, so the scoreboard shows no empty
+// lines (ADR 0021).
+func TestMetricsWithDataOmitsTrainingWithoutSessions(t *testing.T) {
+	e, models, acc := setup(t)
+	seedRows(t, models, acc, []data.Measurement{
+		{Metric: "steps", Value: 700, OriginalUnit: "count", StartAt: daysBefore(2), EndAt: daysBefore(2), Source: "Watch", ContentKey: "s1"},
+	})
+
+	got, err := e.MetricsWithData(context.Background(), acc)
+	if err != nil {
+		t.Fatalf("MetricsWithData: %v", err)
+	}
+	for _, slug := range got {
+		if slug == "training_time" || slug == "training_distance" {
+			t.Fatalf("metrics = %v, want no training row for an Account with no workouts", got)
+		}
+	}
+}
+
+// The Ledger's per-day figure divides a volume by every calendar day, rest days
+// included. Dividing by active days instead would be a per-session average
+// wearing a per-day label, and the columns are fixed so one Metric cannot mean
+// something else than its neighbours (ADR 0021).
+func TestLedgerTrainingDividesByCalendarDays(t *testing.T) {
+	e, models, acc := setup(t)
+	seedWorkouts(t, models, acc, []workout{
+		{activity: "running", start: daysBefore(2), minutes: 70},
+	})
+
+	rows, err := e.Ledger(context.Background(), acc, ledgerNow)
+	if err != nil {
+		t.Fatalf("Ledger: %v", err)
+	}
+	var row *LedgerRow
+	for i := range rows {
+		if rows[i].Metric == "training_time" {
+			row = &rows[i]
+		}
+	}
+	if row == nil {
+		t.Fatalf("rows = %+v, want a training_time row", rows)
+	}
+	if row.Week == nil {
+		t.Fatal("the training row has no week figure")
+	}
+	if got := *row.Week; got != 10 {
+		t.Errorf("week figure = %v, want 70 minutes over 7 days", got)
+	}
+}
+
+// An Account that only lifts has workouts and no kilometres. It gets the time row
+// and not the distance one, because a row of dashes is the empty row the Ledger
+// exists not to show (ADR 0021).
+func TestMetricsWithDataOmitsDistanceWithoutOne(t *testing.T) {
+	e, models, acc := setup(t)
+	seedWorkouts(t, models, acc, []workout{
+		{activity: "traditional_strength_training", start: daysBefore(2), minutes: 60},
+	})
+
+	got, err := e.MetricsWithData(context.Background(), acc)
+	if err != nil {
+		t.Fatalf("MetricsWithData: %v", err)
+	}
+	if len(got) != 1 || got[0] != "training_time" {
+		t.Fatalf("metrics = %v, want training_time alone", got)
+	}
+}

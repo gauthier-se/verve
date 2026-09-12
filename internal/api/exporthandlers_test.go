@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -309,4 +310,44 @@ func entryBody(t *testing.T, zr *zip.Reader, name string) string {
 		t.Fatalf("read %s: %v", name, err)
 	}
 	return string(body)
+}
+
+// A Metric with a breakdown downloads one row per key, which the CSV has done
+// since it was written and nothing asserted. Training volume is the second such
+// Metric (ADR 0040) and the first one whose keys are an open set, so the
+// generalization is worth pinning rather than rediscovering.
+func TestSeriesCSVSplitsTrainingByActivity(t *testing.T) {
+	srv, models, cookie := newTestServer(t)
+	acc, err := models.Accounts.GetByEmail(context.Background(), testEmail)
+	if err != nil {
+		t.Fatalf("get account: %v", err)
+	}
+	distance := 9.0
+	for i, w := range []struct {
+		activity string
+		start    string
+		seconds  float64
+	}{
+		{"running", "2024-01-01T06:00:00Z", 2700},
+		{"cycling", "2024-01-01T18:00:00Z", 5400},
+	} {
+		s := &data.Session{
+			AccountID: acc.ID, ActivityType: w.activity, StartAt: w.start, EndAt: w.start,
+			Duration: w.seconds, TotalDistance: &distance, Source: "Watch",
+			ContentKey: fmt.Sprintf("w%d", i),
+		}
+		if _, err := models.Sessions.InsertWorkout(context.Background(), s, nil, nil); err != nil {
+			t.Fatalf("seed workout: %v", err)
+		}
+	}
+
+	_, body := doRaw(t, srv,
+		"/v1/series.csv?metric=training_time&range_preset=custom&range_from=2024-01-01&range_to=2024-01-02&bucket=day", cookie)
+
+	want := "bucket_start,bucket_end,metric,unit,aggregation,value,count\r\n" +
+		"2024-01-01,2024-01-02,training_time.cycling,min,sum_by_state,90,2\r\n" +
+		"2024-01-01,2024-01-02,training_time.running,min,sum_by_state,45,2\r\n"
+	if string(body) != want {
+		t.Errorf("csv =\n%q\nwant\n%q", body, want)
+	}
 }

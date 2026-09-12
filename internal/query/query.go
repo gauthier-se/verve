@@ -151,12 +151,16 @@ func (e Engine) Series(ctx context.Context, req Request) (Series, error) {
 	if metric.Nature == catalog.Derived {
 		return e.seriesDerived(ctx, req, metric)
 	}
-	// A duration_by_state Metric reads intervals from the States family, not points
-	// from measurements, and buckets them by Night (sleep.go, ADR 0027). Everything
-	// below this line is measurement-shaped — the Source filter, the Manual overlay,
-	// the per-bucket SQL — and stays untouched by it.
-	if metric.Aggregation == catalog.DurationByState {
+	// A by-state Metric is read from another family and folded into a breakdown:
+	// sleep from intervals in the States family, bucketed by Night (sleep.go, ADR
+	// 0027), and training volume from workouts in the Sessions family (training.go,
+	// ADR 0040). Everything below this line is measurement-shaped, the Source
+	// filter, the Manual overlay and the per-bucket SQL, and stays untouched by both.
+	switch metric.Aggregation {
+	case catalog.DurationByState:
 		return e.seriesSleep(ctx, req, metric)
+	case catalog.SumByState:
+		return e.seriesTraining(ctx, req, metric)
 	}
 
 	out := Series{

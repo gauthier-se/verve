@@ -36,6 +36,7 @@ Everything below is merged into `main`, tested, and usable today.
 | Exclusions | A metric, or a stretch of one, refused at every import and purged from what is stored: one rule that deletes and remembers |
 | Google Health | A second connector, reading a Google Takeout: the connector contract lifted out of Apple's package, a registry that recognizes an export by its content, and source resolution moved to day grain so one export cannot take the years another recorded |
 | Export | A way out: one account as a portable zip any Verve reads back as an import, and the numbers behind any curve as a CSV at the grain on screen |
+| Training volume | The hours and kilometres your workouts come to, per bucket and stacked by activity: the aggregate side of the Sessions the list already holds |
 
 ## Next
 
@@ -70,10 +71,6 @@ below.
   intra-day axis the API deliberately does not serve. Sleep onset, wake time and
   efficiency belong with it, and none of them is expressible as a derived
   Metric's Formula.
-* **Training volume.** A workout is an entity and gets no Panel (ADR 0028).
-  Time or distance per activity, stacked on a time axis, is the aggregate side
-  of the same data, and it is expressible as the `duration_by_state` shape
-  sleep already uses. It is a Metric question, not a Session one.
 * **Intra-workout series.** Heart rate during a ride lives in `measurements`,
   and reading it per workout is the sub-day read ADR 0012 refuses. It belongs
   with the hypnogram above: one intra-day axis, or neither.

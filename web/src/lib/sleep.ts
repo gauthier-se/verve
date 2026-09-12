@@ -3,7 +3,7 @@
 // Metric-specific vocabulary in the client, and apart from panel-chart.tsx because
 // the chart imports it.
 import { CATEGORY_COLORS, RECESSED } from "./chart";
-import type { Point, Series } from "./types";
+import type { Point } from "./types";
 
 /** SLEEP_STAGES is every Stage the server can send, bottom to top in the stack.
  *  `awake` sits on top because an interruption reads as a break in the night rather
@@ -53,11 +53,6 @@ export const STAGE_COLOR_INDEX: Record<string, number> = {
  *  unlabelled segment is better than a missing one. */
 export function stageLabel(stage: string): string {
   return STAGE_LABEL[stage] ?? stage.replace(/_/g, " ");
-}
-
-/** isSleepSeries reports whether a Series carries a Stage breakdown to stack. */
-export function isSleepSeries(s: Series | undefined): boolean {
-  return s?.aggregation === "duration_by_state";
 }
 
 /** stagesPresent lists the Stages a set of Points actually contains, in stack order,

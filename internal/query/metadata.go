@@ -104,6 +104,24 @@ func (e Engine) MetricsWithData(ctx context.Context, accountID int64) ([]string,
 		}
 	}
 
+	// Training volume is folded from the Sessions family (ADR 0040), which the
+	// DISTINCT above cannot see either. The two Metrics are probed separately
+	// rather than together: an Account that only lifts has workouts and no
+	// kilometres, and a row of dashes is the empty row this function exists to
+	// keep off the scoreboard.
+	for _, slug := range []string{metricTrainingTime, metricTrainingDistance} {
+		if seen[slug] {
+			continue
+		}
+		has, err := e.hasTrainingData(ctx, accountID, slug)
+		if err != nil {
+			return nil, err
+		}
+		if has {
+			out = append(out, slug)
+		}
+	}
+
 	sort.Strings(out)
 	return out, nil
 }

@@ -74,6 +74,11 @@ infrastructure, no telemetry.
   statistic your device reported, plus the GPX trace as a map with an elevation
   and a pace profile. The basemap is opt-in: configure no tile server and the
   browser makes no outbound request at all.
+* **Training volume, on the time axis.** The hours and the kilometres those
+  workouts come to, per day, week or month, stacked by activity so a month of
+  running and a month of cycling do not read the same. It is a metric like any
+  other, so it sits on a panel beside your sleep or your body mass, and asks
+  the question the workout list cannot: what happened to the volume, over time.
 * **What moves with what.** Every metric you pinned, paired against every other
   over one window, ranked by strength, optionally with one of them lagged by a
   day or a week — "does a short night show up in tomorrow's resting heart rate".
