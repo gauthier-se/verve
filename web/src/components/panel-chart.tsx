@@ -268,9 +268,45 @@ function marks(
   // slot there is already another Series.
   const band = multi ? color : seriesColor(i + 1, offset);
   const key: `v${number}` = `v${i}`;
+  const trendKey: `trend${number}` = `trend${i}`;
+  // A sampled Metric's smoothed line, when the server sent one. It is the same hue
+  // rather than a second colour: a different colour is the grammar for a different
+  // Metric (ADR 0020), and these are one Metric read two ways.
+  const hasTrend = data.some((d) => d[trendKey] !== undefined);
+  const trendLine = hasTrend ? (
+    <Line
+      key={trendKey}
+      yAxisId={yAxisId}
+      type="monotone"
+      dataKey={trendKey}
+      stroke={color}
+      strokeWidth={2}
+      dot={false}
+      // The whole point of ADR 0032 at this layer: Recharts bridges nulls by default,
+      // which would draw the smoothed line straight across months nobody weighed.
+      connectNulls={false}
+      isAnimationActive={false}
+    />
+  ) : null;
   switch (chartType) {
     case "line":
-      return (
+      // With a trend drawn, the readings are demoted to the scatter they are: thin and
+      // faint, still present as the evidence, no longer competing to be read as the
+      // signal.
+      return trendLine ? (
+        <React.Fragment key={key}>
+          <Line
+            yAxisId={yAxisId}
+            type="monotone"
+            dataKey={key}
+            stroke={color}
+            strokeWidth={1}
+            strokeOpacity={0.35}
+            dot={false}
+          />
+          {trendLine}
+        </React.Fragment>
+      ) : (
         <Line key={key} yAxisId={yAxisId} type="monotone" dataKey={key} stroke={color} strokeWidth={2} dot={false} />
       );
     case "area":

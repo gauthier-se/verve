@@ -18,7 +18,6 @@ package estimate
 import (
 	"context"
 	"fmt"
-	"math"
 	"time"
 
 	"github.com/gauthier-se/verve/internal/query"
@@ -501,31 +500,12 @@ func (e Engine) everLatest(ctx context.Context, accountID int64, metric string, 
 // units per day. The x axis is days elapsed from origin, so a gap in the series is a
 // genuinely missing x rather than a compressed one. Fewer than two distinct x values, or
 // a degenerate fit, yields ok=false.
+// ordinaryLeastSquares is query's fit, under the name this package has always called
+// it. The implementation moved there when a Panel started drawing the same line
+// (ADR 0042): the rate the Plan page reasons from and the rate a chart quotes must
+// come from one method, or they are two answers to one question.
 func ordinaryLeastSquares(points []query.Point, origin time.Time) (float64, bool) {
-	if len(points) < 2 {
-		return 0, false
-	}
-	var n, sumX, sumY, sumXY, sumXX float64
-	for _, p := range points {
-		day, err := time.Parse("2006-01-02", p.Bucket)
-		if err != nil {
-			continue
-		}
-		x := day.Sub(origin).Hours() / 24
-		n++
-		sumX += x
-		sumY += p.Value
-		sumXY += x * p.Value
-		sumXX += x * x
-	}
-	if n < 2 {
-		return 0, false
-	}
-	denom := n*sumXX - sumX*sumX
-	if denom == 0 || math.IsNaN(denom) {
-		return 0, false
-	}
-	return (n*sumXY - sumX*sumY) / denom, true
+	return query.OrdinaryLeastSquares(points, origin)
 }
 
 func values(points []query.Point) []float64 {

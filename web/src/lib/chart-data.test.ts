@@ -115,3 +115,43 @@ describe("mergeSeries, several Metrics", () => {
     expect(row.baselineBucket).toBeUndefined();
   });
 });
+
+describe("mergeSeries trend", () => {
+  it("carries the smoothed value and leaves a trendless bucket absent", () => {
+    // A bucket with no trend must produce no key at all, not a zero: the chart draws
+    // that line with connectNulls={false}, so an absent key is what breaks it across a
+    // gap (ADR 0032) and a zero would draw a cliff to the floor.
+    const s: Series = {
+      metric: "body_mass",
+      unit: "kg",
+      aggregation: "latest",
+      bucket: "day",
+      source: "Scale",
+      days: 3,
+      points: [
+        { bucket: "2026-07-15", value: 92.15, trend: 92.15 },
+        { bucket: "2026-07-16", value: 91.15 },
+        { bucket: "2026-07-17", value: 90.95, trend: 91.8 },
+      ],
+    };
+    const rows = mergeSeries([s]);
+    expect(rows[0].trend0).toBe(92.15);
+    expect("trend0" in rows[1]).toBe(false);
+    expect(rows[2].trend0).toBe(91.8);
+  });
+
+  it("keeps two Metrics' trends on separate keys", () => {
+    const mk = (metric: string, trend: number): Series => ({
+      metric,
+      unit: "kg",
+      aggregation: "latest",
+      bucket: "day",
+      source: "Scale",
+      days: 1,
+      points: [{ bucket: "2026-07-15", value: 1, trend }],
+    });
+    const rows = mergeSeries([mk("body_mass", 90), mk("lean_body_mass", 66)]);
+    expect(rows[0].trend0).toBe(90);
+    expect(rows[0].trend1).toBe(66);
+  });
+});

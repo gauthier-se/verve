@@ -14,7 +14,10 @@ export interface ChartDatum {
   bucket: string;
   baselineValue?: number;
   baselineBucket?: string;
-  [seriesKey: `v${number}` | `band${number}` | `stage:${string}`]: number | number[] | undefined;
+  [seriesKey: `v${number}` | `band${number}` | `trend${number}` | `stage:${string}`]:
+    | number
+    | number[]
+    | undefined;
 }
 
 /** stageKey namespaces a Stage's minutes on the datum, so a Stage slug can never
@@ -38,6 +41,9 @@ export function mergeSeries(list: Series[], baseline?: Series): ChartDatum[] {
       const bp = baseline?.points[i];
       const d: ChartDatum = { bucket: p.bucket, v0: p.value };
       if (p.min !== undefined && p.max !== undefined) d.band0 = [p.min, p.max];
+      // The smoothed value, left absent on a bucket that has none so the line drawn
+      // from it breaks there rather than bridging a gap (ADR 0032).
+      if (p.trend !== undefined) d.trend0 = p.trend;
       // The Stage breakdown a stacked bar reads, carried beside the value the
       // tooltip and the Baseline still use (ADR 0027).
       for (const [stage, minutes] of Object.entries(p.states ?? {})) d[stageKey(stage)] = minutes;
@@ -59,6 +65,7 @@ export function mergeSeries(list: Series[], baseline?: Series): ChartDatum[] {
       }
       row[`v${i}`] = p.value;
       if (p.min !== undefined && p.max !== undefined) row[`band${i}`] = [p.min, p.max];
+      if (p.trend !== undefined) row[`trend${i}`] = p.trend;
     }
   });
   // Bucket dates are YYYY-MM-DD, so lexical order is chronological.
