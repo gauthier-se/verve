@@ -198,8 +198,14 @@ function ExpenditureCard({ expenditure }: { expenditure?: Expenditure }) {
  *  weigh-ins alone — which is exactly why each one carries and prints its own. */
 function windowNote(from?: string, to?: string): string {
   if (!from || !to) return "";
-  const today = new Date().toISOString().slice(0, 10);
-  if (to >= today) return "";
+  // The bounds are the server's UTC days and "today" here is the viewer's, which can be
+  // a day apart either side of midnight. One day of slack absorbs that: a window this
+  // would wrongly date is at most a day old, and one worth dating is weeks old by the
+  // nature of the thing — a threshold of exactly today would print a date on a perfectly
+  // current figure for whoever opens the page at 00:30 in Paris.
+  const cutoff = new Date();
+  cutoff.setUTCDate(cutoff.getUTCDate() - 1);
+  if (to >= cutoff.toISOString().slice(0, 10)) return "";
   // `to` is exclusive, so the last day the window covers is the day before it.
   const last = new Date(`${to}T00:00:00Z`);
   last.setUTCDate(last.getUTCDate() - 1);
