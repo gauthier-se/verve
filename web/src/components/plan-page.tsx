@@ -148,7 +148,11 @@ function ExpenditureCard({ expenditure }: { expenditure?: Expenditure }) {
     <Card title="Daily expenditure">
       <div className="flex flex-wrap items-baseline gap-3">
         <span className="text-4xl font-semibold tabular-nums">{kcal(expenditure.kcal)}</span>
-        <span className="text-sm text-muted-foreground">{BASIS_LABEL[expenditure.basis]}</span>
+        <span className="text-sm text-muted-foreground">
+          {BASIS_LABEL[expenditure.basis]}
+          {windowNote(expenditure.window_from, expenditure.window_to) &&
+            `, ${windowNote(expenditure.window_from, expenditure.window_to)}`}
+        </span>
       </div>
       <p className="mt-2 text-xs text-muted-foreground">
         {expenditure.basis === "observed" && expenditure.mean_intake_kcal !== undefined && (
@@ -180,6 +184,26 @@ function ExpenditureCard({ expenditure }: { expenditure?: Expenditure }) {
       )}
     </Card>
   );
+}
+
+/** windowNote dates a figure whose window does not end today.
+ *
+ *  A figure computed over a stretch that ended three weeks ago is a different claim from
+ *  one computed over this week, and only the first is true of the data. ADR 0023 already
+ *  makes this argument for the basis; the window is the other half of the same
+ *  provenance. Returns "" when the window ends today, because dating today's figure adds
+ *  noise and no information.
+ *
+ *  The expenditure and the rate can resolve to different windows — the rate is gated on
+ *  weigh-ins alone — which is exactly why each one carries and prints its own. */
+function windowNote(from?: string, to?: string): string {
+  if (!from || !to) return "";
+  const today = new Date().toISOString().slice(0, 10);
+  if (to >= today) return "";
+  // `to` is exclusive, so the last day the window covers is the day before it.
+  const last = new Date(`${to}T00:00:00Z`);
+  last.setUTCDate(last.getUTCDate() - 1);
+  return `${formatDay(from)} – ${formatDay(last.toISOString().slice(0, 10), { year: true })}`;
 }
 
 /** ShortfallNote is the half the basis label cannot carry: not what this number is, but
@@ -268,7 +292,11 @@ function RateCard({
       {plan.actual_rate && (
         <p className="mt-3 text-xs text-muted-foreground">
           You are measurably moving at {pct(plan.actual_rate.pct_per_week)} per week, from{" "}
-          {plan.actual_rate.mass_days} weigh-ins over {plan.actual_rate.window_days} days.
+          {plan.actual_rate.mass_days} weigh-ins over {plan.actual_rate.window_days} days
+          {windowNote(plan.actual_rate.window_from, plan.actual_rate.window_to)
+            ? ` (${windowNote(plan.actual_rate.window_from, plan.actual_rate.window_to)})`
+            : ""}
+          .
         </p>
       )}
 

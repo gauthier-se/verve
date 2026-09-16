@@ -496,15 +496,17 @@ func TestIntakeDaysNeededMatchesTheCoverageRule(t *testing.T) {
 	}
 }
 
-// TestShortfallNamesWhatWasMissing is the reference Account's state after a break: it
-// logged densely for six weeks, stopped, and three weeks later both thresholds fail by
-// a small margin. The figure falls to the devices; the shortfall says why.
+// TestShortfallNamesWhatWasMissing is an Account whose logging is too thin to qualify
+// *anywhere* in the lookback: two days a week, never 20 in any 28. The figure falls to
+// the devices; the shortfall says why, and the counts are the current window's, because
+// that is the window that will qualify first if they start logging tonight.
 func TestShortfallNamesWhatWasMissing(t *testing.T) {
 	e, models, acc := setup(t)
 	now := time.Date(2026, 9, 16, 0, 0, 0, 0, time.UTC)
 
-	// Dense logging that ended 20 days ago, so only 8 of its days fall in the window.
-	seedDailyEnding(t, models, acc, metricIntake, "kcal", "Yazio", now, 44, 20, func(int) float64 { return 2263 })
+	// Sparse logging across the whole lookback: every third day, so no 28-day placement
+	// reaches 20 intake days.
+	seedEveryNth(t, models, acc, metricIntake, "kcal", "Yazio", now, 150, 3, func(int) float64 { return 2263 })
 	seedDailyEnding(t, models, acc, metricBodyMass, "kg", "Zepp Life", now, 44, 20, func(i int) float64 {
 		return 92.15 - 4.85*float64(i)/43
 	})
@@ -546,15 +548,28 @@ func TestShortfallNamesWhatWasMissing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("last intake day %q is not a date: %v", got.LastIntakeDay, err)
 	}
-	daysAgo := int(now.Sub(last).Hours() / 24)
-	if daysAgo < 14 {
-		t.Errorf("last intake day is only %d days ago; the fixture no longer reproduces a break", daysAgo)
+	if daysAgo := int(now.Sub(last).Hours() / 24); daysAgo > 4 {
+		t.Errorf("last intake day is %d days ago; this fixture logs every third day", daysAgo)
 	}
-	// And it is the real last log, not merely the last one the window could see: an
-	// implementation that read only the window would answer the window's own first day.
-	if daysAgo >= observedWindowDays {
-		t.Errorf("last intake day is %d days ago, outside the %d-day window — so this fixture "+
-			"does not exercise the lookback either", daysAgo, int(observedWindowDays))
+}
+
+// seedEveryNth writes a reading every nth day over `days` days ending yesterday: thin
+// logging, the kind that never fills a window however the window is placed.
+func seedEveryNth(t *testing.T, models data.Models, acc int64, metric, unit, source string,
+	now time.Time, days, n int, value func(i int) float64,
+) {
+	t.Helper()
+	rows := make([]data.Measurement, 0, days/n+1)
+	for i := 0; i < days; i += n {
+		at := now.AddDate(0, 0, -days+i).UTC().Format(time.RFC3339)
+		rows = append(rows, data.Measurement{
+			AccountID: acc, Metric: metric, Value: value(i), OriginalUnit: unit,
+			StartAt: at, EndAt: at, Source: source,
+			ContentKey: fmt.Sprintf("%s-%s-nth%d-%d", metric, source, n, i),
+		})
+	}
+	if _, err := models.Measurements.InsertBatch(context.Background(), rows); err != nil {
+		t.Fatalf("seed %s: %v", metric, err)
 	}
 }
 
@@ -658,4 +673,213 @@ func TestShortfallRidesThePredictedBasisToo(t *testing.T) {
 	if exp.Shortfall == nil {
 		t.Error("the predicted basis carries no explanation of what it stands in for")
 	}
+}
+
+// --- The window searches back (ADR 0023, extended) ---
+
+// TestObservedPrefersTheMostRecentQualifyingWindow is the reference Account's real
+// state on 16 September 2026: 44 dense days that ended on 27 August. The calendar
+// window holds 8 of them and fails; a window ending at the last log holds all 28 it
+// needs. The figure must come from the second, and must say so.
+func TestObservedPrefersTheMostRecentQualifyingWindow(t *testing.T) {
+	e, models, acc := setup(t)
+	now := time.Date(2026, 9, 16, 0, 0, 0, 0, time.UTC)
+
+	seedDailyEnding(t, models, acc, metricIntake, "kcal", "Yazio", now, 44, 20, func(int) float64 { return 2270 })
+	seedDailyEnding(t, models, acc, metricBodyMass, "kg", "Zepp Life", now, 44, 20, func(i int) float64 {
+		return 92.15 - 4.85*float64(i)/43
+	})
+	// The devices kept recording throughout, so `recorded` is available and would have
+	// won before this change.
+	seedDaily(t, models, acc, "basal_energy", "kcal", "Watch", now, 28, func(int) float64 { return 2246 })
+	seedDaily(t, models, acc, "active_energy", "kcal", "Watch", now, 28, func(int) float64 { return 1643 })
+
+	exp, err := e.Expenditure(context.Background(), acc, Inputs{}, nil, now)
+	if err != nil {
+		t.Fatalf("Expenditure: %v", err)
+	}
+	if exp.Basis != BasisObserved {
+		t.Fatalf("basis = %q, want %q — the search did not reach the dense stretch", exp.Basis, BasisObserved)
+	}
+	if exp.Shortfall != nil {
+		t.Errorf("a figure was produced and an explanation came with it: %+v", *exp.Shortfall)
+	}
+	// It is dated, and the dates are the ones it used — not today's.
+	if exp.WindowTo == "" || exp.WindowFrom == "" {
+		t.Fatalf("window bounds absent: %q → %q", exp.WindowFrom, exp.WindowTo)
+	}
+	if exp.WindowTo >= day(now) {
+		t.Errorf("window ends %q, which is today or later; the search did not move", exp.WindowTo)
+	}
+	to, err := time.Parse("2006-01-02", exp.WindowTo)
+	if err != nil {
+		t.Fatalf("window_to %q is not a date: %v", exp.WindowTo, err)
+	}
+	from, _ := time.Parse("2006-01-02", exp.WindowFrom)
+	if d := int(to.Sub(from).Hours() / 24); d != observedWindowDays {
+		t.Errorf("window spans %d days, want %d", d, int(observedWindowDays))
+	}
+	// And it used the full window, which is the whole point of moving it.
+	if exp.IntakeDays < intakeDaysNeeded {
+		t.Errorf("intake days = %d, below the threshold %d it was moved to satisfy",
+			exp.IntakeDays, intakeDaysNeeded)
+	}
+}
+
+// TestObservedUnchangedWhenTodayQualifies proves the common path did not move: an
+// Account logging right now gets the window ending today, as it always did.
+func TestObservedUnchangedWhenTodayQualifies(t *testing.T) {
+	e, models, acc := setup(t)
+	now := time.Date(2026, 7, 25, 0, 0, 0, 0, time.UTC)
+
+	seedDaily(t, models, acc, metricIntake, "kcal", "Yazio", now, 28, func(int) float64 { return 2078 })
+	seedDaily(t, models, acc, metricBodyMass, "kg", "Zepp Life", now, 28, func(i int) float64 {
+		return 92.75 - 1.75*float64(i)/27
+	})
+
+	exp, err := e.Expenditure(context.Background(), acc, Inputs{}, nil, now)
+	if err != nil {
+		t.Fatalf("Expenditure: %v", err)
+	}
+	if exp.Basis != BasisObserved {
+		t.Fatalf("basis = %q", exp.Basis)
+	}
+	if exp.WindowTo != day(now) {
+		t.Errorf("window ends %q, want today (%q) — a dense Account's figure moved", exp.WindowTo, day(now))
+	}
+	// The same figure TestObservedBasisReproducesReferenceWindow asserts, on the same
+	// fixture: 2078 + (1.75 kg x 7700 / 27 days). Pinned tightly here on purpose — the
+	// point of this test is that the search left a dense Account's number alone, so a
+	// loose tolerance would hide exactly what it is watching for.
+	closeTo(t, exp.Kcal, 2577, 1, "observed TDEE")
+}
+
+// TestObservedGivesUpPastTheLookback: a qualifying window far enough back describes a
+// body that has since changed, and admitting the gap beats dating a stale answer.
+func TestObservedGivesUpPastTheLookback(t *testing.T) {
+	e, models, acc := setup(t)
+	now := time.Date(2026, 9, 16, 0, 0, 0, 0, time.UTC)
+
+	// Dense logging that ended 150 days ago — well past the 90-day cap.
+	seedDailyEnding(t, models, acc, metricIntake, "kcal", "Yazio", now, 44, 150, func(int) float64 { return 2270 })
+	seedDailyEnding(t, models, acc, metricBodyMass, "kg", "Zepp Life", now, 44, 150, func(i int) float64 {
+		return 92.15 - 4.85*float64(i)/43
+	})
+	seedDaily(t, models, acc, "basal_energy", "kcal", "Watch", now, 28, func(int) float64 { return 2246 })
+	seedDaily(t, models, acc, "active_energy", "kcal", "Watch", now, 28, func(int) float64 { return 1643 })
+
+	exp, err := e.Expenditure(context.Background(), acc, Inputs{}, nil, now)
+	if err != nil {
+		t.Fatalf("Expenditure: %v", err)
+	}
+	if exp.Basis != BasisRecorded {
+		t.Errorf("basis = %q, want %q — the search reached past the lookback", exp.Basis, BasisRecorded)
+	}
+	if exp.Shortfall == nil {
+		t.Error("gave up on the observed basis without saying why")
+	}
+}
+
+// TestActualRateSearchesBackToo: the rate must not vanish at the moment the expenditure
+// learns to find its window, or the Plan page's slider opens on nothing while the
+// weigh-ins that would answer it sit a fortnight away.
+func TestActualRateSearchesBackToo(t *testing.T) {
+	e, models, acc := setup(t)
+	now := time.Date(2026, 9, 16, 0, 0, 0, 0, time.UTC)
+
+	seedDailyEnding(t, models, acc, metricBodyMass, "kg", "Zepp Life", now, 44, 20, func(i int) float64 {
+		return 92.15 - 4.85*float64(i)/43
+	})
+
+	rate, err := e.ActualRate(context.Background(), acc, now)
+	if err != nil {
+		t.Fatalf("ActualRate: %v", err)
+	}
+	if rate == nil {
+		t.Fatal("no rate, though 44 weigh-ins sit 20 days back")
+	}
+	if rate.WindowTo == "" || rate.WindowTo >= day(now) {
+		t.Errorf("window ends %q; the rate did not move its window", rate.WindowTo)
+	}
+	if rate.KgPerWeek >= 0 {
+		t.Errorf("rate = %.3f kg/week on a falling series", rate.KgPerWeek)
+	}
+}
+
+// TestActualRateNeedsNoIntake is the reason the two windows are reported rather than
+// forced equal: weighing without logging food still answers "how fast", and would not
+// if the rate borrowed the expenditure's rule.
+func TestActualRateNeedsNoIntake(t *testing.T) {
+	e, models, acc := setup(t)
+	now := time.Date(2026, 7, 25, 0, 0, 0, 0, time.UTC)
+
+	seedDaily(t, models, acc, metricBodyMass, "kg", "Zepp Life", now, 28, func(i int) float64 {
+		return 92.75 - 1.75*float64(i)/27
+	})
+
+	rate, err := e.ActualRate(context.Background(), acc, now)
+	if err != nil {
+		t.Fatalf("ActualRate: %v", err)
+	}
+	if rate == nil {
+		t.Fatal("no rate for an Account that weighs but does not log food")
+	}
+	if rate.WindowTo != day(now) {
+		t.Errorf("window ends %q, want today", rate.WindowTo)
+	}
+}
+
+// TestLatestQualifyingWindowTriesTodayFirst pins the ordering directly: whatever the
+// data, the first placement offered is the one ending now, so nothing about a
+// currently-logging Account can depend on the search at all.
+func TestLatestQualifyingWindowTriesTodayFirst(t *testing.T) {
+	now := time.Date(2026, 9, 16, 0, 0, 0, 0, time.UTC)
+	anchor := time.Date(2026, 8, 27, 0, 0, 0, 0, time.UTC)
+	var tried []time.Time
+	latestQualifyingWindow(now, anchor, func(_, to time.Time) bool {
+		tried = append(tried, to)
+		return false
+	})
+	if len(tried) != 2 {
+		t.Fatalf("tried %d placements, want 2 (now, then the anchor)", len(tried))
+	}
+	if !tried[0].Equal(now) {
+		t.Errorf("first window tried ends %v, want %v", tried[0], now)
+	}
+	// The bound is exclusive, so a window anchored on 27 August ends on the 28th and
+	// covers the 27th.
+	if want := anchor.AddDate(0, 0, 1); !tried[1].Equal(want) {
+		t.Errorf("second window ends %v, want %v", tried[1], want)
+	}
+}
+
+// TestLatestQualifyingWindowFillsTheWindowItReports is the bug that running this against
+// a real export exposed, written down. A day-by-day scan returns the most recent
+// placement that merely *counts* enough readings, which for an Account whose weigh-ins
+// stopped on 27 August was 8 August – 5 September: ten readings crammed into the first
+// third, twenty empty days, and a rate labelled "over 28 days" describing ten.
+func TestLatestQualifyingWindowFillsTheWindowItReports(t *testing.T) {
+	e, models, acc := setup(t)
+	now := time.Date(2026, 9, 16, 0, 0, 0, 0, time.UTC)
+
+	// Weigh-ins every day for 44 days, ending 20 days ago.
+	seedDailyEnding(t, models, acc, metricBodyMass, "kg", "Zepp Life", now, 44, 20, func(i int) float64 {
+		return 92.15 - 4.85*float64(i)/43
+	})
+
+	rate, err := e.ActualRate(context.Background(), acc, now)
+	if err != nil {
+		t.Fatalf("ActualRate: %v", err)
+	}
+	if rate == nil {
+		t.Fatal("no rate")
+	}
+	// The window must end where the readings do, so all 28 of its days carry one.
+	if rate.MassDays != int(observedWindowDays) {
+		t.Errorf("window %s → %s holds %d weigh-ins of %d days; it is not the window the "+
+			"readings fill", rate.WindowFrom, rate.WindowTo, rate.MassDays, int(observedWindowDays))
+	}
+	// And the rate it reports is the one that stretch actually moved at, not the speed of
+	// whichever ten days happened to fall inside a lopsided placement.
+	closeTo(t, rate.KgPerWeek, -4.85*7/43, 0.05, "kg/week")
 }

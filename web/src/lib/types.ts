@@ -303,6 +303,12 @@ export interface Expenditure {
   kcal: number;
   basis: EstimateBasis;
   window_days: number;
+  /** window_from and window_to are the window's real bounds, `to` exclusive.
+   *  `window_days` says how long the span is; these say *which* span, and an observed
+   *  figure whose window does not end today is a different claim from one that does —
+   *  show the dates or the claim is overstated. */
+  window_from?: string;
+  window_to?: string;
   mean_intake_kcal?: number;
   mass_slope_kg_per_day?: number;
   intake_days?: number;
@@ -333,6 +339,12 @@ export interface MeasuredRate {
   pct_per_week: number;
   kg_per_week: number;
   window_days: number;
+  /** The rate's window need not match the Expenditure's: this one is gated on weigh-ins
+   *  alone, so an Account that weighs without logging food still gets a rate. That is
+   *  why both are reported — two dated answers are honest, two undated answers about
+   *  different months printed as one picture are not. */
+  window_from?: string;
+  window_to?: string;
   mass_days: number;
 }
 
