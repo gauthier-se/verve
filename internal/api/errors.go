@@ -2,7 +2,10 @@ package api
 
 import (
 	"errors"
+	"math"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/gauthier-se/verve/internal/data"
 	"github.com/gauthier-se/verve/internal/query"
@@ -74,9 +77,18 @@ func (s *Server) signupClosedResponse(w http.ResponseWriter, r *http.Request) {
 }
 
 // rateLimitExceededResponse returns a 429 when a client has made too many
-// login attempts too quickly.
-func (s *Server) rateLimitExceededResponse(w http.ResponseWriter, r *http.Request) {
-	s.errorResponse(w, r, http.StatusTooManyRequests, "too many requests — slow down and try again shortly")
+// login attempts too quickly. retryAfter is how long the bucket needs to refill,
+// echoed as a Retry-After header (RFC 9110 §10.2.3) so the login screen can show a
+// real countdown rather than an indefinite "try again later".
+func (s *Server) rateLimitExceededResponse(w http.ResponseWriter, r *http.Request, retryAfter time.Duration) {
+	// Whole seconds, rounded up: a client that waits exactly this long finds a
+	// token waiting rather than a second 429.
+	secs := int(math.Ceil(retryAfter.Seconds()))
+	if secs < 1 {
+		secs = 1
+	}
+	w.Header().Set("Retry-After", strconv.Itoa(secs))
+	s.errorResponse(w, r, http.StatusTooManyRequests, "too many requests, slow down and try again shortly")
 }
 
 // respondRecordError maps a storage-layer record error to a 404 and anything else

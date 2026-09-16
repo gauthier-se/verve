@@ -51,6 +51,21 @@ func TestAuthStateReflectsBootstrapNeed(t *testing.T) {
 	}
 }
 
+// The state payload also names the build, so the login screen can say which Verve
+// it is talking to. Config.Version is empty in tests, which New defaults to "dev".
+func TestAuthStateCarriesVersion(t *testing.T) {
+	srv, _ := newEmptyServer(t)
+
+	_, body := do(t, srv, "/v1/auth/state")
+	var version string
+	if err := json.Unmarshal(body["version"], &version); err != nil {
+		t.Fatalf("decode version: %v", err)
+	}
+	if version != "dev" {
+		t.Errorf(`version = %q, want "dev"`, version)
+	}
+}
+
 func TestRegisterCreatesFirstAccountAndAutoLogsIn(t *testing.T) {
 	srv, models := newEmptyServer(t)
 
