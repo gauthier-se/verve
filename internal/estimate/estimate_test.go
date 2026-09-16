@@ -461,3 +461,201 @@ func TestActualRateNilWhenTooFewReadings(t *testing.T) {
 		t.Errorf("rate = %+v, want nil below the minimum reading count", rate)
 	}
 }
+
+// --- The shortfall: why the better basis went away ---
+
+// seedDailyEnding writes one reading per day for `days` days ending `endedDaysAgo` days
+// before `now`. seedDaily always ends yesterday, which cannot express the case this
+// feature exists for: dense logging that stopped a while back.
+func seedDailyEnding(t *testing.T, models data.Models, acc int64, metric, unit, source string,
+	now time.Time, days, endedDaysAgo int, value func(i int) float64,
+) {
+	t.Helper()
+	rows := make([]data.Measurement, 0, days)
+	for i := range days {
+		at := now.AddDate(0, 0, -endedDaysAgo-days+i).UTC().Format(time.RFC3339)
+		rows = append(rows, data.Measurement{
+			AccountID: acc, Metric: metric, Value: value(i), OriginalUnit: unit,
+			StartAt: at, EndAt: at, Source: source,
+			ContentKey: fmt.Sprintf("%s-%s-ended%d-%d", metric, source, endedDaysAgo, i),
+		})
+	}
+	if _, err := models.Measurements.InsertBatch(context.Background(), rows); err != nil {
+		t.Fatalf("seed %s: %v", metric, err)
+	}
+}
+
+// TestIntakeDaysNeededMatchesTheCoverageRule keeps the number on screen honest: it is
+// written out as a literal because Go will not truncate an untyped float in a const,
+// and this is what stops it drifting from the fraction that actually gates the cascade.
+func TestIntakeDaysNeededMatchesTheCoverageRule(t *testing.T) {
+	want := int(math.Ceil(minIntakeCoverage * observedWindowDays))
+	if intakeDaysNeeded != want {
+		t.Errorf("intakeDaysNeeded = %d, want ceil(%.2f x %d) = %d",
+			intakeDaysNeeded, minIntakeCoverage, int(observedWindowDays), want)
+	}
+}
+
+// TestShortfallNamesWhatWasMissing is the reference Account's state after a break: it
+// logged densely for six weeks, stopped, and three weeks later both thresholds fail by
+// a small margin. The figure falls to the devices; the shortfall says why.
+func TestShortfallNamesWhatWasMissing(t *testing.T) {
+	e, models, acc := setup(t)
+	now := time.Date(2026, 9, 16, 0, 0, 0, 0, time.UTC)
+
+	// Dense logging that ended 20 days ago, so only 8 of its days fall in the window.
+	seedDailyEnding(t, models, acc, metricIntake, "kcal", "Yazio", now, 44, 20, func(int) float64 { return 2263 })
+	seedDailyEnding(t, models, acc, metricBodyMass, "kg", "Zepp Life", now, 44, 20, func(i int) float64 {
+		return 92.15 - 4.85*float64(i)/43
+	})
+	// The devices kept recording throughout, which is exactly why the fallback exists
+	// and exactly why it is misleading without a reason attached.
+	seedDaily(t, models, acc, "basal_energy", "kcal", "Watch", now, 28, func(int) float64 { return 2246 })
+	seedDaily(t, models, acc, "active_energy", "kcal", "Watch", now, 28, func(int) float64 { return 1643 })
+
+	exp, err := e.Expenditure(context.Background(), acc, Inputs{}, nil, now)
+	if err != nil {
+		t.Fatalf("Expenditure: %v", err)
+	}
+	if exp.Basis != BasisRecorded {
+		t.Fatalf("basis = %q, want %q — the fixture no longer reproduces the degraded state", exp.Basis, BasisRecorded)
+	}
+	if exp.Shortfall == nil {
+		t.Fatal("fell back to the devices and said nothing about why")
+	}
+	got := *exp.Shortfall
+	if got.Basis != BasisObserved {
+		t.Errorf("shortfall basis = %q, want %q", got.Basis, BasisObserved)
+	}
+	if got.IntakeDaysNeed != intakeDaysNeeded || got.MassDaysNeed != minMassDays {
+		t.Errorf("thresholds = %d/%d, want %d/%d",
+			got.IntakeDaysNeed, got.MassDaysNeed, intakeDaysNeeded, minMassDays)
+	}
+	if got.IntakeDays >= got.IntakeDaysNeed {
+		t.Errorf("intake days %d meets the threshold %d, so this is not the case under test",
+			got.IntakeDays, got.IntakeDaysNeed)
+	}
+	// The field that makes the note actionable. The log need not be *outside* the
+	// window — the reference case has it 20 days back, well inside 28 — what matters is
+	// that most of the window is silence, which a bare percentage does not convey and a
+	// date does.
+	if got.LastIntakeDay == "" {
+		t.Fatal("no last intake day, so the note can only state a percentage")
+	}
+	last, err := time.Parse("2006-01-02", got.LastIntakeDay)
+	if err != nil {
+		t.Fatalf("last intake day %q is not a date: %v", got.LastIntakeDay, err)
+	}
+	daysAgo := int(now.Sub(last).Hours() / 24)
+	if daysAgo < 14 {
+		t.Errorf("last intake day is only %d days ago; the fixture no longer reproduces a break", daysAgo)
+	}
+	// And it is the real last log, not merely the last one the window could see: an
+	// implementation that read only the window would answer the window's own first day.
+	if daysAgo >= observedWindowDays {
+		t.Errorf("last intake day is %d days ago, outside the %d-day window — so this fixture "+
+			"does not exercise the lookback either", daysAgo, int(observedWindowDays))
+	}
+}
+
+// TestLastIntakeDayLooksPastTheWindow is the other half: an Account whose logging
+// stopped *before* the window opened still gets a date, because the lookback is a year
+// and not 28 days. Reading only the window would answer "" here and the note would lose
+// the one sentence that tells the Account what to do.
+func TestLastIntakeDayLooksPastTheWindow(t *testing.T) {
+	e, models, acc := setup(t)
+	now := time.Date(2026, 9, 16, 0, 0, 0, 0, time.UTC)
+
+	// Logging that ended 90 days ago: nothing at all inside the observed window.
+	seedDailyEnding(t, models, acc, metricIntake, "kcal", "Yazio", now, 30, 90, func(int) float64 { return 2263 })
+	seedDaily(t, models, acc, "basal_energy", "kcal", "Watch", now, 28, func(int) float64 { return 2246 })
+	seedDaily(t, models, acc, "active_energy", "kcal", "Watch", now, 28, func(int) float64 { return 1643 })
+
+	exp, err := e.Expenditure(context.Background(), acc, Inputs{}, nil, now)
+	if err != nil {
+		t.Fatalf("Expenditure: %v", err)
+	}
+	if exp.Shortfall == nil {
+		t.Fatal("no shortfall")
+	}
+	if exp.Shortfall.IntakeDays != 0 {
+		t.Errorf("intake days = %d, want 0 — nothing was logged inside the window", exp.Shortfall.IntakeDays)
+	}
+	if exp.Shortfall.LastIntakeDay == "" {
+		t.Fatal("the lookback did not reach a log 90 days back")
+	}
+	last, _ := time.Parse("2006-01-02", exp.Shortfall.LastIntakeDay)
+	if daysAgo := int(now.Sub(last).Hours() / 24); daysAgo < observedWindowDays {
+		t.Errorf("last intake day is %d days ago; it should be the real one, ~90", daysAgo)
+	}
+}
+
+// TestShortfallAbsentWhenObservedSucceeds is the guard that this cannot start appearing
+// on healthy Accounts: a dense window produces the good figure and no explanation,
+// because there is nothing to explain.
+func TestShortfallAbsentWhenObservedSucceeds(t *testing.T) {
+	e, models, acc := setup(t)
+	now := time.Date(2026, 7, 25, 0, 0, 0, 0, time.UTC)
+
+	seedDaily(t, models, acc, metricIntake, "kcal", "Yazio", now, 28, func(int) float64 { return 2078 })
+	seedDaily(t, models, acc, metricBodyMass, "kg", "Zepp Life", now, 28, func(i int) float64 {
+		return 92.75 - 1.75*float64(i)/27
+	})
+
+	exp, err := e.Expenditure(context.Background(), acc, Inputs{}, nil, now)
+	if err != nil {
+		t.Fatalf("Expenditure: %v", err)
+	}
+	if exp.Basis != BasisObserved {
+		t.Fatalf("basis = %q, want %q", exp.Basis, BasisObserved)
+	}
+	if exp.Shortfall != nil {
+		t.Errorf("a healthy Account was handed an explanation: %+v", *exp.Shortfall)
+	}
+}
+
+// TestShortfallLastIntakeDayEmptyWhenNeverLogged: an Account that has never logged food
+// gets "" rather than 0001-01-01, so the copy can offer the instruction instead of
+// printing a date from the first century.
+func TestShortfallLastIntakeDayEmptyWhenNeverLogged(t *testing.T) {
+	e, models, acc := setup(t)
+	now := time.Date(2026, 9, 16, 0, 0, 0, 0, time.UTC)
+
+	seedDaily(t, models, acc, "basal_energy", "kcal", "Watch", now, 28, func(int) float64 { return 2246 })
+	seedDaily(t, models, acc, "active_energy", "kcal", "Watch", now, 28, func(int) float64 { return 1643 })
+
+	exp, err := e.Expenditure(context.Background(), acc, Inputs{}, nil, now)
+	if err != nil {
+		t.Fatalf("Expenditure: %v", err)
+	}
+	if exp.Shortfall == nil {
+		t.Fatal("no shortfall")
+	}
+	if exp.Shortfall.LastIntakeDay != "" {
+		t.Errorf("last intake day = %q for an Account that never logged", exp.Shortfall.LastIntakeDay)
+	}
+	if exp.Shortfall.IntakeDays != 0 {
+		t.Errorf("intake days = %d, want 0", exp.Shortfall.IntakeDays)
+	}
+}
+
+// TestShortfallRidesThePredictedBasisToo: the explanation belongs to whichever figure
+// was served, not only to the recorded one. An Account with no devices either lands on
+// predicted, and has the same thing to fix.
+func TestShortfallRidesThePredictedBasisToo(t *testing.T) {
+	e, models, acc := setup(t)
+	now := time.Date(2026, 9, 16, 0, 0, 0, 0, time.UTC)
+
+	seedDailyEnding(t, models, acc, metricIntake, "kcal", "Yazio", now, 44, 20, func(int) float64 { return 2263 })
+
+	exp, err := e.Expenditure(context.Background(), acc, Inputs{}, ptr(1900.0), now)
+	if err != nil {
+		t.Fatalf("Expenditure: %v", err)
+	}
+	if exp.Basis != BasisPredicted {
+		t.Fatalf("basis = %q, want %q", exp.Basis, BasisPredicted)
+	}
+	if exp.Shortfall == nil {
+		t.Error("the predicted basis carries no explanation of what it stands in for")
+	}
+}

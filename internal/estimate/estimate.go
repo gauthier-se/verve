@@ -45,7 +45,18 @@ const defaultActivityFactor = 1.375
 const (
 	minIntakeCoverage = 0.7 // fraction of window days that must carry logged intake
 	minMassDays       = 10  // distinct days that must carry a body-mass reading
+	// intakeDaysNeeded is minIntakeCoverage expressed as the count a person can check
+	// against their own week: ceil(0.7 x 28). A fraction is the rule; a number of days
+	// is the instruction, and the instruction is what goes on screen. Written out
+	// because Go will not truncate an untyped float in a const, and pinned by
+	// TestIntakeDaysNeededMatchesTheCoverageRule so it cannot drift from the fraction.
+	intakeDaysNeeded = 20
 )
+
+// lastIntakeLookbackDays bounds the search for "when did you last log food". A year is
+// far enough to cover any ordinary break and short enough that the answer still
+// describes the Account asking.
+const lastIntakeLookbackDays = 365
 
 // profileLookbackYears is how far back a profile input may be read. Height is measured
 // once and then never again — on the reference Account the last reading is nearly two
@@ -254,6 +265,39 @@ type Expenditure struct {
 	// Predicted basis.
 	ActivityFactor *float64 `json:"activity_factor,omitempty"`
 	BasalKcal      *float64 `json:"basal_kcal,omitempty"`
+
+	// Shortfall describes the better basis this figure stands in for, and is nil when
+	// the cascade stopped at the best one it has — which is every Account logging
+	// densely enough, and every test written before this field existed.
+	Shortfall *Shortfall `json:"shortfall,omitempty"`
+}
+
+// Shortfall is why the cascade did not stop at a better basis: what the observed basis
+// needed, and what the window actually held.
+//
+// It rides on the figure that **was** served, not on the one that was not, because the
+// caller is rendering the former and owes the Account an explanation for it. Without
+// this, a headline that jumps by several hundred kilocalories has no visible cause: the
+// basis is named (ADR 0023) but "recorded" describes what the number is, never why the
+// better one went away.
+//
+// LastIntakeDay is the field that turns a diagnosis into an instruction. "32% coverage"
+// tells an Account nothing it can act on; "your last food log was 27 August" tells it
+// exactly what to do.
+type Shortfall struct {
+	// Basis is the one that was skipped. Only the *best* skipped basis is described: an
+	// Account that fixes the observed basis never reaches the recorded one either, so a
+	// list would be two answers to a question with one action behind it.
+	Basis Basis `json:"basis"`
+
+	IntakeDays     int `json:"intake_days"`
+	IntakeDaysNeed int `json:"intake_days_need"`
+	MassDays       int `json:"mass_days"`
+	MassDaysNeed   int `json:"mass_days_need"`
+
+	// LastIntakeDay is YYYY-MM-DD, or "" for an Account that has never logged food —
+	// which is a different sentence, not a zero date.
+	LastIntakeDay string `json:"last_intake_day,omitempty"`
 }
 
 // Rate is the Account's measured speed of body-mass change: the regression slope over
@@ -328,15 +372,18 @@ func (e Engine) ResolveInputs(ctx context.Context, accountID int64, profile Prof
 // order and falling through when the evidence is too thin. It never returns a zero as if
 // it were an answer: an Account with nothing to go on gets an error the caller reports.
 func (e Engine) Expenditure(ctx context.Context, accountID int64, in Inputs, basal *float64, now time.Time) (Expenditure, error) {
-	if obs, ok, err := e.observed(ctx, accountID, now); err != nil {
+	obs, short, err := e.observed(ctx, accountID, now)
+	if err != nil {
 		return Expenditure{}, err
-	} else if ok {
+	}
+	if obs.Basis != "" {
 		return obs, nil
 	}
 
 	if rec, ok, err := e.recorded(ctx, accountID, now); err != nil {
 		return Expenditure{}, err
 	} else if ok {
+		rec.Shortfall = short
 		return rec, nil
 	}
 
@@ -348,6 +395,7 @@ func (e Engine) Expenditure(ctx context.Context, accountID int64, in Inputs, bas
 			WindowDays:     observedWindowDays,
 			ActivityFactor: &factor,
 			BasalKcal:      basal,
+			Shortfall:      short,
 		}, nil
 	}
 
@@ -361,26 +409,44 @@ func (e Engine) Expenditure(ctx context.Context, accountID int64, in Inputs, bas
 // The slope comes from an ordinary least-squares fit over daily readings, never from
 // differencing the endpoints: raw weight swings by ±1.5 kg between mornings, so a single
 // unlucky final reading would swamp four weeks of signal.
-func (e Engine) observed(ctx context.Context, accountID int64, now time.Time) (Expenditure, bool, error) {
+// A zero Basis on the returned Expenditure means the basis did not produce a figure.
+// The accompanying Shortfall says why when the reason is coverage — the reason an
+// Account can do something about — and is nil when it is not.
+func (e Engine) observed(ctx context.Context, accountID int64, now time.Time) (Expenditure, *Shortfall, error) {
 	from := now.AddDate(0, 0, -observedWindowDays)
 
 	intake, err := e.dailyPoints(ctx, accountID, metricIntake, from, now)
 	if err != nil {
-		return Expenditure{}, false, err
+		return Expenditure{}, nil, err
 	}
 	mass, err := e.dailyPoints(ctx, accountID, metricBodyMass, from, now)
 	if err != nil {
-		return Expenditure{}, false, err
+		return Expenditure{}, nil, err
 	}
 
 	if float64(len(intake))/observedWindowDays < minIntakeCoverage || len(mass) < minMassDays {
-		return Expenditure{}, false, nil
+		last, err := e.lastIntakeDay(ctx, accountID, now)
+		if err != nil {
+			return Expenditure{}, nil, err
+		}
+		return Expenditure{}, &Shortfall{
+			Basis:          BasisObserved,
+			IntakeDays:     len(intake),
+			IntakeDaysNeed: intakeDaysNeeded,
+			MassDays:       len(mass),
+			MassDaysNeed:   minMassDays,
+			LastIntakeDay:  last,
+		}, nil
 	}
 
 	meanIntake := mean(values(intake))
 	slope, ok := ordinaryLeastSquares(mass, from)
 	if !ok {
-		return Expenditure{}, false, nil
+		// Coverage was met and the fit still failed, which takes every reading landing
+		// on one day. There is nothing here for an Account to act on, so it falls
+		// through unexplained rather than being handed a Shortfall whose counts would
+		// say the thresholds were the problem when they were not.
+		return Expenditure{}, nil, nil
 	}
 
 	return Expenditure{
@@ -391,7 +457,27 @@ func (e Engine) observed(ctx context.Context, accountID int64, now time.Time) (E
 		MassSlopeKgPerDay: &slope,
 		IntakeDays:        len(intake),
 		MassDays:          len(mass),
-	}, true, nil
+	}, nil, nil
+}
+
+// lastIntakeDay is the most recent day the Account logged any food, as YYYY-MM-DD, or
+// "" if it never has.
+//
+// It deliberately looks past the observed window: the whole reason this is being asked
+// is that the window holds too little, and "your last food log was 27 August" is only
+// useful when 27 August is outside it. The lookback is bounded because an answer from
+// three years ago is the same as no answer, and it reads through the query engine like
+// every other figure in this package — the Source election and the Manual overlay are
+// not this file's business to reimplement.
+func (e Engine) lastIntakeDay(ctx context.Context, accountID int64, now time.Time) (string, error) {
+	points, err := e.dailyPoints(ctx, accountID, metricIntake, now.AddDate(0, 0, -lastIntakeLookbackDays), now)
+	if err != nil {
+		return "", err
+	}
+	if len(points) == 0 {
+		return "", nil
+	}
+	return points[len(points)-1].Bucket, nil
 }
 
 // recorded is the mean of the days the devices reported — total_energy_expenditure, the

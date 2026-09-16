@@ -9,7 +9,7 @@ import {
   useUpdateProfile,
 } from "@/hooks/use-plan";
 import { ApiError } from "@/lib/api";
-import { formatExact } from "@/lib/format";
+import { formatDay, formatExact } from "@/lib/format";
 import type {
   Adherence,
   BasalEstimate,
@@ -20,6 +20,7 @@ import type {
   Guardrail,
   Phase,
   Plan,
+  Shortfall,
   Targets,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -174,7 +175,33 @@ function ExpenditureCard({ expenditure }: { expenditure?: Expenditure }) {
           </>
         )}
       </p>
+      {expenditure.shortfall && (
+        <ShortfallNote shortfall={expenditure.shortfall} windowDays={expenditure.window_days} />
+      )}
     </Card>
+  );
+}
+
+/** ShortfallNote is the half the basis label cannot carry: not what this number is, but
+ *  why the better one is missing and what would bring it back.
+ *
+ *  An Account coming back from a break sees the headline jump by several hundred
+ *  kilocalories at the exact moment it is deciding what to eat. "Recorded" names the
+ *  figure honestly and explains nothing about the change; these two sentences do.
+ *
+ *  Every number is from the payload. The thresholds in particular are the server's, not
+ *  re-derived here, because a client that computed its own "20 of 28" would eventually
+ *  disagree with the rule that actually gates the cascade. */
+function ShortfallNote({ shortfall, windowDays }: { shortfall: Shortfall; windowDays: number }) {
+  return (
+    <p className="mt-2 text-xs text-muted-foreground">
+      This is a fallback. Your observed figure needs {shortfall.intake_days_need} of the last{" "}
+      {windowDays} days logged and {shortfall.mass_days_need} weigh-ins; this window has{" "}
+      {shortfall.intake_days} and {shortfall.mass_days}.
+      {shortfall.last_intake_day
+        ? ` Your last food log was ${formatDay(shortfall.last_intake_day, { year: true })}.`
+        : " Log your food for a few weeks and Verve will replace this with what your body actually did."}
+    </p>
   );
 }
 

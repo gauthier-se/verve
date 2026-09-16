@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gauthier-se/verve/internal/estimate"
 	"github.com/gauthier-se/verve/internal/history"
 	"github.com/gauthier-se/verve/internal/query"
 )
@@ -58,6 +59,13 @@ var contract = []struct {
 	{"ImportReport", reportView{}},
 	{"BasalEstimate", basalView{}},
 	{"Phase", phaseView{}},
+	// The Estimates engine's own types, served unwrapped by the Plan handler. They were
+	// missing here until a new field on Expenditure went out undeclared and nothing
+	// noticed; the Series types below have been pinned since ADR 0037 and these are the
+	// same shape of contract.
+	{"Expenditure", estimate.Expenditure{}},
+	{"Shortfall", estimate.Shortfall{}},
+	{"MeasuredRate", estimate.Rate{}},
 	{"Plan", planView{}},
 	{"CoVary", coVaryView{}},
 	{"SkippedMetric", coVarySkippedView{}},

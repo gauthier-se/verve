@@ -309,6 +309,22 @@ export interface Expenditure {
   mass_days?: number;
   activity_factor?: number;
   basal_kcal?: number;
+  /** shortfall describes the *better* basis this figure is standing in for, and is
+   *  present only when one was skipped. The basis alone says what the number is; this
+   *  says why the better one went away, which is the half an Account can act on. */
+  shortfall?: Shortfall;
+}
+
+/** Shortfall is what the observed basis needed and what the window actually held.
+ *  `last_intake_day` is absent for an Account that has never logged food — a different
+ *  sentence, not a zero date. */
+export interface Shortfall {
+  basis: EstimateBasis;
+  intake_days: number;
+  intake_days_need: number;
+  mass_days: number;
+  mass_days_need: number;
+  last_intake_day?: string;
 }
 
 /** MeasuredRate is the Account's measured speed of body-mass change, in the same units a
