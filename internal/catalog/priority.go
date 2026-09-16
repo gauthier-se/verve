@@ -4,9 +4,9 @@ import "strings"
 
 // SourceManual is the reserved Source of a Manual entry — a Measurement the
 // Account typed rather than a Connector imported (ADR 0022). It deliberately does
-// **not** appear in sourcePriority: priority elects one winning Source for the whole
-// range, so ranking a hand-typed value first would make one entry the winner of the
-// entire window and hide every device reading around it. A Manual entry displaces
+// **not** appear in sourcePriority: priority elects a winning Source per day (ADR
+// 0034), so ranking a hand-typed value first would make one entry the winner of every
+// day it happened to fall on and hide the device readings around it. A Manual entry displaces
 // imported data through the Manual overlay instead — day by day, in the query
 // engine's source predicate.
 const SourceManual = "Manual"
@@ -51,6 +51,58 @@ var sourcePriority = map[string][]string{
 	// is the one actually on the wrist. The nights it missed still come from the
 	// iPhone, which is why the two are not ranked over the whole window.
 	"sleep": {"watch", "iphone"},
+
+	// --- Energy ---
+	// The Watch measures an all-day figure. Yazio, Nike Run Club and Strava each write
+	// back the energy of *one workout* that the Watch has already counted inside that
+	// figure, so they are not rival measurements of the same quantity — they are a
+	// subset of it, and electing one replaces a day with a run. On the reference
+	// Account these overlap on 777 days, with daily means of Watch 1043, Strava 747,
+	// Nike 562, Yazio 521, iPhone 410: a factor of 2.5 that was being settled by
+	// sort.Strings, and settled correctly only because Apple names its devices with a
+	// leading "A".
+	"active_energy":       {"watch", "iphone", "apple health", "health kit"},
+	"basal_energy":        {"watch", "iphone", "apple health", "health kit"},
+	"total_energy_burned": {"watch", "iphone", "apple health", "health kit"},
+	"apple_exercise_time": {"watch", "iphone"},
+	"apple_stand_time":    {"watch", "iphone"},
+
+	// --- Body composition ---
+	// The scale is the instrument and its name is an open set, so the wildcard holds
+	// the position of "some scale we have not heard of" and the food logs that mirror
+	// its reading rank behind it. Yazio and FatSecret overlap the scale on 350+ days
+	// of the reference Account and won every one of them on the alphabet.
+	"body_mass":           {SourceWildcard, "yazio", "fatsecret", "health kit"},
+	"body_mass_index":     {SourceWildcard, "yazio", "fatsecret", "health kit"},
+	"body_fat_percentage": {SourceWildcard, "yazio", "fatsecret", "health kit"},
+	"lean_body_mass":      {SourceWildcard, "yazio", "fatsecret", "health kit"},
+
+	// --- Watch-measured, mirrored elsewhere ---
+	"vo2_max":           {"watch", "apple health", "health kit"},
+	"oxygen_saturation": {"watch", "iphone", "apple health", "health kit"},
+
+	// Two devices playing audio at *different* times is genuinely additive, and
+	// electing one discards the other's hours. Merging complementary Sources is where
+	// ROADMAP has it; until then the Watch is the better of two wrong answers, and
+	// this entry is where that note lives rather than in a commit message.
+	"headphone_audio_exposure": {"watch", "iphone"},
+}
+
+// Every dietary_* Metric takes the same ranking, built rather than typed so that a
+// nutrient added to the Catalog later cannot be silently left out — which is how this
+// table fell behind in the first place.
+//
+// Unlike every other group here, neither Source is closer to the food than the other:
+// Yazio and FatSecret are both food logs and the choice between them is genuinely
+// arbitrary. It is ranked anyway, because arbitrary-and-stated beats arbitrary-and-
+// alphabetical, and because day-grain election (ADR 0034) already leaves the loser
+// every day the winner did not record.
+func init() {
+	for slug := range metrics {
+		if strings.HasPrefix(slug, "dietary_") {
+			sourcePriority[slug] = []string{"yazio", "fatsecret", "health kit"}
+		}
+	}
 }
 
 // SourcePriority returns the configured ordered priority patterns for a Metric,
@@ -60,10 +112,28 @@ func SourcePriority(slug string) []string {
 	return sourcePriority[slug]
 }
 
+// SourceWildcard is the position, inside a priority list, of every Source the list
+// does not name.
+//
+// Without it a list can only *promote*: an unmatched Source ranks after every matched
+// one, so there is no way to say "this named Source ranks **behind** whatever else
+// turns up". That is exactly what a body mass needs. The instrument is a scale and
+// scale names are an open set — Zepp Life, Withings, Renpho, a Garmin Index — so
+// enumerating them is the losing half of ADR 0011. What *is* closed and knowable is
+// the short list of apps that hold a copy: a food log never weighed anything.
+//
+// So `{"*", "yazio", "fatsecret"}` reads "any scale, then Yazio, then FatSecret", and
+// a list with no wildcard behaves exactly as it always has.
+const SourceWildcard = "*"
+
 // ResolveSource picks the winning Source for a Metric from those with data
 // (available), or "" and false when empty. Sources rank by the first priority
-// pattern their name contains; unmatched rank last; ties break alphabetically.
-// Whole-range only — per-bucket resolution is deferred (ADR 0003).
+// pattern their name contains; a Source matching none takes the list's
+// SourceWildcard position, or last when the list has none; ties break alphabetically.
+//
+// The election this feeds runs per **day** (ADR 0034), so "the winning Source" means
+// the winner among those that recorded something that day — which is why a list may
+// safely name a Source that covers only part of a history.
 func ResolveSource(slug string, available []string) (string, bool) {
 	if len(available) == 0 {
 		return "", false
@@ -72,12 +142,20 @@ func ResolveSource(slug string, available []string) (string, bool) {
 	patterns := sourcePriority[slug]
 	rank := func(source string) int {
 		lower := strings.ToLower(source)
+		// The wildcard is resolved after the named patterns, never inside the loop: it
+		// matches everything, so matching it first would swallow a Source that a later
+		// pattern names — the demotion would demote its own targets.
+		wildcard := len(patterns)
 		for i, p := range patterns {
+			if p == SourceWildcard {
+				wildcard = i
+				continue
+			}
 			if strings.Contains(lower, p) {
 				return i
 			}
 		}
-		return len(patterns) // unmatched Sources sort after every matched one
+		return wildcard
 	}
 
 	winner := available[0]
