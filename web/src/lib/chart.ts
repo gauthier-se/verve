@@ -40,6 +40,35 @@ export function seriesColor(i: number, offset = 0): string {
   return SERIES_COLORS[(offset + i) % SERIES_COLORS.length];
 }
 
+/** standaloneColorOffset is where a Metric's *own page* starts reading the ramp:
+ *  a hash of its slug, so the four colours spread across the Catalog instead of
+ *  every detail page in the app drawing chart-1.
+ *
+ *  ADR 0036 settled that colour belongs to the slot and never to the Metric, and
+ *  closed with "a chart that stands alone on its own page takes 0". That rule earns
+ *  its keep wherever Metrics are *compared* — within a Panel, and across the Panels
+ *  of a Dashboard — because a Metric that kept its hue when it moved would let a
+ *  reader believe two cards are about one thing. A standalone page has no slot to
+ *  own, nothing beside it to be confused with, and no reorder to survive, so there
+ *  is nothing there for identity-colouring to corrupt.
+ *
+ *  It is deliberately *not* exported to the Panel path, and `seriesColor` is
+ *  untouched: a Dashboard still rotates by grid position. The one rule that must
+ *  hold in both places is the four-way separation ADR 0026 verifies, and a uniform
+ *  offset preserves it here exactly as it does there.
+ *
+ *  FNV-1a rather than a sum of char codes, because the Catalog's slugs share long
+ *  prefixes — `dietary_`, `walking_`, `running_` — and a sum maps a prefix family
+ *  onto neighbouring slots. */
+export function standaloneColorOffset(slug: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < slug.length; i += 1) {
+    hash ^= slug.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash % SERIES_COLORS.length;
+}
+
 /** CATEGORY_COLORS is the same ramp two slots longer, for the categorical dimensions
  *  that are not a Panel's Series and so are not capped at four: a Night's Stages
  *  (ADR 0027) and the kinds of thing on the history rail (ADR 0032). Four was never a
