@@ -58,6 +58,11 @@ A 704 kcal/day difference, from data already in the database.
 
 ## The decision this needs
 
+> **Answered: yes, dated and capped at 90 days.** Both issues are implemented. One
+> thing changed on the way: the backward *scan* proposed in issue 02 returns lopsided
+> windows on real data, so the window is **anchored** on the day the evidence ends
+> instead. See issue 02's comments.
+
 **Should a dated observed figure outrank a current recorded one?**
 
 Yes, and the ADR already contains the argument. `observed` wins because it is

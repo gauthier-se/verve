@@ -1,4 +1,4 @@
-Status: needs-triage
+Status: done
 
 # 01: estimate, web: say why the better basis is unavailable
 
@@ -64,3 +64,30 @@ and `days` already follow.
 - **`TestShortfallLastIntakeDayEmptyWhenNeverLogged`**: an Account that has never
   logged food gets `""` rather than a zero date, so the copy can omit the sentence
   rather than print 0001-01-01.
+
+## Comments
+
+**Implemented.** Three departures from the spec, all small:
+
+- **`observed` returns `(Expenditure, *Shortfall, error)`** rather than keeping its
+  `bool`. A zero `Basis` is the "did not produce" sentinel, which avoids a fourth
+  return value and keeps the one case that is *not* a coverage failure honest: when
+  coverage is met and the fit still fails (every reading on one day), the shortfall is
+  nil and the cascade falls through unexplained, because handing back counts that met
+  their thresholds would blame the thresholds for something else.
+- **The shortfall rides the predicted basis too**, not only the recorded one. An
+  Account with no devices lands there and has exactly the same thing to fix.
+- **`intakeDaysNeeded` is a written-out `20`**, because Go will not truncate an
+  untyped float in a const. `TestIntakeDaysNeededMatchesTheCoverageRule` pins it to
+  `ceil(minIntakeCoverage x observedWindowDays)` so it cannot drift from the rule that
+  actually gates the cascade.
+
+`lastIntakeDay` reads through the query engine over a 365-day lookback rather than
+touching SQL, so the Source election and the Manual overlay are not reimplemented here
+— and the lookback is the point: the reference Account's last log is 20 days back,
+inside the window, but an Account that stopped three months ago must still get a date.
+`TestLastIntakeDayLooksPastTheWindow` covers the second case.
+
+**`Expenditure`, `Shortfall` and `MeasuredRate` are now in the contract registry.**
+They were not pinned, which is how a new field could have gone out undeclared; the
+`Series` types have been pinned since ADR 0037 and these are the same kind of contract.

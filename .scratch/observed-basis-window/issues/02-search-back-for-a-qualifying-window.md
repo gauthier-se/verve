@@ -1,5 +1,4 @@
-Status: needs-triage
-Blocked by: 01
+Status: done
 
 # 02: estimate: search back for a qualifying observed window, and date it
 
@@ -80,3 +79,49 @@ from a break is deciding what to eat.
   used; the cascade reaches `recorded` and issue 01's shortfall explains it.
 - **`TestActualRateSharesTheObservedWindow`**: the rate's window bounds equal the
   expenditure's, so the page cannot print two windows as one.
+
+## Comments
+
+**Decision taken: yes, dated and capped at 90 days.** Implemented.
+
+One substantial departure from the spec, and it came from running the result against
+the reference database rather than from reading the code.
+
+**The spec's day-by-day scan is wrong, and it is wrong in a way tests on synthetic
+fixtures would not have caught.** A scan returns the most recent placement that
+*counts* enough readings, which on real data is the lopsided one. The reference
+Account's weigh-ins stopped on 27 August, and the scan fitted its rate over
+8 August – 5 September: ten readings crammed into the first third, twenty empty days,
+and the figure labelled "over 28 days" while describing ten. It reported
+−1.74%/week against a true −0.83%/week.
+
+`latestQualifyingWindow` therefore offers **two placements, not ninety**: the one
+ending now, then the one ending where the evidence ends. Anchoring gives the window
+that stretch actually fills, needs no threshold for "filled enough", and is one line
+to explain. The observed basis anchors on the *earlier* of the last intake day and the
+last weigh-in, since ending the window where only one series still has data puts the
+empty tail back.
+
+`TestLatestQualifyingWindowFillsTheWindowItReports` is that bug written down.
+
+Verified against the reference database at 16 September 2026:
+
+```
+basis   = observed
+kcal    = 3185
+window  = 2026-07-31 -> 2026-08-28 (28 days)
+  mean intake 2270 over 28 days, slope -0.1188 kg/day over 24 weigh-ins
+rate    = -0.94%/week (-0.832 kg/week), 24 weigh-ins, 2026-07-31 -> 2026-08-28
+```
+
+Against 3 889 kcal (`recorded`) before: a 704 kcal/day correction, and the PRD's
+predicted window and figure to within 3 kcal.
+
+**`ActualRate` searches back on its own rule** — weigh-ins alone, no intake coverage —
+so an Account that weighs without logging food still gets a rate. Its window and the
+expenditure's can therefore differ; they are each *reported* in `window_from` /
+`window_to` rather than forced equal, which is the honest version of the spec's "the
+two must agree". On the reference Account they coincide.
+
+The Plan page dates a figure only when its window does not end today, through one
+`windowNote` helper shared by both, so a current Account's page is unchanged.

@@ -45,7 +45,34 @@ const defaultActivityFactor = 1.375
 const (
 	minIntakeCoverage = 0.7 // fraction of window days that must carry logged intake
 	minMassDays       = 10  // distinct days that must carry a body-mass reading
+	// intakeDaysNeeded is minIntakeCoverage expressed as the count a person can check
+	// against their own week: ceil(0.7 x 28). A fraction is the rule; a number of days
+	// is the instruction, and the instruction is what goes on screen. Written out
+	// because Go will not truncate an untyped float in a const, and pinned by
+	// TestIntakeDaysNeededMatchesTheCoverageRule so it cannot drift from the fraction.
+	intakeDaysNeeded = 20
 )
+
+// lastIntakeLookbackDays bounds the search for "when did you last log food". A year is
+// far enough to cover any ordinary break and short enough that the answer still
+// describes the Account asking.
+const lastIntakeLookbackDays = 365
+
+// observedLookbackDays is how far back the observed window may *end*.
+//
+// The window was a calendar window — the last 28 days, and nothing else — so the moment
+// it slid past an Account's last food log the basis vanished and the page fell to the
+// devices, with 44 dense days sitting just outside. ADR 0023 ranks observed above
+// recorded because it is grounded in an outcome rather than a model, and neither
+// property is about freshness: a three-week-old figure computed from what the body did
+// is still grounded, and a figure computed this morning from what the Watch claims is
+// still a device claim.
+//
+// So a dated observed figure outranks a current recorded one, bounded. Ninety days is
+// three times the window: far enough to survive a holiday or a deload, close enough
+// that the body being described is still the one asking. Past it the cascade falls
+// through exactly as it did, and the Shortfall explains why.
+const observedLookbackDays = 90
 
 // profileLookbackYears is how far back a profile input may be read. Height is measured
 // once and then never again — on the reference Account the last reading is nearly two
@@ -244,6 +271,13 @@ type Expenditure struct {
 	Basis Basis   `json:"basis"`
 
 	WindowDays int `json:"window_days"`
+	// WindowFrom and WindowTo are the window's real bounds, YYYY-MM-DD, `to` exclusive.
+	// WindowDays says how long the span is; these say *which* span, and a caller that
+	// shows the figure without them is making a claim the data does not support — the
+	// same argument ADR 0023 makes for naming the basis. Set by the observed basis,
+	// which is the only one whose window can end anywhere but today.
+	WindowFrom string `json:"window_from,omitempty"`
+	WindowTo   string `json:"window_to,omitempty"`
 
 	// Observed basis.
 	MeanIntakeKcal    *float64 `json:"mean_intake_kcal,omitempty"`
@@ -254,6 +288,39 @@ type Expenditure struct {
 	// Predicted basis.
 	ActivityFactor *float64 `json:"activity_factor,omitempty"`
 	BasalKcal      *float64 `json:"basal_kcal,omitempty"`
+
+	// Shortfall describes the better basis this figure stands in for, and is nil when
+	// the cascade stopped at the best one it has — which is every Account logging
+	// densely enough, and every test written before this field existed.
+	Shortfall *Shortfall `json:"shortfall,omitempty"`
+}
+
+// Shortfall is why the cascade did not stop at a better basis: what the observed basis
+// needed, and what the window actually held.
+//
+// It rides on the figure that **was** served, not on the one that was not, because the
+// caller is rendering the former and owes the Account an explanation for it. Without
+// this, a headline that jumps by several hundred kilocalories has no visible cause: the
+// basis is named (ADR 0023) but "recorded" describes what the number is, never why the
+// better one went away.
+//
+// LastIntakeDay is the field that turns a diagnosis into an instruction. "32% coverage"
+// tells an Account nothing it can act on; "your last food log was 27 August" tells it
+// exactly what to do.
+type Shortfall struct {
+	// Basis is the one that was skipped. Only the *best* skipped basis is described: an
+	// Account that fixes the observed basis never reaches the recorded one either, so a
+	// list would be two answers to a question with one action behind it.
+	Basis Basis `json:"basis"`
+
+	IntakeDays     int `json:"intake_days"`
+	IntakeDaysNeed int `json:"intake_days_need"`
+	MassDays       int `json:"mass_days"`
+	MassDaysNeed   int `json:"mass_days_need"`
+
+	// LastIntakeDay is YYYY-MM-DD, or "" for an Account that has never logged food —
+	// which is a different sentence, not a zero date.
+	LastIntakeDay string `json:"last_intake_day,omitempty"`
 }
 
 // Rate is the Account's measured speed of body-mass change: the regression slope over
@@ -263,7 +330,12 @@ type Rate struct {
 	PctPerWeek float64 `json:"pct_per_week"`
 	KgPerWeek  float64 `json:"kg_per_week"`
 	WindowDays int     `json:"window_days"`
-	MassDays   int     `json:"mass_days"`
+	// WindowFrom and WindowTo are the window's real bounds, YYYY-MM-DD, `to` exclusive.
+	// They need not match the Expenditure's: this one is gated on weigh-ins alone. Which
+	// is exactly why both are reported rather than assumed equal.
+	WindowFrom string `json:"window_from,omitempty"`
+	WindowTo   string `json:"window_to,omitempty"`
+	MassDays   int    `json:"mass_days"`
 }
 
 // Engine computes Estimates over the query engine. It holds no state and owns no SQL.
@@ -328,15 +400,18 @@ func (e Engine) ResolveInputs(ctx context.Context, accountID int64, profile Prof
 // order and falling through when the evidence is too thin. It never returns a zero as if
 // it were an answer: an Account with nothing to go on gets an error the caller reports.
 func (e Engine) Expenditure(ctx context.Context, accountID int64, in Inputs, basal *float64, now time.Time) (Expenditure, error) {
-	if obs, ok, err := e.observed(ctx, accountID, now); err != nil {
+	obs, short, err := e.observed(ctx, accountID, now)
+	if err != nil {
 		return Expenditure{}, err
-	} else if ok {
+	}
+	if obs.Basis != "" {
 		return obs, nil
 	}
 
 	if rec, ok, err := e.recorded(ctx, accountID, now); err != nil {
 		return Expenditure{}, err
 	} else if ok {
+		rec.Shortfall = short
 		return rec, nil
 	}
 
@@ -348,6 +423,7 @@ func (e Engine) Expenditure(ctx context.Context, accountID int64, in Inputs, bas
 			WindowDays:     observedWindowDays,
 			ActivityFactor: &factor,
 			BasalKcal:      basal,
+			Shortfall:      short,
 		}, nil
 	}
 
@@ -361,37 +437,180 @@ func (e Engine) Expenditure(ctx context.Context, accountID int64, in Inputs, bas
 // The slope comes from an ordinary least-squares fit over daily readings, never from
 // differencing the endpoints: raw weight swings by ±1.5 kg between mornings, so a single
 // unlucky final reading would swamp four weeks of signal.
-func (e Engine) observed(ctx context.Context, accountID int64, now time.Time) (Expenditure, bool, error) {
-	from := now.AddDate(0, 0, -observedWindowDays)
-
-	intake, err := e.dailyPoints(ctx, accountID, metricIntake, from, now)
+// A zero Basis on the returned Expenditure means the basis did not produce a figure.
+// The accompanying Shortfall says why when the reason is coverage — the reason an
+// Account can do something about — and is nil when it is not.
+//
+// The window is the most recent 28 days that *meet* coverage, not the last 28 on the
+// calendar, and the Expenditure reports the bounds it actually used so a caller can
+// date the figure. An Account logging today takes the identical path it always did:
+// the first window tried ends now.
+func (e Engine) observed(ctx context.Context, accountID int64, now time.Time) (Expenditure, *Shortfall, error) {
+	// One read over the whole searchable span rather than one per candidate window: the
+	// earliest window the lookback allows begins observedLookbackDays + observedWindowDays
+	// back, and the scan below slices it in memory.
+	span := now.AddDate(0, 0, -(observedLookbackDays + observedWindowDays))
+	allIntake, err := e.dailyPoints(ctx, accountID, metricIntake, span, now)
 	if err != nil {
-		return Expenditure{}, false, err
+		return Expenditure{}, nil, err
 	}
-	mass, err := e.dailyPoints(ctx, accountID, metricBodyMass, from, now)
+	allMass, err := e.dailyPoints(ctx, accountID, metricBodyMass, span, now)
 	if err != nil {
-		return Expenditure{}, false, err
+		return Expenditure{}, nil, err
 	}
 
-	if float64(len(intake))/observedWindowDays < minIntakeCoverage || len(mass) < minMassDays {
-		return Expenditure{}, false, nil
+	anchor := earlier(lastBucket(allIntake), lastBucket(allMass))
+	from, to, found := latestQualifyingWindow(now, anchor, func(f, t time.Time) bool {
+		return qualifies(within(allIntake, f, t), within(allMass, f, t))
+	})
+	if !found {
+		// Nothing qualified anywhere in the lookback. The counts reported are the
+		// *current* window's, because that is the one the Account can act on: it is the
+		// window that will qualify first if they start logging tonight.
+		cur := now.AddDate(0, 0, -observedWindowDays)
+		last, err := e.lastIntakeDay(ctx, accountID, now)
+		if err != nil {
+			return Expenditure{}, nil, err
+		}
+		return Expenditure{}, &Shortfall{
+			Basis:          BasisObserved,
+			IntakeDays:     len(within(allIntake, cur, now)),
+			IntakeDaysNeed: intakeDaysNeeded,
+			MassDays:       len(within(allMass, cur, now)),
+			MassDaysNeed:   minMassDays,
+			LastIntakeDay:  last,
+		}, nil
 	}
+
+	intake, mass := within(allIntake, from, to), within(allMass, from, to)
 
 	meanIntake := mean(values(intake))
 	slope, ok := ordinaryLeastSquares(mass, from)
 	if !ok {
-		return Expenditure{}, false, nil
+		// Coverage was met and the fit still failed, which takes every reading landing
+		// on one day. There is nothing here for an Account to act on, so it falls
+		// through unexplained rather than being handed a Shortfall whose counts would
+		// say the thresholds were the problem when they were not.
+		return Expenditure{}, nil, nil
 	}
 
 	return Expenditure{
 		Kcal:              meanIntake - slope*energyPerKgMass,
 		Basis:             BasisObserved,
 		WindowDays:        observedWindowDays,
+		WindowFrom:        day(from),
+		WindowTo:          day(to),
 		MeanIntakeKcal:    &meanIntake,
 		MassSlopeKgPerDay: &slope,
 		IntakeDays:        len(intake),
 		MassDays:          len(mass),
-	}, true, nil
+	}, nil, nil
+}
+
+// qualifies is the coverage rule, in one place so the scan and the thresholds cannot
+// drift apart.
+func qualifies(intake, mass []query.Point) bool {
+	return float64(len(intake))/observedWindowDays >= minIntakeCoverage && len(mass) >= minMassDays
+}
+
+// latestQualifyingWindow offers two placements of the 28-day window and returns the
+// first that satisfies ok: the one ending **now**, then the one ending where the
+// evidence ends.
+//
+// Two candidates rather than a day-by-day scan, and this is the whole of the design.
+// A scan returns the most recent placement that merely *counts* enough readings, which
+// on real data is the lopsided one: an Account whose weigh-ins stopped on 27 August had
+// its rate fitted over 8 August to 5 September, where every reading sits in the first
+// third and twenty days of the window are empty. The figure was then labelled "over 28
+// days" while describing ten. Anchoring on the last reading instead gives the window
+// that stretch actually fills.
+//
+// The now-candidate is tried first and unconditionally, so an Account logging today
+// takes the path it always took and nothing about its figure moves.
+//
+// anchor is the last day the evidence covers; the window ends the day after it, since
+// the bound is exclusive. A zero anchor, or one past observedLookbackDays, offers only
+// the first candidate: a window older than that describes a body which has since
+// changed, and admitting the gap beats dating a stale answer.
+func latestQualifyingWindow(now, anchor time.Time, ok func(from, to time.Time) bool) (time.Time, time.Time, bool) {
+	candidates := []time.Time{now}
+	if !anchor.IsZero() {
+		if end := anchor.AddDate(0, 0, 1); end.Before(now) && !end.Before(now.AddDate(0, 0, -observedLookbackDays)) {
+			candidates = append(candidates, end)
+		}
+	}
+	for _, to := range candidates {
+		from := to.AddDate(0, 0, -observedWindowDays)
+		if ok(from, to) {
+			return from, to, true
+		}
+	}
+	return time.Time{}, time.Time{}, false
+}
+
+// lastBucket is the day of the final point, or a zero time when there are none.
+func lastBucket(points []query.Point) time.Time {
+	if len(points) == 0 {
+		return time.Time{}
+	}
+	t, err := time.Parse("2006-01-02", points[len(points)-1].Bucket)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
+}
+
+// earlier is the smaller of two days, ignoring a zero one. Anchoring the observed window
+// needs the day *both* series still cover: anchoring on the later would end the window
+// in a stretch where one of them has already stopped.
+func earlier(a, b time.Time) time.Time {
+	switch {
+	case a.IsZero():
+		return b
+	case b.IsZero():
+		return a
+	case b.Before(a):
+		return b
+	default:
+		return a
+	}
+}
+
+// within is the points whose bucket falls in [from, to). The points arrive sorted by
+// bucket from the query engine, and a linear filter over at most a few hundred of them
+// is not worth a binary search.
+func within(points []query.Point, from, to time.Time) []query.Point {
+	lo, hi := day(from), day(to)
+	out := make([]query.Point, 0, len(points))
+	for _, p := range points {
+		if p.Bucket >= lo && p.Bucket < hi {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// day renders an instant as the YYYY-MM-DD a bucket key compares against.
+func day(t time.Time) string { return t.UTC().Format("2006-01-02") }
+
+// lastIntakeDay is the most recent day the Account logged any food, as YYYY-MM-DD, or
+// "" if it never has.
+//
+// It deliberately looks past the observed window: the whole reason this is being asked
+// is that the window holds too little, and "your last food log was 27 August" is only
+// useful when 27 August is outside it. The lookback is bounded because an answer from
+// three years ago is the same as no answer, and it reads through the query engine like
+// every other figure in this package — the Source election and the Manual overlay are
+// not this file's business to reimplement.
+func (e Engine) lastIntakeDay(ctx context.Context, accountID int64, now time.Time) (string, error) {
+	points, err := e.dailyPoints(ctx, accountID, metricIntake, now.AddDate(0, 0, -lastIntakeLookbackDays), now)
+	if err != nil {
+		return "", err
+	}
+	if len(points) == 0 {
+		return "", nil
+	}
+	return points[len(points)-1].Bucket, nil
 }
 
 // recorded is the mean of the days the devices reported — total_energy_expenditure, the
@@ -413,18 +632,35 @@ func (e Engine) recorded(ctx context.Context, accountID int64, now time.Time) (E
 	}, true, nil
 }
 
-// ActualRate is the Account's measured speed of body-mass change over the observed
-// window. The Plan page opens its Target rate slider on this, so the page starts by
-// stating what the Account is already doing rather than presenting an empty form.
+// ActualRate is the Account's measured speed of body-mass change. The Plan page opens
+// its Target rate slider on this, so the page starts by stating what the Account is
+// already doing rather than presenting an empty form.
+//
+// It searches the window back exactly as the observed basis does, and for the same
+// reason: a rate that vanishes the moment the calendar slides past the last weigh-in
+// leaves the slider with nothing to open on, while the weigh-ins that would answer it
+// sit a fortnight away. Its own rule is weigh-ins alone, not intake coverage, so an
+// Account that steps on a scale without logging food still gets a rate.
+//
+// That means the rate's window and the expenditure's can differ, when the binding
+// constraint differs. They are not forced equal — they are each *reported*, in
+// WindowFrom/WindowTo, so the page can say which stretch each figure describes. Two
+// dated answers are honest; two undated answers about different months printed as one
+// picture are not.
 func (e Engine) ActualRate(ctx context.Context, accountID int64, now time.Time) (*Rate, error) {
-	from := now.AddDate(0, 0, -observedWindowDays)
-	points, err := e.dailyPoints(ctx, accountID, metricBodyMass, from, now)
+	span := now.AddDate(0, 0, -(observedLookbackDays + observedWindowDays))
+	all, err := e.dailyPoints(ctx, accountID, metricBodyMass, span, now)
 	if err != nil {
 		return nil, err
 	}
-	if len(points) < minMassDays {
+	from, to, found := latestQualifyingWindow(now, lastBucket(all), func(f, t time.Time) bool {
+		return len(within(all, f, t)) >= minMassDays
+	})
+	if !found {
 		return nil, nil
 	}
+
+	points := within(all, from, to)
 	slope, ok := ordinaryLeastSquares(points, from)
 	if !ok {
 		return nil, nil
@@ -438,6 +674,8 @@ func (e Engine) ActualRate(ctx context.Context, accountID int64, now time.Time) 
 		PctPerWeek: kgPerWeek / avgMass * 100,
 		KgPerWeek:  kgPerWeek,
 		WindowDays: observedWindowDays,
+		WindowFrom: day(from),
+		WindowTo:   day(to),
 		MassDays:   len(points),
 	}, nil
 }

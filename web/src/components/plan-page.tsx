@@ -9,7 +9,7 @@ import {
   useUpdateProfile,
 } from "@/hooks/use-plan";
 import { ApiError } from "@/lib/api";
-import { formatExact } from "@/lib/format";
+import { formatDay, formatExact } from "@/lib/format";
 import type {
   Adherence,
   BasalEstimate,
@@ -20,6 +20,7 @@ import type {
   Guardrail,
   Phase,
   Plan,
+  Shortfall,
   Targets,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -147,7 +148,11 @@ function ExpenditureCard({ expenditure }: { expenditure?: Expenditure }) {
     <Card title="Daily expenditure">
       <div className="flex flex-wrap items-baseline gap-3">
         <span className="text-4xl font-semibold tabular-nums">{kcal(expenditure.kcal)}</span>
-        <span className="text-sm text-muted-foreground">{BASIS_LABEL[expenditure.basis]}</span>
+        <span className="text-sm text-muted-foreground">
+          {BASIS_LABEL[expenditure.basis]}
+          {windowNote(expenditure.window_from, expenditure.window_to) &&
+            `, ${windowNote(expenditure.window_from, expenditure.window_to)}`}
+        </span>
       </div>
       <p className="mt-2 text-xs text-muted-foreground">
         {expenditure.basis === "observed" && expenditure.mean_intake_kcal !== undefined && (
@@ -174,7 +179,59 @@ function ExpenditureCard({ expenditure }: { expenditure?: Expenditure }) {
           </>
         )}
       </p>
+      {expenditure.shortfall && (
+        <ShortfallNote shortfall={expenditure.shortfall} windowDays={expenditure.window_days} />
+      )}
     </Card>
+  );
+}
+
+/** windowNote dates a figure whose window does not end today.
+ *
+ *  A figure computed over a stretch that ended three weeks ago is a different claim from
+ *  one computed over this week, and only the first is true of the data. ADR 0023 already
+ *  makes this argument for the basis; the window is the other half of the same
+ *  provenance. Returns "" when the window ends today, because dating today's figure adds
+ *  noise and no information.
+ *
+ *  The expenditure and the rate can resolve to different windows — the rate is gated on
+ *  weigh-ins alone — which is exactly why each one carries and prints its own. */
+function windowNote(from?: string, to?: string): string {
+  if (!from || !to) return "";
+  // The bounds are the server's UTC days and "today" here is the viewer's, which can be
+  // a day apart either side of midnight. One day of slack absorbs that: a window this
+  // would wrongly date is at most a day old, and one worth dating is weeks old by the
+  // nature of the thing — a threshold of exactly today would print a date on a perfectly
+  // current figure for whoever opens the page at 00:30 in Paris.
+  const cutoff = new Date();
+  cutoff.setUTCDate(cutoff.getUTCDate() - 1);
+  if (to >= cutoff.toISOString().slice(0, 10)) return "";
+  // `to` is exclusive, so the last day the window covers is the day before it.
+  const last = new Date(`${to}T00:00:00Z`);
+  last.setUTCDate(last.getUTCDate() - 1);
+  return `${formatDay(from)} – ${formatDay(last.toISOString().slice(0, 10), { year: true })}`;
+}
+
+/** ShortfallNote is the half the basis label cannot carry: not what this number is, but
+ *  why the better one is missing and what would bring it back.
+ *
+ *  An Account coming back from a break sees the headline jump by several hundred
+ *  kilocalories at the exact moment it is deciding what to eat. "Recorded" names the
+ *  figure honestly and explains nothing about the change; these two sentences do.
+ *
+ *  Every number is from the payload. The thresholds in particular are the server's, not
+ *  re-derived here, because a client that computed its own "20 of 28" would eventually
+ *  disagree with the rule that actually gates the cascade. */
+function ShortfallNote({ shortfall, windowDays }: { shortfall: Shortfall; windowDays: number }) {
+  return (
+    <p className="mt-2 text-xs text-muted-foreground">
+      This is a fallback. Your observed figure needs {shortfall.intake_days_need} of the last{" "}
+      {windowDays} days logged and {shortfall.mass_days_need} weigh-ins; this window has{" "}
+      {shortfall.intake_days} and {shortfall.mass_days}.
+      {shortfall.last_intake_day
+        ? ` Your last food log was ${formatDay(shortfall.last_intake_day, { year: true })}.`
+        : " Log your food for a few weeks and Verve will replace this with what your body actually did."}
+    </p>
   );
 }
 
@@ -241,7 +298,11 @@ function RateCard({
       {plan.actual_rate && (
         <p className="mt-3 text-xs text-muted-foreground">
           You are measurably moving at {pct(plan.actual_rate.pct_per_week)} per week, from{" "}
-          {plan.actual_rate.mass_days} weigh-ins over {plan.actual_rate.window_days} days.
+          {plan.actual_rate.mass_days} weigh-ins over {plan.actual_rate.window_days} days
+          {windowNote(plan.actual_rate.window_from, plan.actual_rate.window_to)
+            ? ` (${windowNote(plan.actual_rate.window_from, plan.actual_rate.window_to)})`
+            : ""}
+          .
         </p>
       )}
 
