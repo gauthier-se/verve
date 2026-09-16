@@ -25,12 +25,14 @@ On success the endpoint **opens a session immediately** (sets the cookie like
 `handleLogin`) and returns the Account — the user lands on their seeded Dashboard
 (ADR 0018) with no second credential entry.
 
-A public `GET /v1/auth/state → { needs_bootstrap }` lets the SPA pick the first
-screen: create-account when `true`, login otherwise. Closure is enforced
-**server-side** — the create endpoint re-checks that no Account exists and returns
-a conflict if one does; the `/register` route redirects to `/login` once closed.
-The endpoint leaks only one boolean ("instance initialized"), never account
-enumeration, and reuses the existing per-IP login rate limiter.
+A public `GET /v1/auth/state → { needs_bootstrap, version }` lets the SPA pick the
+first screen: create-account when `true`, login otherwise. It also names the build,
+so an unauthenticated screen can say which Verve the visitor is signing in to.
+Closure is enforced **server-side** — the create endpoint re-checks that no Account
+exists and returns a conflict if one does; the `/register` route redirects to
+`/login` once closed. The payload holds exactly two things, one boolean ("instance
+initialized") and the build version: nothing account-derived, so it never enables
+enumeration. The endpoint reuses the existing per-IP login rate limiter.
 
 ## Why
 
@@ -49,6 +51,13 @@ enumeration, and reuses the existing per-IP login rate limiter.
 - **Server-enforced closure.** A client-only guard is not security; the endpoint
   itself must refuse once initialized. Exposing `needs_bootstrap` reveals nothing
   an attacker could not infer from the login page's existence.
+- **A named build, not an anonymous one.** The version is the one thing a visitor
+  facing a login screen cannot otherwise check, and it is what makes a bug report
+  or an upgrade check possible before signing in. It is fingerprinting an attacker
+  could already do from asset hashes, and on a self-hosted instance the operator
+  and the visitor are usually the same person. What stays out of the payload is
+  the line that matters: nothing account-derived, so the endpoint is still one
+  boolean away from silence.
 
 ## Considered Options
 
@@ -69,8 +78,12 @@ enumeration, and reuses the existing per-IP login rate limiter.
 
 - A new create-account handler (behind the per-IP limiter) inserts the first
   Account, re-checking emptiness server-side, then opens a session like login.
-- `GET /v1/auth/state` reports `needs_bootstrap`; the SPA routes the first screen
-  from it and redirects `/register` to `/login` once closed.
+- `GET /v1/auth/state` reports `needs_bootstrap` and `version`; the SPA routes the
+  first screen from it, shows the build and host on that screen, and redirects
+  `/register` to `/login` once closed.
+- A throttled login (429) carries `Retry-After`, so the screen counts the wait down
+  instead of saying "later". The limiter reserves and cancels rather than polling,
+  so a refused attempt still costs its bucket nothing.
 - The CLI `account create` / `account passwd` path is unchanged and remains the
   way to add and manage further Accounts.
 - No Invitation model, table, or UI is introduced; the door for one (and for the

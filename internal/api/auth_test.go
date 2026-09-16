@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/gauthier-se/verve/internal/data"
@@ -190,6 +191,17 @@ func TestLoginIsRateLimited(t *testing.T) {
 	}
 	if !got429 {
 		t.Error("rapid repeated logins from one IP were never rate-limited")
+	}
+
+	// The 429 must say when to come back: the login screen counts down on it rather
+	// than leaving the visitor guessing (ADR 0017).
+	res := postLogin(t, srv, testEmail, "wrong password", ip)
+	if res.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("throttled login status = %d, want 429", res.StatusCode)
+	}
+	retry, err := strconv.Atoi(res.Header.Get("Retry-After"))
+	if err != nil || retry < 1 {
+		t.Errorf("Retry-After = %q, want a positive whole number of seconds", res.Header.Get("Retry-After"))
 	}
 
 	// A different IP is unaffected by the first IP's throttling.

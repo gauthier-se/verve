@@ -70,7 +70,11 @@ export function useRegister() {
     onSuccess: ({ account }) => {
       qc.setQueryData<MePayload>(["me"], { account });
       qc.invalidateQueries({ queryKey: ["me"] });
-      qc.setQueryData<AuthState>(["auth-state"], { needs_bootstrap: false });
+      // The instance is initialized now, but the version it reported is still true,
+      // so update the flag in place rather than replacing the whole state.
+      qc.setQueryData<AuthState>(["auth-state"], (prev) =>
+        prev ? { ...prev, needs_bootstrap: false } : prev,
+      );
     },
   });
 }

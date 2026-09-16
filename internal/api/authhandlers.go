@@ -31,8 +31,8 @@ func meView(a *data.Account) accountView {
 // record + opaque cookie). Rate-limited per IP; a bad email or password returns the
 // same 401 to avoid account enumeration.
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
-	if !s.loginLimiter.allow(clientIP(r)) {
-		s.rateLimitExceededResponse(w, r)
+	if ok, retryAfter := s.loginLimiter.allow(clientIP(r)); !ok {
+		s.rateLimitExceededResponse(w, r, retryAfter)
 		return
 	}
 
@@ -90,17 +90,19 @@ func (s *Server) openSession(w http.ResponseWriter, r *http.Request, acc *data.A
 	return nil
 }
 
-// handleAuthState reports whether the instance still needs its first Account
-// (ADR 0017). It is public and leaks exactly one boolean — "instance
-// initialized" — never any account detail, so the SPA can pick between the
-// create-account and login screens without enabling enumeration.
+// handleAuthState reports whether the instance still needs its first Account,
+// plus the build version (ADR 0017). It is public, and what it discloses is
+// deliberately bounded: one boolean ("instance initialized") and the version
+// string, never any account detail, so the SPA can pick between the
+// create-account and login screens, and name the build it is talking to,
+// without enabling enumeration.
 func (s *Server) handleAuthState(w http.ResponseWriter, r *http.Request) {
 	exists, err := s.models.Accounts.Any(r.Context())
 	if err != nil {
 		s.serverErrorResponse(w, r, err)
 		return
 	}
-	s.respond(w, r, http.StatusOK, envelope{"needs_bootstrap": !exists})
+	s.respond(w, r, http.StatusOK, envelope{"needs_bootstrap": !exists, "version": s.version})
 }
 
 // handleRegister is the first-run bootstrap: while the instance has zero
@@ -110,8 +112,8 @@ func (s *Server) handleAuthState(w http.ResponseWriter, r *http.Request) {
 // success it opens a session like handleLogin (auto-login). Rate-limited per IP
 // by the shared login limiter.
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
-	if !s.loginLimiter.allow(clientIP(r)) {
-		s.rateLimitExceededResponse(w, r)
+	if ok, retryAfter := s.loginLimiter.allow(clientIP(r)); !ok {
+		s.rateLimitExceededResponse(w, r, retryAfter)
 		return
 	}
 

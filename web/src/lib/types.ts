@@ -45,6 +45,9 @@ export interface Metric {
  *  Account, so the SPA can pick the create-account vs. login screen (ADR 0017). */
 export interface AuthState {
   needs_bootstrap: boolean;
+  /** version is the build the instance runs, shown on the unauthenticated screens
+   *  so a visitor knows which Verve they are signing in to. */
+  version: string;
 }
 
 /** Account is the logged-in identity and its `Me` profile. */

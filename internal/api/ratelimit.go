@@ -37,8 +37,11 @@ func newLoginLimiter() *loginLimiter {
 	}
 }
 
-// allow reports whether an attempt from ip may proceed, consuming a token.
-func (l *loginLimiter) allow(ip string) bool {
+// allow reports whether an attempt from ip may proceed, consuming a token. A
+// refusal also carries how long the caller must wait for the next token: the
+// handler turns it into a Retry-After header, so a throttled client can count
+// down instead of guessing when to try again.
+func (l *loginLimiter) allow(ip string) (bool, time.Duration) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -55,7 +58,19 @@ func (l *loginLimiter) allow(ip string) bool {
 		l.visitors[ip] = v
 	}
 	v.lastSeen = now
-	return v.limiter.Allow()
+
+	// Reserve, not Allow: only a reservation knows the wait until the next token.
+	// Cancelling hands the token straight back, so a refused attempt costs the
+	// bucket nothing, which is exactly how Allow behaved.
+	res := v.limiter.Reserve()
+	if !res.OK() {
+		return false, l.ttl
+	}
+	if d := res.Delay(); d > 0 {
+		res.Cancel()
+		return false, d
+	}
+	return true, 0
 }
 
 // clientIP is the throttling key: the request's remote host, port stripped. It
