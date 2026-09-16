@@ -6,12 +6,12 @@ import { usePins, useAddPin, useRemovePin } from "@/hooks/use-pins";
 import { useAllAnnotations, useAnnotations } from "@/hooks/use-annotations";
 import { useSeries } from "@/hooks/use-series";
 import { useTimeAxis } from "@/hooks/use-time-axis";
-import { SERIES_COLORS } from "@/lib/chart";
+import { seriesColor, standaloneColorOffset } from "@/lib/chart";
 import { defaultChartType, metricLabel } from "@/lib/metrics";
 import { formatDay, formatDayRange, formatDuration, formatExact, formatSummaryValue } from "@/lib/format";
 import { RANGE_PRESETS, type RangeTokens } from "@/lib/time-range";
 import { cn } from "@/lib/utils";
-import type { Aggregation, Annotation, Bucket, Metric, Series, TimeAxis } from "@/lib/types";
+import type { Aggregation, Annotation, Bucket, Metric, Series, TimeAxis, Trend } from "@/lib/types";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { CenteredSpinner } from "./spinner";
@@ -57,6 +57,10 @@ export function MetricPage() {
   // nothing on the screen saying the two are counting different spans of time.
   const [grain, setGrain] = React.useState<Bucket>("day");
   const bucket = effectiveGrain(grain, preset);
+  // Where this page reads the ramp. A Panel takes its place in the grid; a page that
+  // holds one Metric and stands alone has no place, so it takes the Metric's own
+  // (lib/chart.ts) — which is why navigating the Catalog is not a tour of chart-1.
+  const colorOffset = standaloneColorOffset(metric);
   // One bucket for the whole page: the chart, the notes drawn on it, the axis the
   // stats are counted against, and the table underneath. They also share one fetch.
   const query = useSeries({ metrics: [metric], range, bucket });
@@ -140,6 +144,7 @@ export function MetricPage() {
               {/* The hero: the largest figure in the app, and under it the only
                   chart on the page tall enough to read a year in. */}
               {series && <PanelSummary series={series} metric={meta} size="hero" />}
+              {series?.trend && <TrendRate trend={series.trend} unit={series.unit} />}
               <div className="h-[15.5rem] px-3 pb-1 pt-3">
                 {series && (
                   <PanelChart
@@ -147,11 +152,14 @@ export function MetricPage() {
                     metrics={[{ metric, chart_type: defaultChartType(meta) }]}
                     annotations={shownNotes}
                     onHoverBucket={setHovered}
+                    colorOffset={colorOffset}
                   />
                 )}
               </div>
               <AxisMarks axis={axis.data} />
-              {shownNotes && shownNotes.length > 0 && <AnnotationStrip notes={shownNotes} />}
+              {shownNotes && shownNotes.length > 0 && (
+                <AnnotationStrip notes={shownNotes} colorOffset={colorOffset} />
+              )}
             </Card>
 
             {series && <WindowStats series={series} axis={axis.data} metric={meta} preset={preset} />}
@@ -283,10 +291,42 @@ function AxisMarks({ axis }: { axis?: TimeAxis }) {
   );
 }
 
+/** TrendRate is the fitted direction under the hero figure: how fast this Metric is
+ *  moving across the range, and how much of its movement a straight line accounts for.
+ *
+ *  It says "across this range" because it is not the visible gradient of the line above
+ *  it — the drawn line is an exponential average that follows the curve, this is one
+ *  least-squares fit over the whole window, and they answer different questions. The
+ *  Plan page quotes its own rate over its own 28 days; both name their window, or Verve
+ *  appears to contradict itself.
+ *
+ *  r² sits beside the rate rather than gating it. A weak fit is worth showing *with*
+ *  the number that says it is weak; hiding it would teach a reader that a rate on
+ *  screen is always a rate worth acting on. */
+function TrendRate({ trend, unit }: { trend: Trend; unit: string }) {
+  const sign = trend.per_week > 0 ? "+" : "−";
+  const magnitude = formatExact(Math.abs(Math.round(trend.per_week * 1000) / 1000));
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 pb-1 text-xs text-muted-foreground">
+      <span className="font-mono tabular-nums text-foreground">
+        {sign}
+        {magnitude} {unit}/week
+      </span>
+      <span>across this range</span>
+      <span
+        className="font-mono tabular-nums opacity-70"
+        title={`How much of the movement a straight line explains, over ${trend.days} readings.`}
+      >
+        r² {trend.r2.toFixed(2)}
+      </span>
+    </div>
+  );
+}
+
 /** AnnotationStrip lists the notes drawn on the chart above it. The chart shows
  *  *where* they fall; only this strip can show what they say, because a label at
  *  bucket width is illegible and a tooltip has to be hunted for (ADR 0030). */
-function AnnotationStrip({ notes }: { notes: Annotation[] }) {
+function AnnotationStrip({ notes, colorOffset }: { notes: Annotation[]; colorOffset: number }) {
   return (
     <div className="flex flex-wrap gap-2 border-t px-4 py-3">
       {notes.map((note) => (
@@ -295,7 +335,7 @@ function AnnotationStrip({ notes }: { notes: Annotation[] }) {
           className="flex items-center gap-2 rounded border px-2 py-1 text-2xs text-muted-foreground"
           title={note.body ?? undefined}
         >
-          <Dot color={SERIES_COLORS[0]} />
+          <Dot color={seriesColor(0, colorOffset)} />
           <span className="font-mono tabular-nums opacity-70">
             {note.ends_on ? formatDayRange(note.starts_on, note.ends_on) : formatDay(note.starts_on)}
           </span>

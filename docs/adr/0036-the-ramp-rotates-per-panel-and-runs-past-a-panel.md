@@ -6,6 +6,10 @@ never by Metric identity, and the Palette set is still closed and adapted rather
 than reproduced. What changes is *which* position a Panel reads the ramp from, and
 how long the ramp is for the things that are not Panel Series.
 
+_Narrowed by ADR 0042: the closing clause below, "a chart that stands alone on its
+own page takes 0", now holds only for Panels. A standalone chart takes an offset
+derived from its Metric, because the slot rule has no slot to protect there._
+
 ## Context
 
 Two facts about the ramp had quietly merged into one.

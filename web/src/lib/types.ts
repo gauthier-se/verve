@@ -112,6 +112,12 @@ export interface Point {
    *  every other reader uses — for sleep, time asleep — so `awake` appears here and is
    *  never counted there. */
   states?: Record<string, number>;
+  /** trend is the smoothed value at this bucket — the exponentially weighted average
+   *  of the readings up to it, in the Metric's own unit. Carried only by a `latest`
+   *  Metric read at day grain. Absent on a bucket with no reading, so a line drawn
+   *  from it must break rather than bridge (ADR 0032): render it with
+   *  `connectNulls={false}`. */
+  trend?: number;
 }
 
 /** ImportReport is the compact outcome of a finished web import (ADR 0016). */
@@ -194,6 +200,31 @@ export interface Series {
    *  as `days` is for a per-day one: a 30-day window over 21 recorded nights divides by
    *  21, never by 30. */
   nights?: number;
+  /** trend is the window's fitted direction. It is a *different estimator* from
+   *  `Point.trend`: the drawn line is an exponential average that follows the curve,
+   *  this is one straight least-squares fit across the whole window. On a curved range
+   *  the line's visible gradient will not equal `per_week`, which is correct — the line
+   *  says where you are, the rate says how fast across the range — so a view showing
+   *  both has to label them apart. */
+  trend?: Trend;
+}
+
+/** Trend is a sampled Metric's fitted direction over the window, with the evidence
+ *  that qualifies it. Server-computed; never re-derived client-side. */
+export interface Trend {
+  /** per_day and per_week are the slope in the Metric's own unit. per_week is the
+   *  figure a person steers by. */
+  per_day: number;
+  per_week: number;
+  /** pct_per_week is per_week against the window mean, not the last reading. */
+  pct_per_week: number;
+  /** r2 is how much of the movement the line accounts for, in [0, 1]. It belongs
+   *  beside the slope and not behind a threshold: −0.65 kg/week at 0.86 describes a
+   *  range, the same slope at 0.05 is a line through a cloud, and only showing the
+   *  number distinguishes them. */
+  r2: number;
+  /** days is the number of readings behind the fit. */
+  days: number;
 }
 
 /** NightInterval is one stage of a Night as it was recorded, against the clock

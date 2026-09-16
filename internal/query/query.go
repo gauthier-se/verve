@@ -85,6 +85,12 @@ type Point struct {
 	// derived Metric, whose operands each have their own count and whose combined one
 	// would mean nothing.
 	Count int `json:"count,omitempty"`
+	// Trend is the smoothed value at this bucket: the exponentially weighted average
+	// of the readings up to it, in the Metric's own unit (trend.go). Set only for a
+	// `latest` Metric read at day grain, and nil everywhere else — including on a
+	// bucket a fit could not date, so a smoothed line breaks where the readings do
+	// (ADR 0032) rather than asserting a path nobody weighed.
+	Trend *float64 `json:"trend,omitempty"`
 }
 
 // Series is the result of a query: the resolved Metric metadata, the single
@@ -119,6 +125,12 @@ type Series struct {
 	// must divide by 21 — dividing by Days would report a shortfall the Account never
 	// had, with the confidence of a computed number.
 	Nights int `json:"nights,omitempty"`
+	// Trend is the window's fitted direction: the least-squares slope through the
+	// resolved readings with the r² that qualifies it (trend.go). Set alongside
+	// Point.Trend, and deliberately a *different estimator* from the smoothed line —
+	// the line follows the curve, this is one straight fit across the whole window, so
+	// a caller showing both must label them apart. Nil when no line could be fitted.
+	Trend *Trend `json:"trend,omitempty"`
 }
 
 // windowDays is the whole-day span of a query window [from, to), rounded to the
@@ -201,6 +213,16 @@ func (e Engine) Series(ctx context.Context, req Request) (Series, error) {
 			return Series{}, err
 		}
 		out.Mean = mean
+
+		// The trend, over the points already in hand: no second read, and — because
+		// they are the resolved ones — the Manual overlay and Exclusions apply to the
+		// fit for free. Day grain only: a weekly bucket has already smoothed its
+		// readings by folding them, and smoothing that again is a claim about data
+		// which is no longer there.
+		if req.Bucket == timeaxis.Day {
+			smoothTrend(out.Points)
+			out.Trend = fitTrend(out.Points)
+		}
 	}
 	return out, nil
 }
