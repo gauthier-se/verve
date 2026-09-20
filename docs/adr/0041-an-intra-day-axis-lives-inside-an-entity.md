@@ -114,3 +114,9 @@ real Stages are present. The same move the Plan makes with its expenditure basis
 - `efficiency_basis` today has one value. It is a field rather than a constant so
   that the day a time-in-bed basis becomes available, the number's meaning
   changes in the payload rather than silently on screen.
+- **A Day is the case that proves this rule, not the exception to it** (ADR
+  0043). A date became addressable too, and it still carries no axis: its figures
+  are the day buckets `/v1/series` already serves, and the shape of the night on
+  it is a link to `/nights/{date}` rather than a hypnogram drawn in place. The
+  property that makes an entity safe here is not having a URL, it is having a
+  span of its own to be bounded by, and a Day has none.

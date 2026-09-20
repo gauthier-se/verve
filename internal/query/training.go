@@ -262,13 +262,18 @@ func reportedTrainingSource(slug string, rows []trainingRow) string {
 // Distance asks the sharper question. An Account that only lifts has workouts and
 // no kilometres, and a `training_distance` row whose every cell is a dash is
 // exactly the empty row the Ledger exists not to show (ADR 0021).
-func (e Engine) hasTrainingData(ctx context.Context, accountID int64, slug string) (bool, error) {
-	q := `SELECT EXISTS(SELECT 1 FROM sessions WHERE account_id = ?)`
+func (e Engine) hasTrainingData(ctx context.Context, accountID int64, slug, from, to string) (bool, error) {
+	q := `SELECT EXISTS(SELECT 1 FROM sessions WHERE account_id = ?`
 	if slug == metricTrainingDistance {
-		q = `SELECT EXISTS(SELECT 1 FROM sessions WHERE account_id = ? AND total_distance IS NOT NULL)`
+		q += ` AND total_distance IS NOT NULL`
 	}
+	// A workout belongs to the day it started, with none of the Night's shift
+	// (ADR 0040), so the window filters start_at directly.
+	clause, args := windowClause("start_at", from, to)
+	q += clause + `)`
+
 	var found bool
-	if err := e.DB.QueryRowContext(ctx, q, accountID).Scan(&found); err != nil {
+	if err := e.DB.QueryRowContext(ctx, q, append([]any{accountID}, args...)...).Scan(&found); err != nil {
 		return false, fmt.Errorf("query: has training data: %w", err)
 	}
 	return found, nil

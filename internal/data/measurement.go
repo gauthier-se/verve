@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/gauthier-se/verve/internal/catalog"
 )
@@ -200,6 +201,52 @@ func (m MeasurementModel) ListManual(ctx context.Context, accountID int64, metri
 	rows, err := m.DB.QueryContext(ctx, query, accountID, catalog.SourceManual, metric, metric, limit)
 	if err != nil {
 		return nil, fmt.Errorf("data: list manual measurements: %w", err)
+	}
+	defer rows.Close()
+
+	out := []Measurement{}
+	for rows.Next() {
+		var row Measurement
+		if err := rows.Scan(
+			&row.ID, &row.AccountID, &row.Metric, &row.Value, &row.OriginalUnit,
+			&row.StartAt, &row.EndAt, &row.Source, &row.ContentKey,
+		); err != nil {
+			return nil, fmt.Errorf("data: scan manual measurement: %w", err)
+		}
+		out = append(out, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("data: iterate manual measurements: %w", err)
+	}
+	return out, nil
+}
+
+// ListManualOn returns the Account's Manual entries on one day, oldest first. It
+// is the Day page's write side (ADR 0043): a Manual row is deletable because it is
+// yours (ADR 0022), and deleting it from the day it was entered on is the gesture
+// that needs no search.
+//
+// day is a YYYY-MM-DD label compared lexically against the stored RFC 3339
+// timestamp, the same comparison ExclusionSet.Excludes makes: a zero-padded date
+// prefix orders exactly as a date does.
+//
+// It scans the Account's rows rather than seeking, like ListManual above: there is
+// no index on (account_id, source), and adding one for a handful of rows per
+// Account is a migration this read does not earn.
+func (m MeasurementModel) ListManualOn(ctx context.Context, accountID int64, day string) ([]Measurement, error) {
+	const query = `
+		SELECT id, account_id, metric, value, original_unit, start_at, end_at, source, content_key
+		FROM measurements
+		WHERE account_id = ? AND source = ? AND start_at >= ? AND start_at < ?
+		ORDER BY start_at, id`
+
+	next, err := time.Parse(dayLayout, day)
+	if err != nil {
+		return nil, fmt.Errorf("data: list manual measurements on %q: %w", day, err)
+	}
+	rows, err := m.DB.QueryContext(ctx, query, accountID, catalog.SourceManual, day, next.AddDate(0, 0, 1).Format(dayLayout))
+	if err != nil {
+		return nil, fmt.Errorf("data: list manual measurements on a day: %w", err)
 	}
 	defer rows.Close()
 

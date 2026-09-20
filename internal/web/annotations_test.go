@@ -152,22 +152,31 @@ func TestSpaColoursAreTokensOnly(t *testing.T) {
 	}
 }
 
-// TestAnnotationWritesInvalidateOnlyTheNotes: a note changes no aggregate, so a
-// write must invalidate the annotations query and nothing else. Widening it to the
+// TestAnnotationWritesInvalidateNoAggregate: a note changes no aggregate, so a
+// write must invalidate what shows notes and nothing else. Widening it to the
 // Series would refetch four Panels' worth of buckets because someone typed
 // "holiday", making the cheapest write in the app the most expensive one, and it
 // would look like nothing at all had gone wrong.
-func TestAnnotationWritesInvalidateOnlyTheNotes(t *testing.T) {
+//
+// Two queries show a note: the notes themselves, and the Day that carries the ones
+// dated on it (ADR 0043). A Day is one call over one date, so invalidating it costs
+// what this test exists to protect: nothing measurable.
+func TestAnnotationWritesInvalidateNoAggregate(t *testing.T) {
 	const hookPath = "../../web/src/hooks/use-annotations.ts"
 	src := readFileText(t, hookPath)
 
-	if !strings.Contains(src, "invalidateQueries({ queryKey: ANNOTATIONS_KEY })") {
-		t.Errorf("%s: a write must invalidate ANNOTATIONS_KEY", hookPath)
+	for _, key := range []string{"queryKey: ANNOTATIONS_KEY", "queryKey: DAY_KEY"} {
+		if !strings.Contains(src, "invalidateQueries({ "+key+" })") {
+			t.Errorf("%s: a write must invalidate %s", hookPath, key)
+		}
 	}
 	// One invalidation helper, shared by all three verbs: three hand-written calls
-	// are three chances for one of them to drift.
-	if n := strings.Count(src, "invalidateQueries"); n != 1 {
-		t.Errorf("%s calls invalidateQueries %d times, want exactly 1 shared helper", hookPath, n)
+	// are three chances for one of them to drift. Two calls inside it, the two above.
+	if n := strings.Count(src, "useQueryClient()"); n != 1 {
+		t.Errorf("%s takes the query client %d times, want exactly 1 shared helper", hookPath, n)
+	}
+	if n := strings.Count(src, "invalidateQueries"); n != 2 {
+		t.Errorf("%s calls invalidateQueries %d times, want the notes and the Day", hookPath, n)
 	}
 	for _, other := range []string{`"series"`, `"ledger"`, `"dashboards"`, `"plan"`} {
 		if strings.Contains(src, other) {

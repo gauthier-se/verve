@@ -30,31 +30,43 @@ function localDateTimeValue(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+/** initialMeasuredAt seeds the instant field. Opened from a Day it is that date at
+ *  noon rather than now: a page about one date should not make you retype it, and
+ *  noon is the hour that survives the trip through the browser's zone, where the
+ *  current time of day on a date days away would not. */
+function initialMeasuredAt(date?: string): string {
+  return date ? `${date}T12:00` : localDateTimeValue(new Date());
+}
+
 /** ManualEntryDialog is Verve's first write path that is not a file upload: it records a
  *  Manual entry and lists the ones already recorded so they can be removed (ADR 0022).
  *  Correcting a value is delete-then-re-enter — there is no edit, deliberately. */
 export function ManualEntryDialog({
   open,
   onOpenChange,
+  date,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** date pre-dates the entry to a YYYY-MM-DD the caller is already about, which is
+   *  what the Day page passes (ADR 0043). Absent, the dialog opens on now. */
+  date?: string;
 }) {
   const metrics = useMetrics();
   const create = useCreateManualMeasurement();
   const [selected, setSelected] = React.useState<Metric | null>(null);
   const [value, setValue] = React.useState("");
-  const [measuredAt, setMeasuredAt] = React.useState(() => localDateTimeValue(new Date()));
+  const [measuredAt, setMeasuredAt] = React.useState(() => initialMeasuredAt(date));
 
   // Reset when the dialog closes so it never reopens holding a half-typed entry.
   React.useEffect(() => {
     if (!open) {
       setSelected(null);
       setValue("");
-      setMeasuredAt(localDateTimeValue(new Date()));
+      setMeasuredAt(initialMeasuredAt(date));
       create.reset();
     }
-  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, date]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -142,7 +154,7 @@ export function ManualEntryDialog({
           </form>
         )}
 
-        <RecentEntries />
+        {date === undefined && <RecentEntries />}
       </DialogContent>
     </Dialog>
   );

@@ -11,6 +11,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { useDayNavigation } from "@/hooks/use-day";
 import { useHistory } from "@/hooks/use-history";
 import { AXIS, CATEGORY_COLORS, GRID, RECESSED, SERIES_COLORS } from "@/lib/chart";
 import { formatDay, formatDayRange, formatExact } from "@/lib/format";
@@ -129,6 +130,11 @@ function BandCard({ band }: { band: HistoryBand }) {
 
   const withData = band.points.filter((p) => !p.gap).length;
   const kinds = new Set(band.phases.map((p) => p.kind));
+  // The band is dense by construction (ADR 0032), so an empty bucket is clickable
+  // too and lands on an empty Day. That is the right answer: a date exists whether
+  // or not anything happened on it (ADR 0043). Only at day grain, which a whole
+  // history rarely resolves to.
+  const openDay = useDayNavigation(band.bucket);
 
   return (
     <Card className="flex flex-col p-4">
@@ -141,7 +147,14 @@ function BandCard({ band }: { band: HistoryBand }) {
 
       <div className="h-44">
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+          <ComposedChart
+            data={data}
+            style={openDay ? { cursor: "pointer" } : undefined}
+            margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
+            onClick={(s) => {
+              if (typeof s.activeLabel === "string") openDay?.(s.activeLabel);
+            }}
+          >
             <CartesianGrid stroke={GRID} strokeDasharray="3 3" vertical={false} />
             <XAxis
               dataKey="bucket"

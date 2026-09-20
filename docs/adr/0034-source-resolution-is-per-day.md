@@ -110,3 +110,9 @@ remains deferred, exactly as ADR 0003 left it.
   For a Metric with one Source over a year that is 365 rows scanned from an index
   that already had to be walked, and the alternative was a query that answered a
   different question.
+- **The election now has a place where it is visible** (ADR 0043). It ran for a
+  year with nothing on screen naming the winner of any particular day: a Series
+  reports the dominant Source over its window, which is the right answer for a
+  window and says nothing about the 3rd of March. The Day page shows the elected
+  Source per Metric per date, which is the grain this ADR decided at, and it is
+  the only screen that can.

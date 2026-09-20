@@ -24,22 +24,27 @@ type NightInterval struct {
 	EndAt   string `json:"end_at"`
 }
 
-// NightDetail is one Night: its intervals, the Source elected for it, and the
-// figures a fold destroys.
+// NightSummary is one Night's figures: what it came to, and what it was shaped
+// like, without the intervals that shape was read from.
+//
+// It is split out of NightDetail because a second reader wants the figures and
+// not the shape: a Day names the Night that woke into it and links to it for the
+// hypnogram (ADR 0043). Splitting rather than copying is what keeps one
+// definition of what a night's efficiency is, and NightDetail embeds it, so the
+// wire shape of /v1/nights/{date} is unchanged.
 //
 // Every figure beyond Asleep is a pointer, because absent evidence is absent and
 // never zero (ADR 0014): an in-bed-only night has no onset, and a night with no
 // awake rows between onset and waking is not the same claim as one with zero
 // minutes of them.
-type NightDetail struct {
-	Night      string          `json:"night"`
-	Source     string          `json:"source"`
-	Intervals  []NightInterval `json:"intervals"`
-	Asleep     float64         `json:"asleep"`
-	Awake      *float64        `json:"awake,omitempty"`
-	Onset      *string         `json:"onset,omitempty"`
-	Wake       *string         `json:"wake,omitempty"`
-	Efficiency *float64        `json:"efficiency,omitempty"`
+type NightSummary struct {
+	Night      string   `json:"night"`
+	Source     string   `json:"source"`
+	Asleep     float64  `json:"asleep"`
+	Awake      *float64 `json:"awake,omitempty"`
+	Onset      *string  `json:"onset,omitempty"`
+	Wake       *string  `json:"wake,omitempty"`
+	Efficiency *float64 `json:"efficiency,omitempty"`
 	// EfficiencyBasis names the denominator behind Efficiency. A percentage whose
 	// denominator is assumed is a number that lies quietly, and the classic one
 	// (time in bed) is not what this is: the resolution that makes this page agree
@@ -47,6 +52,14 @@ type NightDetail struct {
 	// the span available is the one from falling asleep to waking. The field
 	// exists so the figure is never read as the other one.
 	EfficiencyBasis string `json:"efficiency_basis,omitempty"`
+}
+
+// NightDetail is one Night: the figures above, plus the intervals they were read
+// from. The intervals are what an axis is drawn from, so they belong to the
+// entity's own page and to nothing that merely refers to the night.
+type NightDetail struct {
+	NightSummary
+	Intervals []NightInterval `json:"intervals"`
 }
 
 // Night reads one Night by its label, the morning it woke on. ok is false when
@@ -84,10 +97,12 @@ func (e Engine) Night(ctx context.Context, accountID int64, label string) (Night
 	sort.Slice(kept, func(i, j int) bool { return kept[i].start.Before(kept[j].start) })
 
 	out := NightDetail{
-		Night:     label,
-		Source:    winner,
+		NightSummary: NightSummary{
+			Night:  label,
+			Source: winner,
+			Asleep: resolved.value,
+		},
 		Intervals: make([]NightInterval, 0, len(kept)),
-		Asleep:    resolved.value,
 	}
 	for _, r := range kept {
 		out.Intervals = append(out.Intervals, NightInterval{

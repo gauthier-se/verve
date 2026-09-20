@@ -38,6 +38,7 @@ Everything below is merged into `main`, tested, and usable today.
 | Export | A way out: one account as a portable zip any Verve reads back as an import, and the numbers behind any curve as a CSV at the grain on screen |
 | Training volume | The hours and kilometres your workouts come to, per bucket and stacked by activity: the aggregate side of the Sessions the list already holds |
 | Intra-day | The shape of one night and the curve of one workout, on their own axes: an entity serves what a bucket destroys |
+| The day | One date as a page, and the bucket that leads to it: every figure with the device that recorded it, the night, the workouts, the notes, and a gap told apart from a refusal |
 
 ## Next
 

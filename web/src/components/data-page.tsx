@@ -5,7 +5,7 @@ import { Check, ChevronRight, Copy, Download, Pencil, StickyNote } from "lucide-
 import { useAllAnnotations } from "@/hooks/use-annotations";
 import { useMetricMap } from "@/hooks/use-catalog";
 import { useLedger } from "@/hooks/use-ledger";
-import { formatDuration, formatExact, formatSummaryValue } from "@/lib/format";
+import { formatExact, formatFigure } from "@/lib/format";
 import { metricLabel } from "@/lib/metrics";
 import { textMatcher } from "@/lib/search";
 import { copyTsv, tsvNumber } from "@/lib/clipboard";
@@ -241,12 +241,8 @@ function Scoreboard({ rows, total }: { rows: LedgerRow[]; total: number }) {
   );
 }
 
-/** ledgerFigure renders a scoreboard number: sleep's minutes as a duration ("7h 12m"),
- *  everything else as a plain figure. A night reported as "432" is a number nobody
- *  reads as a duration (ADR 0027). */
-function ledgerFigure(value: number, aggregation: LedgerRow["aggregation"]): string {
-  return aggregation === "duration_by_state" ? formatDuration(value) : formatSummaryValue(value, aggregation);
-}
+/** ledgerFigure renders a scoreboard number by the Metric's own rule (ADR 0027). */
+const ledgerFigure = formatFigure;
 
 function WindowCell({ value, aggregation }: { value: number | undefined; aggregation: LedgerRow["aggregation"] }) {
   return (

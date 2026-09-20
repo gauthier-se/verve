@@ -295,6 +295,27 @@ _Avoid_: Timeline (the rendering, not the concept), Activity feed, Log, Audit
 trail (it explains data, it does not police access), Journal (that is closer to
 Annotations).
 
+**Day**:
+One calendar date read as a page: the index of everything an Account holds on it,
+and the display of the per-day **Source** election ADR 0034 already performs. A
+Day is a **Bucket** and not an entity — it has no identity, no row, no start and
+end of its own — which is exactly why it gets an index rather than a shape: its
+figures are the day buckets `/v1/series` serves, folded by each **Metric**'s own
+rule, its **Night** is the one labelled by that date (the night that woke into
+that morning), its **Sessions** are the ones that started on it with none of the
+Night's shift (ADR 0040), and everything finer than the day sits behind a link to
+the **Night** or **Session** that owns it (ADR 0041). It is also the one screen
+that tells a **gap** from a refusal, because the **Exclusion** covering the date
+is right there (ADR 0033). An empty Day is an empty page and never a 404: a date
+exists whether or not anything happened on it, which is the sharpest difference
+between a Day and every other addressable thing in Verve. Like **History** it
+spans every family at once, and for the same reason it is its own module
+(`internal/day`, ADR 0037, ADR 0043).
+_Avoid_: Daily summary (**Summary** is the Panel's headline figure, ADR 0019),
+Journal / Diary (both imply authored entries; a Day is overwhelmingly a read),
+Timeline (the History band's word), Day view (it names a Dashboard mode that does
+not exist), Today (that is one Day, and the page is every Day).
+
 ### Sleep
 
 **Night**:
@@ -315,7 +336,10 @@ the night that woke on that morning, read as an entity rather than as a bucket,
 carrying its intervals against the clock and the figures a fold destroys (onset,
 wake, time awake between them, efficiency). Addressable is not the same as being
 a **Metric**: a Night has no bucket, no window and no comparison, and it appears
-on no **Panel** (ADR 0041).
+on no **Panel** (ADR 0041). The **Day** that shows a Night is the one it woke
+into, the date it is labelled by and the date the sleep Panel already draws it
+on: a page and a bar that disagreed about one night would be worse than either
+alone (ADR 0043).
 _Avoid_: Sleep day (reads as a day spent sleeping), Session (that's the workout
 family), Bedtime, Sleep period.
 

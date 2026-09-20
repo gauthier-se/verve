@@ -8,20 +8,15 @@ import {
 } from "@/hooks/use-annotations";
 import { ApiError } from "@/lib/api";
 import type { Annotation } from "@/lib/types";
+import { today } from "@/lib/day";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Textarea } from "./ui/textarea";
 
-/** today is the fallback prefill: the day you are most likely writing about when
- *  nothing on screen says otherwise. Local wall time, because "today" is a thing
- *  about where the person is, not about UTC. */
-function today(): string {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
+// today is the fallback prefill: the day you are most likely writing about when
+// nothing on screen says otherwise (lib/day).
 
 /** AnnotationDialog writes, edits and deletes one note (ADR 0030). One dialog for
  *  three verbs, like the manual entry one, because an Annotation is small enough

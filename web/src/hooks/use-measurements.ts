@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { DAY_KEY } from "./use-day";
 import type { ManualMeasurement } from "@/lib/types";
 
 const KEY = ["measurements", "manual"];
@@ -37,6 +38,8 @@ function useInvalidate() {
     void qc.invalidateQueries({ queryKey: KEY });
     void qc.invalidateQueries({ queryKey: ["series"] });
     void qc.invalidateQueries({ queryKey: ["ledger"] });
+    // The Day lists the entry and carries its figure, so both go stale (ADR 0043).
+    void qc.invalidateQueries({ queryKey: DAY_KEY });
   };
 }
 
