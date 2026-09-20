@@ -10,6 +10,7 @@ import (
 
 	"github.com/gauthier-se/verve/internal/auth"
 	"github.com/gauthier-se/verve/internal/data"
+	"github.com/gauthier-se/verve/internal/day"
 	"github.com/gauthier-se/verve/internal/estimate"
 	"github.com/gauthier-se/verve/internal/history"
 	"github.com/gauthier-se/verve/internal/query"
@@ -58,6 +59,7 @@ type Server struct {
 	engine        query.Engine
 	estimates     estimate.Engine
 	history       history.Engine
+	day           day.Engine
 	resolver      authResolver
 	loginLimiter  *loginLimiter
 	secureCookies bool
@@ -103,6 +105,7 @@ func New(logger *slog.Logger, models data.Models, engine query.Engine, cfg Confi
 		engine:        engine,
 		estimates:     estimate.Engine{Query: engine},
 		history:       history.Engine{Query: engine, Models: models},
+		day:           day.Engine{Query: engine, Models: models},
 		resolver:      sessionResolver{sessions: models.AuthSessions},
 		loginLimiter:  newLoginLimiter(),
 		secureCookies: cfg.SecureCookies,
@@ -211,6 +214,11 @@ func (s *Server) Handler() http.Handler {
 	// addressed by the morning it woke on, takes no range, and is the only sleep
 	// read finer than a day.
 	mux.Handle("GET /v1/nights/{date}", s.requireAuth(s.handleNight))
+
+	// A Day as an index: one date, and everything the Account holds on it (ADR 0043).
+	// It takes no range and no bucket either, but for the opposite reason to a Night:
+	// a Night is an entity, a Day is the bucket every other read is already folded to.
+	mux.Handle("GET /v1/days/{date}", s.requireAuth(s.handleDay))
 
 	// History: the long view — everything the Account holds, and the dated events that
 	// explain its shape. One call, because the band, its Phases and the ledger all have

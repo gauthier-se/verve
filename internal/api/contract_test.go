@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gauthier-se/verve/internal/day"
 	"github.com/gauthier-se/verve/internal/estimate"
 	"github.com/gauthier-se/verve/internal/history"
 	"github.com/gauthier-se/verve/internal/query"
@@ -76,7 +77,10 @@ var contract = []struct {
 	{"Series", query.Series{}},
 	{"Trend", query.Trend{}},
 	{"NightDetail", query.NightDetail{}},
+	{"NightSummary", query.NightSummary{}},
 	{"NightInterval", query.NightInterval{}},
+	{"Day", dayView{}},
+	{"DayMetric", day.Metric{}},
 	{"WorkoutSeries", query.WorkoutSeries{}},
 	{"WorkoutPoint", query.WorkoutPoint{}},
 	{"LedgerRow", query.LedgerRow{}},

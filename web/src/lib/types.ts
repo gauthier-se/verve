@@ -258,6 +258,66 @@ export interface NightDetail {
   efficiency_basis?: string;
 }
 
+/** NightSummary is a Night's figures without its shape: what the night came to,
+ *  carried by anything that refers to a night rather than drawing one. A Day
+ *  carries it and links to /nights/{date} for the hypnogram, because the axis
+ *  belongs to the entity (ADR 0041, ADR 0043). Same fields as NightDetail minus
+ *  `intervals`, and the same meanings: the Go type is embedded in the other, so
+ *  there is one definition of what a night's efficiency is. */
+export interface NightSummary {
+  night: string;
+  source: string;
+  asleep: number;
+  awake?: number;
+  onset?: string;
+  wake?: string;
+  efficiency?: number;
+  efficiency_basis?: string;
+}
+
+/** DayMetric is one Metric's figure on one date, folded by that Metric's own rule
+ *  so it is the same number the bar above the same date draws.
+ *
+ *  `value` is absent for a gap and never 0: a day with no steps recorded is not a
+ *  day with no steps. `source` is the Source elected for this Metric on this date,
+ *  which is the grain the election already runs at (ADR 0034), so the field
+ *  displays a decision rather than making one. */
+export interface DayMetric {
+  metric: string;
+  unit: string;
+  /** A derived Metric has no Catalog aggregation rule, so the field is empty
+   *  rather than absent, exactly as it is on a Series (ADR 0014). */
+  aggregation: Aggregation | "";
+  value?: number;
+  source?: string;
+  /** pinned marks a row present because the Account pinned the Metric, with or
+   *  without data. A pinned row with no value says the day is missing, not that the
+   *  Metric is. It orders the list and carries no time axis (ADR 0025). */
+  pinned?: boolean;
+  /** excluded says the absence is a refusal and not a gap: an Exclusion covers this
+   *  Metric on this date (ADR 0033). No other screen tells the two apart. */
+  excluded?: boolean;
+}
+
+/** Day is GET /v1/days/{date}: one calendar date read as an index of everything
+ *  the Account holds on it (ADR 0043).
+ *
+ *  A Day is a bucket and not an entity, so it carries figures and references and
+ *  never a shape: `night` is the Night labelled by this date and links to its own
+ *  page for the hypnogram, and a session links to its own page for the map and the
+ *  curve. A date with nothing on it is empty collections and a 200, never a 404:
+ *  a date exists whether or not anything happened on it. */
+export interface Day {
+  date: string;
+  metrics: DayMetric[];
+  night?: NightSummary;
+  sessions: Session[];
+  annotations: Annotation[];
+  manual_entries: ManualMeasurement[];
+  exclusions: Exclusion[];
+  phase?: Phase;
+}
+
 /** ManualMeasurement is one Manual entry: a Measurement the Account typed rather than
  *  a Connector imported (ADR 0022). Unlike a Series point it carries an `id`, because
  *  it is the only kind of Measurement Verve will delete and deleting needs an address.
