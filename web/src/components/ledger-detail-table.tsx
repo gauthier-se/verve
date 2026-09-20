@@ -179,18 +179,21 @@ export function LedgerDetailTable({
               <TableRow key={point.bucket}>
                 <TableCell className="whitespace-nowrap font-mono tabular-nums text-muted-foreground">
                   {/* A day bucket of sleep is a Night, and a Night is addressable
-                      (ADR 0041): the row is the way into the shape of it. Any
-                      other Metric's bucket is not an entity and stays plain. */}
-                  {metric === "sleep" && bucket === "day" ? (
+                      (ADR 0041): the row is the way into the shape of it, and a
+                      Night is a better answer than the Day that contains it. Every
+                      other day bucket is a date, which is a page of its own
+                      (ADR 0043). A week or month bucket is neither, and stays plain
+                      rather than guessing at one of the days inside it. */}
+                  {bucket !== "day" ? (
+                    formatBucketKey(point.bucket, bucket)
+                  ) : (
                     <Link
-                      to="/nights/$date"
+                      to={metric === "sleep" ? "/nights/$date" : "/days/$date"}
                       params={{ date: point.bucket }}
                       className="underline decoration-dotted underline-offset-4 hover:text-foreground"
                     >
                       {formatBucketKey(point.bucket, bucket)}
                     </Link>
-                  ) : (
-                    formatBucketKey(point.bucket, bucket)
                   )}
                 </TableCell>
                 <TableCell className="text-right font-mono tabular-nums">{showValue(point.value)}</TableCell>

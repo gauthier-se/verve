@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { ChevronDown, ChevronUp, GripVertical, Plus, Settings2, StickyNote, Trash2, X } from "lucide-react";
 import { useDeletePanel, useUpdatePanel } from "@/hooks/use-dashboards";
 import { useAnnotations } from "@/hooks/use-annotations";
+import { useDayNavigation } from "@/hooks/use-day";
 import { useSeries, type BaselineParams } from "@/hooks/use-series";
 import { NEGATIVE, POSITIVE } from "@/lib/chart";
 import { CHART_TYPE_LABEL, compatibleChartTypes, metricLabel } from "@/lib/metrics";
@@ -90,6 +91,9 @@ export function PanelCard({
   const chartType = panel.metrics[0]?.chart_type;
   const activities = useActivityMap();
   const segments = buildSegments(series, activities);
+  // A day bucket is a date, and a date is a page (ADR 0043). A week or month bucket
+  // is not, so the chart is handed nothing and stays inert.
+  const openDay = useDayNavigation(bucket);
 
   return (
     // A wider Panel is a taller Panel: a card given two columns was given them to
@@ -144,6 +148,7 @@ export function PanelCard({
             baseline={query.data?.baseline}
             annotations={showNotes ? notes.data : undefined}
             onHoverBucket={setHovered}
+            onSelectBucket={openDay}
             colorOffset={colorOffset}
           />
         ) : null}

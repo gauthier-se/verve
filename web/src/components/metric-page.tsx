@@ -5,10 +5,11 @@ import { useMetricMap } from "@/hooks/use-catalog";
 import { usePins, useAddPin, useRemovePin } from "@/hooks/use-pins";
 import { useAllAnnotations, useAnnotations } from "@/hooks/use-annotations";
 import { useSeries } from "@/hooks/use-series";
+import { useDayNavigation } from "@/hooks/use-day";
 import { useTimeAxis } from "@/hooks/use-time-axis";
 import { seriesColor, standaloneColorOffset } from "@/lib/chart";
 import { defaultChartType, metricLabel } from "@/lib/metrics";
-import { formatDay, formatDayRange, formatDuration, formatExact, formatSummaryValue } from "@/lib/format";
+import { figureUnit, formatDay, formatDayRange, formatExact, formatFigure } from "@/lib/format";
 import { RANGE_PRESETS, type RangeTokens } from "@/lib/time-range";
 import { cn } from "@/lib/utils";
 import type { Aggregation, Annotation, Bucket, Metric, Series, TimeAxis, Trend } from "@/lib/types";
@@ -66,6 +67,11 @@ export function MetricPage() {
   const query = useSeries({ metrics: [metric], range, bucket });
   const notes = useAnnotations({ range, bucket, enabled: showNotes });
   const axis = useTimeAxis({ range, bucket });
+  // The same day-grain rule every other chart follows. Sleep is not special-cased:
+  // its bar goes to the Day, which names the Night and links to its shape, and
+  // teaching this shared chart that one Metric is different is the coupling the
+  // hypnogram milestone already declined.
+  const openDay = useDayNavigation(bucket);
   const series = query.data?.series[0];
   const meta = catalog.map.get(metric);
 
@@ -152,6 +158,7 @@ export function MetricPage() {
                     metrics={[{ metric, chart_type: defaultChartType(meta) }]}
                     annotations={shownNotes}
                     onHoverBucket={setHovered}
+                    onSelectBucket={openDay}
                     colorOffset={colorOffset}
                   />
                 )}
@@ -418,15 +425,11 @@ function bucketsInWindow(axis: TimeAxis): number {
   return Math.ceil(days / 30.44);
 }
 
-function statValue(value: number, aggregation: Aggregation | ""): string {
-  return aggregation === "duration_by_state" ? formatDuration(value) : formatSummaryValue(value, aggregation);
-}
+const statValue = formatFigure;
 
 function statUnit(unit: string, aggregation: Aggregation | ""): React.ReactNode {
-  // A duration carries its unit inside its own text ("7h 12m"), so repeating it
-  // would read as "7h 12m min" (ADR 0027).
-  if (!unit || aggregation === "duration_by_state") return undefined;
-  return <Unit>{unit}</Unit>;
+  const label = figureUnit(unit, aggregation);
+  return label ? <Unit>{label}</Unit> : undefined;
 }
 
 function Stat({

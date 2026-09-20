@@ -57,6 +57,7 @@ export function PanelChart({
   baseline,
   annotations,
   onHoverBucket,
+  onSelectBucket,
   colorOffset = 0,
 }: {
   list: Series[];
@@ -70,6 +71,11 @@ export function PanelChart({
   /** onHoverBucket reports the category under the cursor, so an "Add a note" opened
    *  afterwards can prefill the day the person was actually looking at. */
   onHoverBucket?: (bucket: string | null) => void;
+  /** onSelectBucket reports the category that was clicked, the symmetric event to
+   *  the hover above. Present only when that bucket has somewhere to go, which is
+   *  the caller's decision and not this chart's: it knows nothing about routing and
+   *  nothing about which Metric it is drawing (ADR 0043). */
+  onSelectBucket?: (bucket: string) => void;
 }) {
   const data = React.useMemo<ChartDatum[]>(() => mergeSeries(list, baseline), [list, baseline]);
   // The notes to draw, placed on the categories this chart actually has (ADR 0030).
@@ -134,10 +140,17 @@ export function PanelChart({
     <ResponsiveContainer width="100%" height="100%">
       <ComposedChart
         data={data}
+        // Recharts writes `cursor: default` inline on its own wrapper, and its
+        // `style` prop is spread after it: a class would lose, this wins. The
+        // affordance has to be there before the click, not after it.
+        style={onSelectBucket ? { cursor: "pointer" } : undefined}
         margin={{ top: 8, right: rightUnit ? 0 : 8, bottom: 0, left: 0 }}
         onMouseMove={(s: CategoricalChartState) =>
           onHoverBucket?.(typeof s.activeLabel === "string" ? s.activeLabel : null)
         }
+        onClick={(s: CategoricalChartState) => {
+          if (typeof s.activeLabel === "string") onSelectBucket?.(s.activeLabel);
+        }}
       >
         {grid}
         {xAxis}

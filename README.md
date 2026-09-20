@@ -62,6 +62,16 @@ infrastructure, no telemetry.
   operands.
 * **A page per metric**, reachable from any panel title or legend entry, and a
   **Pinned** sidebar for the handful you check daily.
+* **A page per day.** Click a bar and you get the date it stands for: every
+  metric that recorded something, the device each figure actually came from,
+  the night you woke into that morning, the workouts you started, the notes you
+  wrote and the values you typed, all on one screen. It is the answer to "what
+  happened on 3 March", which four separate screens could not give you before.
+  A metric missing because you excluded it says so, rather than looking like a
+  day nothing was recorded. Arrow keys walk from one day to the next, including
+  past the end of your data: a date exists whether or not anything happened on
+  it. There is no score and no ring, because Verve still does not know which
+  direction is good for your metric.
 * **Sleep, by the night.** The stages your Watch records are read at the grain
   a night actually has, not the calendar day it straddles: one bar per night,
   stacked by stage, labelled with the morning you woke up on. Time awake is
@@ -70,13 +80,16 @@ infrastructure, no telemetry.
   actually recorded. Open one night and you get its shape: the stages against
   the clock from the moment you fell asleep to the moment you woke, with the
   time awake in between, and an efficiency that says what it was divided by.
+  The day page names the same night and links to it, so a strange morning and
+  the night behind it are one click apart.
 * **Workouts, listed and opened.** Every workout you recorded, filtered by
   activity over a range of its own, with the totals for that period named
   rather than summed from the page on screen. Open one and you get every
   statistic your device reported, plus the GPX trace as a map with an elevation
   and a pace profile, and the curve of whatever your device measured during it,
   heart rate included, on the ride's own axis. The basemap is opt-in: configure
-  no tile server and the browser makes no outbound request at all.
+  no tile server and the browser makes no outbound request at all. A workout
+  belongs to the day it started on, and that day's page lists it.
 * **Training volume, on the time axis.** The hours and the kilometres those
   workouts come to, per day, week or month, stacked by activity so a month of
   running and a month of cycling do not read the same. It is a metric like any
