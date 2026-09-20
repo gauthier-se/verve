@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { DAY_KEY } from "./use-day";
 import type { RangeTokens } from "@/lib/time-range";
 import type { Annotation, Bucket } from "@/lib/types";
 
@@ -71,7 +72,12 @@ export interface AnnotationInput {
  *  expensive one. */
 function useInvalidateAnnotations() {
   const qc = useQueryClient();
-  return () => qc.invalidateQueries({ queryKey: ANNOTATIONS_KEY });
+  return () => {
+    void qc.invalidateQueries({ queryKey: ANNOTATIONS_KEY });
+    // The Day carries the notes dated on it, and a Day is one cheap call rather
+    // than four Panels' worth of Series, so the scope above still holds.
+    void qc.invalidateQueries({ queryKey: DAY_KEY });
+  };
 }
 
 /** useCreateAnnotation writes a new note. */

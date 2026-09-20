@@ -30,6 +30,26 @@ export function formatDuration(minutes: number): string {
   return h === 0 ? `${sign}${m}m` : `${sign}${h}h ${m}m`;
 }
 
+/** formatFigure renders any Metric's figure by its Catalog rule: a duration_by_state
+ *  value is minutes and reads as a duration ("7h 12m"), everything else is a summary
+ *  figure. A night reported as "432" is a number nobody reads as a duration (ADR 0027).
+ *
+ *  It lives here rather than beside whichever screen needs it because three of them
+ *  do — the Ledger, the Metric page and the Day — and a rule kept in three places is
+ *  a rule that will be right in two of them. */
+export function formatFigure(value: number, aggregation: Aggregation | ""): string {
+  return aggregation === "duration_by_state" ? formatDuration(value) : formatSummaryValue(value, aggregation);
+}
+
+/** figureUnit is the unit to print beside a figure, or undefined when there is none
+ *  to print: a duration carries its unit inside its own text ("7h 12m"), so repeating
+ *  it would read as "7h 12m min" (ADR 0027). The rule travels with formatFigure
+ *  because the two are one decision made twice. */
+export function figureUnit(unit: string, aggregation: Aggregation | ""): string | undefined {
+  if (!unit || aggregation === "duration_by_state") return undefined;
+  return unit;
+}
+
 /** formatExact is the full grouped value for a tooltip: "245 321", "74,2". */
 export function formatExact(value: number): string {
   return nf({ maximumFractionDigits: 2 }).format(value);

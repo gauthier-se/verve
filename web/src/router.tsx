@@ -11,6 +11,7 @@ import { PlanPage } from "./components/plan-page";
 import { SessionDetailPage } from "./components/session-detail";
 import { SessionsPage } from "./components/sessions-page";
 import { NightPage } from "./components/night-page";
+import { DayPage } from "./components/day-page";
 
 // Code-based routes (no file router / codegen) keep the build a plain Vite SPA
 // (ADR 0013). The Go server serves index.html on every non-/v1 path, so a deep
@@ -84,6 +85,15 @@ const nightRoute = createRoute({
   component: NightPage,
 });
 
+// A Day is addressable too, and for the opposite reason to a Night: a Night is an
+// entity, a Day is the bucket every other read is already folded to. It takes no
+// range and carries no axis of its own, which is what keeps it an index (ADR 0043).
+const dayRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/days/$date",
+  component: DayPage,
+});
+
 const planRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/plan",
@@ -106,6 +116,7 @@ const routeTree = rootRoute.addChildren([
   workoutsRoute,
   workoutRoute,
   nightRoute,
+  dayRoute,
   planRoute,
   importRoute,
 ]);
