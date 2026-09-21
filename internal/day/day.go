@@ -56,6 +56,17 @@ type Metric struct {
 	// Excluded says the absence is a refusal and not a gap: an Exclusion covers this
 	// Metric on this date (ADR 0033). No other screen can tell the two apart.
 	Excluded bool `json:"excluded,omitempty"`
+	// Goal is the bound in force on this date, if the Account set one (ADR 0044). It
+	// is carried as a fact and never as a verdict: the page prints the bound beside
+	// the value and says nothing about which side of it the day fell on.
+	Goal *Goal `json:"goal,omitempty"`
+}
+
+// Goal is a Goal's bound as the Day shows it: the direction and the value, in the
+// Metric's canonical unit. Its dates are the Goal's business, not the Day's.
+type Goal struct {
+	Direction string  `json:"direction"`
+	Value     float64 `json:"value"`
 }
 
 // SessionRef is one Session on the Day with whether it carries a Route: the pair
@@ -152,6 +163,12 @@ func (e Engine) metrics(ctx context.Context, accountID int64, day time.Time, dat
 	if err != nil {
 		return nil, nil, err
 	}
+	// Every Goal of the Account in one read, then the one in force on this date per
+	// Metric: a Goal changes nothing about which rows appear, only what they carry.
+	goals, err := e.Models.Goals.ListByAccount(ctx, accountID, "")
+	if err != nil {
+		return nil, nil, err
+	}
 
 	covering := []data.Exclusion{}
 	excluded := map[string]bool{}
@@ -206,6 +223,7 @@ func (e Engine) metrics(ctx context.Context, accountID int64, day time.Time, dat
 		}
 		row.Pinned = pinned[slug]
 		row.Excluded = excluded[slug]
+		row.Goal = goalOn(goals, slug, date)
 		// A Manual row on this date displaces the imported one for it (ADR 0022), so
 		// the Day names what its own figure came from. The Series reports the imported
 		// Source over a window deliberately, because the overlay is one day of many;
@@ -216,6 +234,19 @@ func (e Engine) metrics(ctx context.Context, accountID int64, day time.Time, dat
 		rows = append(rows, row)
 	}
 	return rows, covering, nil
+}
+
+// goalOn is the Goal on a Metric in force on a date, or nil. A Goal holds on
+// [started_on, ended_on), both YYYY-MM-DD, so string comparison is chronological, and
+// segments never overlap, so at most one matches.
+func goalOn(goals []data.Goal, metric, date string) *Goal {
+	for _, g := range goals {
+		if g.Metric != metric || date < g.StartedOn || (g.EndedOn != nil && date >= *g.EndedOn) {
+			continue
+		}
+		return &Goal{Direction: g.Direction, Value: g.Value}
+	}
+	return nil
 }
 
 // keys is the sorted-later, unordered key set of a membership map.

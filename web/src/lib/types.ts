@@ -322,6 +322,15 @@ export interface DayMetric {
   /** excluded says the absence is a refusal and not a gap: an Exclusion covers this
    *  Metric on this date (ADR 0033). No other screen tells the two apart. */
   excluded?: boolean;
+  /** goal is the bound in force on this date (ADR 0044), printed beside the value as
+   *  a fact. The Day never says which side of it the value fell on. */
+  goal?: DayGoal;
+}
+
+/** DayGoal is a Goal's bound as a Day carries it: direction and canonical value. */
+export interface DayGoal {
+  direction: GoalDirection;
+  value: number;
 }
 
 /** Day is GET /v1/days/{date}: one calendar date read as an index of everything

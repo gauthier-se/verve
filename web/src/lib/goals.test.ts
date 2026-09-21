@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { attainmentText, describeGoal, goalAt, goalEligible, lastDayHeld, storedGoalValue, todayUTC } from "./goals";
+import { attainmentText, boundText, describeGoal, goalAt, goalEligible, lastDayHeld, storedGoalValue, todayUTC } from "./goals";
 import type { Metric } from "./types";
 
 const metric = (over: Partial<Metric>): Metric => ({
@@ -121,5 +121,13 @@ describe("goalAt", () => {
     expect(goalAt(a, "2024-01-02")).toBe(2300);
     expect(goalAt(a, "2024-01-03")).toBeUndefined();
     expect(goalAt(undefined, "2024-01-01")).toBeUndefined();
+  });
+});
+
+describe("boundText", () => {
+  it("is the one way a bound is written, on a Panel, a Day and the Ledger", () => {
+    expect(boundText({ direction: "at_most", value: 2300 }, { unit: "mg", aggregation: "sum" })).toBe("≤ 2 300 mg");
+    expect(boundText({ direction: "at_least", value: 7500 }, { unit: "count", aggregation: "sum" })).toBe("≥ 7 500");
+    expect(boundText({ direction: "at_least", value: 450 }, { unit: "min", aggregation: "duration_by_state" })).toBe("≥ 7h 30m");
   });
 });

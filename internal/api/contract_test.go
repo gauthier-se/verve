@@ -84,6 +84,7 @@ var contract = []struct {
 	{"NightInterval", query.NightInterval{}},
 	{"Day", dayView{}},
 	{"DayMetric", day.Metric{}},
+	{"DayGoal", day.Goal{}},
 	{"WorkoutSeries", query.WorkoutSeries{}},
 	{"WorkoutPoint", query.WorkoutPoint{}},
 	{"LedgerRow", query.LedgerRow{}},

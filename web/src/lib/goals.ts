@@ -3,7 +3,7 @@
 // becomes the canonical one the API stores.
 import { formatFigure } from "./format";
 import { toDisplayValue, toStoredValue } from "./metrics";
-import type { Aggregation, Attainment, Goal, GoalDirection, Metric, Series } from "./types";
+import type { Aggregation, Attainment, Goal, GoalDirection, GoalSegment, Metric, Series } from "./types";
 
 /** goalEligible mirrors the server's rule: every Metric but a `latest` one. "75 kg"
  *  is a destination reached once, not a bound held daily, and that question is a
@@ -95,10 +95,13 @@ export function lastDayHeld(endedOn: string): string {
  *  what the step line is drawn from. Segments are half-open [from, to) and dates
  *  are YYYY-MM-DD, so string comparison is chronological. */
 export function goalAt(attainment: Attainment | undefined, bucket: string): number | undefined {
-  for (const s of attainment?.segments ?? []) {
-    if (s.from <= bucket && bucket < s.to) return s.value;
-  }
-  return undefined;
+  return segmentAt(attainment, bucket)?.value;
+}
+
+/** segmentAt is the whole Goal segment in force on a day bucket, for a reader that
+ *  needs the direction as well as the value: the Ledger's Goal column. */
+export function segmentAt(attainment: Attainment | undefined, bucket: string): GoalSegment | undefined {
+  return attainment?.segments.find((s) => s.from <= bucket && bucket < s.to);
 }
 
 /** drawsGoalLine is whether a Series gets a line: only at day grain, where a bar is
@@ -116,8 +119,14 @@ export function goalBound(attainment: Attainment, rule: FigureRule): string | nu
   const [first, ...rest] = attainment.segments;
   if (!first) return null;
   if (rest.some((s) => s.direction !== first.direction || s.value !== first.value)) return null;
+  return boundText(first, rule);
+}
+
+/** boundText writes one bound, "≥ 7 500" or "≤ 2 300 mg": the same words on a Panel's
+ *  counts and beside a Day's value, so the two cannot describe one Goal differently. */
+export function boundText(goal: { direction: GoalDirection; value: number }, rule: FigureRule): string {
   const unit = rule.aggregation === "duration_by_state" || rule.unit === "count" ? "" : rule.unit;
-  return [SYMBOLS[first.direction], goalValue(first.value, rule), unit].filter(Boolean).join(" ");
+  return [SYMBOLS[goal.direction], goalValue(goal.value, rule), unit].filter(Boolean).join(" ");
 }
 
 /** attainmentText is the counts as the legend prints them: the met days over the
