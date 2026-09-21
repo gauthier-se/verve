@@ -207,6 +207,31 @@ export interface Series {
    *  says where you are, the rate says how fast across the range — so a view showing
    *  both has to label them apart. */
   trend?: Trend;
+  /** goal is the Attainment of the Goals in force over the window (ADR 0044), absent
+   *  when none is. A Baseline carries its own, counted against the Goals in force
+   *  over *its* window. Server-computed from the day buckets whatever this Series'
+   *  bucket is; never re-counted client-side. */
+  goal?: Attainment;
+}
+
+/** Attainment is a Goal's three counts over a window, each nested in the one before:
+ *  `covered` days had a Goal in force, `measured` of them had a value, `met` of those
+ *  were within that day's bound. A gap is neither met nor missed, and today is never
+ *  judged. Shown with its denominator, never as a bare percentage. */
+export interface Attainment {
+  segments: GoalSegment[];
+  covered: number;
+  measured: number;
+  met: number;
+}
+
+/** GoalSegment is one Goal clipped to the window, in force on [from, to), both
+ *  YYYY-MM-DD: what the line is drawn from, stepping wherever the Goal changed. */
+export interface GoalSegment {
+  direction: GoalDirection;
+  value: number;
+  from: string;
+  to: string;
 }
 
 /** Trend is a sampled Metric's fitted direction over the window, with the evidence

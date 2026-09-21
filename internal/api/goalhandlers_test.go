@@ -5,6 +5,9 @@ import (
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/gauthier-se/verve/internal/data"
+	"github.com/gauthier-se/verve/internal/query"
 )
 
 // openGoal posts a Goal and returns the decoded view, failing on anything but a 201.
@@ -177,5 +180,82 @@ func TestGoalEndpointsAreAccountScoped(t *testing.T) {
 	}
 	if len(goals) != 0 {
 		t.Errorf("owner sees %d Goals of another Account", len(goals))
+	}
+}
+
+// seriesGoal reads /v1/series and returns the current and Baseline Attainment.
+func seriesGoal(t *testing.T, srv *Server, cookie *http.Cookie, qs string) (current, baseline *query.Attainment) {
+	t.Helper()
+	res, body := do(t, srv, "/v1/series?"+qs, cookie)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", res.StatusCode, body["error"])
+	}
+	var cur, base query.Series
+	if err := json.Unmarshal(body["series"], &cur); err != nil {
+		t.Fatalf("decode series: %v", err)
+	}
+	if raw, ok := body["baseline"]; ok {
+		if err := json.Unmarshal(raw, &base); err != nil {
+			t.Fatalf("decode baseline: %v", err)
+		}
+	}
+	return cur.Goal, base.Goal
+}
+
+// The counts are the day's whatever the bucket: a weekly Panel over the same dates
+// reads the same Attainment as a daily one (ADR 0044).
+func TestSeriesAttainmentIgnoresThePanelBucket(t *testing.T) {
+	srv, models, cookie := newTestServer(t)
+	seedSteps(t, models, testEmail, []data.Measurement{
+		{Metric: "steps", Value: 9000, OriginalUnit: "count", StartAt: "2024-01-01T08:00:00Z", EndAt: "2024-01-01T08:00:00Z", Source: "Watch", ContentKey: "a"},
+		{Metric: "steps", Value: 3000, OriginalUnit: "count", StartAt: "2024-01-02T08:00:00Z", EndAt: "2024-01-02T08:00:00Z", Source: "Watch", ContentKey: "b"},
+		{Metric: "steps", Value: 8000, OriginalUnit: "count", StartAt: "2024-01-09T08:00:00Z", EndAt: "2024-01-09T08:00:00Z", Source: "Watch", ContentKey: "c"},
+	})
+	openGoal(t, srv, cookie, map[string]any{
+		"metric": "steps", "direction": "at_least", "value": 7500, "started_on": "2023-12-01",
+	})
+
+	const window = "metric=steps&range_preset=custom&range_from=2024-01-01&range_to=2024-01-15"
+	daily, _ := seriesGoal(t, srv, cookie, window+"&bucket=day")
+	weekly, _ := seriesGoal(t, srv, cookie, window+"&bucket=week")
+	if daily == nil || weekly == nil {
+		t.Fatalf("daily = %+v, weekly = %+v, want both", daily, weekly)
+	}
+	if daily.Covered != 14 || daily.Measured != 3 || daily.Met != 2 {
+		t.Errorf("daily = %+v, want 14 covered, 3 measured, 2 met", daily)
+	}
+	if weekly.Covered != daily.Covered || weekly.Measured != daily.Measured || weekly.Met != daily.Met {
+		t.Errorf("weekly = %+v, want the daily counts %+v", weekly, daily)
+	}
+
+	// No Goal on a Metric: no field at all.
+	if g, _ := seriesGoal(t, srv, cookie, "metric=heart_rate&range_preset=custom&range_from=2024-01-01&range_to=2024-01-15&bucket=day"); g != nil {
+		t.Errorf("heart_rate goal = %+v, want none", g)
+	}
+}
+
+// A Baseline is judged against the Goal in force over its own window, not today's.
+func TestSeriesBaselineIsJudgedAgainstItsOwnGoal(t *testing.T) {
+	srv, models, cookie := newTestServer(t)
+	seedSteps(t, models, testEmail, []data.Measurement{
+		{Metric: "steps", Value: 7200, OriginalUnit: "count", StartAt: "2023-07-01T08:00:00Z", EndAt: "2023-07-01T08:00:00Z", Source: "Watch", ContentKey: "b1"},
+		{Metric: "steps", Value: 7200, OriginalUnit: "count", StartAt: "2024-02-01T08:00:00Z", EndAt: "2024-02-01T08:00:00Z", Source: "Watch", ContentKey: "c1"},
+	})
+	openGoal(t, srv, cookie, map[string]any{
+		"metric": "steps", "direction": "at_least", "value": 7000, "started_on": "2023-06-01",
+	})
+	openGoal(t, srv, cookie, map[string]any{
+		"metric": "steps", "direction": "at_least", "value": 7500, "started_on": "2024-01-01",
+	})
+
+	cur, base := seriesGoal(t, srv, cookie, "metric=steps&range_preset=custom&range_from=2024-02-01&range_to=2024-02-03&bucket=day&baseline_rule=custom&baseline_from=2023-07-01&baseline_to=2023-07-03")
+	if cur == nil || cur.Met != 0 || cur.Measured != 1 {
+		t.Errorf("current = %+v, want 7 200 missed against 7 500", cur)
+	}
+	if base == nil || base.Met != 1 || base.Measured != 1 {
+		t.Errorf("baseline = %+v, want 7 200 met against the 7 000 in force then", base)
+	}
+	if base != nil && (len(base.Segments) != 1 || base.Segments[0].Value != 7000) {
+		t.Errorf("baseline segments = %+v, want the 7 000 Goal", base.Segments)
 	}
 }

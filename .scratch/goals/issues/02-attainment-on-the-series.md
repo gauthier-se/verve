@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 Blocked by: 01
 
 # 02: goal, query, api: Attainment on the Series
@@ -72,3 +72,32 @@ Blocked by: 01
 Computing the counts anywhere but from the engine's own day Points would be a
 second definition of a day's value. The sleep read path (ADR 0027) and the Day
 page (ADR 0043) both refused that, for the same reason.
+
+## Comments
+
+Shipped. `internal/goal/goal.go` with `goal_test.go`, `Attainment` and
+`GoalSegment` in `internal/query/query.go` with `Series.Goal`, the four attach
+points in `handleSeries` (single, multi-metric, comparison current and Baseline),
+two handler tests in `goalhandlers_test.go`, and the `Attainment` and
+`GoalSegment` types in `types.ts` pinned by the contract test.
+
+What the implementation settled that the spec left open:
+
+- **Excluding today was mostly already true.** Every preset window ends at
+  today's UTC midnight, exclusive (`timeaxis.rangeWindow`), so today is outside
+  it. Only a custom range can reach today or beyond, and `Attain` clips the
+  judged span to `min(to, today)`. The segments are not clipped to today: the
+  Goal is in force, it is just not judged yet, so the line still runs to the end
+  of the window.
+- **`GoalSegment.To` is always set**, clipped to the window, rather than empty
+  while open. The client draws every segment the same way and never has to know
+  where a window ends.
+- **The chunk is a local 366 days**, not the engine's `maxPoints`, which stays
+  unexported. Chunking cannot change a value, because the Source election runs
+  per day (ADR 0034), and only the covered span is read.
+- **The Baseline is counted over its whole window**, not the ordinally
+  truncated one `alignOrdinal` draws. For `previous` and
+  `same_period_last_year` the two are the same length. For a custom Baseline
+  of a different length, the count covers the dates the owner asked for.
+- **An error from `Attain` is a 500**, not a missing field: a series that
+  silently drops its Goal would read as "no Goal set".
