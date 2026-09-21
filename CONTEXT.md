@@ -451,8 +451,8 @@ a cut, a bulk, a maintenance stretch. Phases are kept as a history, never
 overwritten, so each is judged against the window it actually ran over and the
 question "was I doing what I meant to be doing?" stays answerable about the past.
 A new Phase closes the current one; at most one is open.
-_Avoid_: Goal (a goal has no end), Plan (that's the page), Cycle, Period (that's
-the time-axis vocabulary), Program.
+_Avoid_: Goal (a goal has no end: that's a declared daily bound on a Metric),
+Plan (that's the page), Cycle, Period (that's the time-axis vocabulary), Program.
 
 **Target rate**:
 The speed of body-mass change a **Phase** aims at, expressed as a percentage of
@@ -462,7 +462,34 @@ dangerous at another; the calorie target is *derived* from it against the
 **Expenditure estimate**. Named zones (aggressive cut, moderate cut, maintenance,
 lean bulk) label regions of the scale; they are vocabulary, not discrete options.
 _Avoid_: Deficit / Surplus (only one sign each, and both name the calorie figure),
-Goal, Pace, Intensity.
+Goal (that's a declared daily bound on a Metric), Pace, Intensity.
+
+### Goals
+
+**Goal**:
+A bound the owner declares on a **Metric**: a direction (`at_least` or
+`at_most`, both inclusive), a value in the Metric's canonical unit, and the date
+it starts. It is judged against the Metric's day bucket (the **Night** for
+sleep) whatever bucket a Panel is drawn at, and it has no planned end. Goals are
+a dated history, never overwritten: at most one is open per Metric, a new one
+closes it, and each day is judged against the Goal in force on that day. Every
+Metric is eligible except a `latest` one, because "75 kg" is a destination and
+not a bound held daily (that question is a **Phase**'s). A Goal is how the owner
+tells Verve which direction is good; Verve does not colour, grade or streak
+against it, it counts (ADR 0044). Not a **Target rate**'s calorie target, which
+is derived on read and stored nowhere, so no past day can be judged against it.
+_Avoid_: Target (the Plan's derived figures), Objective, Threshold, KPI.
+
+**Attainment**:
+A **Goal**'s three counts over a window: **covered** days (a Goal was in force),
+**measured** days (covered, with a value) and **met** days (measured, and within
+the bound in force that day). A gap is neither met nor missed, and today is
+never judged, because a day in progress has not fallen short of anything yet.
+Shown as counts with their denominator ("18 of 24 measured days"), never as a
+bare percentage. Computed server-side from the engine's own day buckets and
+carried on the Series, a Baseline with its own (ADR 0044).
+_Avoid_: Adherence (that's a Phase's mean against its targets), Success rate,
+Score, Streak.
 
 ### Cross-cutting
 
