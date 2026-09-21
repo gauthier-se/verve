@@ -14,7 +14,7 @@ import {
 } from "recharts";
 import { useCoVary } from "@/hooks/use-covary";
 import { AXIS, DIRECTION_DOWN, DIRECTION_UP, GRID, PRIMARY, RECESSED, SERIES_COLORS, shade } from "@/lib/chart";
-import { formatDayRange, formatExact } from "@/lib/format";
+import { formatAxisValue, formatDayRange, formatExact } from "@/lib/format";
 import { metricLabel } from "@/lib/metrics";
 import { RANGE_PRESETS, type RangeTokens } from "@/lib/time-range";
 import { cn } from "@/lib/utils";
@@ -265,7 +265,7 @@ function ScatterCard({ scatter, lag }: { scatter?: ScatterData; lag: CoVaryLag }
               fontSize={10}
               tickLine={false}
               axisLine={false}
-              tickFormatter={compact}
+              tickFormatter={(v: number) => formatAxisValue(v, scatter.unit_a)}
             />
             <YAxis
               type="number"
@@ -276,7 +276,7 @@ function ScatterCard({ scatter, lag }: { scatter?: ScatterData; lag: CoVaryLag }
               fontSize={10}
               tickLine={false}
               axisLine={false}
-              tickFormatter={compact}
+              tickFormatter={(v: number) => formatAxisValue(v, scatter.unit_b)}
             />
             <ZAxis range={[10, 10]} />
             <Tooltip
@@ -288,11 +288,11 @@ function ScatterCard({ scatter, lag }: { scatter?: ScatterData; lag: CoVaryLag }
                   <div className="rounded-md border bg-popover px-2.5 py-1.5 text-2xs shadow-md">
                     <div className="font-mono tabular-nums">{d.bucket}</div>
                     <div className="text-muted-foreground">
-                      {metricLabel(scatter.a)} <span className="font-mono tabular-nums">{formatExact(d.x)}</span>{" "}
+                      {metricLabel(scatter.a)} <span className="font-mono tabular-nums">{formatExact(d.x, scatter.unit_a)}</span>{" "}
                       {scatter.unit_a}
                     </div>
                     <div className="text-muted-foreground">
-                      {metricLabel(scatter.b)} <span className="font-mono tabular-nums">{formatExact(d.y)}</span>{" "}
+                      {metricLabel(scatter.b)} <span className="font-mono tabular-nums">{formatExact(d.y, scatter.unit_b)}</span>{" "}
                       {scatter.unit_b}
                     </div>
                   </div>
@@ -521,7 +521,3 @@ function abbreviate(slug: string): string {
     .slice(0, 4);
 }
 
-function compact(v: number): string {
-  if (Math.abs(v) >= 1000) return `${(v / 1000).toFixed(1)}k`;
-  return Number.isInteger(v) ? String(v) : v.toFixed(1);
-}

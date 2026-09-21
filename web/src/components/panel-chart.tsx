@@ -20,7 +20,7 @@ import type { AxisDomain } from "recharts/types/util/types";
 import { projectAnnotations, type AnnotationOverlay } from "@/lib/annotations";
 import { AXIS, GRID, NEGATIVE, POSITIVE, SERIES_COLORS, seriesColor } from "@/lib/chart";
 import { mergeSeries, stageKey, type ChartDatum } from "@/lib/chart-data";
-import { formatDuration } from "@/lib/format";
+import { formatAxisValue, formatDuration } from "@/lib/format";
 import { metricLabel } from "@/lib/metrics";
 import { drawsGoalLine } from "@/lib/goals";
 import { useActivityMap } from "@/hooks/use-catalog";
@@ -114,8 +114,11 @@ export function PanelChart({
   // An axis carrying minutes is labelled as a duration: "7h 12m", not "432". The
   // unit decides and not the Metric, because two Metrics now read in minutes and a
   // third breaks down into kilometres.
-  const tickFormatter = (axis: "left" | "right") =>
-    list.some((s) => axisOf(s) === axis && s.unit === "min") ? formatDuration : formatValue;
+  // One axis is one unit, so its ticks are read in that unit's display scale.
+  const tickFormatter = (axis: "left" | "right") => {
+    const unit = axis === "left" ? leftUnit : (rightUnit ?? "");
+    return unit === "min" ? formatDuration : (v: number) => formatAxisValue(v, unit);
+  };
   const xAxis = (
     <XAxis dataKey="bucket" tickFormatter={formatTick(list[0].bucket)} minTickGap={24} {...axisProps} />
   );
@@ -438,11 +441,6 @@ export function formatBucket(value: string, bucket: Series["bucket"]): string {
   }
 }
 
-function formatValue(v: number): string {
-  if (Math.abs(v) >= 1000) return `${(v / 1000).toFixed(1)}k`;
-  return Number.isInteger(v) ? String(v) : v.toFixed(1);
-}
-
 interface TooltipProps {
   active?: boolean;
   payload?: { payload: ChartDatum }[];
@@ -483,7 +481,7 @@ function SegmentRows({
 }) {
   // Minutes read as a duration, everything else as a figure with its unit: what
   // decides is the unit, not the Metric, now that two of them stack.
-  const show = (v: number) => (unit === "min" ? formatDuration(v) : `${formatValue(v)} ${unit}`.trim());
+  const show = (v: number) => (unit === "min" ? formatDuration(v) : `${formatAxisValue(v, unit)} ${unit}`.trim());
   return (
     <>
       {segments.map((segment) => {
@@ -553,11 +551,11 @@ function ChartTooltip({
               {multi && <Swatch i={i} offset={offset} />}
               {multi && <span className="truncate">{metricLabel(s.metric)}</span>}
               <span className="tabular-nums">
-                {formatValue(value)} {s.unit}
+                {formatAxisValue(value, s.unit)} {s.unit}
               </span>
               {Array.isArray(band) && (
                 <span className="opacity-70">
-                  ({formatValue(band[0])}–{formatValue(band[1])})
+                  ({formatAxisValue(band[0], s.unit)}–{formatAxisValue(band[1], s.unit)})
                 </span>
               )}
             </div>
@@ -581,7 +579,7 @@ function ChartTooltip({
               ? "no data"
               : stacked
                 ? formatDuration(d.baselineValue)
-                : `${formatValue(d.baselineValue)} ${list[0].unit}`}
+                : `${formatAxisValue(d.baselineValue, list[0].unit)} ${list[0].unit}`}
           </div>
         </div>
       )}

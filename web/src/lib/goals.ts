@@ -2,7 +2,7 @@
 // server; what is here is how a Goal is written as a sentence and how a typed value
 // becomes the canonical one the API stores.
 import { formatFigure } from "./format";
-import { toDisplayValue, toStoredValue } from "./metrics";
+import { toStoredValue } from "./metrics";
 import type { Aggregation, Attainment, Goal, GoalDirection, GoalSegment, Metric, Series } from "./types";
 
 /** goalEligible mirrors the server's rule: every Metric but a `latest` one. "75 kg"
@@ -28,7 +28,7 @@ const DIRECTION_WORDS: Record<GoalDirection, string> = {
  *  so the bound and the day it is read against are written alike: "7h 00m", "7 500",
  *  "96" for a stored 0.96. */
 export function goalValue(value: number, metric: FigureRule): string {
-  return formatFigure(toDisplayValue(metric.unit, value), metric.aggregation ?? "");
+  return formatFigure(value, metric.aggregation ?? "", metric.unit);
 }
 
 /** FigureRule is what writing a value needs: its unit and its rule. A Series carries

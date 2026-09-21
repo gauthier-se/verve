@@ -8,7 +8,7 @@ import { useLedger } from "@/hooks/use-ledger";
 import { formatExact, formatFigure } from "@/lib/format";
 import { metricLabel } from "@/lib/metrics";
 import { textMatcher } from "@/lib/search";
-import { copyTsv, tsvNumber } from "@/lib/clipboard";
+import { copyTsv, tsvFigure, tsvNumber } from "@/lib/clipboard";
 import type { Annotation, LedgerRow } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
@@ -164,10 +164,10 @@ function Scoreboard({ rows, total }: { rows: LedgerRow[]; total: number }) {
     const body = rows.map((r) => [
       metricLabel(r.metric),
       r.unit,
-      r.latest ? tsvNumber(r.latest.value) : "",
+      r.latest ? tsvFigure(r.latest.value, r.unit) : "",
       r.latest?.date ?? "",
-      r.week !== undefined ? tsvNumber(r.week) : "",
-      r.month !== undefined ? tsvNumber(r.month) : "",
+      r.week !== undefined ? tsvFigure(r.week, r.unit) : "",
+      r.month !== undefined ? tsvFigure(r.month, r.unit) : "",
       r.delta_pct !== undefined ? tsvNumber(r.delta_pct) : "",
     ]);
     await copyTsv(headers, body);
@@ -214,8 +214,8 @@ function Scoreboard({ rows, total }: { rows: LedgerRow[]; total: number }) {
                 </TableCell>
                 <TableCell className="text-right tabular-nums">
                   {r.latest ? (
-                    <span title={`${formatExact(r.latest.value)} ${r.unit}`.trim()}>
-                      {ledgerFigure(r.latest.value, r.aggregation)}
+                    <span title={`${formatExact(r.latest.value, r.unit)} ${r.unit}`.trim()}>
+                      {ledgerFigure(r.latest.value, r.aggregation, r.unit)}
                       <span className="ml-1.5 text-xs text-muted-foreground">
                         {formatBucket(r.latest.date, "day")}
                       </span>
@@ -224,8 +224,8 @@ function Scoreboard({ rows, total }: { rows: LedgerRow[]; total: number }) {
                     <span className="text-muted-foreground">—</span>
                   )}
                 </TableCell>
-                <WindowCell value={r.week} aggregation={r.aggregation} />
-                <WindowCell value={r.month} aggregation={r.aggregation} />
+                <WindowCell value={r.week} row={r} />
+                <WindowCell value={r.month} row={r} />
                 <TableCell className="text-right tabular-nums text-muted-foreground">
                   <DeltaLabel row={r} />
                 </TableCell>
@@ -244,13 +244,13 @@ function Scoreboard({ rows, total }: { rows: LedgerRow[]; total: number }) {
 /** ledgerFigure renders a scoreboard number by the Metric's own rule (ADR 0027). */
 const ledgerFigure = formatFigure;
 
-function WindowCell({ value, aggregation }: { value: number | undefined; aggregation: LedgerRow["aggregation"] }) {
+function WindowCell({ value, row }: { value: number | undefined; row: LedgerRow }) {
   return (
     <TableCell className="text-right tabular-nums">
       {value === undefined ? (
         <span className="text-muted-foreground">—</span>
       ) : (
-        ledgerFigure(value, aggregation)
+        ledgerFigure(value, row.aggregation, row.unit)
       )}
     </TableCell>
   );
@@ -265,7 +265,7 @@ function DeltaLabel({ row }: { row: LedgerRow }) {
   const label =
     row.delta_pct !== undefined
       ? `${Math.abs(Math.round(row.delta_pct))} %`
-      : ledgerFigure(Math.abs(row.delta_abs), row.aggregation);
+      : ledgerFigure(Math.abs(row.delta_abs), row.aggregation, row.unit);
   return (
     <span className={cn(row.delta_abs === 0 && "opacity-70")}>
       {arrow} {label}

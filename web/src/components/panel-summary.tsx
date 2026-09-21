@@ -58,9 +58,9 @@ function summaryFigureValue(s: Series, mode: SummaryMode): number | undefined {
 
 /** figureText renders a summary figure: minutes of sleep read as a duration ("7h 12m"),
  *  everything else through the number formats the prefs choose. */
-function figureText(value: number, aggregation: Series["aggregation"], exact: boolean): string {
+function figureText(value: number, aggregation: Series["aggregation"], unit: string, exact: boolean): string {
   if (aggregation === "duration_by_state") return formatDuration(value);
-  return exact ? formatExact(value) : formatSummaryValue(value, aggregation);
+  return exact ? formatExact(value, unit) : formatSummaryValue(value, aggregation, unit);
 }
 
 /** modeNote is the words a mode adds to a title attribute. */
@@ -123,14 +123,14 @@ export function PanelSummary({
   // server, per window (so a Baseline of a different length compares fairly).
   const mode = summaryMode(aggregation, metric, prefs.average);
   const figure = (s: Series) => summaryFigureValue(s, mode);
-  const fmt = (value: number) => figureText(value, aggregation, prefs.exact);
+  const fmt = (value: number) => figureText(value, aggregation, unit, prefs.exact);
 
   // The primary figure; a gap (no value) shows "—". Its exact value goes in a tooltip.
   const primaryValue = figure(series);
   const primary = primaryValue !== undefined ? fmt(primaryValue) : "—";
   const noteLabel = modeNote(mode);
   const primaryTitle =
-    primaryValue !== undefined ? `${formatExact(primaryValue)} ${unit}${noteLabel}`.trim() : undefined;
+    primaryValue !== undefined ? `${formatExact(primaryValue, unit)} ${unit}${noteLabel}`.trim() : undefined;
 
   // The secondary is the most recent bucket — a plain read. It is hidden for a `latest`
   // Metric in total mode (it coincides with the summary), but shown in mean mode where
@@ -145,7 +145,7 @@ export function PanelSummary({
   let baselineShown: string | undefined;
   const baseValue = baseline ? figure(baseline) : undefined;
   if (primaryValue !== undefined && baseValue !== undefined) {
-    delta = computeDelta(primaryValue, baseValue, aggregation, metric?.signed ?? false);
+    delta = computeDelta(primaryValue, baseValue, aggregation, metric?.signed ?? false, unit);
     // Show both numbers, so "↓ 18 %" / "→ 0 %" is legible — not a bare percentage
     // against an invisible reference.
     baselineShown = fmt(baseValue);
@@ -230,7 +230,7 @@ export function PanelLegend({
         const formula = m?.formula;
         const mode = summaryMode(s.aggregation, m, prefs.average);
         const value = summaryFigureValue(s, mode);
-        const shown = value === undefined ? "—" : figureText(value, s.aggregation, prefs.exact);
+        const shown = value === undefined ? "—" : figureText(value, s.aggregation, s.unit, prefs.exact);
         const note = modeNote(mode);
         return (
         <span key={s.metric} className="flex items-baseline gap-1.5">
@@ -242,7 +242,7 @@ export function PanelLegend({
           {formula && <FormulaHint formula={formula} />}
           <span
             className="font-mono font-medium tabular-nums"
-            title={value !== undefined ? `${formatExact(value)} ${s.unit}${note}`.trim() : undefined}
+            title={value !== undefined ? `${formatExact(value, s.unit)} ${s.unit}${note}`.trim() : undefined}
           >
             {shown}
           </span>

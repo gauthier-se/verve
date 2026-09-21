@@ -57,6 +57,12 @@ func TestDerivedMetricsWellFormed(t *testing.T) {
 		if f.Scale == 0 {
 			t.Errorf("derived %q has zero scale (would flatten every value to 0)", slug)
 		}
+		// A "%" value is a fraction in Verve, imported or derived, and the interface
+		// scales every "%" figure by that one rule: a share computed as 0–100 would
+		// read as 2000 %.
+		if m.Unit == "%" && f.Scale != 1 {
+			t.Errorf("derived %q is a %% Metric with scale %v; a percent is stored as a fraction (scale 1)", slug, f.Scale)
+		}
 
 		// Every operand must exist and be imported: the seed has no
 		// derived-of-derived, which keeps per-bucket recompute one level deep.

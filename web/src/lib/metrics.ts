@@ -77,7 +77,13 @@ function weightedSum(terms: Formula["numerator"], label: (slug: string) => strin
  *  `oxygen_saturation` is 0.969. Nobody will type 0.27, so a field is presented in 0–100
  *  and converted with these. Keyed off the Catalog unit, in exactly one place: a second
  *  copy of this rule is how a 26-point error that still looks plausible gets shipped.
- *  Shared by the Manual entry and the Goal form, which both take a typed value. */
+ *  Shared by the Manual entry and the Goal form, which both take a typed value.
+ *
+ *  toDisplayValue is also every screen's rule, through the figure formats in format.ts:
+ *  a stored 0.969 printed raw rounds to "1 %". The scaling is trimmed to 12 significant
+ *  digits, because 0.969 × 100 is 96.89999999999999 in binary and a copied cell or an
+ *  input's default would show it. */
+const trim = (v: number) => Number(v.toPrecision(12));
 export const isPercentUnit = (unit: string) => unit === "%";
-export const toStoredValue = (unit: string, typed: number) => (isPercentUnit(unit) ? typed / 100 : typed);
-export const toDisplayValue = (unit: string, stored: number) => (isPercentUnit(unit) ? stored * 100 : stored);
+export const toStoredValue = (unit: string, typed: number) => (isPercentUnit(unit) ? trim(typed / 100) : typed);
+export const toDisplayValue = (unit: string, stored: number) => (isPercentUnit(unit) ? trim(stored * 100) : stored);

@@ -260,7 +260,7 @@ function MetricRow({ row }: { row: DayMetric }) {
         {state === "value" ? (
           <>
             <Figure size="inline" className="text-sm">
-              {formatFigure(row.value as number, row.aggregation)}
+              {formatFigure(row.value as number, row.aggregation, row.unit)}
             </Figure>
             {unit && <Unit>{unit}</Unit>}
           </>
@@ -422,9 +422,8 @@ function Entries({ rows }: { rows: ManualMeasurement[] }) {
 
 function EntryRow({ row }: { row: ManualMeasurement }) {
   const remove = useDeleteManualMeasurement();
-  // A `%` Metric is stored as a fraction and typed in 0–100, so it is shown the way
-  // it was typed (manual-entry-dialog owns that rule).
-  const shown = row.unit === "%" ? row.value * 100 : row.value;
+  // A `%` Metric is stored as a fraction and typed in 0–100; formatExact reads it
+  // back the way it was typed (the rule is toDisplayValue's, in lib/metrics).
   return (
     <div className="flex items-center gap-3 rounded-md px-2 py-1.5 hover:bg-accent/50">
       <MetricIcon slug={row.metric} />
@@ -432,7 +431,7 @@ function EntryRow({ row }: { row: ManualMeasurement }) {
       <Meta className="shrink-0">{clockTime(row.measured_at)}</Meta>
       <span className="ml-auto flex items-baseline gap-1.5">
         <Figure size="inline" className="text-sm">
-          {formatExact(shown)}
+          {formatExact(row.value, row.unit)}
         </Figure>
         <Unit>{row.unit}</Unit>
       </span>
