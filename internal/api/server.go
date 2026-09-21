@@ -12,6 +12,7 @@ import (
 	"github.com/gauthier-se/verve/internal/data"
 	"github.com/gauthier-se/verve/internal/day"
 	"github.com/gauthier-se/verve/internal/estimate"
+	"github.com/gauthier-se/verve/internal/goal"
 	"github.com/gauthier-se/verve/internal/history"
 	"github.com/gauthier-se/verve/internal/query"
 )
@@ -60,6 +61,7 @@ type Server struct {
 	estimates     estimate.Engine
 	history       history.Engine
 	day           day.Engine
+	goals         goal.Engine
 	resolver      authResolver
 	loginLimiter  *loginLimiter
 	secureCookies bool
@@ -106,6 +108,7 @@ func New(logger *slog.Logger, models data.Models, engine query.Engine, cfg Confi
 		estimates:     estimate.Engine{Query: engine},
 		history:       history.Engine{Query: engine, Models: models},
 		day:           day.Engine{Query: engine, Models: models},
+		goals:         goal.Engine{Query: engine, Models: models},
 		resolver:      sessionResolver{sessions: models.AuthSessions},
 		loginLimiter:  newLoginLimiter(),
 		secureCookies: cfg.SecureCookies,
@@ -167,6 +170,13 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /v1/phases", s.requireAuth(s.handleOpenPhase))
 	mux.Handle("PATCH /v1/phases/{id}", s.requireAuth(s.handleClosePhase))
 	mux.Handle("DELETE /v1/phases/{id}", s.requireAuth(s.handleDeletePhase))
+
+	// Goals: a declared daily bound per Metric, kept as a dated history like Phases
+	// (ADR 0044). Not under /v1/metrics, which is the public Catalog.
+	mux.Handle("GET /v1/goals", s.requireAuth(s.handleListGoals))
+	mux.Handle("POST /v1/goals", s.requireAuth(s.handleOpenGoal))
+	mux.Handle("PATCH /v1/goals/{id}", s.requireAuth(s.handleCloseGoal))
+	mux.Handle("DELETE /v1/goals/{id}", s.requireAuth(s.handleDeleteGoal))
 
 	// Profile: the Account attributes that are not Measurements (date of birth,
 	// biological sex, body-composition trust).

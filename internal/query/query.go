@@ -131,6 +131,34 @@ type Series struct {
 	// the line follows the curve, this is one straight fit across the whole window, so
 	// a caller showing both must label them apart. Nil when no line could be fitted.
 	Trend *Trend `json:"trend,omitempty"`
+	// Goal is the Attainment of the Goals in force over the window (ADR 0044). The
+	// engine never sets it: internal/goal does, from this engine's own day buckets,
+	// because the goals table is not the read engine's to name (ADR 0037). Nil when
+	// no Goal touches the window.
+	Goal *Attainment `json:"goal,omitempty"`
+}
+
+// Attainment is a Goal's three counts over a window (CONTEXT.md, ADR 0044), and the
+// Goals behind them. Each count nests in the one before: a gap is covered but not
+// measured, and neither met nor missed. Today is never judged, because a day in
+// progress has not fallen short of anything yet.
+type Attainment struct {
+	// Segments are the Goals in force over the window, oldest first, clipped to it:
+	// what the line is drawn from, a step wherever the Goal changed.
+	Segments []GoalSegment `json:"segments"`
+	Covered  int           `json:"covered"`  // days a Goal was in force, today excluded
+	Measured int           `json:"measured"` // covered days with a value
+	Met      int           `json:"met"`      // measured days within that day's bound
+}
+
+// GoalSegment is one Goal clipped to a window: in force on [From, To), both
+// YYYY-MM-DD. To is always set, at the window's end for a Goal still open or ending
+// after it, so the client draws every segment the same way.
+type GoalSegment struct {
+	Direction string  `json:"direction"`
+	Value     float64 `json:"value"`
+	From      string  `json:"from"`
+	To        string  `json:"to"`
 }
 
 // windowDays is the whole-day span of a query window [from, to), rounded to the

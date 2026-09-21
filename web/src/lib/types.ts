@@ -207,6 +207,31 @@ export interface Series {
    *  says where you are, the rate says how fast across the range — so a view showing
    *  both has to label them apart. */
   trend?: Trend;
+  /** goal is the Attainment of the Goals in force over the window (ADR 0044), absent
+   *  when none is. A Baseline carries its own, counted against the Goals in force
+   *  over *its* window. Server-computed from the day buckets whatever this Series'
+   *  bucket is; never re-counted client-side. */
+  goal?: Attainment;
+}
+
+/** Attainment is a Goal's three counts over a window, each nested in the one before:
+ *  `covered` days had a Goal in force, `measured` of them had a value, `met` of those
+ *  were within that day's bound. A gap is neither met nor missed, and today is never
+ *  judged. Shown with its denominator, never as a bare percentage. */
+export interface Attainment {
+  segments: GoalSegment[];
+  covered: number;
+  measured: number;
+  met: number;
+}
+
+/** GoalSegment is one Goal clipped to the window, in force on [from, to), both
+ *  YYYY-MM-DD: what the line is drawn from, stepping wherever the Goal changed. */
+export interface GoalSegment {
+  direction: GoalDirection;
+  value: number;
+  from: string;
+  to: string;
 }
 
 /** Trend is a sampled Metric's fitted direction over the window, with the evidence
@@ -297,6 +322,15 @@ export interface DayMetric {
   /** excluded says the absence is a refusal and not a gap: an Exclusion covers this
    *  Metric on this date (ADR 0033). No other screen tells the two apart. */
   excluded?: boolean;
+  /** goal is the bound in force on this date (ADR 0044), printed beside the value as
+   *  a fact. The Day never says which side of it the value fell on. */
+  goal?: DayGoal;
+}
+
+/** DayGoal is a Goal's bound as a Day carries it: direction and canonical value. */
+export interface DayGoal {
+  direction: GoalDirection;
+  value: number;
 }
 
 /** Day is GET /v1/days/{date}: one calendar date read as an index of everything
@@ -414,6 +448,23 @@ export interface Phase {
   rate_pct_per_week: number;
   started_at: string;
   ended_at?: string;
+}
+
+/** GoalDirection is which side of a Goal's value counts as met. Both are inclusive. */
+export type GoalDirection = "at_least" | "at_most";
+
+/** Goal is a bound the owner declares on a Metric, judged against its day bucket (the
+ *  Night for sleep) whatever bucket a Panel is drawn at (ADR 0044). Goals are a dated
+ *  history: `started_on` is inclusive, `ended_on` exclusive and absent while open, and
+ *  each day is judged against the Goal in force on it. `value` is in the Metric's
+ *  canonical unit and may be negative. Never on a `latest` Metric. */
+export interface Goal {
+  id: number;
+  metric: string;
+  direction: GoalDirection;
+  value: number;
+  started_on: string;
+  ended_on?: string;
 }
 
 /** Targets is what a Target rate implies. Protein is a floor with evidence behind it;

@@ -126,6 +126,15 @@ infrastructure, no telemetry.
 * **Phases.** Commit to a target rate over a stretch of time, cut, bulk or
   maintenance, and see your adherence against it. Phases are kept as history,
   never overwritten, so the past stays answerable.
+* **Goals.** Say what you are aiming for on any metric: at least 7 500 steps,
+  at least 7 h of sleep, at most 2 300 mg of sodium. Verve draws the bound on
+  the panel and counts the days that met it out of the days that were measured,
+  "18 of 24 days", so a day with no data is never counted as a miss and today is
+  never judged before it is over. The day page prints the bound beside the
+  value, and the ledger lists it beside every row. It counts and stops there: no
+  colour, no streak, no score. You declared the direction, and that is still
+  the only reason Verve knows it. Goals are kept as history too, so raising one
+  in April does not rewrite March.
 
 ### Make it yours
 

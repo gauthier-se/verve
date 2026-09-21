@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"time"
 
 	"github.com/gauthier-se/verve/internal/catalog"
 	"github.com/gauthier-se/verve/internal/query"
@@ -115,6 +116,7 @@ func (s *Server) handleSeries(w http.ResponseWriter, r *http.Request) {
 		AccountID: accountID, Metric: metrics[0],
 		From: resolved.Current.From, To: resolved.Current.To, Bucket: resolved.Bucket,
 	}
+	now := time.Now()
 
 	// Multi-metric (ADR 0020): the shared window and bucket are resolved once
 	// above, so the Series are provably aligned. The response is a series array,
@@ -127,6 +129,10 @@ func (s *Server) handleSeries(w http.ResponseWriter, r *http.Request) {
 			series, err := s.engine.Series(r.Context(), req)
 			if err != nil {
 				s.respondSeriesError(w, r, err)
+				return
+			}
+			if series.Goal, err = s.goals.Attain(r.Context(), accountID, metric, req.From, req.To, now); err != nil {
+				s.serverErrorResponse(w, r, err)
 				return
 			}
 			list = append(list, series)
@@ -142,6 +148,10 @@ func (s *Server) handleSeries(w http.ResponseWriter, r *http.Request) {
 			s.respondSeriesError(w, r, err)
 			return
 		}
+		if series.Goal, err = s.goals.Attain(r.Context(), accountID, req.Metric, req.From, req.To, now); err != nil {
+			s.serverErrorResponse(w, r, err)
+			return
+		}
 		s.respond(w, r, http.StatusOK, envelope{"series": series})
 		return
 	}
@@ -151,6 +161,16 @@ func (s *Server) handleSeries(w http.ResponseWriter, r *http.Request) {
 	cmp, err := s.engine.Compare(r.Context(), req, *resolved.Baseline)
 	if err != nil {
 		s.respondSeriesError(w, r, err)
+		return
+	}
+	// Each window is judged against the Goals in force over it, so a Baseline from
+	// last spring is counted against last spring's Goal (ADR 0044).
+	if cmp.Current.Goal, err = s.goals.Attain(r.Context(), accountID, req.Metric, req.From, req.To, now); err != nil {
+		s.serverErrorResponse(w, r, err)
+		return
+	}
+	if cmp.Baseline.Goal, err = s.goals.Attain(r.Context(), accountID, req.Metric, resolved.Baseline.From, resolved.Baseline.To, now); err != nil {
+		s.serverErrorResponse(w, r, err)
 		return
 	}
 	s.respond(w, r, http.StatusOK, envelope{"series": cmp.Current, "baseline": cmp.Baseline})

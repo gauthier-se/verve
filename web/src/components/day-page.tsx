@@ -23,6 +23,7 @@ import {
   formatFigure,
   formatSessionDuration,
 } from "@/lib/format";
+import { boundText } from "@/lib/goals";
 import { metricLabel } from "@/lib/metrics";
 import { clockTime, efficiencyBasisLabel } from "@/lib/night";
 import { cn } from "@/lib/utils";
@@ -265,6 +266,14 @@ function MetricRow({ row }: { row: DayMetric }) {
           </>
         ) : (
           <span className="text-sm text-muted-foreground">—</span>
+        )}
+        {/* The bound in force that day, beside the value and in the same words the
+            Panel's counts use. No "met", no icon: the two numbers side by side say
+            it, and the Day never grades a date (ADR 0043, ADR 0044). */}
+        {row.goal && (
+          <Meta className="whitespace-nowrap" title="The goal in force on this date">
+            goal {boundText(row.goal, row)}
+          </Meta>
         )}
       </span>
       <Meta className="w-36 shrink-0 text-right">{row.source}</Meta>

@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { computeDelta, formatDuration, formatExact, formatSummaryValue } from "@/lib/format";
+import { attainmentText } from "@/lib/goals";
 import { metricLabel } from "@/lib/metrics";
 import type { Metric, Series } from "@/lib/types";
 import { FormulaHint } from "./formula-hint";
@@ -151,29 +152,51 @@ export function PanelSummary({
   }
 
   return (
-    // panel-summary is a query container (index.css) so the secondary figure drops by
-    // the band's own width — narrow card, not viewport — without touching the chart.
-    <div className="panel-summary flex items-baseline gap-x-2 px-4 pt-2">
-      <Figure size={size ?? (wide ? "wide" : "panel")} title={primaryTitle}>
-        {primary}
-      </Figure>
-      {primaryValue !== undefined && <FigureUnit unit={unit} aggregation={aggregation} mode={mode} />}
-      {delta && (
-        // Never green, never red: a delta is a direction and a magnitude, and Verve
-        // does not know which direction is good for your Metric (ADR 0019).
-        <span
-          className="font-mono text-2xs tabular-nums text-muted-foreground"
-          title={`${delta.arrow} ${delta.exact} ${unit} vs the compared period`.trim()}
-        >
-          {delta.arrow} {delta.label}
-          {baselineShown && <span className="opacity-70"> (vs {baselineShown})</span>}
-        </span>
-      )}
-      {showSecondary && (
-        // panel-summary-secondary is dropped on a narrow card by a container query
-        // (index.css) — the first thing to go when space is tight (ADR 0019).
-        <span className="panel-summary-secondary ml-auto whitespace-nowrap font-mono text-2xs tabular-nums text-muted-foreground">
-          <span className="opacity-70">{formatBucket(last.bucket, bucket)}</span> {fmt(last.value)}
+    <>
+      {/* panel-summary is a query container (index.css) so the secondary figure drops by
+          the band's own width — narrow card, not viewport — without touching the chart. */}
+      <div className="panel-summary flex items-baseline gap-x-2 px-4 pt-2">
+        <Figure size={size ?? (wide ? "wide" : "panel")} title={primaryTitle}>
+          {primary}
+        </Figure>
+        {primaryValue !== undefined && <FigureUnit unit={unit} aggregation={aggregation} mode={mode} />}
+        {delta && (
+          // Never green, never red: a delta is a direction and a magnitude, and Verve
+          // does not know which direction is good for your Metric (ADR 0019).
+          <span
+            className="font-mono text-2xs tabular-nums text-muted-foreground"
+            title={`${delta.arrow} ${delta.exact} ${unit} vs the compared period`.trim()}
+          >
+            {delta.arrow} {delta.label}
+            {baselineShown && <span className="opacity-70"> (vs {baselineShown})</span>}
+          </span>
+        )}
+        {showSecondary && (
+          // panel-summary-secondary is dropped on a narrow card by a container query
+          // (index.css) — the first thing to go when space is tight (ADR 0019).
+          <span className="panel-summary-secondary ml-auto whitespace-nowrap font-mono text-2xs tabular-nums text-muted-foreground">
+            <span className="opacity-70">{formatBucket(last.bucket, bucket)}</span> {fmt(last.value)}
+          </span>
+        )}
+      </div>
+      {series.goal && <GoalCounts series={series} baseline={baseline} />}
+    </>
+  );
+}
+
+/** GoalCounts is the Attainment under a single-Metric headline: the met days over the
+ *  measured ones, then the Baseline's own count against the Goal in force over its
+ *  window. The two sit side by side with no difference computed between them, for
+ *  the reason a delta is never coloured: a count is a count, not a score (ADR 0044). */
+function GoalCounts({ series, baseline }: { series: Series; baseline?: Series }) {
+  const current = attainmentText(series.goal!, series);
+  const then = baseline?.goal ? attainmentText(baseline.goal, baseline) : undefined;
+  return (
+    <div className="px-4 font-mono text-2xs tabular-nums text-muted-foreground" title={current.title}>
+      {current.short}
+      {then && (
+        <span className="opacity-70" title={then.title}>
+          {" "}(then {then.short})
         </span>
       )}
     </div>
@@ -224,6 +247,7 @@ export function PanelLegend({
             {shown}
           </span>
           {value !== undefined && <FigureUnit unit={s.unit} aggregation={s.aggregation} mode={mode} />}
+          {s.goal && <LegendGoal series={s} />}
         </span>
         );
       })}
@@ -236,5 +260,16 @@ export function PanelLegend({
         </span>
       )}
     </div>
+  );
+}
+
+/** LegendGoal is a Series' Attainment in a combo's legend, beside its own figure so
+ *  there is no doubt which Metric's Goal it counts. */
+function LegendGoal({ series }: { series: Series }) {
+  const text = attainmentText(series.goal!, series);
+  return (
+    <span className="font-mono text-3xs tabular-nums text-muted-foreground" title={text.title}>
+      · {text.short}
+    </span>
   );
 }

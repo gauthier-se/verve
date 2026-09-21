@@ -22,6 +22,7 @@ import { AXIS, GRID, NEGATIVE, POSITIVE, SERIES_COLORS, seriesColor } from "@/li
 import { mergeSeries, stageKey, type ChartDatum } from "@/lib/chart-data";
 import { formatDuration } from "@/lib/format";
 import { metricLabel } from "@/lib/metrics";
+import { drawsGoalLine } from "@/lib/goals";
 import { useActivityMap } from "@/hooks/use-catalog";
 import { buildSegments, type Segment } from "@/lib/breakdown";
 import { Key } from "./ui/figure";
@@ -176,6 +177,7 @@ export function PanelChart({
         {list.map((s, i) =>
           marks(metrics[i]?.chart_type ?? "line", i, axisOf(s), data, list.length > 1, segments, colorOffset),
         )}
+        {list.map((s, i) => drawsGoalLine(s) && goalLine(i, axisOf(s), colorOffset))}
         {baseline && baselineLine}
       </ComposedChart>
     </ResponsiveContainer>
@@ -184,7 +186,9 @@ export function PanelChart({
 
 /** axisDomain spans zero for an axis carrying a diverging bar, whose "balance
  *  around zero" reading is lost if Recharts fits the axis to same-sign data
- *  (ADR 0014). Other axes auto-fit. */
+ *  (ADR 0014). Other axes auto-fit, which is also what keeps a Goal in view: its
+ *  line is a series on its Metric's axis, so the fit already reaches it however far
+ *  it sits from the data (ADR 0044). */
 function axisDomain(
   list: Series[],
   metrics: PanelMetric[],
@@ -195,6 +199,30 @@ function axisDomain(
   return diverging
     ? [(min: number) => Math.min(0, min), (max: number) => Math.max(0, max)]
     : undefined;
+}
+
+/** goalLine draws a Series' Goal as a dashed step in the Series' own colour, on its
+ *  own axis (ADR 0044). It is the only thing a Goal changes on a chart: no point is
+ *  recoloured, nothing either side of it is shaded, because the owner declared a
+ *  direction, not a wish to be graded. It steps where the Goal changed and breaks
+ *  where none was in force, and it is a plateau, so it cannot be read as the
+ *  Baseline, which is a recessed curve. */
+function goalLine(i: number, yAxisId: "left" | "right", offset: number): React.ReactNode {
+  return (
+    <Line
+      key={`goal${i}`}
+      yAxisId={yAxisId}
+      type="stepAfter"
+      dataKey={`goal${i}`}
+      stroke={seriesColor(i, offset)}
+      strokeWidth={1.25}
+      strokeDasharray="6 4"
+      dot={false}
+      activeDot={false}
+      connectNulls={false}
+      isAnimationActive={false}
+    />
+  );
 }
 
 /** annotationOverlay draws the Account's notes behind the marks: a band for a span

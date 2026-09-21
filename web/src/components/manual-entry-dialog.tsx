@@ -7,21 +7,13 @@ import {
   useManualMeasurements,
 } from "@/hooks/use-measurements";
 import { ApiError } from "@/lib/api";
-import { metricLabel } from "@/lib/metrics";
+import { metricLabel, toDisplayValue, toStoredValue } from "@/lib/metrics";
 import type { ManualMeasurement, Metric } from "@/lib/types";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { MetricIcon } from "./metric-icon";
-
-/** Percent Metrics are stored as fractions — `body_fat_percentage` is 0.27, not 27, and
- *  `oxygen_saturation` is 0.969. Nobody will type 0.27, so the field is presented in
- *  0–100 and converted here. Keyed off the Catalog unit, in exactly one place: a second
- *  copy of this rule is how a 26-point error that still looks plausible gets shipped. */
-const isPercent = (metric: Metric) => metric.unit === "%";
-const toStored = (metric: Metric, typed: number) => (isPercent(metric) ? typed / 100 : typed);
-const toDisplay = (unit: string, stored: number) => (unit === "%" ? stored * 100 : stored);
 
 /** localDateTimeValue formats a Date for a datetime-local input, which wants local wall
  *  time with no zone — the value the user actually means when they type "yesterday 8am". */
@@ -76,7 +68,7 @@ export function ManualEntryDialog({
     create.mutate(
       {
         metric: selected.slug,
-        value: toStored(selected, typed),
+        value: toStoredValue(selected.unit, typed),
         measured_at: new Date(measuredAt).toISOString(),
       },
       {
@@ -239,7 +231,7 @@ function RecentEntries() {
 
 function EntryRow({ row }: { row: ManualMeasurement }) {
   const remove = useDeleteManualMeasurement();
-  const shown = toDisplay(row.unit, row.value);
+  const shown = toDisplayValue(row.unit, row.value);
   return (
     <div className="flex items-center justify-between rounded-md px-2 py-1 text-sm hover:bg-accent/50">
       <span className="flex items-center gap-2 truncate">

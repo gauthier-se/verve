@@ -362,3 +362,37 @@ func TestAManualValueNamesItselfAsTheSource(t *testing.T) {
 		t.Errorf("row = %+v, want the scale's own reading the day after", next)
 	}
 }
+
+// A Day carries the Goal in force on its own date, the same half-open rule the
+// Panel's segments follow: none before the first, the new one on the day it changed.
+func TestTheDayCarriesTheGoalInForceThatDate(t *testing.T) {
+	e, models, acc := setup(t)
+	for _, d := range []string{"2026-03-01", "2026-03-02", "2026-03-03"} {
+		seed(t, models, acc, data.Measurement{Metric: "steps", Value: 8000, OriginalUnit: "count", StartAt: d + "T12:00:00Z", Source: "Apple Watch"})
+	}
+	ctx := context.Background()
+	if _, err := models.Goals.Open(ctx, acc, "steps", data.GoalAtLeast, 7000, "2026-03-02"); err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if _, err := models.Goals.Open(ctx, acc, "steps", data.GoalAtLeast, 7500, "2026-03-03"); err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	want := map[string]*Goal{
+		"2026-03-01": nil,
+		"2026-03-02": {Direction: data.GoalAtLeast, Value: 7000},
+		"2026-03-03": {Direction: data.GoalAtLeast, Value: 7500},
+	}
+	for date, goal := range want {
+		row, ok := find(read(t, e, acc, date).Metrics, "steps")
+		if !ok {
+			t.Fatalf("%s: no steps row", date)
+		}
+		switch {
+		case goal == nil && row.Goal != nil:
+			t.Errorf("%s: goal = %+v, want none before the first Goal", date, row.Goal)
+		case goal != nil && (row.Goal == nil || *row.Goal != *goal):
+			t.Errorf("%s: goal = %+v, want %+v", date, row.Goal, goal)
+		}
+	}
+}

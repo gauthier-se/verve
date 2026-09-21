@@ -7,6 +7,7 @@ import { copyTsv, tsvNumber } from "@/lib/clipboard";
 import { seriesCsvHref } from "@/lib/series-url";
 import { useActivityMap } from "@/hooks/use-catalog";
 import { buildSegments } from "@/lib/breakdown";
+import { boundText, segmentAt } from "@/lib/goals";
 import type { RangeTokens } from "@/lib/time-range";
 import type { Aggregation, Bucket, Point } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -43,7 +44,16 @@ export function LedgerDetailTable({
   const [copied, setCopied] = React.useState(false);
 
   const query = useSeries({ metrics: [metric], range, bucket });
-  const points = query.data?.series[0]?.points ?? [];
+  const series = query.data?.series[0];
+  const points = series?.points ?? [];
+  // The Goal in force on each row, so a Panel's count can be checked a day at a time.
+  // Day grain only: a weekly row is not a day, and a daily bound says nothing about
+  // it (ADR 0044). The bound is written as the Panel and the Day write it.
+  const goalOf = (bucketDate: string): string | undefined => {
+    const seg = bucket === "day" && series ? segmentAt(series.goal, bucketDate) : undefined;
+    return seg && series ? boundText(seg, series) : undefined;
+  };
+  const showGoal = bucket === "day" && (series?.goal?.segments.length ?? 0) > 0;
   const isAverage = aggregation === "average";
   // A Metric with a breakdown decomposes into segments, so the table grows one
   // column per segment present — the same shape the average rule's min/max columns
@@ -86,6 +96,7 @@ export function LedgerDetailTable({
       ...(isAverage ? ["Min", "Max"] : []),
       ...segments.map((s) => s.label),
       countLabel,
+      ...(showGoal ? ["Goal"] : []),
     ];
     // The copied rows carry the raw bucket start, not the key: a spreadsheet reads
     // "2026-08-17" as a date and "2026-W34" as a string.
@@ -95,6 +106,7 @@ export function LedgerDetailTable({
       ...(isAverage ? [numOrEmpty(point.min), numOrEmpty(point.max)] : []),
       ...segments.map((s) => numOrEmpty(point.states?.[s.key])),
       point.count === undefined ? "" : String(point.count),
+      ...(showGoal ? [goalOf(point.bucket) ?? ""] : []),
     ]);
     await copyTsv(headers, body);
     setCopied(true);
@@ -171,6 +183,7 @@ export function LedgerDetailTable({
                   readings and an average of 52 over two are the same number and not
                   the same fact, and this is the column that says which one it is. */}
               <TableHead className="text-right">{countLabel}</TableHead>
+              {showGoal && <TableHead className="text-right">Goal</TableHead>}
               <TableHead className="text-right">Δ vs previous</TableHead>
             </TableRow>
           </TableHeader>
@@ -209,6 +222,11 @@ export function LedgerDetailTable({
                 <TableCell className="text-right font-mono tabular-nums text-muted-foreground">
                   {point.count === undefined ? "—" : point.count}
                 </TableCell>
+                {showGoal && (
+                  <TableCell className="whitespace-nowrap text-right font-mono tabular-nums text-muted-foreground">
+                    {goalOf(point.bucket) ?? "—"}
+                  </TableCell>
+                )}
                 <TableCell className="text-right font-mono tabular-nums text-muted-foreground">
                   {delta ? `${delta.arrow} ${delta.label}` : "—"}
                 </TableCell>
