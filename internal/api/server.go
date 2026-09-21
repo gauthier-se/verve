@@ -168,6 +168,13 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("PATCH /v1/phases/{id}", s.requireAuth(s.handleClosePhase))
 	mux.Handle("DELETE /v1/phases/{id}", s.requireAuth(s.handleDeletePhase))
 
+	// Goals: a declared daily bound per Metric, kept as a dated history like Phases
+	// (ADR 0044). Not under /v1/metrics, which is the public Catalog.
+	mux.Handle("GET /v1/goals", s.requireAuth(s.handleListGoals))
+	mux.Handle("POST /v1/goals", s.requireAuth(s.handleOpenGoal))
+	mux.Handle("PATCH /v1/goals/{id}", s.requireAuth(s.handleCloseGoal))
+	mux.Handle("DELETE /v1/goals/{id}", s.requireAuth(s.handleDeleteGoal))
+
 	// Profile: the Account attributes that are not Measurements (date of birth,
 	// biological sex, body-composition trust).
 	mux.Handle("GET /v1/profile", s.requireAuth(s.handleGetProfile))

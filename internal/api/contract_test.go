@@ -47,6 +47,7 @@ var contract = []struct {
 	{"Account", accountView{}},
 	{"Profile", profileView{}},
 	{"Annotation", annotationView{}},
+	{"Goal", goalView{}},
 	{"Exclusion", exclusionView{}},
 	{"Pin", pinView{}},
 	{"MapConfig", mapView{}},

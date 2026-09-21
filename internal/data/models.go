@@ -15,6 +15,7 @@ type Models struct {
 	Dashboards   DashboardModel
 	Panels       PanelModel
 	Phases       PhaseModel
+	Goals        GoalModel
 	Pins         PinModel
 	Annotations  AnnotationModel
 	Exclusions   ExclusionModel
@@ -45,6 +46,7 @@ func newModels(h Handle) Models {
 		Dashboards:   DashboardModel{DB: h},
 		Panels:       PanelModel{DB: h},
 		Phases:       PhaseModel{DB: h},
+		Goals:        GoalModel{DB: h},
 		Pins:         PinModel{DB: h},
 		Annotations:  AnnotationModel{DB: h},
 		Exclusions:   ExclusionModel{DB: h},

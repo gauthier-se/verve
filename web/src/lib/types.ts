@@ -416,6 +416,23 @@ export interface Phase {
   ended_at?: string;
 }
 
+/** GoalDirection is which side of a Goal's value counts as met. Both are inclusive. */
+export type GoalDirection = "at_least" | "at_most";
+
+/** Goal is a bound the owner declares on a Metric, judged against its day bucket (the
+ *  Night for sleep) whatever bucket a Panel is drawn at (ADR 0044). Goals are a dated
+ *  history: `started_on` is inclusive, `ended_on` exclusive and absent while open, and
+ *  each day is judged against the Goal in force on it. `value` is in the Metric's
+ *  canonical unit and may be negative. Never on a `latest` Metric. */
+export interface Goal {
+  id: number;
+  metric: string;
+  direction: GoalDirection;
+  value: number;
+  started_on: string;
+  ended_on?: string;
+}
+
 /** Targets is what a Target rate implies. Protein is a floor with evidence behind it;
  *  `conventional_split` marks fat and carbohydrate as a stated convention, because past a
  *  hormonal fat floor the split has no demonstrated effect at equal calories and protein. */
