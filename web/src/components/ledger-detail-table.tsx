@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { ArrowDown, ArrowUp, Check, Copy, Download } from "lucide-react";
 import { useSeries } from "@/hooks/use-series";
 import { computeDelta, formatBucketKey, formatDuration, formatExact } from "@/lib/format";
-import { copyTsv, tsvNumber } from "@/lib/clipboard";
+import { copyTsv, tsvFigure } from "@/lib/clipboard";
 import { seriesCsvHref } from "@/lib/series-url";
 import { useActivityMap } from "@/hooks/use-catalog";
 import { buildSegments } from "@/lib/breakdown";
@@ -66,7 +66,7 @@ export function LedgerDetailTable({
     () => buildSegments(query.data?.series[0], activities),
     [query.data, activities],
   );
-  const showValue = (v: number) => (isDuration ? formatDuration(v) : formatExact(v));
+  const showValue = (v: number) => (isDuration ? formatDuration(v) : formatExact(v, unit));
   // What the count column counts, which is not the same evidence in each family:
   // nights for sleep, workouts for a volume, readings for a Measurement.
   const countLabel =
@@ -77,14 +77,14 @@ export function LedgerDetailTable({
   const rows = React.useMemo(() => {
     const withDelta = points.map((point, i) => ({
       point,
-      delta: i > 0 ? computeDelta(point.value, points[i - 1].value, aggregation, false) : undefined,
+      delta: i > 0 ? computeDelta(point.value, points[i - 1].value, aggregation, false, unit) : undefined,
     }));
     const dir = sort.desc ? -1 : 1;
     return [...withDelta].sort((a, b) => {
       const cmp = sort.key === "value" ? a.point.value - b.point.value : a.point.bucket.localeCompare(b.point.bucket);
       return cmp * dir;
     });
-  }, [points, aggregation, sort]);
+  }, [points, aggregation, unit, sort]);
 
   const toggleSort = (key: SortKey) =>
     setSort((s) => (s.key === key ? { key, desc: !s.desc } : { key, desc: true }));
@@ -102,9 +102,9 @@ export function LedgerDetailTable({
     // "2026-08-17" as a date and "2026-W34" as a string.
     const body = rows.map(({ point }) => [
       point.bucket,
-      tsvNumber(point.value),
-      ...(isAverage ? [numOrEmpty(point.min), numOrEmpty(point.max)] : []),
-      ...segments.map((s) => numOrEmpty(point.states?.[s.key])),
+      tsvFigure(point.value, unit),
+      ...(isAverage ? [numOrEmpty(point.min, unit), numOrEmpty(point.max, unit)] : []),
+      ...segments.map((s) => numOrEmpty(point.states?.[s.key], unit)),
       point.count === undefined ? "" : String(point.count),
       ...(showGoal ? [goalOf(point.bucket) ?? ""] : []),
     ]);
@@ -210,8 +210,8 @@ export function LedgerDetailTable({
                   )}
                 </TableCell>
                 <TableCell className="text-right font-mono tabular-nums">{showValue(point.value)}</TableCell>
-                {isAverage && <TableCell className="text-right tabular-nums text-muted-foreground">{bandCell(point.min)}</TableCell>}
-                {isAverage && <TableCell className="text-right tabular-nums text-muted-foreground">{bandCell(point.max)}</TableCell>}
+                {isAverage && <TableCell className="text-right tabular-nums text-muted-foreground">{bandCell(point.min, unit)}</TableCell>}
+                {isAverage && <TableCell className="text-right tabular-nums text-muted-foreground">{bandCell(point.max, unit)}</TableCell>}
                 {segments.map((segment) => (
                   <TableCell key={segment.key} className="text-right font-mono tabular-nums text-muted-foreground">
                     {point.states?.[segment.key] === undefined
@@ -267,10 +267,10 @@ function SortHead({
   );
 }
 
-function bandCell(v: number | undefined): string {
-  return v === undefined ? "—" : formatExact(v);
+function bandCell(v: number | undefined, unit: string): string {
+  return v === undefined ? "—" : formatExact(v, unit);
 }
 
-function numOrEmpty(v: Point["min"]): string {
-  return v === undefined ? "" : tsvNumber(v);
+function numOrEmpty(v: Point["min"], unit: string): string {
+  return v === undefined ? "" : tsvFigure(v, unit);
 }

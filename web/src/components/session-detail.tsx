@@ -4,7 +4,7 @@ import { ArrowLeft, Download } from "lucide-react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useSession, useSessionRoutes } from "@/hooks/use-sessions";
 import { activityIcon } from "@/lib/activities";
-import { formatExact, formatPace, formatSessionDuration, formatSpeed } from "@/lib/format";
+import { formatAxisValue, formatExact, formatPace, formatSessionDuration, formatSpeed } from "@/lib/format";
 import { metricLabel } from "@/lib/metrics";
 import { useWorkoutSeries } from "@/hooks/use-workout-series";
 import { curveMetrics, formatElapsed, workoutData } from "@/lib/workout-series";
@@ -105,7 +105,7 @@ export function SessionDetailPage() {
                     {STAT_LABEL[s.stat]} {metricLabel(s.metric).toLowerCase()}
                   </p>
                   <p className="text-lg font-semibold tabular-nums">
-                    {formatExact(s.value)} <span className="text-xs font-normal text-muted-foreground">{s.unit}</span>
+                    {formatExact(s.value, s.unit)} <span className="text-xs font-normal text-muted-foreground">{s.unit}</span>
                   </p>
                 </div>
               ))}
@@ -296,12 +296,12 @@ function CurveSection({ sessionId, stats }: { sessionId: number; stats: SessionS
                 tick={{ fontSize: 11 }}
                 width={44}
                 className="fill-muted-foreground"
-                tickFormatter={(v: number) => String(Math.round(v))}
+                tickFormatter={(v: number) => formatAxisValue(v, series.data?.unit ?? "")}
               />
               <Tooltip
                 contentStyle={{ fontSize: 12 }}
                 labelFormatter={(v: number) => `${formatElapsed(v)} in`}
-                formatter={(v: number) => [`${formatExact(v)} ${series.data?.unit ?? ""}`, metricLabel(metric)]}
+                formatter={(v: number) => [`${formatExact(v, series.data?.unit)} ${series.data?.unit ?? ""}`, metricLabel(metric)]}
               />
               <Line
                 type="monotone"

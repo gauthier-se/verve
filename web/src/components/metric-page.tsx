@@ -318,7 +318,7 @@ function AxisMarks({ axis }: { axis?: TimeAxis }) {
  *  screen is always a rate worth acting on. */
 function TrendRate({ trend, unit }: { trend: Trend; unit: string }) {
   const sign = trend.per_week > 0 ? "+" : "−";
-  const magnitude = formatExact(Math.abs(Math.round(trend.per_week * 1000) / 1000));
+  const magnitude = formatExact(Math.abs(trend.per_week), unit);
   return (
     <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 pb-1 text-xs text-muted-foreground">
       <span className="font-mono tabular-nums text-foreground">
@@ -401,10 +401,10 @@ function WindowStats({
 
   return (
     <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(10rem,1fr))]">
-      <Stat label="Highest" figure={statValue(high.value, aggregation)} unit={statUnit(unit, aggregation)}>
+      <Stat label="Highest" figure={statValue(high.value, aggregation, unit)} unit={statUnit(unit, aggregation)}>
         {formatBucket(high.bucket, bucket)}
       </Stat>
-      <Stat label="Lowest" figure={statValue(low.value, aggregation)} unit={statUnit(unit, aggregation)}>
+      <Stat label="Lowest" figure={statValue(low.value, aggregation, unit)} unit={statUnit(unit, aggregation)}>
         {formatBucket(low.bucket, bucket)}
       </Stat>
       {/* A derived Metric has no reading count of its own: each operand has one, and

@@ -14,7 +14,7 @@ import {
 import { useDayNavigation } from "@/hooks/use-day";
 import { useHistory } from "@/hooks/use-history";
 import { AXIS, CATEGORY_COLORS, GRID, RECESSED, SERIES_COLORS } from "@/lib/chart";
-import { formatDay, formatDayRange, formatExact } from "@/lib/format";
+import { formatAxisValue, formatDay, formatDayRange, formatExact } from "@/lib/format";
 import { metricLabel } from "@/lib/metrics";
 import type {
   HistoryBand,
@@ -172,7 +172,7 @@ function BandCard({ band }: { band: HistoryBand }) {
               fontSize={10}
               tickLine={false}
               axisLine={false}
-              tickFormatter={compact}
+              tickFormatter={(v: number) => formatAxisValue(v, band.unit)}
             />
 
             {/* Phases first, so they sit behind the curve. Each is drawn on the
@@ -214,7 +214,7 @@ function BandCard({ band }: { band: HistoryBand }) {
                         "no data"
                       ) : (
                         <>
-                          <span className="font-mono tabular-nums">{formatExact(d.value)}</span> {band.unit}
+                          <span className="font-mono tabular-nums">{formatExact(d.value, band.unit)}</span> {band.unit}
                         </>
                       )}
                     </div>
@@ -430,9 +430,4 @@ function EmptyHistory() {
 
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-function compact(v: number): string {
-  if (Math.abs(v) >= 1000) return `${(v / 1000).toFixed(1)}k`;
-  return Number.isInteger(v) ? String(v) : v.toFixed(1);
 }

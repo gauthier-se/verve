@@ -288,37 +288,40 @@ func derivedMetrics() []Metric {
 				Denominator: []Term{{Metric: "body_mass", Coefficient: 1}},
 			},
 		},
-		// protein_energy_share = 100 · 4·dietary_protein / dietary_energy (%),
-		// the Atwater factor 4 kcal/g turning grams into their energy share.
+		// protein_energy_share = 4·dietary_protein / dietary_energy (%), the Atwater
+		// factor 4 kcal/g turning grams into their energy share. A "%" value is a
+		// fraction in Verve, imported or derived (0.2, not 20), so the shares carry
+		// Scale 1: the interface scales every "%" figure by one rule, and a derived
+		// share already ×100 would read as 2000 %.
 		{
 			Slug:   "protein_energy_share",
 			Unit:   "%",
 			Nature: Derived,
 			Formula: &Formula{
-				Scale:       100,
+				Scale:       1,
 				Numerator:   []Term{{Metric: "dietary_protein", Coefficient: 4}},
 				Denominator: []Term{{Metric: "dietary_energy", Coefficient: 1}},
 			},
 		},
-		// carb_energy_share = 100 · 4·dietary_carbohydrates / dietary_energy (%).
+		// carb_energy_share = 4·dietary_carbohydrates / dietary_energy (%).
 		{
 			Slug:   "carb_energy_share",
 			Unit:   "%",
 			Nature: Derived,
 			Formula: &Formula{
-				Scale:       100,
+				Scale:       1,
 				Numerator:   []Term{{Metric: "dietary_carbohydrates", Coefficient: 4}},
 				Denominator: []Term{{Metric: "dietary_energy", Coefficient: 1}},
 			},
 		},
-		// fat_energy_share = 100 · 9·dietary_fat_total / dietary_energy (%),
+		// fat_energy_share = 9·dietary_fat_total / dietary_energy (%),
 		// the Atwater factor 9 kcal/g for fat.
 		{
 			Slug:   "fat_energy_share",
 			Unit:   "%",
 			Nature: Derived,
 			Formula: &Formula{
-				Scale:       100,
+				Scale:       1,
 				Numerator:   []Term{{Metric: "dietary_fat_total", Coefficient: 9}},
 				Denominator: []Term{{Metric: "dietary_energy", Coefficient: 1}},
 			},

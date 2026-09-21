@@ -12,7 +12,7 @@ type Term struct {
 // expression: no nesting, no precedence (ADR 0014). Every operand is required; a
 // bucket missing any is a gap, never a zero.
 type Formula struct {
-	Scale       float64 // constant k (1, or 100 for a percentage)
+	Scale       float64 // constant k; 1 for a "%" Metric, which is stored as a fraction
 	Numerator   []Term  // weighted sum on top
 	Denominator []Term  // weighted sum below; empty means 1
 }

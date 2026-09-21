@@ -1,6 +1,7 @@
 // Panel-summary number formatting (ADR 0019). FR locale — comma decimal, space
 // thousands — compact-but-honest: a large sum is abbreviated for glanceability, while
 // smaller and non-sum values keep full precision. The exact value lives in a tooltip.
+import { toDisplayValue } from "./metrics";
 import type { Aggregation, Bucket } from "./types";
 
 const LOCALE = "fr-FR";
@@ -9,9 +10,12 @@ const nf = (opts: Intl.NumberFormatOptions) => new Intl.NumberFormat(LOCALE, opt
 // A sum only abbreviates once it is genuinely large; below this it reads fine in full.
 const COMPACT_FROM = 10_000;
 
-/** formatSummaryValue renders a summary figure: a large `sum` abbreviates ("245,3 k"),
- *  everything else keeps full precision ("58", "74,2"). */
-export function formatSummaryValue(value: number, aggregation: Aggregation | ""): string {
+/** formatSummaryValue renders a stored summary figure: a large `sum` abbreviates
+ *  ("245,3 k"), everything else keeps full precision ("58", "74,2"). A percent Metric's
+ *  stored fraction is read in 0–100 first ("96,9", not "1"): every figure format here
+ *  takes the unit for that reason, so no screen can print a fraction beside a "%". */
+export function formatSummaryValue(stored: number, aggregation: Aggregation | "", unit: string): string {
+  const value = toDisplayValue(unit, stored);
   if (aggregation === "sum" && Math.abs(value) >= COMPACT_FROM) {
     return nf({ notation: "compact", maximumFractionDigits: 1 }).format(value);
   }
@@ -37,8 +41,8 @@ export function formatDuration(minutes: number): string {
  *  It lives here rather than beside whichever screen needs it because three of them
  *  do — the Ledger, the Metric page and the Day — and a rule kept in three places is
  *  a rule that will be right in two of them. */
-export function formatFigure(value: number, aggregation: Aggregation | ""): string {
-  return aggregation === "duration_by_state" ? formatDuration(value) : formatSummaryValue(value, aggregation);
+export function formatFigure(value: number, aggregation: Aggregation | "", unit: string): string {
+  return aggregation === "duration_by_state" ? formatDuration(value) : formatSummaryValue(value, aggregation, unit);
 }
 
 /** figureUnit is the unit to print beside a figure, or undefined when there is none
@@ -50,9 +54,21 @@ export function figureUnit(unit: string, aggregation: Aggregation | ""): string 
   return unit;
 }
 
-/** formatExact is the full grouped value for a tooltip: "245 321", "74,2". */
-export function formatExact(value: number): string {
-  return nf({ maximumFractionDigits: 2 }).format(value);
+/** formatAxisValue renders a chart coordinate compactly: "12.3k", "96.9", "58". Plain
+ *  dots and no grouping, since a tick is a coordinate, not prose. Plotted values stay
+ *  stored, so a Goal line or a Baseline drawn from stored data lands where it should;
+ *  only the label is read in the unit's display scale. */
+export function formatAxisValue(stored: number, unit: string): string {
+  const v = toDisplayValue(unit, stored);
+  if (Math.abs(v) >= 1000) return `${(v / 1000).toFixed(1)}k`;
+  return Number.isInteger(v) ? String(v) : v.toFixed(1);
+}
+
+/** formatExact is the full grouped value for a tooltip: "245 321", "74,2". Given a
+ *  Metric's unit, a stored figure is read the way formatFigure reads it ("96,94" for
+ *  a stored 0.9694 %); without one, the number is printed as it is. */
+export function formatExact(value: number, unit = ""): string {
+  return nf({ maximumFractionDigits: 2 }).format(toDisplayValue(unit, value));
 }
 
 /** Delta is a summary's headline change against its Baseline: a direction plus a
@@ -67,12 +83,14 @@ export interface Delta {
  *  but the absolute difference for a signed Metric (a percentage around zero is
  *  meaningless) or when the Baseline is zero (no percentage base). The arrow follows
  *  the *shown* magnitude, so a change that rounds to zero reads as neutral ("→ 0 %")
- *  rather than a misleading "↑ 0 %". */
+ *  rather than a misleading "↑ 0 %". The absolute difference is written in the unit's
+ *  display scale (points, for a percent Metric); the relative one needs no scaling. */
 export function computeDelta(
   current: number,
   baseline: number,
   aggregation: Aggregation | "",
   signed: boolean,
+  unit: string,
 ): Delta {
   const diff = current - baseline;
   const usePercent = !signed && baseline !== 0;
@@ -85,12 +103,12 @@ export function computeDelta(
     shownZero = rounded === 0;
   } else {
     const magnitude = Math.abs(diff);
-    label = formatSummaryValue(magnitude, aggregation);
+    label = formatSummaryValue(magnitude, aggregation, unit);
     shownZero = magnitude === 0 || label === "0";
   }
 
   const arrow = shownZero ? "→" : diff > 0 ? "↑" : "↓";
-  return { arrow, label, exact: formatExact(Math.abs(diff)) };
+  return { arrow, label, exact: formatExact(Math.abs(diff), unit) };
 }
 
 /** formatPace renders a speed in km/h as minutes per kilometre: 10 → "6:00/km".
