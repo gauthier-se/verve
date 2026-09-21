@@ -72,3 +72,12 @@ function weightedSum(terms: Formula["numerator"], label: (slug: string) => strin
     })
     .join("");
 }
+
+/** Percent Metrics are stored as fractions — `body_fat_percentage` is 0.27, not 27, and
+ *  `oxygen_saturation` is 0.969. Nobody will type 0.27, so a field is presented in 0–100
+ *  and converted with these. Keyed off the Catalog unit, in exactly one place: a second
+ *  copy of this rule is how a 26-point error that still looks plausible gets shipped.
+ *  Shared by the Manual entry and the Goal form, which both take a typed value. */
+export const isPercentUnit = (unit: string) => unit === "%";
+export const toStoredValue = (unit: string, typed: number) => (isPercentUnit(unit) ? typed / 100 : typed);
+export const toDisplayValue = (unit: string, stored: number) => (isPercentUnit(unit) ? stored * 100 : stored);
