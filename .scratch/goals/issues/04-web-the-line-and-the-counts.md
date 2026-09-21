@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 Blocked by: 02
 
 # 04: web: the line and the counts on a Panel
@@ -35,3 +35,34 @@ Blocked by: 02
 The line is the part people see first, and the one most likely to slide into
 judgement. Keeping the rendering to a line and a count is what the ADR's
 "Verve counts" means on screen.
+
+## Comments
+
+Shipped. `goalLine` in `panel-chart.tsx`, the `goal${i}` key in
+`lib/chart-data.ts`, `GoalCounts` under the single-Metric headline and
+`LegendGoal` in a combo's legend (`panel-summary.tsx`), and the text rules in
+`lib/goals.ts` (`goalAt`, `drawsGoalLine`, `goalBound`, `attainmentText`), with
+tests in `chart-data.test.ts` and `goals.test.ts`.
+
+What differs from the spec:
+
+- **No axis code.** The spec asked for the value axis to extend to the Goal.
+  Recharts already fits an axis to every series on it, and the Goal line is one,
+  so the fit reaches it for free. `axisDomain` keeps only its diverging rule, and
+  its comment now says why the Goal needs nothing.
+- **The line is a `Line` with `type="stepAfter"` over the chart's own rows**,
+  not reference segments: Recharts matches a reference `x` by category equality,
+  and a segment's `from` is often a day with no point. The consequence is that
+  the line runs between the first and last *drawn* days of a segment, and a
+  segment with a single drawn day shows no line (a one-point line has no length).
+- **On a combo, a Goal is set on every row**, including rows only another Series
+  brought, so the plateau does not break at each of its own Series' gaps.
+- **The counts read "18 of 24 days ≥ 7 500"**, "at goal" in place of the bound
+  when the Goal changed inside the window, and never "0 of 0": "goal set, nothing
+  to count yet" or "no measured day under the goal". The covered count, the
+  unmeasured days and "Today is not counted" are in the title.
+- **In comparison the Baseline's count reads "(then 12 of 20 days ≥ 7 000)"**
+  beside the current one, with no difference computed.
+
+Not driven in a browser (login needs a password typed). `tsc`, the vitest suite
+and the production build pass.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { describeGoal, goalEligible, lastDayHeld, storedGoalValue, todayUTC } from "./goals";
+import { attainmentText, describeGoal, goalAt, goalEligible, lastDayHeld, storedGoalValue, todayUTC } from "./goals";
 import type { Metric } from "./types";
 
 const metric = (over: Partial<Metric>): Metric => ({
@@ -75,5 +75,51 @@ describe("lastDayHeld", () => {
   it("is the day before the exclusive end, across a month", () => {
     expect(lastDayHeld("2026-03-01")).toBe("2026-02-28");
     expect(lastDayHeld("2026-03-13")).toBe("2026-03-12");
+  });
+});
+
+describe("attainmentText", () => {
+  const seg = (value: number, from: string, to: string) => ({ direction: "at_least" as const, value, from, to });
+  const stepsRule = { unit: "count", aggregation: "sum" as const };
+
+  it("counts met over measured, with the bound when one held throughout", () => {
+    const t = attainmentText({ covered: 30, measured: 24, met: 18, segments: [seg(7500, "a", "b")] }, stepsRule);
+    expect(t.short).toBe("18 of 24 days ≥ 7 500");
+    expect(t.title).toContain("6 with no data");
+    expect(t.title).toContain("Today is not counted");
+  });
+
+  it("says 'at goal' when the Goal changed inside the window", () => {
+    const t = attainmentText(
+      { covered: 4, measured: 4, met: 2, segments: [seg(7000, "a", "b"), seg(7500, "b", "c")] },
+      stepsRule,
+    );
+    expect(t.short).toBe("2 of 4 days at goal");
+  });
+
+  it("writes a sleep bound as a duration and a percent as typed", () => {
+    const sleepGoal = { covered: 7, measured: 7, met: 5, segments: [seg(420, "a", "b")] };
+    expect(attainmentText(sleepGoal, { unit: "min", aggregation: "duration_by_state" }).short).toBe("5 of 7 days ≥ 7h 0m");
+    const spo2Goal = { covered: 7, measured: 7, met: 7, segments: [seg(0.95, "a", "b")] };
+    expect(attainmentText(spo2Goal, { unit: "%", aggregation: "average" }).short).toBe("7 of 7 days ≥ 95 %");
+  });
+
+  it("never prints 0 of 0", () => {
+    expect(attainmentText({ covered: 0, measured: 0, met: 0, segments: [seg(1, "a", "b")] }, stepsRule).short).toBe(
+      "goal set, nothing to count yet",
+    );
+    expect(attainmentText({ covered: 5, measured: 0, met: 0, segments: [seg(1, "a", "b")] }, stepsRule).short).toBe(
+      "no measured day under the goal",
+    );
+  });
+});
+
+describe("goalAt", () => {
+  it("is half-open, like the segments", () => {
+    const a = { covered: 0, measured: 0, met: 0, segments: [{ direction: "at_most" as const, value: 2300, from: "2024-01-01", to: "2024-01-03" }] };
+    expect(goalAt(a, "2024-01-01")).toBe(2300);
+    expect(goalAt(a, "2024-01-02")).toBe(2300);
+    expect(goalAt(a, "2024-01-03")).toBeUndefined();
+    expect(goalAt(undefined, "2024-01-01")).toBeUndefined();
   });
 });

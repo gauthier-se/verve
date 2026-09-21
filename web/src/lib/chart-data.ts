@@ -4,6 +4,7 @@
 // because it is where a Panel's data is actually decided: which buckets appear,
 // what counts as a gap, where a Baseline point is placed. A component can be read
 // by eye; this has to be read by test.
+import { drawsGoalLine, goalAt } from "./goals";
 import type { Series } from "./types";
 
 /** ChartDatum is one x-position: per-series values keyed v0…v3 (band0… for the
@@ -14,7 +15,7 @@ export interface ChartDatum {
   bucket: string;
   baselineValue?: number;
   baselineBucket?: string;
-  [seriesKey: `v${number}` | `band${number}` | `trend${number}` | `stage:${string}`]:
+  [seriesKey: `v${number}` | `band${number}` | `trend${number}` | `goal${number}` | `stage:${string}`]:
     | number
     | number[]
     | undefined;
@@ -44,6 +45,10 @@ export function mergeSeries(list: Series[], baseline?: Series): ChartDatum[] {
       // The smoothed value, left absent on a bucket that has none so the line drawn
       // from it breaks there rather than bridging a gap (ADR 0032).
       if (p.trend !== undefined) d.trend0 = p.trend;
+      // The Goal in force that day, drawn as a step (ADR 0044). Absent where none
+      // was, so the line breaks between Goals rather than bridging them.
+      const goal = drawsGoalLine(list[0]) ? goalAt(list[0].goal, p.bucket) : undefined;
+      if (goal !== undefined) d.goal0 = goal;
       // The Stage breakdown a stacked bar reads, carried beside the value the
       // tooltip and the Baseline still use (ADR 0027).
       for (const [stage, minutes] of Object.entries(p.states ?? {})) d[stageKey(stage)] = minutes;
@@ -66,6 +71,16 @@ export function mergeSeries(list: Series[], baseline?: Series): ChartDatum[] {
       row[`v${i}`] = p.value;
       if (p.min !== undefined && p.max !== undefined) row[`band${i}`] = [p.min, p.max];
       if (p.trend !== undefined) row[`trend${i}`] = p.trend;
+    }
+  });
+  // A Goal is set on every row, not only where its own Series has a point: the bound
+  // holds on a day whatever the other Series recorded, and a plateau interrupted at
+  // each of this Series' gaps would read as the Goal coming and going.
+  list.forEach((s, i) => {
+    if (!drawsGoalLine(s)) return;
+    for (const row of rows.values()) {
+      const goal = goalAt(s.goal, row.bucket);
+      if (goal !== undefined) row[`goal${i}`] = goal;
     }
   });
   // Bucket dates are YYYY-MM-DD, so lexical order is chronological.

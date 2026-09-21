@@ -155,3 +155,36 @@ describe("mergeSeries trend", () => {
     expect(rows[0].trend1).toBe(66);
   });
 });
+
+describe("mergeSeries, Goal line", () => {
+  const goal = {
+    covered: 4,
+    measured: 3,
+    met: 1,
+    segments: [
+      { direction: "at_least" as const, value: 7000, from: "2024-01-01", to: "2024-01-03" },
+      { direction: "at_least" as const, value: 7500, from: "2024-01-03", to: "2024-01-05" },
+    ],
+  };
+
+  it("steps with the Goal in force on each day", () => {
+    const data = mergeSeries([
+      series({ goal, points: [p("2024-01-01", 1), p("2024-01-02", 1), p("2024-01-03", 1), p("2024-01-06", 1)] }),
+    ]);
+    expect(data.map((d) => d.goal0)).toEqual([7000, 7000, 7500, undefined]);
+  });
+
+  it("draws nothing above day grain, where a bar is not a day", () => {
+    const data = mergeSeries([series({ goal, bucket: "week", points: [p("2024-01-01", 1)] })]);
+    expect(data[0].goal0).toBeUndefined();
+  });
+
+  it("holds a Series' Goal on the rows another Series brought", () => {
+    const data = mergeSeries([
+      series({ goal, points: [p("2024-01-01", 1)] }),
+      series({ metric: "sleep", points: [p("2024-01-02", 420)] }),
+    ]);
+    expect(data.map((d) => d.goal0)).toEqual([7000, 7000]);
+    expect(data.every((d) => d.goal1 === undefined)).toBe(true);
+  });
+});

@@ -3,7 +3,7 @@
 // becomes the canonical one the API stores.
 import { formatFigure } from "./format";
 import { toDisplayValue, toStoredValue } from "./metrics";
-import type { Goal, GoalDirection, Metric } from "./types";
+import type { Aggregation, Attainment, Goal, GoalDirection, Metric, Series } from "./types";
 
 /** goalEligible mirrors the server's rule: every Metric but a `latest` one. "75 kg"
  *  is a destination reached once, not a bound held daily, and that question is a
@@ -27,9 +27,13 @@ const DIRECTION_WORDS: Record<GoalDirection, string> = {
 /** goalValue renders a stored Goal value the way the same Metric's figures render,
  *  so the bound and the day it is read against are written alike: "7h 00m", "7 500",
  *  "96" for a stored 0.96. */
-export function goalValue(value: number, metric: Metric): string {
+export function goalValue(value: number, metric: FigureRule): string {
   return formatFigure(toDisplayValue(metric.unit, value), metric.aggregation ?? "");
 }
+
+/** FigureRule is what writing a value needs: its unit and its rule. A Series carries
+ *  both, so a Panel can write a bound without looking the Metric up. */
+type FigureRule = { unit: string; aggregation?: Aggregation | "" };
 
 /** goalUnit is the unit to print after the value, or empty when it says nothing: a
  *  duration carries its own, and "count" is the Metric's name, already on screen. */
@@ -85,4 +89,53 @@ export function lastDayHeld(endedOn: string): string {
   const d = new Date(`${endedOn}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() - 1);
   return d.toISOString().slice(0, 10);
+}
+
+/** goalAt is the Goal value in force on a day bucket, or undefined where none was:
+ *  what the step line is drawn from. Segments are half-open [from, to) and dates
+ *  are YYYY-MM-DD, so string comparison is chronological. */
+export function goalAt(attainment: Attainment | undefined, bucket: string): number | undefined {
+  for (const s of attainment?.segments ?? []) {
+    if (s.from <= bucket && bucket < s.to) return s.value;
+  }
+  return undefined;
+}
+
+/** drawsGoalLine is whether a Series gets a line: only at day grain, where a bar is
+ *  a day and the bound is a day's. Above it the counts stay and the line goes, since
+ *  a weekly bar against a daily bound is the comparison ADR 0044 refuses. */
+export function drawsGoalLine(s: Series): boolean {
+  return s.bucket === "day" && (s.goal?.segments.length ?? 0) > 0;
+}
+
+const SYMBOLS: Record<GoalDirection, string> = { at_least: "≥", at_most: "≤" };
+
+/** goalBound writes the bound the counts are against ("≥ 7 500"), or null when the
+ *  Goal changed inside the window and no single bound is true of every day. */
+export function goalBound(attainment: Attainment, rule: FigureRule): string | null {
+  const [first, ...rest] = attainment.segments;
+  if (!first) return null;
+  if (rest.some((s) => s.direction !== first.direction || s.value !== first.value)) return null;
+  const unit = rule.aggregation === "duration_by_state" || rule.unit === "count" ? "" : rule.unit;
+  return [SYMBOLS[first.direction], goalValue(first.value, rule), unit].filter(Boolean).join(" ");
+}
+
+/** attainmentText is the counts as the legend prints them: the met days over the
+ *  measured ones, always with the denominator, never a percentage (ADR 0044). The
+ *  title says what the short form cannot: how many days had no data, and that today
+ *  is not counted. Words, not colour: it is a count, not a grade. */
+export function attainmentText(attainment: Attainment, rule: FigureRule): { short: string; title: string } {
+  const { met, measured, covered } = attainment;
+  const bound = goalBound(attainment, rule);
+  const unmeasured = covered - measured;
+  const title = [
+    `${met} of ${measured} measured ${measured === 1 ? "day" : "days"} met the goal${bound ? ` (${bound})` : ""}.`,
+    `${covered} ${covered === 1 ? "day" : "days"} under a goal`,
+    unmeasured > 0 ? `, ${unmeasured} with no data.` : ".",
+    " Today is not counted.",
+  ].join("");
+  if (measured === 0) {
+    return { short: covered === 0 ? "goal set, nothing to count yet" : "no measured day under the goal", title };
+  }
+  return { short: `${met} of ${measured} days ${bound ?? "at goal"}`, title };
 }
