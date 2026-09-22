@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 Blocked by: 01
 
 # 02: dashtemplate, data: the Overview seeded from a file
@@ -32,3 +32,13 @@ Blocked by: 01
   Panels in order, now read from the file.
 - `CreateDashboardFromFile` writes a Dashboard and its Panels with their
   buckets and widths, and writes nothing if a Panel insert fails.
+
+## Comments
+
+- No test for "writes nothing if a Panel insert fails": no schema constraint on
+  `panels` or `panel_metrics` can make one Panel fail without injecting a fault,
+  and the atomicity is `Models.Tx`'s own, already held by `tx_test.go` (ADR 0038).
+- `All` and `Get` hand out copies of the roster, so a caller that edits a File
+  (a name override, say) cannot change the next Account's template.
+- `overview.json` carries a description, unused while the Overview is left out
+  of the listing (`03`), so the format is the same for every template.

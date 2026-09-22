@@ -3,25 +3,9 @@ package data
 import (
 	"context"
 	"fmt"
+
+	"github.com/gauthier-se/verve/internal/dashtemplate"
 )
-
-// defaultDashboardName is the seeded starter board (ADR 0018): "Overview".
-const defaultDashboardName = "Overview"
-
-// defaultPanels is the curated template seeded into every new Account's starter
-// board (ADR 0018), in this order. The Metrics are iPhone-universal (no Watch
-// required) and each chart type is valid for the Metric's Catalog aggregation.
-// This is a product decision defined here, never derived from user input.
-var defaultPanels = []struct {
-	metric    string
-	chartType string
-}{
-	{"body_mass", "line"},          // latest
-	{"active_energy", "bar"},       // sum
-	{"steps", "bar"},               // sum
-	{"resting_heart_rate", "line"}, // average, shown as a plain line
-	{"apple_exercise_time", "bar"}, // sum
-}
 
 // CreateAccount is the one account-creation path every caller shares (the CLI
 // today, the web bootstrap next): it inserts the Account and seeds its default
@@ -37,23 +21,57 @@ func (m Models) CreateAccount(ctx context.Context, a *Account) error {
 	})
 }
 
-// seedDefaultDashboard inserts the "Overview" Dashboard and its template Panels for
-// accountID, in template order, reusing the ordinary Dashboard/Panel insert path
-// (ADR 0012) so a seeded board is an ordinary, editable Dashboard afterward.
+// seedDefaultDashboard inserts the seeded template, "Overview", for accountID
+// (ADR 0018), through the same path any template takes (ADR 0047), so a seeded
+// board is an ordinary, editable Dashboard afterward.
 func seedDefaultDashboard(ctx context.Context, q Handle, accountID int64) error {
-	d := &Dashboard{AccountID: accountID, Name: defaultDashboardName, RangePreset: "30d"}
-	if err := insertDashboard(ctx, q, d); err != nil {
+	f, ok := dashtemplate.Get(dashtemplate.Seeded)
+	if !ok {
+		return fmt.Errorf("data: seed default dashboard: no %q template", dashtemplate.Seeded)
+	}
+	if _, err := insertFromFile(ctx, q, accountID, f, ""); err != nil {
 		return fmt.Errorf("data: seed default dashboard: %w", err)
 	}
-	for _, tp := range defaultPanels {
-		p := &Panel{
-			DashboardID: d.ID, AccountID: accountID,
-			Metrics: []PanelMetric{{Metric: tp.metric, ChartType: tp.chartType}},
-			Width:   1,
+	return nil
+}
+
+// CreateDashboardFromFile writes one Dashboard file as an ordinary Dashboard of
+// the Account, appended to its list, in one transaction (ADR 0038). The result is
+// a copy: it keeps no link to the file, so a later change to a template never
+// reaches it (ADR 0047). name overrides the file's own when not empty. The file
+// is taken as validated; the caller holds it to dashtemplate.Validate.
+func (m Models) CreateDashboardFromFile(ctx context.Context, accountID int64, f dashtemplate.File, name string) (*Dashboard, error) {
+	var d *Dashboard
+	err := m.Tx(ctx, func(tx Models) error {
+		var err error
+		d, err = insertFromFile(ctx, tx.Dashboards.DB, accountID, f, name)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return d, nil
+}
+
+// insertFromFile inserts a Dashboard and its Panels, in file order, through the
+// ordinary Dashboard/Panel insert path, so what it writes is exactly what the
+// CRUD would have written.
+func insertFromFile(ctx context.Context, q Handle, accountID int64, f dashtemplate.File, name string) (*Dashboard, error) {
+	if name == "" {
+		name = f.Name
+	}
+	d := &Dashboard{AccountID: accountID, Name: name, RangePreset: f.RangePreset, BaselineRule: f.BaselineRule}
+	if err := insertDashboard(ctx, q, d); err != nil {
+		return nil, fmt.Errorf("data: dashboard from file: %w", err)
+	}
+	for i, fp := range f.Panels {
+		p := &Panel{DashboardID: d.ID, AccountID: accountID, Bucket: fp.Bucket, Width: fp.Width}
+		for _, m := range fp.Metrics {
+			p.Metrics = append(p.Metrics, PanelMetric{Metric: m.Metric, ChartType: m.ChartType})
 		}
 		if err := insertPanel(ctx, q, p); err != nil {
-			return fmt.Errorf("data: seed panel %s: %w", tp.metric, err)
+			return nil, fmt.Errorf("data: panel %d from file: %w", i, err)
 		}
 	}
-	return nil
+	return d, nil
 }
