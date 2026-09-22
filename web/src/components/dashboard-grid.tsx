@@ -22,13 +22,16 @@ import type { Metric, Panel } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { DragHandle, PanelCard } from "./panel-card";
 
-// A Panel's width preset maps to a column span. The grid itself is an auto-fit of
-// 320px-minimum tracks rather than a fixed three columns, so the number of columns
-// follows the space available and not a breakpoint guess: a wide monitor gets four
-// or five, a split window gets two, and nothing is ever squeezed under its minimum.
-// A span is then capped by the track count in CSS, which is what `min()` on the
-// span cannot express — hence the breakpoint qualifiers, which only ever *reduce*
-// a span on a narrow grid.
+// A Panel's width preset maps to a column span. The grid is an auto-fit of tracks
+// at least 320px wide, capped at three: the number of columns follows the space
+// available, so a split window gets two and nothing is squeezed under its minimum,
+// but a wide monitor, or the room the collapsed sidebar gives back, never adds a
+// fourth. Past three, a width-3 Panel no longer spans the row and the arrangement a
+// Dashboard was built in changes under it at the click of a toggle. The cap is the
+// track minimum `max()`ed with a third of the row, gaps taken out. A span is then
+// capped by the track count in CSS, which is what `min()` on the span cannot
+// express, hence the breakpoint qualifiers, which only ever *reduce* a span on a
+// narrow grid.
 const WIDTH_CLASS: Record<number, string> = {
   1: "col-span-1",
   2: "col-span-1 md:col-span-2",
@@ -72,7 +75,7 @@ export function DashboardGrid({
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
       <SortableContext items={panels.map((p) => p.id)} strategy={rectSortingStrategy}>
-        <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(20rem,1fr))]">
+        <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(max(20rem,calc((100%_-_2rem)/3)),1fr))]">
           {panels.map((panel, i) => (
             <SortablePanel
               key={panel.id}

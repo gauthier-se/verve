@@ -12,3 +12,10 @@ Status: done
 - The pure part (reading and writing the preference, a Dashboard's initial) in
   `web/src/lib/`, tested.
 - Verify: toggle, reload keeps the state, every destination still reachable.
+
+## Comments
+
+- Found in use: collapsing the sidebar gave back 184px, enough for a fourth
+  auto-fit column on a wide screen, so the arrangement changed under the toggle.
+  The grid is now capped at three columns (`minmax(max(20rem, third of the row),
+  1fr)`). Verified at 1920 px, expanded and collapsed (3 and 3), and at 1100 px (2).
