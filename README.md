@@ -45,6 +45,14 @@ infrastructure, no telemetry.
 
 ### Look at it properly
 
+* **Where you stand, the moment you open it.** The first screen says how old your
+  data is, counted from the last day anything was recorded and not from the last
+  import, so re-reading an old export cannot make it look fresh. Each device that
+  still sends says how far behind it stops, and the ones you replaced are folded
+  away instead of reported late forever. Every metric you pinned sits at its
+  latest value with its date and its age, the goal in force today beside it and
+  the last seven days counted against it. An age is printed as an age: how old is
+  too old is yours to judge.
 * **Dashboards you arrange.** Several dashboards, each a grid of panels, each
   panel carrying one to four metrics over a shared time range.
 * **Cross-metric panels.** Put sleep against resting heart rate, or intake

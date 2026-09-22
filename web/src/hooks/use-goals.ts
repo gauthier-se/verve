@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { DAY_KEY } from "./use-day";
+import { NOW_KEY } from "./use-now";
 import type { Goal, GoalDirection } from "@/lib/types";
 
 const KEY = ["goals"];
@@ -34,6 +35,8 @@ function useInvalidate() {
     void qc.invalidateQueries({ queryKey: KEY });
     void qc.invalidateQueries({ queryKey: ["series"] });
     void qc.invalidateQueries({ queryKey: DAY_KEY });
+    // A Pin's card carries the bound in force today and the week's counts.
+    void qc.invalidateQueries({ queryKey: NOW_KEY });
   };
 }
 

@@ -12,6 +12,7 @@ import { SessionDetailPage } from "./components/session-detail";
 import { SessionsPage } from "./components/sessions-page";
 import { NightPage } from "./components/night-page";
 import { DayPage } from "./components/day-page";
+import { NowPage } from "./components/now-page";
 
 // Code-based routes (no file router / codegen) keep the build a plain Vite SPA
 // (ADR 0013). The Go server serves index.html on every non-/v1 path, so a deep
@@ -24,9 +25,17 @@ const rootRoute = createRootRoute({
   ),
 });
 
+// "/" is Now: where the Account stands, rather than what a window looked like. The
+// Dashboards moved under /d, which is where each of them already lived (ADR 0045).
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
+  component: NowPage,
+});
+
+const dashboardIndexRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/d",
   component: DashboardIndex,
 });
 
@@ -108,6 +117,7 @@ const importRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
+  dashboardIndexRoute,
   dashboardRoute,
   dataRoute,
   metricRoute,

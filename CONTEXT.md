@@ -491,6 +491,41 @@ carried on the Series, a Baseline with its own (ADR 0044).
 _Avoid_: Adherence (that's a Phase's mean against its targets), Success rate,
 Score, Streak.
 
+### The present
+
+**Now**:
+The screen at `/`: where the Account stands, rather than what a window looked
+like. It carries the Account's **Freshness** and one card per **Pin**, each with
+its **Latest value**, the **Goal** in force today as a bound, and the
+**Attainment** over the last 7 complete days. It has no Time range, no bucket and
+no chart, which is what keeps a Pin's card from becoming a one-Panel
+**Dashboard** (ADR 0025). Nothing is seeded: with no Pin it shows the Freshness
+and how to pin (ADR 0045).
+_Avoid_: Today (a card is almost never today's value, and today is one **Day**),
+Home (the route, not the concept), Status, Summary (the Panel's word), Feed.
+
+**Freshness**:
+How old an Account's data is, measured on the **last datum** (the latest day
+holding a Measurement or a State) and never on the last **Import**, since
+re-reading an old export moves the import date without adding a day. It has two
+grains. The Account's is its last datum's age in days. A **Source**'s is measured
+against the Account's last datum rather than against now: within 30 days of it
+the Source is **active** and its lag is shown, beyond that it is **retired** and
+folded away, so a device replaced years ago is not reported late forever. The
+`Manual` Source and Sessions take no part. Printed as an age, never coloured,
+because how old is too old is the owner's to judge (ADR 0045).
+_Avoid_: Staleness (presumes a verdict), Sync status (Verve does not sync, a
+Connector reads a file, ADR 0035), Last import, Health (of the data; the word is
+taken).
+
+**Latest value**:
+A Metric's value on the last day that holds one, however far back, read through
+the engine so that Source election and the **Manual overlay** apply as on any
+Panel; for `sleep` it is the last **Night**. It always travels with its date and
+its age, because a latest value without its date is exactly the stale figure
+**Freshness** exists to expose (ADR 0045).
+_Avoid_: Current value (it is rarely current), Today's value, Last reading.
+
 ### Cross-cutting
 
 **Metric**:

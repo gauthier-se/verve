@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { DAY_KEY } from "./use-day";
+import { NOW_KEY } from "./use-now";
 import type { ManualMeasurement } from "@/lib/types";
 
 const KEY = ["measurements", "manual"];
@@ -40,6 +41,8 @@ function useInvalidate() {
     void qc.invalidateQueries({ queryKey: ["ledger"] });
     // The Day lists the entry and carries its figure, so both go stale (ADR 0043).
     void qc.invalidateQueries({ queryKey: DAY_KEY });
+    // A Manual entry can be a Pin's Latest value (ADR 0045).
+    void qc.invalidateQueries({ queryKey: NOW_KEY });
   };
 }
 

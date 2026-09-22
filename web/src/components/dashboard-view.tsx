@@ -145,7 +145,7 @@ function DashboardHeading({ dashboard }: { dashboard: Dashboard }) {
   const navigate = useNavigate();
 
   const onDelete = () => {
-    remove.mutate(dashboard.id, { onSuccess: () => navigate({ to: "/" }) });
+    remove.mutate(dashboard.id, { onSuccess: () => navigate({ to: "/d" }) });
   };
 
   return (

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, upload } from "@/lib/api";
 import type { ImportStatus } from "@/lib/types";
+import { NOW_KEY } from "./use-now";
 
 const KEY = ["import-status"];
 
@@ -44,5 +45,8 @@ export function useOnImportDone() {
   return () => {
     qc.invalidateQueries({ queryKey: ["series"] });
     qc.invalidateQueries({ queryKey: ["dashboards"] });
+    // An import is what moves the last datum, which is the whole of Now (ADR 0045).
+    qc.invalidateQueries({ queryKey: NOW_KEY });
+    qc.invalidateQueries({ queryKey: ["ledger"] });
   };
 }

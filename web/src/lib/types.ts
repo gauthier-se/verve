@@ -153,10 +153,14 @@ export interface ImportStatus {
   has_data: boolean;
 }
 
-/** LedgerValue is a Metric's most recent daily value with the day it fell on. */
+/** LedgerValue is a Metric's Latest value with the day it fell on and that day's age
+ *  in days against the server's UTC today (ADR 0045). Not bounded by the overview's
+ *  windows: a Metric that stopped five weeks ago keeps its value and says how old it
+ *  is, where `week` and `month` beside it are gaps. */
 export interface LedgerValue {
   value: number;
   date: string;
+  age_days: number;
 }
 
 /** LedgerRow is one Metric's line in the Ledger overview (GET /v1/ledger, ADR 0021):
@@ -813,6 +817,56 @@ export interface History {
   days: number;
   band?: HistoryBand;
   events: HistoryEvent[];
+}
+
+/** SourceFreshness is one Source's last datum, measured against the Account's rather
+ *  than against today (ADR 0045). `lag_days` is how far behind the Account's last
+ *  datum it stops, zero for the Source that recorded last; `retired` is a lag past
+ *  30 days, a device the Account stopped using rather than one that went quiet. */
+export interface SourceFreshness {
+  source: string;
+  last_day: string;
+  lag_days: number;
+  retired: boolean;
+}
+
+/** Freshness is how old the Account's data is, on its last datum and never on its
+ *  last import (ADR 0045). `last_day` is absent for an Account with no data.
+ *  `age_days` is counted by the server against the UTC today, never recomputed
+ *  from the browser's clock. Sources arrive active first, then retired. */
+export interface Freshness {
+  last_day?: string;
+  age_days: number;
+  sources: SourceFreshness[];
+}
+
+/** LatestValue is a Metric's value on the last day that holds one, however far
+ *  back, with that day and its age in days against the server's UTC today. A card
+ *  whose date is not today is the normal case under file-based ingestion. */
+export interface LatestValue {
+  value: number;
+  date: string;
+  age_days: number;
+}
+
+/** NowCard is one Pin read at its Latest value (ADR 0045). `goal` is the bound in
+ *  force today, printed as a fact and never as a verdict; `attainment` counts the
+ *  seven complete days before today. No curve and no range: a Pin carries no time
+ *  axis (ADR 0025). `latest` is absent for a Metric pinned and never measured. */
+export interface NowCard {
+  metric: string;
+  unit: string;
+  aggregation: Aggregation | "";
+  latest?: LatestValue;
+  goal?: DayGoal;
+  attainment?: Attainment;
+}
+
+/** Now is GET /v1/now: where the Account stands (ADR 0045), its Freshness and one
+ *  card per Pin, in Pin order. */
+export interface Now {
+  freshness: Freshness;
+  cards: NowCard[];
 }
 
 /** Exclusion is a standing refusal that a stretch of a Metric is Verve's to hold

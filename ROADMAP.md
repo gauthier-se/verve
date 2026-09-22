@@ -40,6 +40,7 @@ Everything below is merged into `main`, tested, and usable today.
 | Intra-day | The shape of one night and the curve of one workout, on their own axes: an entity serves what a bucket destroys |
 | The day | One date as a page, and the bucket that leads to it: every figure with the device that recorded it, the night, the workouts, the notes, and a gap told apart from a refusal |
 | Goals | A declared daily bound per metric: a line on the panel and the days that met it out of the days measured, counted and never graded |
+| Now | The screen the app opens on: how old the data is per account and per source, measured on the last datum and never on the last import, and each pin at its latest value with its age |
 
 ## Next
 
