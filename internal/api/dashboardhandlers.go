@@ -99,10 +99,15 @@ func (s *Server) handleCreateDashboard(w http.ResponseWriter, r *http.Request) {
 	accountID, _ := s.accountID(r)
 
 	var input struct {
-		Name string `json:"name"`
+		Name     string  `json:"name"`
+		Template *string `json:"template"`
 	}
 	if err := readJSON(w, r, &input); err != nil {
 		s.badRequestResponse(w, r, err)
+		return
+	}
+	if input.Template != nil {
+		s.createDashboardFromTemplate(w, r, accountID, *input.Template, input.Name)
 		return
 	}
 
@@ -121,6 +126,34 @@ func (s *Server) handleCreateDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.respond(w, r, http.StatusCreated, envelope{"dashboard": dashboardToView(*d, nil)})
+}
+
+// createDashboardFromTemplate instantiates a Dashboard template as an ordinary
+// Dashboard of the Account: a copy, with no link back (ADR 0047). name is
+// optional and defaults to the template's own.
+func (s *Server) createDashboardFromTemplate(w http.ResponseWriter, r *http.Request, accountID int64, slug, name string) {
+	v := NewValidator()
+	f, ok := dashtemplate.Get(slug)
+	v.Check(ok, "template", "unknown template: see GET /v1/dashboard-templates")
+	if name != "" {
+		dashtemplate.ValidateName(v.invalid(), name)
+	}
+	if !v.Valid() {
+		s.failedValidationResponse(w, r, v.Errors)
+		return
+	}
+
+	d, err := s.models.CreateDashboardFromFile(r.Context(), accountID, f, name)
+	if err != nil {
+		s.serverErrorResponse(w, r, err)
+		return
+	}
+	panels, err := s.models.Panels.ListByDashboard(r.Context(), accountID, d.ID)
+	if err != nil {
+		s.serverErrorResponse(w, r, err)
+		return
+	}
+	s.respond(w, r, http.StatusCreated, envelope{"dashboard": dashboardToView(*d, panels)})
 }
 
 // handleGetDashboard returns one of the Account's dashboards with its panels.

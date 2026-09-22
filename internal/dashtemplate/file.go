@@ -51,6 +51,21 @@ type File struct {
 	Panels       []Panel `json:"panels"`
 }
 
+// Metrics returns the distinct Metrics the file draws, in first-seen order.
+func (f File) Metrics() []string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, p := range f.Panels {
+		for _, m := range p.Metrics {
+			if !seen[m.Metric] {
+				seen[m.Metric] = true
+				out = append(out, m.Metric)
+			}
+		}
+	}
+	return out
+}
+
 // Decode reads one Dashboard file strictly: an unknown field is an error rather
 // than something silently dropped, since a file naming a field this build does
 // not know was written for a different arrangement than the one it would get.

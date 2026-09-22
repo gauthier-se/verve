@@ -40,6 +40,7 @@ var contract = []struct {
 	got  any    // a zero value of the Go type serialized into it
 }{
 	{"Dashboard", dashboardView{}},
+	{"DashboardTemplate", dashboardTemplateView{}},
 	{"Panel", panelView{}},
 	{"PanelMetric", panelMetricView{}},
 	{"Metric", metricView{}},

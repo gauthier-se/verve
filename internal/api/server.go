@@ -192,6 +192,7 @@ func (s *Server) Handler() http.Handler {
 
 	// Dashboards and their Panels: Account-scoped CRUD backing the SPA.
 	mux.Handle("GET /v1/dashboards", s.requireAuth(s.handleListDashboards))
+	mux.Handle("GET /v1/dashboard-templates", s.requireAuth(s.handleListDashboardTemplates))
 	mux.Handle("POST /v1/dashboards", s.requireAuth(s.handleCreateDashboard))
 	mux.Handle("GET /v1/dashboards/{id}", s.requireAuth(s.handleGetDashboard))
 	mux.Handle("PATCH /v1/dashboards/{id}", s.requireAuth(s.handleUpdateDashboard))

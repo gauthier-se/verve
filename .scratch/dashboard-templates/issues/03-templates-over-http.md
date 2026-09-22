@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 Blocked by: 02
 
 # 03: dashtemplate, query, api: listing and instantiating templates
@@ -45,3 +45,13 @@ Blocked by: 02
 - a name override is used and validated like any name;
 - an unknown template is a 422 and writes nothing;
 - another Account's list is unaffected (ADR 0007).
+
+## Comments
+
+- `MetricsWithData` lists only Metrics with rows of their own, so a derived one
+  is answered by `query.HasData`, from its operands: it has data when every
+  operand does. `protein_per_kg` with `body_mass` and no protein does not count.
+- The three roster files from `04` landed first: without them the listing is
+  empty, since the Overview is left out of it.
+- The refusal of an unknown template is a 422 on `template`; a name past the cap
+  is a 422 on `name`; neither writes anything.

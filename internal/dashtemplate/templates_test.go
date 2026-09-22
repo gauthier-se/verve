@@ -1,6 +1,7 @@
 package dashtemplate
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -41,5 +42,32 @@ func TestTheSeededTemplateIsTheOverviewAndComesFirst(t *testing.T) {
 	}
 	if _, ok := Get("no-such-template"); ok {
 		t.Error("Get found a template that does not exist")
+	}
+}
+
+// TestNoTemplateRepeatsItself holds what the validator does not: a Metric named
+// twice on one Panel, or two identical Panels, is a template mistake even when
+// every rule is met.
+func TestNoTemplateRepeatsItself(t *testing.T) {
+	for _, f := range All() {
+		panels := map[string]bool{}
+		for i, p := range f.Panels {
+			metrics := map[string]bool{}
+			bucket := "auto"
+			if p.Bucket != nil {
+				bucket = *p.Bucket
+			}
+			key := fmt.Sprint(p.Metrics, bucket)
+			for _, m := range p.Metrics {
+				if metrics[m.Metric] {
+					t.Errorf("%s: panel %d names %s twice", f.Slug, i, m.Metric)
+				}
+				metrics[m.Metric] = true
+			}
+			if panels[key] {
+				t.Errorf("%s: panel %d repeats an earlier one", f.Slug, i)
+			}
+			panels[key] = true
+		}
 	}
 }

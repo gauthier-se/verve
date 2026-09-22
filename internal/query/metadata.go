@@ -76,6 +76,26 @@ func (e Engine) MetricsWithData(ctx context.Context, accountID int64) ([]string,
 	return e.MetricsWithDataIn(ctx, accountID, "", "")
 }
 
+// HasData answers "does this Account hold data for slug" from the slugs
+// MetricsWithData returned. That list names only Metrics with rows of their own,
+// so a derived Metric is answered here, from its operands: it has data when every
+// operand does, since a Formula with a missing term yields a gap (ADR 0014).
+func HasData(present map[string]bool, slug string) bool {
+	m, ok := catalog.Lookup(slug)
+	if !ok {
+		return false
+	}
+	if m.Nature != catalog.Derived || m.Formula == nil {
+		return present[slug]
+	}
+	for _, operand := range m.Formula.Operands() {
+		if !present[operand] {
+			return false
+		}
+	}
+	return true
+}
+
 // MetricsWithDataIn is the same question asked of one window: the slugs the engine
 // can serve a Series for between the day labels from (inclusive) and to
 // (exclusive), either side empty for unbounded. It is what a Day asks (ADR 0043),

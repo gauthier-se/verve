@@ -24,3 +24,11 @@ Blocked by: 02
 ## Not
 
 - No Goals, Annotations or Pins in any file (ADR 0047).
+
+## Comments
+
+- The three files landed with `03`, which needed them for its listing tests.
+  Every chart type in the PRD passed the validator unchanged.
+- `TestNoTemplateRepeatsItself` is in `templates_test.go`.
+- Left: the look on the reference Account, in both Modes and at phone width,
+  which needs the picker from `05` to reach the boards the way an Account will.

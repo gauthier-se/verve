@@ -94,6 +94,18 @@ export interface Dashboard {
   panels: Panel[];
 }
 
+/** DashboardTemplate is a curated Dashboard a new one can start from (ADR 0047).
+ *  `with_data` counts the `metrics` this Account holds data for: a fact shown beside
+ *  the name, never a reason to hide a template. */
+export interface DashboardTemplate {
+  slug: string;
+  name: string;
+  description: string;
+  metrics: string[];
+  with_data: number;
+  panels: number;
+}
+
 /** Point is one aggregated bucket; min/max carry the average band. A baseline point
  *  may be a dated gap (`gap: true`) where the Baseline has no data (ADR 0015). */
 export interface Point {
