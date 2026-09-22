@@ -1,5 +1,7 @@
 package api
 
+import "github.com/gauthier-se/verve/internal/dashtemplate"
+
 // Validator accumulates per-field validation errors so a handler can check
 // several parameters and report them all at once, keyed by field name.
 type Validator struct {
@@ -9,6 +11,13 @@ type Validator struct {
 // NewValidator returns an empty Validator.
 func NewValidator() *Validator {
 	return &Validator{Errors: make(map[string]string)}
+}
+
+// invalid exposes the Validator's errors to the rules that live beside the
+// shapes they check (dashtemplate), which record into the same map with the same
+// first-message-wins rule, so a fault reads identically whichever package found it.
+func (v *Validator) invalid() dashtemplate.Invalid {
+	return dashtemplate.Invalid(v.Errors)
 }
 
 // Valid reports whether no errors have been recorded.

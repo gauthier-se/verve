@@ -2,24 +2,13 @@ package api
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strconv"
 
 	"github.com/gauthier-se/verve/internal/catalog"
+	"github.com/gauthier-se/verve/internal/dashtemplate"
 	"github.com/gauthier-se/verve/internal/data"
 	"github.com/gauthier-se/verve/internal/timeaxis"
-)
-
-// maxNameLen bounds a Dashboard name so a single field can't grow unbounded.
-const maxNameLen = 120
-
-// A Panel carries one to four Metrics spanning at most two canonical units —
-// two Y axes — so every curve keeps its true scale (ADR 0020). The metric cap
-// also bounds a /v1/series request, which serves at most one Panel's worth.
-const (
-	maxPanelMetrics = 4
-	maxPanelUnits   = 2
 )
 
 // panelMetricView is one Metric of a Panel with its chart type, in display order.
@@ -118,7 +107,7 @@ func (s *Server) handleCreateDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	v := NewValidator()
-	validateName(v, input.Name)
+	dashtemplate.ValidateName(v.invalid(), input.Name)
 	if !v.Valid() {
 		s.failedValidationResponse(w, r, v.Errors)
 		return
@@ -217,7 +206,7 @@ func (s *Server) handleUpdateDashboard(w http.ResponseWriter, r *http.Request) {
 
 	v := NewValidator()
 	if input.Name != nil {
-		validateName(v, d.Name)
+		dashtemplate.ValidateName(v.invalid(), d.Name)
 	}
 	mergeInvalid(v, timeaxis.Validate(timeaxis.Tokens{
 		RangePreset: d.RangePreset, RangeFrom: d.RangeFrom, RangeTo: d.RangeTo,
@@ -265,11 +254,11 @@ func (s *Server) handleCreatePanel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var input struct {
-		Metric    string             `json:"metric"`
-		ChartType *string            `json:"chart_type"`
-		Metrics   []panelMetricInput `json:"metrics"`
-		Bucket    *string            `json:"bucket"`
-		Width     *int               `json:"width"`
+		Metric    string                     `json:"metric"`
+		ChartType *string                    `json:"chart_type"`
+		Metrics   []dashtemplate.MetricInput `json:"metrics"`
+		Bucket    *string                    `json:"bucket"`
+		Width     *int                       `json:"width"`
 	}
 	if err := readJSON(w, r, &input); err != nil {
 		s.badRequestResponse(w, r, err)
@@ -284,17 +273,17 @@ func (s *Server) handleCreatePanel(w http.ResponseWriter, r *http.Request) {
 	if input.Metrics == nil {
 		field = "metric"
 		if input.Metric != "" {
-			entries = []panelMetricInput{{Metric: input.Metric, ChartType: input.ChartType}}
+			entries = []dashtemplate.MetricInput{{Metric: input.Metric, ChartType: input.ChartType}}
 		}
 	}
-	metrics := validatePanelMetrics(v, field, entries)
+	metrics := toPanelMetrics(dashtemplate.ValidatePanelMetrics(v.invalid(), field, entries))
 
-	bucket := validatePanelBucket(v, input.Bucket)
+	bucket := dashtemplate.ValidateBucket(v.invalid(), input.Bucket)
 	width := 1
 	if input.Width != nil {
 		width = *input.Width
 	}
-	validateWidth(v, width)
+	dashtemplate.ValidateWidth(v.invalid(), width)
 
 	if !v.Valid() {
 		s.failedValidationResponse(w, r, v.Errors)
@@ -330,10 +319,10 @@ func (s *Server) handleUpdatePanel(w http.ResponseWriter, r *http.Request) {
 	// Bucket is json.RawMessage to tell an omitted key (leave unchanged) from an
 	// explicit null (clear to auto-derive) — a *string collapses both to nil.
 	var input struct {
-		ChartType *string            `json:"chart_type"`
-		Metrics   []panelMetricInput `json:"metrics"`
-		Bucket    json.RawMessage    `json:"bucket"`
-		Width     *int               `json:"width"`
+		ChartType *string                    `json:"chart_type"`
+		Metrics   []dashtemplate.MetricInput `json:"metrics"`
+		Bucket    json.RawMessage            `json:"bucket"`
+		Width     *int                       `json:"width"`
 	}
 	if err := readJSON(w, r, &input); err != nil {
 		s.badRequestResponse(w, r, err)
@@ -349,20 +338,20 @@ func (s *Server) handleUpdatePanel(w http.ResponseWriter, r *http.Request) {
 	case input.Metrics != nil:
 		// A metrics list replaces the Panel's whole list (ADR 0020); an explicit
 		// empty list is a validation error, not a fall-through to the legacy shape.
-		p.Metrics = validatePanelMetrics(v, "metrics", input.Metrics)
+		p.Metrics = toPanelMetrics(dashtemplate.ValidatePanelMetrics(v.invalid(), "metrics", input.Metrics))
 	case input.ChartType != nil && len(p.Metrics) > 0:
 		// Legacy scalar shape: the chart type applies to the first (only) Metric,
 		// whose slug is known (the panel exists), so compatibility is enforced
 		// against its aggregation rule.
 		p.Metrics[0].ChartType = *input.ChartType
 		if metric, known := catalog.Lookup(p.Metrics[0].Metric); known {
-			validateChartType(v, p.Metrics[0].ChartType, metric)
+			dashtemplate.ValidateChartType(v.invalid(), p.Metrics[0].ChartType, metric)
 		}
 	}
 	if input.Bucket != nil { // key present in the body
-		p.Bucket = parseBucketOverride(input.Bucket, v)
+		p.Bucket = dashtemplate.ParseBucketOverride(input.Bucket, v.invalid())
 	}
-	validateWidth(v, p.Width)
+	dashtemplate.ValidateWidth(v.invalid(), p.Width)
 	if !v.Valid() {
 		s.failedValidationResponse(w, r, v.Errors)
 		return
@@ -446,128 +435,11 @@ func (s *Server) pathID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	return id, true
 }
 
-// panelMetricInput is one entry of a Panel's metrics list as the client sends
-// it; a nil chart type means "default from the Metric's aggregation rule".
-type panelMetricInput struct {
-	Metric    string  `json:"metric"`
-	ChartType *string `json:"chart_type"`
-}
-
-// validatePanelMetrics resolves a Panel's metric list against the Catalog
-// (ADR 0020): 1–4 entries spanning at most two canonical units, each chart type
-// compatible with its Metric and defaulted from its aggregation rule when
-// omitted. field is the input key errors attach to — "metric" for the legacy
-// scalar shape, "metrics" for the list.
-func validatePanelMetrics(v *Validator, field string, entries []panelMetricInput) []data.PanelMetric {
-	if len(entries) == 0 {
-		v.AddError(field, "must be provided")
-		return nil
+// toPanelMetrics carries a validated Panel's Metrics into the storage type.
+func toPanelMetrics(ms []dashtemplate.PanelMetric) []data.PanelMetric {
+	out := make([]data.PanelMetric, len(ms))
+	for i, m := range ms {
+		out[i] = data.PanelMetric{Metric: m.Metric, ChartType: m.ChartType}
 	}
-	v.Check(len(entries) <= maxPanelMetrics, field,
-		fmt.Sprintf("a panel carries at most %d metrics", maxPanelMetrics))
-
-	units := make(map[string]bool)
-	metrics := make([]data.PanelMetric, 0, len(entries))
-	for _, e := range entries {
-		if e.Metric == "" {
-			v.AddError(field, "must be provided")
-			continue
-		}
-		m, known := catalog.Lookup(e.Metric)
-		if !known {
-			v.AddError(field, unknownMetricMsg)
-			continue
-		}
-		units[m.Unit] = true
-		chartType := defaultChartType(m)
-		if e.ChartType != nil {
-			chartType = *e.ChartType
-		}
-		validateChartType(v, chartType, m)
-		metrics = append(metrics, data.PanelMetric{Metric: e.Metric, ChartType: chartType})
-	}
-	v.Check(len(units) <= maxPanelUnits, field,
-		fmt.Sprintf("a panel spans at most %d units — metrics sharing a unit share an axis", maxPanelUnits))
-	return metrics
-}
-
-// defaultChartType is the chart a Metric gets when a Panel specifies none: signed
-// derived → diverging bar (ADR 0014); else by aggregation — sum→bar, average→band,
-// duration_by_state→stacked bar, latest (and unsigned derived)→line.
-func defaultChartType(m catalog.Metric) string {
-	if m.Signed {
-		return "diverging_bar"
-	}
-	switch m.Aggregation {
-	case catalog.Sum:
-		return "bar"
-	case catalog.Average:
-		return "band"
-	case catalog.DurationByState, catalog.SumByState:
-		return "stacked_bar"
-	default: // Latest, and unsigned derived Metrics
-		return "line"
-	}
-}
-
-// validateName checks a Dashboard name is present and within the length cap.
-func validateName(v *Validator, name string) {
-	v.Check(name != "", "name", "must be provided")
-	v.Check(len(name) <= maxNameLen, "name", "must be at most 120 characters")
-}
-
-// validChartTypes is the closed set a Panel may take.
-var validChartTypes = map[string]bool{
-	"bar": true, "line": true, "area": true, "band": true, "stacked_bar": true, "diverging_bar": true,
-}
-
-// validateChartType checks a chart type is known and compatible: band→average,
-// stacked_bar→duration_by_state, diverging_bar→signed; bar/line/area suit any Metric.
-func validateChartType(v *Validator, chartType string, m catalog.Metric) {
-	if !validChartTypes[chartType] {
-		v.AddError("chart_type", "must be one of bar, line, area, band, stacked_bar, diverging_bar")
-		return
-	}
-	switch chartType {
-	case "band":
-		v.Check(m.Aggregation == catalog.Average, "chart_type", "the band variant is only for average metrics")
-	case "stacked_bar":
-		v.Check(m.Aggregation.ByState(), "chart_type", "the stacked-bar variant is only for metrics with a breakdown")
-	case "diverging_bar":
-		v.Check(m.Signed, "chart_type", "the diverging-bar variant is only for signed metrics")
-	}
-}
-
-// parseBucketOverride resolves a present bucket field on a panel update: the
-// literal null clears the override (auto-derive), a JSON string is validated as
-// day/week/month, and anything else is a validation error.
-func parseBucketOverride(raw json.RawMessage, v *Validator) *string {
-	if string(raw) == "null" {
-		return nil
-	}
-	var b string
-	if err := json.Unmarshal(raw, &b); err != nil {
-		v.AddError("bucket", "must be a string (day, week, month) or null")
-		return nil
-	}
-	return validatePanelBucket(v, &b)
-}
-
-// validatePanelBucket resolves an optional bucket override: nil (or explicit
-// null) means auto-derive; a value must be a known bucket (timeaxis.ParseBucket, the
-// single bucket vocabulary shared with the read path).
-func validatePanelBucket(v *Validator, raw *string) *string {
-	if raw == nil {
-		return nil
-	}
-	if _, err := timeaxis.ParseBucket(*raw); err != nil {
-		v.AddError("bucket", "must be day, week, or month, or omitted to auto-derive")
-		return nil
-	}
-	return raw
-}
-
-// validateWidth checks a Panel's column span is 1, 2, or 3.
-func validateWidth(v *Validator, width int) {
-	v.Check(width >= 1 && width <= 3, "width", "must be between 1 and 3")
+	return out
 }
