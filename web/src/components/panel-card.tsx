@@ -167,24 +167,30 @@ export function PanelCard({
           )
         ))}
 
-      <div className="min-h-0 flex-1 px-2 pb-1 pt-2">
-        {query.isLoading ? (
-          <CenteredSpinner />
-        ) : query.isError ? (
-          <div className="flex h-full items-center justify-center px-4 text-center text-xs text-destructive">
-            Couldn’t load this panel
-          </div>
-        ) : list ? (
-          <PanelChart
-            list={list}
-            metrics={panel.metrics}
-            baseline={query.data?.baseline}
-            annotations={showNotes ? notes.data : undefined}
-            onHoverBucket={setHovered}
-            onSelectBucket={openDay}
-            colorOffset={colorOffset}
-          />
-        ) : null}
+      {/* The chart is laid out inside its slot, never by it: the card fills its grid
+          cell, and a chart sized to 100% of a box its own height can grow would grow
+          the card, then the row, then itself again, without end. Absolute, the slot
+          takes what the card leaves and the chart only reads it. */}
+      <div className="relative min-h-0 flex-1">
+        <div className="absolute inset-0 px-2 pb-1 pt-2">
+          {query.isLoading ? (
+            <CenteredSpinner />
+          ) : query.isError ? (
+            <div className="flex h-full items-center justify-center px-4 text-center text-xs text-destructive">
+              Couldn’t load this panel
+            </div>
+          ) : list ? (
+            <PanelChart
+              list={list}
+              metrics={panel.metrics}
+              baseline={query.data?.baseline}
+              annotations={showNotes ? notes.data : undefined}
+              onHoverBucket={setHovered}
+              onSelectBucket={openDay}
+              colorOffset={colorOffset}
+            />
+          ) : null}
+        </div>
       </div>
 
       {/* A diverging bar is the one chart whose colours are not identities: they are
