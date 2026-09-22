@@ -21,6 +21,7 @@ import (
 	"github.com/gauthier-se/verve/internal/day"
 	"github.com/gauthier-se/verve/internal/goal"
 	"github.com/gauthier-se/verve/internal/query"
+	"github.com/gauthier-se/verve/internal/timeaxis"
 )
 
 const dayLayout = "2006-01-02"
@@ -86,6 +87,10 @@ type Latest struct {
 	Value   float64 `json:"value"`
 	Date    string  `json:"date"`
 	AgeDays int     `json:"age_days"`
+	// Usual is where that day sits among the owner's own days before it (ADR 0046):
+	// "58 bpm, usual 46 to 52". Absent with too little history, and on today, which
+	// is still in progress and has not fallen short of anything yet.
+	Usual *query.Usual `json:"usual,omitempty"`
 }
 
 // Read is the Now screen: the Account's Freshness and one card per Pin.
@@ -149,6 +154,11 @@ func (e Engine) Cards(ctx context.Context, accountID int64, now time.Time) ([]Ca
 		}
 		if latest != nil {
 			card.Latest = &Latest{Value: latest.Value, Date: latest.Date, AgeDays: daysBetween(latest.Date, date)}
+			if latest.Date != date {
+				if card.Latest.Usual, err = e.usualOn(ctx, accountID, metric.Slug, latest.Date); err != nil {
+					return nil, err
+				}
+			}
 		}
 
 		card.Goal = goalOn(goals, metric.Slug, date)
@@ -158,6 +168,29 @@ func (e Engine) Cards(ctx context.Context, accountID int64, now time.Time) ([]Ca
 		cards = append(cards, card)
 	}
 	return cards, nil
+}
+
+// usualOn is a Metric's Usual on one day, read from the engine's own day bucket so
+// the card and the Panel cannot disagree about it. It is asked for here and not in
+// Latest, whose other reader (the Ledger) has no use for a second read.
+func (e Engine) usualOn(ctx context.Context, accountID int64, metric, date string) (*query.Usual, error) {
+	day, err := time.Parse(dayLayout, date)
+	if err != nil {
+		return nil, err
+	}
+	series, err := e.Query.Series(ctx, query.Request{
+		AccountID: accountID, Metric: metric, Bucket: timeaxis.Day, Usual: true,
+		From: day, To: day.AddDate(0, 0, 1),
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range series.Points {
+		if p.Bucket == date {
+			return p.Usual, nil
+		}
+	}
+	return nil, nil
 }
 
 // goalOn is the bound on a Metric in force on a date, or nil. A Goal holds on

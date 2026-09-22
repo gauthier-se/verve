@@ -3,9 +3,10 @@ import { Link } from "@tanstack/react-router";
 import { ChevronDown, ChevronRight, Pin } from "lucide-react";
 import { useNow } from "@/hooks/use-now";
 import { figureUnit, formatDay, formatFigure } from "@/lib/format";
-import { attainmentText, boundText } from "@/lib/goals";
+import { attainmentText, boundText, goalValue } from "@/lib/goals";
 import { metricLabel } from "@/lib/metrics";
 import { ageText, lagText, splitSources } from "@/lib/now";
+import { usualLine } from "@/lib/usual";
 import type { Freshness, NowCard, SourceFreshness } from "@/lib/types";
 import { MetricIcon } from "./metric-icon";
 import { CenteredSpinner } from "./spinner";
@@ -218,6 +219,19 @@ function PinCard({ card }: { card: NowCard }) {
               </Link>
               <span>{ageText(latest.age_days)}</span>
             </p>
+            {/* The figure read against the owner's own past, as a position and never a
+                verdict (ADR 0046): the sentence the Usual exists for. */}
+            {latest.usual && (
+              <Meta>
+                {usualLine(
+                  latest.value,
+                  latest.usual,
+                  "day",
+                  (v) => goalValue(v, card),
+                  card.aggregation === "duration_by_state" || card.unit === "count" ? "" : card.unit,
+                )}
+              </Meta>
+            )}
           </>
         ) : (
           <p className="py-2 text-sm text-muted-foreground">Never measured.</p>

@@ -112,9 +112,12 @@ func (s *Server) handleSeries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A lone Metric is read against its own past (the Usual, ADR 0046). A multi-Metric
+	// Panel draws no band, so it does not pay for the reference read.
 	req := query.Request{
 		AccountID: accountID, Metric: metrics[0],
 		From: resolved.Current.From, To: resolved.Current.To, Bucket: resolved.Bucket,
+		Usual: len(metrics) == 1,
 	}
 	now := time.Now()
 
@@ -148,6 +151,7 @@ func (s *Server) handleSeries(w http.ResponseWriter, r *http.Request) {
 			s.respondSeriesError(w, r, err)
 			return
 		}
+		unfinished(&series, now)
 		if series.Goal, err = s.goals.Attain(r.Context(), accountID, req.Metric, req.From, req.To, now); err != nil {
 			s.serverErrorResponse(w, r, err)
 			return
@@ -163,6 +167,7 @@ func (s *Server) handleSeries(w http.ResponseWriter, r *http.Request) {
 		s.respondSeriesError(w, r, err)
 		return
 	}
+	unfinished(&cmp.Current, now)
 	// Each window is judged against the Goals in force over it, so a Baseline from
 	// last spring is counted against last spring's Goal (ADR 0044).
 	if cmp.Current.Goal, err = s.goals.Attain(r.Context(), accountID, req.Metric, req.From, req.To, now); err != nil {
@@ -174,6 +179,19 @@ func (s *Server) handleSeries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.respond(w, r, http.StatusOK, envelope{"series": cmp.Current, "baseline": cmp.Baseline})
+}
+
+// unfinished clears the Usual of the bucket holding now. A custom range may run past
+// today, and a bucket still in progress has not fallen short of its past yet: at 10:00
+// a step total is unfinished, not low. The engine cannot tell, because it has no
+// clock; the time the API resolves windows by (ADR 0045) can.
+func unfinished(series *query.Series, now time.Time) {
+	current := series.Bucket.Start(now)
+	for i := range series.Points {
+		if series.Points[i].Bucket == current {
+			series.Points[i].Usual = nil
+		}
+	}
 }
 
 // seriesParams parses and validates what /v1/series and /v1/series.csv both
