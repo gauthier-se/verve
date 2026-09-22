@@ -815,6 +815,32 @@ export interface History {
   events: HistoryEvent[];
 }
 
+/** SourceFreshness is one Source's last datum, measured against the Account's rather
+ *  than against today (ADR 0045). `lag_days` is how far behind the Account's last
+ *  datum it stops, zero for the Source that recorded last; `retired` is a lag past
+ *  30 days, a device the Account stopped using rather than one that went quiet. */
+export interface SourceFreshness {
+  source: string;
+  last_day: string;
+  lag_days: number;
+  retired: boolean;
+}
+
+/** Freshness is how old the Account's data is, on its last datum and never on its
+ *  last import (ADR 0045). `last_day` is absent for an Account with no data.
+ *  `age_days` is counted by the server against the UTC today, never recomputed
+ *  from the browser's clock. Sources arrive active first, then retired. */
+export interface Freshness {
+  last_day?: string;
+  age_days: number;
+  sources: SourceFreshness[];
+}
+
+/** Now is GET /v1/now: where the Account stands (ADR 0045). */
+export interface Now {
+  freshness: Freshness;
+}
+
 /** Exclusion is a standing refusal that a stretch of a Metric is Verve's to hold
  *  (ADR 0033): no import may write what it names, and what was already stored under
  *  it was deleted when it was created. `starts_on`/`ends_on` are inclusive days,

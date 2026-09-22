@@ -11,6 +11,7 @@ import (
 	"github.com/gauthier-se/verve/internal/day"
 	"github.com/gauthier-se/verve/internal/estimate"
 	"github.com/gauthier-se/verve/internal/history"
+	"github.com/gauthier-se/verve/internal/now"
 	"github.com/gauthier-se/verve/internal/query"
 )
 
@@ -94,6 +95,9 @@ var contract = []struct {
 	{"HistoryFigure", history.Figure{}},
 	{"HistoryEvent", history.Event{}},
 	{"History", history.Read{}},
+	{"Now", nowView{}},
+	{"Freshness", now.Freshness{}},
+	{"SourceFreshness", now.SourceFresh{}},
 	{"Pair", query.Pair{}},
 	{"Scatter", query.Scatter{}},
 	{"ScatterDot", query.ScatterDot{}},
