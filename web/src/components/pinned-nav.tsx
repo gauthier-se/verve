@@ -6,6 +6,7 @@ import { metricLabel } from "@/lib/metrics";
 import { Eyebrow } from "./ui/figure";
 import { cn } from "@/lib/utils";
 import { MetricIcon } from "./metric-icon";
+import { RailTip } from "./rail-tip";
 
 /** PinnedNav is the sidebar's "Pinned" section: the Metrics the Account keeps one
  *  click away, beside its Dashboards (ADR 0025). It renders nothing until the
@@ -17,7 +18,7 @@ import { MetricIcon } from "./metric-icon";
  *  Pin comes back if the Metric does. A Metric with no *data* is shown normally:
  *  knowing otherwise would cost a query per Pin on every render of the shell, to
  *  prevent a click onto a page that already says it has nothing to show. */
-export function PinnedNav() {
+export function PinnedNav({ collapsed = false }: { collapsed?: boolean }) {
   const pins = usePins();
   const catalog = useMetricMap();
   const removePin = useRemovePin();
@@ -26,6 +27,30 @@ export function PinnedNav() {
 
   const known = (pins.data ?? []).filter((p) => catalog.map.has(p.metric));
   if (known.length === 0) return null;
+
+  if (collapsed) {
+    // On the collapsed rail a Pin is its Metric's icon, named in a tooltip; unpinning
+    // waits for the expanded sidebar, where the Pin's name is on screen beside it.
+    return (
+      <div className="flex min-h-0 shrink flex-col items-stretch space-y-0.5 overflow-y-auto border-t px-2 py-2">
+        {known.map((p) => (
+          <RailTip key={p.metric} label={metricLabel(p.metric)} show>
+            <Link
+              to="/data/$metric"
+              params={{ metric: p.metric }}
+              aria-label={metricLabel(p.metric)}
+              className={cn(
+                "flex items-center justify-center rounded-md py-1.5 transition-colors hover:bg-accent",
+                activeMetric === p.metric ? "bg-accent text-accent-foreground" : "text-muted-foreground",
+              )}
+            >
+              <MetricIcon slug={p.metric} />
+            </Link>
+          </RailTip>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-0 shrink flex-col border-t px-2 py-2">

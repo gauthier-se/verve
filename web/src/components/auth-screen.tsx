@@ -1,9 +1,10 @@
 import * as React from "react";
-import { Activity, Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 import { useAuthState } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 import { Field, FieldDescription, FieldLabel } from "./ui/field";
 import { Input } from "./ui/input";
+import { Mark } from "./mark";
 
 /** AuthScreen is the shell both unauthenticated screens share: a centered card-less
  *  column with the mark, the greeting, the form, and a footer naming the build and
@@ -22,9 +23,7 @@ export function AuthScreen({
     <div className="flex min-h-svh flex-col items-center justify-center gap-6 bg-background p-6 md:p-10">
       <div className="flex w-full max-w-sm flex-col gap-6">
         <div className="flex flex-col items-center gap-2 text-center">
-          <div className="flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-            <Activity className="size-6" />
-          </div>
+          <Mark className="size-11 rounded-xl" />
           <h1 className="text-xl font-bold">{title}</h1>
           <FieldDescription>{description}</FieldDescription>
         </div>

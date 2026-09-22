@@ -3,6 +3,7 @@ import { GitCompareArrows } from "lucide-react";
 import { useUpdateDashboard } from "@/hooks/use-dashboards";
 import type { BaselineRule, Dashboard } from "@/lib/types";
 import { DayRangePicker } from "./day-range-picker";
+import { cn } from "@/lib/utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
 /** The Baseline rules the control offers, in display order (ADR 0015). */
@@ -44,10 +45,17 @@ export function ComparisonControl({ dashboard }: { dashboard: Dashboard }) {
 
   return (
     <div className="flex flex-wrap items-center gap-1" title={disabled ? "Comparison is unavailable for the All range" : undefined}>
-      <GitCompareArrows className="size-4 text-muted-foreground" aria-hidden />
       <Select value={rule} onValueChange={(v) => onRuleChange(v as BaselineRule)} disabled={disabled}>
-        <SelectTrigger className="h-8 w-[190px]" aria-label="Comparison">
-          <SelectValue />
+        {/* On a phone the trigger is the icon alone, in the accent while a comparison
+            is on, so the range beside it keeps one row; the rule is in the menu. */}
+        <SelectTrigger className="h-8 w-auto gap-1.5 sm:w-[190px]" aria-label="Comparison">
+          <GitCompareArrows
+            className={cn("size-4 shrink-0", rule !== "none" && !disabled ? "text-primary sm:text-muted-foreground" : "text-muted-foreground")}
+            aria-hidden
+          />
+          <span className="min-w-0 flex-1 truncate text-left max-sm:!hidden">
+            <SelectValue />
+          </span>
         </SelectTrigger>
         <SelectContent>
           {RULE_OPTIONS.map((o) => (

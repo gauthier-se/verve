@@ -1,5 +1,8 @@
 # A Goal is a declared daily bound, and Verve only counts
 
+_Amended by ADR 0048: a `latest` Metric is now eligible, judged on the day's
+last reading, with no carry-forward._
+
 ## Context
 
 The only targets Verve knows are the Plan's: a calorie and a protein figure

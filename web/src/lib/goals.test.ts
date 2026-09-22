@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { attainmentText, boundText, describeGoal, goalAt, goalEligible, lastDayHeld, storedGoalValue, todayUTC } from "./goals";
+import { attainmentText, boundText, describeGoal, goalAt, lastDayHeld, storedGoalValue, todayUTC } from "./goals";
 import type { Metric } from "./types";
 
 const metric = (over: Partial<Metric>): Metric => ({
@@ -15,18 +15,6 @@ const steps = metric({ slug: "steps" });
 const sleep = metric({ slug: "sleep", unit: "min", aggregation: "duration_by_state" });
 const spo2 = metric({ slug: "oxygen_saturation", unit: "%", aggregation: "average" });
 const balance = metric({ slug: "calorie_balance", unit: "kcal", nature: "derived", aggregation: undefined });
-
-describe("goalEligible", () => {
-  // Pinned against internal/api/goalhandlers.go, which refuses the same Metrics.
-  it("refuses a latest Metric and accepts every other rule", () => {
-    expect(goalEligible(metric({ aggregation: "latest" }))).toBe(false);
-    expect(goalEligible(steps)).toBe(true);
-    expect(goalEligible(sleep)).toBe(true);
-    expect(goalEligible(spo2)).toBe(true);
-    expect(goalEligible(balance)).toBe(true);
-    expect(goalEligible(metric({ aggregation: "sum_by_state" }))).toBe(true);
-  });
-});
 
 describe("describeGoal", () => {
   it("writes the bound as a fact, per day or per night", () => {

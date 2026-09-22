@@ -73,7 +73,7 @@ func TestNoTemplateRepeatsItself(t *testing.T) {
 }
 
 // TestAWidePanelOnlyLeads holds the one arrangement that leaves no hole on the
-// auto-fit grid, whatever its column count (web/src/components/dashboard-grid.tsx):
+// auto-fit grid, whatever its column count, one to three (web/src/components/dashboard-grid.tsx):
 // at most one Panel wider than a column, and it comes first, so every row after it
 // is filled by single-column Panels and only the last row can be short.
 func TestAWidePanelOnlyLeads(t *testing.T) {

@@ -9,7 +9,6 @@ import { useDayNavigation } from "@/hooks/use-day";
 import { useTimeAxis } from "@/hooks/use-time-axis";
 import { seriesColor, standaloneColorOffset } from "@/lib/chart";
 import { defaultChartType, metricLabel } from "@/lib/metrics";
-import { goalEligible } from "@/lib/goals";
 import { figureUnit, formatDay, formatDayRange, formatExact, formatFigure } from "@/lib/format";
 import { RANGE_PRESETS, type RangeTokens } from "@/lib/time-range";
 import { cn } from "@/lib/utils";
@@ -175,7 +174,7 @@ export function MetricPage() {
 
             {/* A Goal is a daily bound, so a `latest` Metric has no card at all rather
                 than a disabled one: "75 kg" is a Phase's question (ADR 0044). */}
-            {goalEligible(meta) && <GoalCard metric={meta} />}
+            <GoalCard metric={meta} />
 
             <LedgerDetailTable
               metric={metric}

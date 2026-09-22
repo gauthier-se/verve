@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Link } from "@tanstack/react-router";
-import { ChevronDown, ChevronUp, GripVertical, Plus, Settings2, StickyNote, Trash2, X } from "lucide-react";
+import { ChevronDown, ChevronUp, GripVertical, Maximize2, Plus, Settings2, StickyNote, Trash2, X } from "lucide-react";
 import { useDeletePanel, useUpdatePanel } from "@/hooks/use-dashboards";
 import { useAnnotations } from "@/hooks/use-annotations";
 import { useDayNavigation } from "@/hooks/use-day";
@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { AnnotationDialog } from "./annotation-dialog";
 import { Card } from "./ui/card";
+import { Dialog, DialogContent, DialogTitle } from "./ui/dialog";
 import { LegendItem, Meta, SectionTitle } from "./ui/figure";
 import { Label } from "./ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
@@ -43,6 +44,9 @@ interface PanelCardProps {
    *  reading the categorical ramp (ADR 0020). It is the grid's to hand down: a Panel
    *  cannot know what is next to it, and the colour is a property of the slot. */
   colorOffset?: number;
+  /** expanded is the full-screen view of this Panel: the same card given the
+   *  viewport, with nothing on it that changes the Panel (no drag, no settings). */
+  expanded?: boolean;
 }
 
 /** PanelCard renders one Panel: its Metrics combo-charted over the Dashboard's
@@ -64,7 +68,9 @@ export function PanelCard({
   showAnnotations,
   dragHandle,
   colorOffset = 0,
+  expanded = false,
 }: PanelCardProps) {
+  const [fullOpen, setFullOpen] = React.useState(false);
   const slugs = panel.metrics.map((m) => m.metric);
   const showNotes = showAnnotations !== false;
   // The last bucket the cursor was on, so an "Add a note" opened from this Panel's
@@ -98,10 +104,18 @@ export function PanelCard({
   return (
     // A wider Panel is a taller Panel: a card given two columns was given them to
     // hold a longer curve, and a year of nights in 112px is a texture, not a series.
-    <Card className={cn("flex flex-col", panel.width > 1 ? "h-80" : "h-72")}>
-      <div className="flex items-start justify-between gap-3 px-4 pt-3.5">
+    // The heights are minimums and the card fills its cell, so a grid row takes its
+    // tallest Panel's height and every card beside it matches.
+    <Card
+      className={cn(
+        "panel-card flex h-full flex-col",
+        expanded ? "border-0 bg-transparent shadow-none" : panel.width > 1 ? "min-h-80" : "min-h-72",
+      )}
+    >
+      {/* Expanded, the header leaves room for the dialog's close button. */}
+      <div className={cn("flex items-start justify-between gap-3 px-4 pt-3.5", expanded && "pr-12")}>
         <div className="flex min-w-0 items-baseline gap-2">
-          <div className="-ml-1.5 flex shrink-0 -translate-y-px items-center">{dragHandle}</div>
+          {!expanded && <div className="-ml-1.5 flex shrink-0 -translate-y-px items-center">{dragHandle}</div>}
           {!multi && slugs[0] && <MetricIcon slug={slugs[0]} className="size-3.5 shrink-0 -translate-y-px" />}
           {!multi && slugs[0] ? (
             <Link to="/data/$metric" params={{ metric: slugs[0] }} className="min-w-0 hover:underline">
@@ -115,10 +129,29 @@ export function PanelCard({
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
-          {segments.length > 0 && <SegmentLegend segments={segments} />}
-          <PanelSettings panel={panel} catalog={catalog} onAddNote={() => setNoteOpen(true)} />
+          {segments.length > 0 && <SegmentLegend segments={segments} className="panel-segments-inline" />}
+          {!expanded && (
+            <>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7 text-muted-foreground"
+                onClick={() => setFullOpen(true)}
+                aria-label="Show full screen"
+                title="Show full screen"
+              >
+                <Maximize2 className="size-3.5" />
+              </Button>
+              <PanelSettings panel={panel} catalog={catalog} onAddNote={() => setNoteOpen(true)} />
+            </>
+          )}
         </div>
       </div>
+
+      {/* The same key again, on its own row, for a card too narrow to hold it beside
+          the title: which one shows is the card's width, not the viewport's, since a
+          wide Panel is one column on a phone (index.css). */}
+      {segments.length > 0 && <SegmentLegend segments={segments} className="panel-segments-row px-4 pt-1.5" />}
 
       {list &&
         (multi ? (
@@ -129,29 +162,35 @@ export function PanelCard({
               series={list[0]}
               baseline={query.data?.baseline}
               metric={metric}
-              wide={panel.width > 1}
+              wide={expanded || panel.width > 1}
             />
           )
         ))}
 
-      <div className="min-h-0 flex-1 px-2 pb-1 pt-2">
-        {query.isLoading ? (
-          <CenteredSpinner />
-        ) : query.isError ? (
-          <div className="flex h-full items-center justify-center px-4 text-center text-xs text-destructive">
-            Couldn’t load this panel
-          </div>
-        ) : list ? (
-          <PanelChart
-            list={list}
-            metrics={panel.metrics}
-            baseline={query.data?.baseline}
-            annotations={showNotes ? notes.data : undefined}
-            onHoverBucket={setHovered}
-            onSelectBucket={openDay}
-            colorOffset={colorOffset}
-          />
-        ) : null}
+      {/* The chart is laid out inside its slot, never by it: the card fills its grid
+          cell, and a chart sized to 100% of a box its own height can grow would grow
+          the card, then the row, then itself again, without end. Absolute, the slot
+          takes what the card leaves and the chart only reads it. */}
+      <div className="relative min-h-0 flex-1">
+        <div className="absolute inset-0 px-2 pb-1 pt-2">
+          {query.isLoading ? (
+            <CenteredSpinner />
+          ) : query.isError ? (
+            <div className="flex h-full items-center justify-center px-4 text-center text-xs text-destructive">
+              Couldn’t load this panel
+            </div>
+          ) : list ? (
+            <PanelChart
+              list={list}
+              metrics={panel.metrics}
+              baseline={query.data?.baseline}
+              annotations={showNotes ? notes.data : undefined}
+              onHoverBucket={setHovered}
+              onSelectBucket={openDay}
+              colorOffset={colorOffset}
+            />
+          ) : null}
+        </div>
       </div>
 
       {/* A diverging bar is the one chart whose colours are not identities: they are
@@ -159,6 +198,25 @@ export function PanelCard({
       {!multi && chartType === "diverging_bar" && <SignLegend />}
 
       <AnnotationDialog open={noteOpen} onOpenChange={setNoteOpen} defaultDay={hovered} />
+
+      {/* Full screen is a view of this Panel, never a copy: the same query keys, so
+          it opens on the cached series, and nothing is stored when it closes. */}
+      {!expanded && (
+        <Dialog open={fullOpen} onOpenChange={setFullOpen}>
+          <DialogContent className="flex h-[92svh] w-[96vw] max-w-[96vw] flex-col gap-0 p-0 pb-2 pt-2 sm:rounded-xl">
+            <DialogTitle className="sr-only">{title}</DialogTitle>
+            <PanelCard
+              panel={panel}
+              catalog={catalog}
+              range={range}
+              baseline={baseline}
+              showAnnotations={showAnnotations}
+              colorOffset={colorOffset}
+              expanded
+            />
+          </DialogContent>
+        </Dialog>
+      )}
     </Card>
   );
 }
@@ -232,9 +290,11 @@ function grainWord(bucket: Bucket): string {
  *  Activities. A stacked bar is the one chart whose parts cannot be told apart by
  *  eye, so its key is not optional, and it reads the same resolved segments the
  *  bars are drawn from. */
-function SegmentLegend({ segments }: { segments: Segment[] }) {
+function SegmentLegend({ segments, className }: { segments: Segment[]; className?: string }) {
   return (
-    <div className="hidden items-center gap-2.5 md:flex">
+    // Its display is left to index.css, which picks the inline or the row copy by the
+    // card's width; a display utility here would fight it.
+    <div className={cn("flex-wrap items-center gap-x-2.5 gap-y-1", className)}>
       {segments.map((segment) => (
         <LegendItem key={segment.key} color={segment.color}>
           {segment.label}

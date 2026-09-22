@@ -503,9 +503,10 @@ it starts. It is judged against the Metric's day bucket (the **Night** for
 sleep) whatever bucket a Panel is drawn at, and it has no planned end. Goals are
 a dated history, never overwritten: at most one is open per Metric, a new one
 closes it, and each day is judged against the Goal in force on that day. Every
-Metric is eligible except a `latest` one, because "75 kg" is a destination and
-not a bound held daily (that question is a **Phase**'s). A Goal is how the owner
-tells Verve which direction is good; Verve does not colour, grade or streak
+Metric is eligible: a `latest` one is judged on the day's last reading, and a day
+with no reading is a gap, never the last value carried forward; whether the owner
+is heading somewhere stays a **Phase**'s question (ADR 0048). A Goal is how the
+owner tells Verve which direction is good; Verve does not colour, grade or streak
 against it, it counts (ADR 0044). Not a **Target rate**'s calorie target, which
 is derived on read and stored nowhere, so no past day can be judged against it.
 _Avoid_: Target (the Plan's derived figures), Objective, Threshold, KPI.

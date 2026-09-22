@@ -27,11 +27,12 @@ export function AnnotationsControl({ dashboard }: { dashboard: Dashboard }) {
       size="sm"
       className={cn("h-8 gap-1.5", !on && "text-muted-foreground")}
       aria-pressed={on}
+      aria-label="Notes"
       title={on ? "Hide notes on this dashboard" : "Show notes on this dashboard"}
       onClick={() => update.mutate({ id: dashboard.id, patch: { annotations: !on } })}
     >
       <StickyNote className="size-4" aria-hidden />
-      Notes
+      <span className="hidden sm:inline">Notes</span>
     </Button>
   );
 }

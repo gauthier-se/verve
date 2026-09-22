@@ -241,3 +241,27 @@ func TestAnExcludedDayIsUnmeasured(t *testing.T) {
 
 	wantCounts(t, attain(t, e, acc, "steps", "2026-03-01", "2026-03-03", "2026-09-01"), 2, 1, 1)
 }
+
+// A latest Metric is judged on the day's last reading, and a day nobody weighed in
+// is a gap: the last weigh-in is never carried onto the days after it (ADR 0048).
+func TestALatestMetricIsJudgedOnTheDaysLastReading(t *testing.T) {
+	e, models, acc := setup(t)
+	ms := []data.Measurement{
+		// 1 March: 76.0 in the morning, 74.8 in the evening; the evening is the day.
+		{Metric: "body_mass", Value: 76.0, StartAt: "2026-03-01T07:00:00Z"},
+		{Metric: "body_mass", Value: 74.8, StartAt: "2026-03-01T21:00:00Z"},
+		// 2 March: no reading. 3 March: over the bound.
+		{Metric: "body_mass", Value: 75.2, StartAt: "2026-03-03T07:00:00Z"},
+	}
+	for i := range ms {
+		ms[i].AccountID, ms[i].OriginalUnit, ms[i].Source = acc, "kg", "Withings"
+		ms[i].EndAt, ms[i].ContentKey = ms[i].StartAt, "body_mass-"+ms[i].StartAt
+	}
+	if _, err := models.Measurements.InsertBatch(context.Background(), ms); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	open(t, models, acc, "body_mass", data.GoalAtMost, 75, "2026-01-01")
+
+	// Four days covered, two weighed, one of them under 75 kg.
+	wantCounts(t, attain(t, e, acc, "body_mass", "2026-03-01", "2026-03-05", "2026-09-01"), 4, 2, 1)
+}
