@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 
 # 05: web: the sidebar collapses to an icon rail
 

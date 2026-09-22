@@ -7,6 +7,8 @@ import {
   Dumbbell,
   History,
   LogOut,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   Table2,
   Target,
@@ -14,9 +16,11 @@ import {
 } from "lucide-react";
 import { useLogout, useMe } from "@/hooks/use-auth";
 import { useDashboards } from "@/hooks/use-dashboards";
+import { dashboardInitial, readCollapsed, writeCollapsed } from "@/lib/sidebar";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { Eyebrow } from "./ui/figure";
+import { RailTip } from "./rail-tip";
 import { NewDashboardDialog } from "./new-dashboard-dialog";
 import { SummaryPrefsMenu } from "./panel-prefs";
 import { AppearanceMenu } from "./appearance";
@@ -43,15 +47,20 @@ const TOOLS = [
  *  reached with a thumb. */
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [createOpen, setCreateOpen] = React.useState(false);
+  const [collapsed, setCollapsed] = React.useState(() => readCollapsed(window.localStorage));
+  const toggleSidebar = () => setCollapsed((c) => !c);
+  React.useEffect(() => writeCollapsed(window.localStorage, collapsed), [collapsed]);
 
   // Hotkey: "n" opens the new-dashboard dialog (react-hotkeys-hook, ADR 0013).
   useHotkeys("n", () => setCreateOpen(true), { preventDefault: true });
+  // "[" collapses or expands the sidebar, the key editors already use for a panel.
+  useHotkeys("BracketLeft", toggleSidebar, { preventDefault: true });
 
   return (
     // h-screen + overflow-hidden pins the shell to the viewport so the sidebar and the
     // routed content each own their scroll — the page itself never scrolls as one block.
     <div className="flex h-screen overflow-hidden">
-      <Sidebar onCreate={() => setCreateOpen(true)} />
+      <Sidebar onCreate={() => setCreateOpen(true)} collapsed={collapsed} onToggle={toggleSidebar} />
 
       <div className="flex min-w-0 flex-1 flex-col">
         <NarrowBar />
@@ -64,77 +73,124 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Sidebar({ onCreate }: { onCreate: () => void }) {
+function Sidebar({
+  onCreate,
+  collapsed,
+  onToggle,
+}: {
+  onCreate: () => void;
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
   const me = useMe();
   const dashboards = useDashboards();
   const logout = useLogout();
   const params = useParams({ strict: false }) as { dashboardId?: string };
   const activeId = params.dashboardId;
   const nowActive = useLocation({ select: (l) => l.pathname === "/" });
+  const ToggleIcon = collapsed ? PanelLeftOpen : PanelLeftClose;
+  const toggleLabel = collapsed ? "Expand the sidebar" : "Collapse the sidebar";
 
   return (
-    <aside className="hidden w-60 shrink-0 flex-col border-r bg-card/40 lg:flex">
-      <div className="flex items-center gap-2.5 px-4 pb-3.5 pt-4">
+    <aside
+      className={cn(
+        "hidden shrink-0 flex-col border-r bg-card/40 transition-[width] duration-150 lg:flex",
+        collapsed ? "w-14" : "w-60",
+      )}
+    >
+      <div className={cn("flex items-center gap-2.5 pb-3.5 pt-4", collapsed ? "flex-col px-2" : "px-4")}>
         <Mark />
-        <div className="flex min-w-0 flex-col leading-tight">
-          <span className="text-[0.9375rem] font-semibold tracking-screen">Verve</span>
-          {/* The host, in mono, because it is the answer to "where is my data": on
-              this machine, at this address, and nowhere else. */}
-          <span className="truncate font-mono text-3xs text-muted-foreground">
-            {window.location.host}
-          </span>
-        </div>
+        {!collapsed && (
+          <div className="flex min-w-0 flex-1 flex-col leading-tight">
+            <span className="text-[0.9375rem] font-semibold tracking-screen">Verve</span>
+            {/* The host, in mono, because it is the answer to "where is my data": on
+                this machine, at this address, and nowhere else. */}
+            <span className="truncate font-mono text-3xs text-muted-foreground">
+              {window.location.host}
+            </span>
+          </div>
+        )}
+        <RailTip label={`${toggleLabel} ([)`} show>
+          <Button variant="ghost" size="icon" className="size-7 shrink-0" onClick={onToggle} aria-label={toggleLabel}>
+            <ToggleIcon className="size-4" />
+          </Button>
+        </RailTip>
       </div>
 
       {/* Now sits above everything because it is where the app opens: the one page
           that says where the Account stands rather than what a window looked like. */}
       <div className="px-2 pb-1">
-        <Link to="/" className={cn(navRow, nowActive ? navRowActive : navRowIdle)}>
-          <Activity className="size-4 shrink-0" /> Now
-        </Link>
+        <RailTip label="Now" show={collapsed}>
+          <Link
+            to="/"
+            aria-label="Now"
+            className={cn(navRow, collapsed && navRowRail, nowActive ? navRowActive : navRowIdle)}
+          >
+            <Activity className="size-4 shrink-0" /> {!collapsed && "Now"}
+          </Link>
+        </RailTip>
       </div>
 
-      <div className="flex items-center justify-between px-4 pb-1.5 pt-2.5">
-        <Eyebrow>Dashboards</Eyebrow>
-        <button
-          type="button"
-          onClick={onCreate}
-          aria-label="New dashboard"
-          className="text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <Plus className="size-3.5" />
-        </button>
+      <div className={cn("flex items-center pb-1.5 pt-2.5", collapsed ? "justify-center" : "justify-between px-4")}>
+        {!collapsed && <Eyebrow>Dashboards</Eyebrow>}
+        <RailTip label="New dashboard (n)" show={collapsed}>
+          <button
+            type="button"
+            onClick={onCreate}
+            aria-label="New dashboard"
+            className="text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <Plus className="size-3.5" />
+          </button>
+        </RailTip>
       </div>
 
       <nav className="flex-1 space-y-px overflow-y-auto px-2">
-        {dashboards.data?.length === 0 && (
+        {dashboards.data?.length === 0 && !collapsed && (
           <p className="px-2 py-1 text-2xs text-muted-foreground">No dashboards yet.</p>
         )}
         {dashboards.data?.map((d) => (
-          <Link
-            key={d.id}
-            to="/d/$dashboardId"
-            params={{ dashboardId: String(d.id) }}
-            className={cn(navRow, activeId === String(d.id) ? navRowActive : navRowIdle)}
-          >
-            <span className="truncate">{d.name}</span>
-          </Link>
+          <RailTip key={d.id} label={d.name} show={collapsed}>
+            <Link
+              to="/d/$dashboardId"
+              params={{ dashboardId: String(d.id) }}
+              aria-label={collapsed ? d.name : undefined}
+              className={cn(
+                navRow,
+                collapsed && navRowRail,
+                activeId === String(d.id) ? navRowActive : navRowIdle,
+              )}
+            >
+              {collapsed ? (
+                <span className="font-mono text-xs font-medium">{dashboardInitial(d.name)}</span>
+              ) : (
+                <span className="truncate">{d.name}</span>
+              )}
+            </Link>
+          </RailTip>
         ))}
       </nav>
 
-      <PinnedNav />
+      <PinnedNav collapsed={collapsed} />
 
       <div className="space-y-px border-t px-2 py-2">
         {TOOLS.map((tool) => (
-          <ToolLink key={tool.to} to={tool.to} label={tool.label} icon={tool.icon} />
+          <ToolLink key={tool.to} to={tool.to} label={tool.label} icon={tool.icon} collapsed={collapsed} />
         ))}
       </div>
 
-      <div className="flex items-center justify-between gap-2 border-t px-3 py-2.5">
-        <span className="truncate font-mono text-3xs text-muted-foreground" title={me.data?.email}>
-          {me.data?.email}
-        </span>
-        <div className="flex shrink-0 items-center">
+      <div
+        className={cn(
+          "flex items-center gap-2 border-t py-2.5",
+          collapsed ? "flex-col px-2" : "justify-between px-3",
+        )}
+      >
+        {!collapsed && (
+          <span className="truncate font-mono text-3xs text-muted-foreground" title={me.data?.email}>
+            {me.data?.email}
+          </span>
+        )}
+        <div className={cn("flex shrink-0 items-center", collapsed && "flex-col")}>
           <SummaryPrefsMenu />
           <AppearanceMenu />
           <Button
@@ -157,15 +213,19 @@ const navRow =
   "flex items-center gap-2 truncate rounded-md px-2 py-1.5 text-[0.8125rem] transition-colors hover:bg-accent";
 const navRowActive = "bg-accent font-medium text-accent-foreground";
 const navRowIdle = "text-muted-foreground";
+// A row on the collapsed rail: the icon or initial alone, centred in the 56px rail.
+const navRowRail = "justify-center px-0";
 
 function ToolLink({
   to,
   label,
   icon: Icon,
+  collapsed,
 }: {
   to: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
+  collapsed: boolean;
 }) {
   // A tool page with a detail route of its own (a workout) keeps its entry lit while
   // the detail is open: the reader has not left the section.
@@ -173,9 +233,15 @@ function ToolLink({
     select: (l) => l.pathname === to || l.pathname.startsWith(`${to}/`),
   });
   return (
-    <Link to={to} className={cn(navRow, active ? navRowActive : navRowIdle)}>
-      <Icon className="size-4 shrink-0" /> {label}
-    </Link>
+    <RailTip label={label} show={collapsed}>
+      <Link
+        to={to}
+        aria-label={collapsed ? label : undefined}
+        className={cn(navRow, collapsed && navRowRail, active ? navRowActive : navRowIdle)}
+      >
+        <Icon className="size-4 shrink-0" /> {!collapsed && label}
+      </Link>
+    </RailTip>
   );
 }
 
