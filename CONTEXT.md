@@ -464,6 +464,21 @@ lean bulk) label regions of the scale; they are vocabulary, not discrete options
 _Avoid_: Deficit / Surplus (only one sign each, and both name the calorie figure),
 Goal (that's a declared daily bound on a Metric), Pace, Intensity.
 
+### The usual
+
+**Usual**:
+Where a bucket sits among the owner's own buckets just before it: the p25 to p75
+of the Metric's values over the 28 preceding days (at least 14 recorded) or the 12
+preceding weeks (at least 8), the bucket itself excluded, pooled over every day
+rather than per weekday. Descriptive and nothing more: no external norm, no
+population, the owner compared to themselves. None at month grain, on a bucket the
+window only partly covers, or on the bucket in progress. Computed server-side from
+the resolved buckets and carried on each Point with its N; never coloured, graded
+or counted against (ADR 0046).
+_Avoid_: Band (that's the dense history, ADR 0032), Baseline (a second window the
+Dashboard chooses), Normal range or Reference range (they imply a norm), Typical,
+Range (the Time range claims it).
+
 ### Goals
 
 **Goal**:

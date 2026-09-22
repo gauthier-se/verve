@@ -78,6 +78,7 @@ var contract = []struct {
 	{"Point", query.Point{}},
 	{"Series", query.Series{}},
 	{"Trend", query.Trend{}},
+	{"Usual", query.Usual{}},
 	{"Attainment", query.Attainment{}},
 	{"GoalSegment", query.GoalSegment{}},
 	{"NightDetail", query.NightDetail{}},

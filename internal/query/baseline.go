@@ -28,6 +28,9 @@ func (e Engine) Compare(ctx context.Context, req Request, baseline timeaxis.Wind
 
 	breq := req
 	breq.From, breq.To = baseline.From, baseline.To
+	// In comparison the Baseline line is the reference, so its own Usual would be a
+	// second read that nothing draws.
+	breq.Usual = false
 	base, err := e.Series(ctx, breq)
 	if err != nil {
 		return Comparison{}, err

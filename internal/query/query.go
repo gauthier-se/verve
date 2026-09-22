@@ -60,6 +60,10 @@ type Request struct {
 	From      time.Time
 	To        time.Time
 	Bucket    timeaxis.Bucket
+	// Usual asks for each Point's Usual (usual.go). It is opt-in because the reference
+	// window reaches before From, which costs a second read that the engine's own
+	// callers (a Goal's day buckets, a covariation, a Ledger) never need.
+	Usual bool
 }
 
 // Point is one aggregated bucket: Bucket is the start date (YYYY-MM-DD), Value the
@@ -91,6 +95,10 @@ type Point struct {
 	// bucket a fit could not date, so a smoothed line breaks where the readings do
 	// (ADR 0032) rather than asserting a path nobody weighed.
 	Trend *float64 `json:"trend,omitempty"`
+	// Usual is where this bucket's own past sits: the p25 to p75 of the Metric's
+	// values over the buckets just before it, the bucket itself excluded (usual.go).
+	// Set only when the Request asked for it.
+	Usual *Usual `json:"usual,omitempty"`
 }
 
 // Series is the result of a query: the resolved Metric metadata, the single
@@ -176,7 +184,18 @@ type Engine struct {
 // Series runs one aggregated query: it validates the request, resolves the
 // winning Source, and applies the Metric's rule per bucket in SQL. A range with no
 // data yields an empty (non-nil) Points slice and an empty Source, not an error.
+// When the Request asks for it, each Point also carries its Usual (usual.go).
 func (e Engine) Series(ctx context.Context, req Request) (Series, error) {
+	out, err := e.series(ctx, req)
+	if err != nil || !req.Usual {
+		return out, err
+	}
+	return e.withUsual(ctx, req, out)
+}
+
+// series is the read itself, without the Usual: what Series returns, and what the
+// Usual's own reference read runs on.
+func (e Engine) series(ctx context.Context, req Request) (Series, error) {
 	metric, ok := catalog.Lookup(req.Metric)
 	if !ok {
 		return Series{}, fmt.Errorf("%w: %q", ErrUnknownMetric, req.Metric)

@@ -118,6 +118,11 @@ export interface Point {
    *  from it must break rather than bridge (ADR 0032): render it with
    *  `connectNulls={false}`. */
   trend?: number;
+  /** usual is where this bucket's own past sits: the p25 to p75 of the Metric's
+   *  values over the buckets just before it, the bucket itself excluded. Absent when
+   *  the window held too few values, at month grain, and on a bucket the window only
+   *  partly covers. Descriptive, never a norm: the owner compared to themselves. */
+  usual?: Usual;
 }
 
 /** ImportReport is the compact outcome of a finished web import (ADR 0016). */
@@ -236,6 +241,16 @@ export interface GoalSegment {
   value: number;
   from: string;
   to: string;
+}
+
+/** Usual is a bucket's reference band (ADR 0046). Server-computed; never
+ *  re-derived client-side. */
+export interface Usual {
+  /** low and high are the p25 and p75, by linear interpolation (type 7). */
+  low: number;
+  high: number;
+  /** n is the number of values behind the band: 28 days or 12 weeks at most. */
+  n: number;
 }
 
 /** Trend is a sampled Metric's fitted direction over the window, with the evidence
