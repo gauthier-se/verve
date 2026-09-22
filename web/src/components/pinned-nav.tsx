@@ -40,7 +40,7 @@ export function PinnedNav({ collapsed = false }: { collapsed?: boolean }) {
               params={{ metric: p.metric }}
               aria-label={metricLabel(p.metric)}
               className={cn(
-                "flex items-center justify-center rounded-md py-1.5 transition-colors hover:bg-accent",
+                "mx-auto flex size-8 items-center justify-center rounded-md transition-colors hover:bg-accent",
                 activeMetric === p.metric ? "bg-accent text-accent-foreground" : "text-muted-foreground",
               )}
             >
