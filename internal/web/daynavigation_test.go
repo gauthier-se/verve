@@ -73,10 +73,13 @@ func TestDayNavigationIsGatedOnDayGrain(t *testing.T) {
 // wrong, but it has to answer the grain question, so it has to be added here.
 func TestOnlyTheGatedCallersLinkToADay(t *testing.T) {
 	// The Day page navigates within itself (previous, next, the picker, Today) and
-	// the Ledger row links out; everything else goes through the hook.
+	// the Ledger row links out; everything else goes through the hook. Now links
+	// the Account's last datum and each Pin's Latest value, which the server sends
+	// as day labels and never as buckets, so no grain is there to guard (ADR 0045).
 	allowed := map[string]bool{
 		"day-page.tsx":            true,
 		"ledger-detail-table.tsx": true,
+		"now-page.tsx":            true,
 	}
 
 	entries, err := os.ReadDir(spaComponents)
