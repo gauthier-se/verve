@@ -1,5 +1,8 @@
 # Seeded default dashboard for a new Account
 
+_Extended by ADR 0047, which moves the template into a Dashboard file and offers
+other templates at creation. The Overview is still the only one seeded._
+
 ## Context
 
 A freshly created Account (via the bootstrap of ADR 0017, or the CLI) has no

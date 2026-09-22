@@ -121,13 +121,28 @@ Users create several and switch between them. Carries the active Time range.
 _Avoid_: View (too vague — informal synonym at most), Page, Board.
 
 **Dashboard template**:
-The curated default content — one Dashboard named "Overview" with a fixed set of
-Panels over universal Metrics (mass, active energy, steps, resting heart rate,
-exercise time) — **seeded at Account creation** so no Account ever faces an empty
-app. Defined in Verve, not user input, like the closed Catalog; the seeded
-Dashboard is thereafter an ordinary Dashboard the owner can edit or delete
-(ADR 0018).
-_Avoid_: Preset, Starter, Default view.
+A curated Dashboard defined in Verve as a **Dashboard file** embedded in the
+binary, not as user input, like the closed Catalog. Exactly one, "Overview" (mass,
+active energy, steps, resting heart rate, exercise time), is **seeded at Account
+creation** so no Account ever faces an empty app (ADR 0018). The others (Sleep,
+Cut, Endurance) are **offered** when creating a Dashboard. Instantiating a
+template makes a **copy**: an ordinary Dashboard the owner can edit or delete,
+with no link back, so a later change to the template never reaches it. A template
+carries arrangement only (Metrics, charts, range, bucket) and never a Goal, an
+Annotation or a Pin, because those are the owner's to declare. It is offered
+whatever the Account holds, with the count of its Metrics that have data
+(ADR 0047).
+_Avoid_: Preset (that is the Time range's word), Starter, Default view, Blueprint.
+
+**Dashboard file**:
+The declarative, versioned shape of one Dashboard's arrangement
+(`"format": "verve.dashboard/1"`): a name, the time-axis tokens, and the ordered
+Panels with their Metrics, chart types, bucket override and width. Every Dashboard
+template is one, and it is the shape a shared Dashboard will be exported and
+imported in. It holds arrangement and never data, which is what separates it from
+an Archive (ADR 0039). Validated by the same rules as a Panel saved over HTTP
+(ADR 0047).
+_Avoid_: Layout (only the grid half), Config, Spec, Export (that is one use).
 
 **Panel**:
 A single card in a Dashboard: one to four Metrics, each rendered with its own

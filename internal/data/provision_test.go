@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/gauthier-se/verve/internal/dashtemplate"
 )
 
 func TestCreateAccountSeedsDefaultDashboard(t *testing.T) {
@@ -80,5 +82,57 @@ func TestCreateAccountDuplicateEmailSeedsNothing(t *testing.T) {
 	}
 	if dashboards != 1 {
 		t.Errorf("dashboards after duplicate = %d, want 1 (rollback failed?)", dashboards)
+	}
+}
+
+func TestCreateDashboardFromFileWritesItsArrangement(t *testing.T) {
+	_, models := openTestDB(t)
+	ctx := context.Background()
+	acc := &Account{Email: "file@example.com"}
+	if err := models.CreateAccount(ctx, acc); err != nil {
+		t.Fatalf("CreateAccount: %v", err)
+	}
+
+	week := "week"
+	file := dashtemplate.File{
+		Format: dashtemplate.Format, Name: "Endurance", RangePreset: "3m", BaselineRule: "previous",
+		Panels: []dashtemplate.Panel{
+			{Metrics: []dashtemplate.PanelMetric{{Metric: "training_time", ChartType: "stacked_bar"}}, Bucket: &week, Width: 2},
+			{Metrics: []dashtemplate.PanelMetric{
+				{Metric: "resting_heart_rate", ChartType: "line"},
+				{Metric: "heart_rate_variability_sdnn", ChartType: "line"},
+			}, Width: 1},
+		},
+	}
+	d, err := models.CreateDashboardFromFile(ctx, acc.ID, file, "")
+	if err != nil {
+		t.Fatalf("CreateDashboardFromFile: %v", err)
+	}
+	if d.Name != "Endurance" || d.RangePreset != "3m" || d.BaselineRule != "previous" || d.Position != 1 {
+		t.Errorf("dashboard = %+v, want Endurance, 3m, previous, after the Overview", d)
+	}
+
+	panels, err := models.Panels.ListByDashboard(ctx, acc.ID, d.ID)
+	if err != nil {
+		t.Fatalf("ListByDashboard: %v", err)
+	}
+	if len(panels) != 2 {
+		t.Fatalf("panels = %d, want 2", len(panels))
+	}
+	if panels[0].Width != 2 || panels[0].Bucket == nil || *panels[0].Bucket != "week" ||
+		panels[0].Metrics[0] != (PanelMetric{Metric: "training_time", ChartType: "stacked_bar"}) {
+		t.Errorf("panel 0 = %+v", panels[0])
+	}
+	if panels[1].Width != 1 || panels[1].Bucket != nil || len(panels[1].Metrics) != 2 ||
+		panels[1].Metrics[1] != (PanelMetric{Metric: "heart_rate_variability_sdnn", ChartType: "line"}) {
+		t.Errorf("panel 1 = %+v", panels[1])
+	}
+
+	renamed, err := models.CreateDashboardFromFile(ctx, acc.ID, file, "My block")
+	if err != nil {
+		t.Fatalf("CreateDashboardFromFile with a name: %v", err)
+	}
+	if renamed.Name != "My block" {
+		t.Errorf("name = %q, want the override", renamed.Name)
 	}
 }

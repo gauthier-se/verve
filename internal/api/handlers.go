@@ -8,13 +8,14 @@ import (
 	"time"
 
 	"github.com/gauthier-se/verve/internal/catalog"
+	"github.com/gauthier-se/verve/internal/dashtemplate"
 	"github.com/gauthier-se/verve/internal/query"
 	"github.com/gauthier-se/verve/internal/timeaxis"
 )
 
 // unknownMetricMsg is the single client-facing message for a slug outside the
 // Catalog, shared by the up-front validation and the engine-error fallback.
-const unknownMetricMsg = "unknown metric — see GET /v1/metrics"
+const unknownMetricMsg = dashtemplate.UnknownMetricMsg
 
 // handleHealthz is an unauthenticated liveness+DB check for probes.
 func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
@@ -208,8 +209,8 @@ func (s *Server) seriesParams(w http.ResponseWriter, r *http.Request, v *Validat
 
 	metrics := qs["metric"]
 	v.Check(len(metrics) > 0, "metric", "must be provided")
-	v.Check(len(metrics) <= maxPanelMetrics, "metric",
-		fmt.Sprintf("at most %d metrics per request", maxPanelMetrics))
+	v.Check(len(metrics) <= dashtemplate.MaxPanelMetrics, "metric",
+		fmt.Sprintf("at most %d metrics per request", dashtemplate.MaxPanelMetrics))
 	for _, metric := range metrics {
 		if metric == "" {
 			v.AddError("metric", "must be provided")

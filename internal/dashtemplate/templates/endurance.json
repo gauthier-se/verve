@@ -1,0 +1,16 @@
+{
+  "format": "verve.dashboard/1",
+  "slug": "endurance",
+  "name": "Endurance",
+  "description": "Training volume by week, and the fitness and recovery figures that move with it.",
+  "range_preset": "3m",
+  "baseline_rule": "none",
+  "panels": [
+    { "metrics": [{ "metric": "training_time", "chart_type": "stacked_bar" }], "bucket": "week", "width": 2 },
+    { "metrics": [{ "metric": "training_distance", "chart_type": "stacked_bar" }], "bucket": "week" },
+    { "metrics": [{ "metric": "vo2_max", "chart_type": "line" }] },
+    { "metrics": [{ "metric": "resting_heart_rate", "chart_type": "line" },
+                  { "metric": "heart_rate_variability_sdnn", "chart_type": "line" }] },
+    { "metrics": [{ "metric": "running_speed", "chart_type": "line" }] }
+  ]
+}

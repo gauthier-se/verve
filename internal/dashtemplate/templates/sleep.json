@@ -1,0 +1,15 @@
+{
+  "format": "verve.dashboard/1",
+  "slug": "sleep",
+  "name": "Sleep",
+  "description": "How long, how deep, and how the body recovered overnight.",
+  "range_preset": "30d",
+  "baseline_rule": "none",
+  "panels": [
+    { "metrics": [{ "metric": "sleep", "chart_type": "stacked_bar" }], "width": 2 },
+    { "metrics": [{ "metric": "heart_rate_variability_sdnn", "chart_type": "line" }] },
+    { "metrics": [{ "metric": "resting_heart_rate", "chart_type": "line" }] },
+    { "metrics": [{ "metric": "respiratory_rate", "chart_type": "line" }] },
+    { "metrics": [{ "metric": "apple_sleeping_wrist_temperature", "chart_type": "line" }] }
+  ]
+}

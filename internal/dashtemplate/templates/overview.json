@@ -1,0 +1,15 @@
+{
+  "format": "verve.dashboard/1",
+  "slug": "overview",
+  "name": "Overview",
+  "description": "The daily figures an iPhone records on its own: mass, energy burned, steps, resting heart rate and exercise minutes.",
+  "range_preset": "30d",
+  "baseline_rule": "none",
+  "panels": [
+    { "metrics": [{ "metric": "body_mass", "chart_type": "line" }] },
+    { "metrics": [{ "metric": "active_energy", "chart_type": "bar" }] },
+    { "metrics": [{ "metric": "steps", "chart_type": "bar" }] },
+    { "metrics": [{ "metric": "resting_heart_rate", "chart_type": "line" }] },
+    { "metrics": [{ "metric": "apple_exercise_time", "chart_type": "bar" }] }
+  ]
+}

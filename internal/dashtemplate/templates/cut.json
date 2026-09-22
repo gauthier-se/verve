@@ -1,0 +1,16 @@
+{
+  "format": "verve.dashboard/1",
+  "slug": "cut",
+  "name": "Cut",
+  "description": "Energy in against energy out, and what the scale and the protein say about it.",
+  "range_preset": "3m",
+  "baseline_rule": "none",
+  "panels": [
+    { "metrics": [{ "metric": "calorie_balance", "chart_type": "diverging_bar" }], "width": 2 },
+    { "metrics": [{ "metric": "dietary_energy", "chart_type": "bar" },
+                  { "metric": "total_energy_expenditure", "chart_type": "line" }] },
+    { "metrics": [{ "metric": "body_mass", "chart_type": "line" },
+                  { "metric": "body_fat_percentage", "chart_type": "line" }] },
+    { "metrics": [{ "metric": "protein_per_kg", "chart_type": "line" }] }
+  ]
+}

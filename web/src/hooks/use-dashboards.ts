@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import type { BaselineRule, Bucket, ChartType, Dashboard, Panel, RangePreset } from "@/lib/types";
+import type { BaselineRule, Bucket, ChartType, Dashboard, DashboardTemplate, Panel, RangePreset } from "@/lib/types";
 
 const KEY = ["dashboards"];
 
@@ -20,10 +20,22 @@ function useInvalidate() {
   return () => qc.invalidateQueries({ queryKey: KEY });
 }
 
+/** useDashboardTemplates loads the templates a Dashboard can start from, with how
+ *  many of each one's Metrics this Account holds data for (ADR 0047). */
+export function useDashboardTemplates() {
+  return useQuery({
+    queryKey: ["dashboard-templates"],
+    queryFn: async () => {
+      const { templates } = await api<{ templates: DashboardTemplate[] }>("/v1/dashboard-templates");
+      return templates;
+    },
+  });
+}
+
 export function useCreateDashboard() {
   const invalidate = useInvalidate();
   return useMutation({
-    mutationFn: (input: { name: string }) =>
+    mutationFn: (input: { name: string; template?: string }) =>
       api<{ dashboard: Dashboard }>("/v1/dashboards", { method: "POST", body: input }),
     onSuccess: invalidate,
   });
