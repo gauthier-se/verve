@@ -892,11 +892,56 @@ export interface NowCard {
   attainment?: Attainment;
 }
 
-/** Now is GET /v1/now: where the Account stands (ADR 0045), its Freshness and one
- *  card per Pin, in Pin order. */
+/** NowNight is the Account's last Night with its age (ADR 0049). It is the Night
+ *  entity itself, so it carries its intervals (ADR 0041). */
+export interface NowNight {
+  night: string;
+  source: string;
+  intervals: NightInterval[];
+  asleep: number;
+  awake?: number;
+  onset?: string;
+  wake?: string;
+  efficiency?: number;
+  efficiency_basis?: string;
+  age_days: number;
+}
+
+/** NowWorkout is the Session that began last, as the workout list shows it, with
+ *  its age counted from the day it began (ADR 0049). */
+export interface NowWorkout {
+  id: number;
+  activity: Activity;
+  start_at: string;
+  end_at: string;
+  duration: number; // seconds
+  distance?: number; // km
+  energy?: number; // kcal
+  source: string;
+  has_route: boolean;
+  age_days: number;
+}
+
+/** NowGoal is one Goal in force today with the seven complete days before today
+ *  counted against it (ADR 0044, ADR 0049). */
+export interface NowGoal {
+  metric: string;
+  unit: string;
+  aggregation: Aggregation | "";
+  goal: DayGoal;
+  attainment?: Attainment;
+}
+
+/** Now is GET /v1/now: where the Account stands (ADR 0045), its Freshness, one
+ *  card per Pin in Pin order, and the readings beside them (ADR 0049): the last
+ *  Night, the last workout and every Goal in force today. The followed Metrics
+ *  outside their Usual are GET /v1/now/unusual, read apart because they are slow. */
 export interface Now {
   freshness: Freshness;
   cards: NowCard[];
+  last_night?: NowNight;
+  last_workout?: NowWorkout;
+  goals: NowGoal[];
 }
 
 /** Exclusion is a standing refusal that a stretch of a Metric is Verve's to hold

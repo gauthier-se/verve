@@ -82,3 +82,29 @@ func TestNowCarriesAPinnedMetricAtItsLatestValue(t *testing.T) {
 		t.Fatalf("card: %+v %+v", c, c.Latest)
 	}
 }
+
+// The unusual Metrics are their own call: authenticated, and an empty list, never
+// null, for an Account with nothing to raise (ADR 0049).
+func TestNowUnusual(t *testing.T) {
+	srv, _, cookie := newTestServer(t)
+	if res, _ := do(t, srv, "/v1/now/unusual"); res.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status %d, want 401", res.StatusCode)
+	}
+	res, body := do(t, srv, "/v1/now/unusual", cookie)
+	if res.StatusCode != http.StatusOK || string(body["unusual"]) != "[]" {
+		t.Fatalf("status %d, body %s", res.StatusCode, body["unusual"])
+	}
+}
+
+// Goals is always present on Now, empty when none is in force.
+func TestNowGoalsIsNeverNull(t *testing.T) {
+	srv, _, cookie := newTestServer(t)
+	_, body := do(t, srv, "/v1/now", cookie)
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(body["now"], &raw); err != nil {
+		t.Fatal(err)
+	}
+	if string(raw["goals"]) != "[]" {
+		t.Fatalf("goals = %s", raw["goals"])
+	}
+}

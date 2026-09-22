@@ -102,6 +102,9 @@ var contract = []struct {
 	{"SourceFreshness", now.SourceFresh{}},
 	{"NowCard", now.Card{}},
 	{"LatestValue", now.Latest{}},
+	{"NowNight", now.Night{}},
+	{"NowWorkout", nowWorkoutView{}},
+	{"NowGoal", now.GoalRow{}},
 	{"Pair", query.Pair{}},
 	{"Scatter", query.Scatter{}},
 	{"ScatterDot", query.ScatterDot{}},
@@ -158,6 +161,14 @@ func parseTypes(t *testing.T) map[string]map[string]tsField {
 	return out
 }
 
+// indirect is t, or what t points to.
+func indirect(t reflect.Type) reflect.Type {
+	if t.Kind() == reflect.Pointer {
+		return t.Elem()
+	}
+	return t
+}
+
 // goFields walks a struct's json tags, following embedded structs the way
 // encoding/json does, and reports each wire field and whether it is omitempty.
 func goFields(t *testing.T, typ reflect.Type) map[string]bool {
@@ -165,7 +176,9 @@ func goFields(t *testing.T, typ reflect.Type) map[string]bool {
 	out := map[string]bool{}
 	for i := 0; i < typ.NumField(); i++ {
 		f := typ.Field(i)
-		if !f.IsExported() {
+		// encoding/json skips an unexported field unless it is an embedded struct,
+		// whose exported fields it still promotes.
+		if !f.IsExported() && !(f.Anonymous && indirect(f.Type).Kind() == reflect.Struct) {
 			continue
 		}
 		tag, ok := f.Tag.Lookup("json")

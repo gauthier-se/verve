@@ -24,13 +24,19 @@ export function usualLine(
   show: (v: number) => string,
   unit = "",
 ): string {
-  const position = value > usual.high ? "above" : value < usual.low ? "below" : "within";
-  const range = `${show(usual.low)}–${show(usual.high)}${unit ? ` ${unit}` : ""}`;
   const w = usualWindow[bucket];
   const basis = !w
     ? ""
     : usual.n < w.size
       ? ` (from ${usual.n} of the ${w.size} ${w.noun} before)`
       : ` (${w.size} ${w.noun} before)`;
-  return `${position} your usual ${range}${basis}`;
+  return `${usualBrief(value, usual, show, unit)}${basis}`;
+}
+
+/** usualBrief is usualLine without the basis: "above your usual 46–52 bpm", the
+ *  form a small card has room for. The basis goes in its title. */
+export function usualBrief(value: number, usual: Usual, show: (v: number) => string, unit = ""): string {
+  const position = value > usual.high ? "above" : value < usual.low ? "below" : "within";
+  const range = `${show(usual.low)}–${show(usual.high)}${unit ? ` ${unit}` : ""}`;
+  return `${position} your usual ${range}`;
 }

@@ -528,10 +528,13 @@ Score, Streak.
 The screen at `/`: where the Account stands, rather than what a window looked
 like. It carries the Account's **Freshness** and one card per **Pin**, each with
 its **Latest value** read against its **Usual**, the **Goal** in force today as
-a bound, and the **Attainment** over the last 7 complete days. It has no Time range, no bucket and
-no chart, which is what keeps a Pin's card from becoming a one-Panel
-**Dashboard** (ADR 0025). Nothing is seeded: with no Pin it shows the Freshness
-and how to pin (ADR 0045).
+a bound, and the **Attainment** over the last 7 complete days. Beside the Pins
+it reads the followed Metrics (on a **Panel** or under a **Goal**) outside their
+**Usual**, the latest **Night**, the latest workout, every Goal in force today,
+and a reminder to export again once the data is two weeks old (ADR 0049). It has
+no Time range and no bucket, which is what keeps a Pin's card from becoming a
+one-Panel **Dashboard** (ADR 0025); the only axis drawn is the Night's own.
+Nothing is seeded: with no Pin it shows the Freshness and how to pin (ADR 0045).
 _Avoid_: Today (a card is almost never today's value, and today is one **Day**),
 Home (the route, not the concept), Status, Summary (the Panel's word), Feed.
 

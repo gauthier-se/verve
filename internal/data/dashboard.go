@@ -267,6 +267,30 @@ func (m PanelModel) metricsByPanel(ctx context.Context, accountID, dashboardID i
 	return metrics, nil
 }
 
+// MetricsByAccount returns every Metric on any of the Account's Panels, once each,
+// in slug order: the Metrics the owner chose to follow.
+func (m PanelModel) MetricsByAccount(ctx context.Context, accountID int64) ([]string, error) {
+	const query = `SELECT DISTINCT metric FROM panel_metrics WHERE account_id = ? ORDER BY metric`
+	rows, err := m.DB.QueryContext(ctx, query, accountID)
+	if err != nil {
+		return nil, fmt.Errorf("data: panel metrics by account: %w", err)
+	}
+	defer rows.Close()
+
+	var out []string
+	for rows.Next() {
+		var metric string
+		if err := rows.Scan(&metric); err != nil {
+			return nil, fmt.Errorf("data: scan panel metric: %w", err)
+		}
+		out = append(out, metric)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("data: iterate panel metrics: %w", err)
+	}
+	return out, nil
+}
+
 // GetByID returns the Account's panel with its Metrics in display order, or
 // ErrRecordNotFound (also for another Account's id, so a probe can't
 // distinguish missing from forbidden).
