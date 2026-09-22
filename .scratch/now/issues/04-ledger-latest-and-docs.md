@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 Blocked by: 02
 
 # 04: query, web: the Ledger's latest value unbounded, and the docs pass
@@ -20,3 +20,21 @@ Blocked by: 02
 - a Metric that stopped 35 days ago keeps its latest value in the Ledger, with
   its date, and has no week or month figure;
 - the Ledger's latest and the Now card for the same Metric agree.
+
+## Comments
+
+Shipped. `ledgerRow` reads `Engine.Latest` and `LedgerValue` carries `age_days`;
+the Data page prints the age beside the date, and the copied TSV gains a
+"Latest age (days)" column. README bullet under "Look at it properly", ROADMAP row.
+
+What differs from the spec:
+
+- **One day count for the whole feature.** `query.AgeDays` and `query.DaysBetween`
+  are what the Ledger and `internal/now` both use, so a Metric's age cannot be
+  written two ways.
+- **The age is printed on every row**, not only when the date is not today:
+  "today" is itself the reading, and a column that changes shape by row is harder
+  to scan.
+- **No separate test that the Ledger and a Now card agree**: both call the same
+  `Engine.Latest`, and `TestLatestValueEqualsTheSeriesPoint` pins that one against
+  the Series.

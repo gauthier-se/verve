@@ -153,10 +153,14 @@ export interface ImportStatus {
   has_data: boolean;
 }
 
-/** LedgerValue is a Metric's most recent daily value with the day it fell on. */
+/** LedgerValue is a Metric's Latest value with the day it fell on and that day's age
+ *  in days against the server's UTC today (ADR 0045). Not bounded by the overview's
+ *  windows: a Metric that stopped five weeks ago keeps its value and says how old it
+ *  is, where `week` and `month` beside it are gaps. */
 export interface LedgerValue {
   value: number;
   date: string;
+  age_days: number;
 }
 
 /** LedgerRow is one Metric's line in the Ledger overview (GET /v1/ledger, ADR 0021):

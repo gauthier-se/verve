@@ -18,10 +18,14 @@ const (
 	ledgerMonthDays = 30
 )
 
-// LedgerValue is a Metric's most recent daily value with the day it fell on.
+// LedgerValue is a Metric's Latest value with the day it fell on and that day's age
+// against the UTC today (ADR 0045). It is not bounded by the overview's windows: a
+// Metric that stopped five weeks ago keeps its last value and says how old it is,
+// rather than showing the "—" a Metric never measured shows.
 type LedgerValue struct {
-	Value float64 `json:"value"`
-	Date  string  `json:"date"`
+	Value   float64 `json:"value"`
+	Date    string  `json:"date"`
+	AgeDays int     `json:"age_days"`
 }
 
 // LedgerRow is one Metric's line in the Ledger overview (ADR 0021): its latest
@@ -105,7 +109,13 @@ func (e Engine) ledgerRow(ctx context.Context, accountID int64, metric catalog.M
 		Aggregation: metric.Aggregation,
 		Week:        foldFigure(cmp.Current),
 		Month:       foldFigure(month),
-		Latest:      latestValue(month.Points),
+	}
+	latest, err := e.Latest(ctx, accountID, metric.Slug)
+	if err != nil {
+		return LedgerRow{}, false, err
+	}
+	if latest != nil {
+		row.Latest = &LedgerValue{Value: latest.Value, Date: latest.Date, AgeDays: AgeDays(latest.Date, now)}
 	}
 
 	// Week-over-week delta, folded on the same basis as the week figure so an
@@ -154,15 +164,4 @@ func foldFigure(s Series) *float64 {
 		v /= float64(s.Nights)
 	}
 	return &v
-}
-
-// latestValue is the most recent daily value in a series: the last Point (the
-// engine returns Points in ascending bucket order and omits empty buckets), or nil
-// when the window held no data.
-func latestValue(points []Point) *LedgerValue {
-	if len(points) == 0 {
-		return nil
-	}
-	last := points[len(points)-1]
-	return &LedgerValue{Value: last.Value, Date: last.Bucket}
 }

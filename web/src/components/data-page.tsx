@@ -7,6 +7,7 @@ import { useMetricMap } from "@/hooks/use-catalog";
 import { useLedger } from "@/hooks/use-ledger";
 import { formatExact, formatFigure } from "@/lib/format";
 import { metricLabel } from "@/lib/metrics";
+import { ageText } from "@/lib/now";
 import { textMatcher } from "@/lib/search";
 import { copyTsv, tsvFigure, tsvNumber } from "@/lib/clipboard";
 import type { Annotation, LedgerRow } from "@/lib/types";
@@ -160,12 +161,13 @@ function Scoreboard({ rows, total }: { rows: LedgerRow[]; total: number }) {
   const [copied, setCopied] = React.useState(false);
 
   const onCopy = async () => {
-    const headers = ["Metric", "Unit", "Latest", "Latest date", "7-day", "30-day", "Delta %"];
+    const headers = ["Metric", "Unit", "Latest", "Latest date", "Latest age (days)", "7-day", "30-day", "Delta %"];
     const body = rows.map((r) => [
       metricLabel(r.metric),
       r.unit,
       r.latest ? tsvFigure(r.latest.value, r.unit) : "",
       r.latest?.date ?? "",
+      r.latest ? String(r.latest.age_days) : "",
       r.week !== undefined ? tsvFigure(r.week, r.unit) : "",
       r.month !== undefined ? tsvFigure(r.month, r.unit) : "",
       r.delta_pct !== undefined ? tsvNumber(r.delta_pct) : "",
@@ -216,8 +218,11 @@ function Scoreboard({ rows, total }: { rows: LedgerRow[]; total: number }) {
                   {r.latest ? (
                     <span title={`${formatExact(r.latest.value, r.unit)} ${r.unit}`.trim()}>
                       {ledgerFigure(r.latest.value, r.aggregation, r.unit)}
+                      {/* The latest value is not bounded by the window columns beside it, so
+                          it carries its age: a Metric that stopped five weeks ago reads as
+                          five weeks old rather than as "—" (ADR 0045). */}
                       <span className="ml-1.5 text-xs text-muted-foreground">
-                        {formatBucket(r.latest.date, "day")}
+                        {formatBucket(r.latest.date, "day")} · {ageText(r.latest.age_days)}
                       </span>
                     </span>
                   ) : (

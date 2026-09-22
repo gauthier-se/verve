@@ -209,3 +209,21 @@ func (e Engine) lastDay(ctx context.Context, accountID int64, metric catalog.Met
 	}
 	return *day, nil
 }
+
+// AgeDays counts whole days from a day label to the UTC day now falls on, the day
+// Goals and windows are dated by. A day after today is clamped to zero: a row dated
+// in the future is a Connector's clock, not a negative age.
+func AgeDays(day string, now time.Time) int {
+	return DaysBetween(day, now.UTC().Format(dayLayout))
+}
+
+// DaysBetween counts whole days from one day label to a later one, zero when the
+// first is not earlier or either is not a day.
+func DaysBetween(from, to string) int {
+	a, errA := time.Parse(dayLayout, from)
+	b, errB := time.Parse(dayLayout, to)
+	if errA != nil || errB != nil || !b.After(a) {
+		return 0
+	}
+	return int(b.Sub(a).Hours() / 24)
+}

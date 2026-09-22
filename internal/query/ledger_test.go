@@ -289,3 +289,27 @@ func TestMetricsWithDataOmitsDistanceWithoutOne(t *testing.T) {
 		t.Fatalf("metrics = %v, want training_time alone", got)
 	}
 }
+
+// A Metric that stopped 35 days ago keeps its latest value in the Ledger, dated and
+// aged, while its window columns are gaps: the latest value is not a window.
+func TestLedgerLatestOutlivesTheWindows(t *testing.T) {
+	e, models, acc := setup(t)
+	seed(t, e.DB, models, acc, []meas{
+		{"steps", 4200, daysBefore(35), "Watch"},
+	})
+
+	rows, err := e.Ledger(context.Background(), acc, ledgerNow)
+	if err != nil {
+		t.Fatalf("Ledger: %v", err)
+	}
+	steps := findRow(t, rows, "steps")
+	if steps.Latest == nil || steps.Latest.Value != 4200 || steps.Latest.AgeDays != 35 {
+		t.Fatalf("latest = %+v, want 4200 aged 35", steps.Latest)
+	}
+	if want := ledgerNow.AddDate(0, 0, -35).Format("2006-01-02"); steps.Latest.Date != want {
+		t.Errorf("latest date = %q, want %q", steps.Latest.Date, want)
+	}
+	if steps.Week != nil || steps.Month != nil {
+		t.Errorf("window figures = %v / %v, want gaps", steps.Week, steps.Month)
+	}
+}

@@ -216,14 +216,6 @@ func (e Engine) Freshness(ctx context.Context, accountID int64, now time.Time) (
 // today is the UTC day now falls on, as a day label.
 func today(now time.Time) string { return now.UTC().Format(dayLayout) }
 
-// daysBetween counts whole days from one day label to a later one. A from after to
-// is clamped to zero: a row dated in the future is a Connector's clock, not a
-// negative age.
-func daysBetween(from, to string) int {
-	a, errA := time.Parse(dayLayout, from)
-	b, errB := time.Parse(dayLayout, to)
-	if errA != nil || errB != nil || !b.After(a) {
-		return 0
-	}
-	return int(b.Sub(a).Hours() / 24)
-}
+// daysBetween is the read engine's day count, so Now and the Ledger cannot write one
+// Metric's age two ways.
+var daysBetween = query.DaysBetween
