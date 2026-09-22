@@ -23,6 +23,7 @@ import { mergeSeries, stageKey, type ChartDatum } from "@/lib/chart-data";
 import { formatAxisValue, formatDuration } from "@/lib/format";
 import { metricLabel } from "@/lib/metrics";
 import { drawsGoalLine } from "@/lib/goals";
+import { usualLine } from "@/lib/usual";
 import { useActivityMap } from "@/hooks/use-catalog";
 import { buildSegments, type Segment } from "@/lib/breakdown";
 import { Key } from "./ui/figure";
@@ -43,6 +44,9 @@ const BASELINE = AXIS;
 // An Annotation is context, not a series: it wears the Baseline's recessed tone,
 // never a chart colour, and it draws behind the marks (ADR 0030).
 const ANNOTATION = AXIS;
+// The Usual is the owner's own past, not a Metric: it takes no slot of the ramp
+// (ADR 0036, ADR 0042) and wears the recessed tone of the other references.
+const USUAL = AXIS;
 // Diverging-bar sign colors: surplus (≥ 0) warm, deficit (< 0) cool (ADR 0014).
 const SURPLUS = POSITIVE;
 const DEFICIT = NEGATIVE;
@@ -177,6 +181,7 @@ export function PanelChart({
         )}
         {tooltip}
         {annotationOverlay(overlay)}
+        {list.length === 1 && usualBand(axisOf(list[0]))}
         {list.map((s, i) =>
           marks(metrics[i]?.chart_type ?? "line", i, axisOf(s), data, list.length > 1, segments, colorOffset),
         )}
@@ -221,6 +226,28 @@ function goalLine(i: number, yAxisId: "left" | "right", offset: number): React.R
       strokeWidth={1.25}
       strokeDasharray="6 4"
       dot={false}
+      activeDot={false}
+      connectNulls={false}
+      isAnimationActive={false}
+    />
+  );
+}
+
+/** usualBand draws a lone Metric's Usual, the p25 to p75 of its own past (ADR 0046),
+ *  behind every other mark, including the min/max fill of the band chart type: that
+ *  one is the spread inside a bucket, this the spread across the buckets before it.
+ *  A centred step, because each bucket has its own and a curve between them would
+ *  claim values nobody computed; and broken where the server sent none (ADR 0032). */
+function usualBand(yAxisId: "left" | "right"): React.ReactNode {
+  return (
+    <Area
+      key="usual0"
+      yAxisId={yAxisId}
+      type="step"
+      dataKey="usual0"
+      stroke="none"
+      fill={USUAL}
+      fillOpacity={0.14}
       activeDot={false}
       connectNulls={false}
       isAnimationActive={false}
@@ -561,6 +588,13 @@ function ChartTooltip({
             </div>
           );
         })}
+      {!multi && d.usual && typeof d.v0 === "number" && (
+        <div className="max-w-56 text-muted-foreground opacity-80">
+          {stacked || unit === "min"
+            ? usualLine(d.v0, d.usual, bucket, formatDuration)
+            : usualLine(d.v0, d.usual, bucket, (v) => formatAxisValue(v, list[0].unit), list[0].unit)}
+        </div>
+      )}
       {covering.length > 0 && (
         <div className="mt-1 max-w-56 space-y-0.5 border-t pt-1">
           {covering.map((a) => (

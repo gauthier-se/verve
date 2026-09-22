@@ -188,3 +188,35 @@ describe("mergeSeries, Goal line", () => {
     expect(data.every((d) => d.goal1 === undefined)).toBe(true);
   });
 });
+
+describe("mergeSeries, Usual", () => {
+  const usual = (low: number, high: number, n = 28) => ({ low, high, n });
+
+  it("carries a lone Metric's Usual as a range, and nothing where the point has none", () => {
+    const data = mergeSeries([
+      series({ points: [p("2024-01-01", 58, { usual: usual(46, 52) }), p("2024-01-02", 50)] }),
+    ]);
+    expect(data[0].usual0).toEqual([46, 52]);
+    // The whole Usual rides beside the range the band is drawn from, so the tooltip
+    // can say how many buckets it rests on.
+    expect(data[0].usual).toEqual(usual(46, 52));
+    // Absent rather than empty, so the band breaks there instead of bridging (ADR 0032).
+    expect(data[1].usual0).toBeUndefined();
+  });
+
+  // In comparison the Baseline line is already the reference, and two references
+  // behind one curve read as neither.
+  it("draws no Usual in comparison", () => {
+    const current = series({ points: [p("2024-02-01", 58, { usual: usual(46, 52) })] });
+    const baseline = series({ points: [p("2024-01-01", 50)] });
+    expect(mergeSeries([current], baseline)[0].usual0).toBeUndefined();
+  });
+
+  // Two bands on two axes read as nothing (ADR 0020); the server does not send one
+  // for a combo, and a stray one must not be drawn either.
+  it("draws no Usual on a multi-Metric Panel", () => {
+    const a = series({ points: [p("2024-01-01", 58, { usual: usual(46, 52) })] });
+    const b = series({ metric: "steps", points: [p("2024-01-01", 9000)] });
+    expect(mergeSeries([a, b])[0].usual0).toBeUndefined();
+  });
+});

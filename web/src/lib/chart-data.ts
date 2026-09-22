@@ -5,17 +5,21 @@
 // what counts as a gap, where a Baseline point is placed. A component can be read
 // by eye; this has to be read by test.
 import { drawsGoalLine, goalAt } from "./goals";
-import type { Series } from "./types";
+import type { Series, Usual } from "./types";
 
 /** ChartDatum is one x-position: per-series values keyed v0…v3 (band0… for the
  *  min/max band), sparse — a Series without data in that bucket has no key (a gap,
  *  ADR 0014). Single-Metric comparison adds the Baseline bucket keyed to the same
- *  ordinal index with its own date for the tooltip (ADR 0015). */
+ *  ordinal index with its own date for the tooltip (ADR 0015). A lone Metric outside
+ *  comparison carries its Usual as usual0, the [p25, p75] of its own past (ADR 0046). */
 export interface ChartDatum {
   bucket: string;
   baselineValue?: number;
   baselineBucket?: string;
-  [seriesKey: `v${number}` | `band${number}` | `trend${number}` | `goal${number}` | `stage:${string}`]:
+  /** usual is the lone Metric's whole Usual, with its n, for the tooltip; usual0 is
+   *  the [low, high] the band is drawn from. */
+  usual?: Usual;
+  [seriesKey: `v${number}` | `band${number}` | `usual${number}` | `trend${number}` | `goal${number}` | `stage:${string}`]:
     | number
     | number[]
     | undefined;
@@ -45,6 +49,13 @@ export function mergeSeries(list: Series[], baseline?: Series): ChartDatum[] {
       // The smoothed value, left absent on a bucket that has none so the line drawn
       // from it breaks there rather than bridging a gap (ADR 0032).
       if (p.trend !== undefined) d.trend0 = p.trend;
+      // The owner's usual behind the curve (ADR 0046), outside comparison only: there
+      // the Baseline line is already the reference, and two behind one curve read as
+      // neither. Absent where the server sent none, so the band breaks there.
+      if (p.usual && !baseline) {
+        d.usual = p.usual;
+        d.usual0 = [p.usual.low, p.usual.high];
+      }
       // The Goal in force that day, drawn as a step (ADR 0044). Absent where none
       // was, so the line breaks between Goals rather than bridging them.
       const goal = drawsGoalLine(list[0]) ? goalAt(list[0].goal, p.bucket) : undefined;

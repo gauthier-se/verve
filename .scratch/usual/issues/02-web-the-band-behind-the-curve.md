@@ -1,4 +1,4 @@
-Status: needs-triage
+Status: ready-for-human
 Blocked by: 01
 
 # 02: web: the band behind the curve
@@ -36,3 +36,21 @@ One line naming the band, so a reader does not take it for the min/max spread:
 - a history with a five-week gap: the band breaks and comes back after 14 days;
 - month grain: nothing drawn, no legend line;
 - phone width.
+
+## Comments
+
+Built test-first at two seams: `mergeSeries` (`usual0` for the band, `usual` for
+the tooltip; none in comparison or on a combo) and `usualLine` in `lib/usual.ts`
+(position, range, and the basis: "28 days before", or "from 17 of the 28 days
+before"). The band is an `Area` drawn first, in the Baseline's recessed tone.
+
+Changed from the draft above:
+
+- **A centred step (`type="step"`), not `stepAfter`**: on a category axis
+  `stepAfter` runs from one point to the next and sits half a bucket off.
+- **No legend line**: Panels have no legend region (the trend has none either),
+  so the tooltip names the band.
+
+Left for a human: the visual checks listed above, in a signed-in browser (light
+and dark, every palette, phone width). The reference data ends on 24 July 2026,
+so use a custom range.
