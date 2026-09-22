@@ -862,6 +862,9 @@ export interface LatestValue {
   value: number;
   date: string;
   age_days: number;
+  /** usual is where that day sits among the owner's own days before it (ADR 0046).
+   *  Absent with too little history, and when the day is today, still in progress. */
+  usual?: Usual;
 }
 
 /** NowCard is one Pin read at its Latest value (ADR 0045). `goal` is the bound in

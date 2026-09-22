@@ -511,8 +511,8 @@ Score, Streak.
 **Now**:
 The screen at `/`: where the Account stands, rather than what a window looked
 like. It carries the Account's **Freshness** and one card per **Pin**, each with
-its **Latest value**, the **Goal** in force today as a bound, and the
-**Attainment** over the last 7 complete days. It has no Time range, no bucket and
+its **Latest value** read against its **Usual**, the **Goal** in force today as
+a bound, and the **Attainment** over the last 7 complete days. It has no Time range, no bucket and
 no chart, which is what keeps a Pin's card from becoming a one-Panel
 **Dashboard** (ADR 0025). Nothing is seeded: with no Pin it shows the Freshness
 and how to pin (ADR 0045).

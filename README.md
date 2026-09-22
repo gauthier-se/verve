@@ -143,6 +143,11 @@ infrastructure, no telemetry.
   colour, no streak, no score. You declared the direction, and that is still
   the only reason Verve knows it. Goals are kept as history too, so raising one
   in April does not rewrite March.
+* **Your usual.** A resting heart rate of 58 says little on its own; 58 when
+  your 28 days before sat between 46 and 52 says a lot. Behind each curve Verve
+  draws where your own recent values sat, the middle half of them, and the
+  first screen puts it under every pinned figure. It compares you to yourself
+  only: no norm, no population, and no colour for above or below.
 
 ### Make it yours
 
