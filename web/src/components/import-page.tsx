@@ -370,7 +370,7 @@ function ReportCard({ job }: { job: ImportJob }) {
             only what is new is added.
           </p>
           <Button asChild size="sm" className="h-8 px-3.5">
-            <Link to="/">View your dashboard</Link>
+            <Link to="/d">View your dashboard</Link>
           </Button>
         </div>
       </Card>

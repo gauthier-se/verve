@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { DAY_KEY } from "./use-day";
+import { NOW_KEY } from "./use-now";
 import type { Exclusion, ExclusionPreview } from "@/lib/types";
 
 const KEY = ["exclusions"];
@@ -67,6 +68,7 @@ function useInvalidate() {
     qc.invalidateQueries({ queryKey: ["exclusion-preview"] });
     // A rule turns a Day's value into a refusal, which is a change to the page.
     qc.invalidateQueries({ queryKey: DAY_KEY });
+    qc.invalidateQueries({ queryKey: NOW_KEY });
   };
 }
 

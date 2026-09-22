@@ -2,6 +2,7 @@ import * as React from "react";
 import { Link, useLocation, useParams } from "@tanstack/react-router";
 import { useHotkeys } from "react-hotkeys-hook";
 import {
+  Activity,
   Download,
   Dumbbell,
   History,
@@ -68,6 +69,7 @@ function Sidebar({ onCreate }: { onCreate: () => void }) {
   const logout = useLogout();
   const params = useParams({ strict: false }) as { dashboardId?: string };
   const activeId = params.dashboardId;
+  const nowActive = useLocation({ select: (l) => l.pathname === "/" });
 
   return (
     <aside className="hidden w-60 shrink-0 flex-col border-r bg-card/40 lg:flex">
@@ -81,6 +83,14 @@ function Sidebar({ onCreate }: { onCreate: () => void }) {
             {window.location.host}
           </span>
         </div>
+      </div>
+
+      {/* Now sits above everything because it is where the app opens: the one page
+          that says where the Account stands rather than what a window looked like. */}
+      <div className="px-2 pb-1">
+        <Link to="/" className={cn(navRow, nowActive ? navRowActive : navRowIdle)}>
+          <Activity className="size-4 shrink-0" /> Now
+        </Link>
       </div>
 
       <div className="flex items-center justify-between px-4 pb-1.5 pt-2.5">
@@ -234,7 +244,8 @@ function NarrowBar() {
 function TabBar() {
   return (
     <nav className="flex shrink-0 overflow-x-auto border-t bg-background/95 backdrop-blur lg:hidden">
-      <Tab to="/" label="Dashboards" exact />
+      <Tab to="/" label="Now" exact />
+      <Tab to="/d" label="Dashboards" />
       {TOOLS.map((tool) => (
         <Tab key={tool.to} to={tool.to} label={tool.short} />
       ))}

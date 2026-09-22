@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 Blocked by: 02
 
 # 03: web: Now at `/`, Dashboards at `/d`
@@ -28,3 +28,24 @@ Blocked by: 02
 - vitest on the age wording (0, 1, n days, weeks) and the retired fold;
 - `/` renders Now, `/d` forwards to the first Dashboard;
 - `tsc` and the production build pass.
+
+## Comments
+
+Shipped. `now-page.tsx`, `use-now.ts`, `lib/now.ts` with `now.test.ts`, `/` and `/d`
+in `router.tsx`, a "Now" row above the Dashboards in the sidebar and a "Now" tab
+before "Dashboards" in the tab bar.
+
+What differs from the spec:
+
+- **Ages are written in days up to 20, then weeks, months, years.** "2 weeks ago"
+  for 14 to 20 days hides a week the reader would want to know about.
+- **Every write that can move Now invalidates it**: a Pin, a Goal, a Manual entry,
+  an Exclusion, and the end of an import (which now also stales the Ledger, which it
+  did not before).
+- **The import report's "View your dashboard" goes to `/d`**, since `/` is no longer
+  a dashboard.
+- Checked against a copy of a real history: `/v1/now` names the last datum
+  (2026-07-25, 59 days old), 5 active and 8 retired Sources, and five Pin cards,
+  in 37 ms once `Latest` read one day first (see the perf commit).
+
+Not yet looked at in a browser: the pane needs a login.

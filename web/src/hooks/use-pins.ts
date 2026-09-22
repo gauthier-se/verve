@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type { Pin } from "@/lib/types";
+import { NOW_KEY } from "./use-now";
 
 const KEY = ["pins"];
 
@@ -19,7 +20,11 @@ export function usePins() {
 
 function useInvalidate() {
   const qc = useQueryClient();
-  return () => qc.invalidateQueries({ queryKey: KEY });
+  return () => {
+    void qc.invalidateQueries({ queryKey: KEY });
+    // A Pin is a card on Now (ADR 0045).
+    void qc.invalidateQueries({ queryKey: NOW_KEY });
+  };
 }
 
 /** useAddPin pins a Metric. The server is idempotent, so the caller never has to
