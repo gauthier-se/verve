@@ -111,7 +111,7 @@ func New(logger *slog.Logger, models data.Models, engine query.Engine, cfg Confi
 		history:       history.Engine{Query: engine, Models: models},
 		day:           day.Engine{Query: engine, Models: models},
 		goals:         goal.Engine{Query: engine, Models: models},
-		now:           now.Engine{Query: engine, Models: models},
+		now:           now.Engine{Query: engine, Goals: goal.Engine{Query: engine, Models: models}, Models: models},
 		resolver:      sessionResolver{sessions: models.AuthSessions},
 		loginLimiter:  newLoginLimiter(),
 		secureCookies: cfg.SecureCookies,

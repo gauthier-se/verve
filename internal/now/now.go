@@ -12,10 +12,14 @@ package now
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"time"
 
+	"github.com/gauthier-se/verve/internal/catalog"
 	"github.com/gauthier-se/verve/internal/data"
+	"github.com/gauthier-se/verve/internal/day"
+	"github.com/gauthier-se/verve/internal/goal"
 	"github.com/gauthier-se/verve/internal/query"
 )
 
@@ -54,11 +58,118 @@ type SourceFresh struct {
 	Retired bool `json:"retired"`
 }
 
-// Engine reads the Now screen. It composes the read engine and the Account's rows
-// and owns nothing else.
+// attainmentDays is the week a card counts its Goal over: the seven complete days
+// before today, since today is never judged (ADR 0044). A constant and not a range,
+// as the Ledger's windows are (ADR 0021): Now is one reading, and a Pin still
+// carries no time axis (ADR 0025).
+const attainmentDays = 7
+
+// Card is one Pin read at its Latest value, with the bound in force today and the
+// week counted against it. It carries no curve and no range, which is what keeps it
+// from being a one-Panel Dashboard (ADR 0025).
+type Card struct {
+	Metric      string              `json:"metric"`
+	Unit        string              `json:"unit"`
+	Aggregation catalog.Aggregation `json:"aggregation"`
+	// Latest is absent for a Metric the Account pinned and never measured.
+	Latest *Latest `json:"latest,omitempty"`
+	// Goal is the bound in force today, printed beside the value as a fact and
+	// never as a verdict: today is the one day a Goal does not judge.
+	Goal *day.Goal `json:"goal,omitempty"`
+	// Attainment counts the last seven complete days, absent when no Goal was in
+	// force over any of them.
+	Attainment *query.Attainment `json:"attainment,omitempty"`
+}
+
+// Latest is a Metric's Latest value with its age, counted like the Account's.
+type Latest struct {
+	Value   float64 `json:"value"`
+	Date    string  `json:"date"`
+	AgeDays int     `json:"age_days"`
+}
+
+// Read is the Now screen: the Account's Freshness and one card per Pin.
+type Read struct {
+	Freshness Freshness
+	Cards     []Card
+}
+
+// Engine reads the Now screen. It composes the read engine, the Goal counts and the
+// Account's rows, and owns nothing else.
 type Engine struct {
 	Query  query.Engine
+	Goals  goal.Engine
 	Models data.Models
+}
+
+// Read answers the Now screen. now fixes today for every age and count on it.
+func (e Engine) Read(ctx context.Context, accountID int64, now time.Time) (Read, error) {
+	freshness, err := e.Freshness(ctx, accountID, now)
+	if err != nil {
+		return Read{}, err
+	}
+	cards, err := e.Cards(ctx, accountID, now)
+	if err != nil {
+		return Read{}, err
+	}
+	return Read{Freshness: freshness, Cards: cards}, nil
+}
+
+// Cards reads each Pin at its Latest value, in Pin order. A Pin whose Metric left
+// the Catalog is skipped, as the sidebar hides it (ADR 0025).
+func (e Engine) Cards(ctx context.Context, accountID int64, now time.Time) ([]Card, error) {
+	pins, err := e.Models.Pins.ListByAccount(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	// Every Goal of the Account in one read, then the one in force today per Pin.
+	goals, err := e.Models.Goals.ListByAccount(ctx, accountID, "")
+	if err != nil {
+		return nil, err
+	}
+
+	date := today(now)
+	day0, err := time.Parse(dayLayout, date)
+	if err != nil {
+		return nil, err
+	}
+	weekFrom := day0.AddDate(0, 0, -attainmentDays)
+
+	cards := make([]Card, 0, len(pins))
+	for _, pin := range pins {
+		metric, ok := catalog.Lookup(pin.Metric)
+		if !ok {
+			continue
+		}
+		card := Card{Metric: metric.Slug, Unit: metric.Unit, Aggregation: metric.Aggregation}
+
+		latest, err := e.Query.Latest(ctx, accountID, metric.Slug)
+		if err != nil && !errors.Is(err, query.ErrUnsupportedAggregation) {
+			return nil, err
+		}
+		if latest != nil {
+			card.Latest = &Latest{Value: latest.Value, Date: latest.Date, AgeDays: daysBetween(latest.Date, date)}
+		}
+
+		card.Goal = goalOn(goals, metric.Slug, date)
+		if card.Attainment, err = e.Goals.Attain(ctx, accountID, metric.Slug, weekFrom, day0, now); err != nil {
+			return nil, err
+		}
+		cards = append(cards, card)
+	}
+	return cards, nil
+}
+
+// goalOn is the bound on a Metric in force on a date, or nil. A Goal holds on
+// [started_on, ended_on), both day labels, so string comparison is chronological.
+func goalOn(goals []data.Goal, metric, date string) *day.Goal {
+	for _, g := range goals {
+		if g.Metric != metric || date < g.StartedOn || (g.EndedOn != nil && date >= *g.EndedOn) {
+			continue
+		}
+		return &day.Goal{Direction: g.Direction, Value: g.Value}
+	}
+	return nil
 }
 
 // Freshness answers the Account's Freshness. now fixes today, so the age is pinned

@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 Blocked by: 01
 
 # 02: query, now, api: the Latest value and the Pin cards on `/v1/now`
@@ -46,3 +46,23 @@ Blocked by: 01
 - a `latest` Metric (body mass) has a Latest value and never a Goal;
 - the Attainment excludes today and matches a Panel's counts over the same 7 days;
 - an Account with no Pin answers no cards and its Freshness.
+
+## Comments
+
+Shipped. `Engine.Latest` and `lastDay` in `internal/query/lastday.go`,
+`now.Engine.Cards` and `Read` in `internal/now/now.go`, `cards` on `GET /v1/now`,
+`NowCard` and `LatestValue` in `types.ts` pinned by the contract test.
+
+What differs from the spec:
+
+- **The Latest value is `query.LatestValue{value, date}`; the age is added by
+  `internal/now`** (`now.Latest`), because an age needs a today and the read engine
+  has no clock. `04` gives the Ledger the same age the same way.
+- **Every last-day lookup is one index seek**, sleep included: the Night label is
+  monotonic in `start_at`, so `date(MAX(start_at), '+12 hours')` is the last Night
+  and stays on `states_account_kind_start`.
+- **A derived Metric's anchor is the earliest of its operands' last days**, then a
+  31-day read back from it. `calorie_balance` with a Watch that kept going after the
+  food log stopped reports the last day that had both.
+- **The card carries `aggregation`** like a `DayMetric`, so the client formats it
+  without a Catalog lookup.

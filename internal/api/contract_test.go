@@ -98,6 +98,8 @@ var contract = []struct {
 	{"Now", nowView{}},
 	{"Freshness", now.Freshness{}},
 	{"SourceFreshness", now.SourceFresh{}},
+	{"NowCard", now.Card{}},
+	{"LatestValue", now.Latest{}},
 	{"Pair", query.Pair{}},
 	{"Scatter", query.Scatter{}},
 	{"ScatterDot", query.ScatterDot{}},

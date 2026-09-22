@@ -64,3 +64,35 @@ func TestSourceLastDaysAcrossFamilies(t *testing.T) {
 		}
 	}
 }
+
+// A derived Metric's Latest value is its last complete day: the operands stop on
+// different days, and a day holding only some of them is a gap (ADR 0014).
+func TestLatestOfADerivedMetricIsItsLastCompleteDay(t *testing.T) {
+	e, models, acc := setup(t)
+	seed(t, e.DB, models, acc, []meas{
+		{"dietary_energy", 2500, "2026-09-10T12:00:00Z", "Yazio"},
+		{"active_energy", 500, "2026-09-10T12:00:00Z", "Watch"},
+		{"basal_energy", 1700, "2026-09-10T12:00:00Z", "Watch"},
+		// The Watch kept going two more days; nothing was logged to eat.
+		{"active_energy", 600, "2026-09-12T12:00:00Z", "Watch"},
+		{"basal_energy", 1700, "2026-09-12T12:00:00Z", "Watch"},
+	})
+
+	got, err := e.Latest(context.Background(), acc, "calorie_balance")
+	if err != nil {
+		t.Fatalf("Latest: %v", err)
+	}
+	if got == nil || got.Date != "2026-09-10" || got.Value != 300 {
+		t.Fatalf("latest calorie_balance: %+v", got)
+	}
+}
+
+func TestLatestOfAMetricNeverMeasuredIsNil(t *testing.T) {
+	e, _, acc := setup(t)
+	for _, slug := range []string{"steps", "sleep", "training_time", "calorie_balance"} {
+		got, err := e.Latest(context.Background(), acc, slug)
+		if err != nil || got != nil {
+			t.Fatalf("%s: %+v, %v", slug, got, err)
+		}
+	}
+}

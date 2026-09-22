@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/gauthier-se/verve/internal/catalog"
+	"github.com/gauthier-se/verve/internal/timeaxis"
 )
 
 // This file answers "when did the data stop", the question Freshness asks (ADR
@@ -87,4 +89,114 @@ func (e Engine) SourceLastDays(ctx context.Context, accountID int64) ([]SourceLa
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Source < out[j].Source })
 	return out, nil
+}
+
+// LatestValue is a Metric's value on the last day that holds one (CONTEXT.md:
+// Latest value). It always travels with its date, because a latest value without
+// its date is exactly the stale figure Freshness exists to expose.
+type LatestValue struct {
+	Value float64 `json:"value"`
+	Date  string  `json:"date"`
+}
+
+// latestLookbackDays is how far back from a Metric's last datum Latest reads. The
+// last datum's own day always holds a value for an imported Metric, so the window
+// only matters for a derived one, whose operands can stop on different days and
+// whose last complete day can sit before the last datum of any single operand.
+// Past it, a derived Metric has no Latest value rather than a walk back through
+// its whole history.
+const latestLookbackDays = 31
+
+// Latest answers a Metric's Latest value, however far back it lies, or nil for a
+// Metric the Account never measured.
+//
+// It finds the Metric's last datum with one index seek, then reads the day series
+// that ends on it through Series, so the per-day Source election (ADR 0034), the
+// Manual overlay (ADR 0022), sleep's Night (ADR 0027) and a derived Metric's
+// Formula (ADR 0014) apply exactly as they do to the bar a Panel draws on that day.
+// A value computed here any other way would be one a Panel could disagree with.
+func (e Engine) Latest(ctx context.Context, accountID int64, slug string) (*LatestValue, error) {
+	metric, ok := catalog.Lookup(slug)
+	if !ok {
+		return nil, fmt.Errorf("%w: %q", ErrUnknownMetric, slug)
+	}
+	last, err := e.lastDay(ctx, accountID, metric)
+	if err != nil || last == "" {
+		return nil, err
+	}
+	day, err := time.Parse(dayLayout, last)
+	if err != nil {
+		return nil, fmt.Errorf("query: latest: %w", err)
+	}
+
+	series, err := e.Series(ctx, Request{
+		AccountID: accountID,
+		Metric:    slug,
+		Bucket:    timeaxis.Day,
+		From:      day.AddDate(0, 0, -latestLookbackDays+1),
+		To:        day.AddDate(0, 0, 1),
+	})
+	if err != nil {
+		return nil, err
+	}
+	for i := len(series.Points) - 1; i >= 0; i-- {
+		if p := series.Points[i]; !p.Gap {
+			return &LatestValue{Value: p.Value, Date: p.Bucket}, nil
+		}
+	}
+	return nil, nil
+}
+
+// lastDay is the last day label a Metric holds data on, in the family it is read
+// from, or "" when it holds none. A derived Metric's is the earliest of its
+// operands' last days: no day after it can hold every operand.
+func (e Engine) lastDay(ctx context.Context, accountID int64, metric catalog.Metric) (string, error) {
+	if metric.Nature == catalog.Derived {
+		if metric.Formula == nil {
+			return "", fmt.Errorf("%w: derived %q has no Formula", ErrUnsupportedAggregation, metric.Slug)
+		}
+		out := ""
+		for i, operand := range metric.Formula.Operands() {
+			m, ok := catalog.Lookup(operand)
+			if !ok {
+				return "", fmt.Errorf("%w: operand %q", ErrUnknownMetric, operand)
+			}
+			d, err := e.lastDay(ctx, accountID, m)
+			if err != nil || d == "" {
+				return "", err
+			}
+			if i == 0 || d < out {
+				out = d
+			}
+		}
+		return out, nil
+	}
+
+	var q string
+	args := []any{accountID}
+	switch {
+	case metric.Aggregation == catalog.DurationByState:
+		// The Night label is monotonic in start_at, so the label of the last start is
+		// the last label, and the MAX stays one seek on states_account_kind_start.
+		q = `SELECT date(MAX(start_at), '+12 hours') FROM states WHERE account_id = ? AND kind = ?`
+		args = append(args, sleepKind)
+	case metric.Aggregation == catalog.SumByState && metric.Slug == metricTrainingDistance:
+		q = `SELECT date(MAX(start_at)) FROM sessions WHERE account_id = ? AND total_distance IS NOT NULL`
+	case metric.Aggregation == catalog.SumByState:
+		q = `SELECT date(MAX(start_at)) FROM sessions WHERE account_id = ?`
+	default:
+		// MAX over measurements_account_metric_start is one seek to the end of the
+		// Metric's range, which is why the date() goes outside it.
+		q = `SELECT date(MAX(start_at)) FROM measurements WHERE account_id = ? AND metric = ?`
+		args = append(args, metric.Slug)
+	}
+
+	var day *string
+	if err := e.DB.QueryRowContext(ctx, q, args...).Scan(&day); err != nil {
+		return "", fmt.Errorf("query: last day: %w", err)
+	}
+	if day == nil {
+		return "", nil
+	}
+	return *day, nil
 }

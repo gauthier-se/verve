@@ -836,9 +836,33 @@ export interface Freshness {
   sources: SourceFreshness[];
 }
 
-/** Now is GET /v1/now: where the Account stands (ADR 0045). */
+/** LatestValue is a Metric's value on the last day that holds one, however far
+ *  back, with that day and its age in days against the server's UTC today. A card
+ *  whose date is not today is the normal case under file-based ingestion. */
+export interface LatestValue {
+  value: number;
+  date: string;
+  age_days: number;
+}
+
+/** NowCard is one Pin read at its Latest value (ADR 0045). `goal` is the bound in
+ *  force today, printed as a fact and never as a verdict; `attainment` counts the
+ *  seven complete days before today. No curve and no range: a Pin carries no time
+ *  axis (ADR 0025). `latest` is absent for a Metric pinned and never measured. */
+export interface NowCard {
+  metric: string;
+  unit: string;
+  aggregation: Aggregation | "";
+  latest?: LatestValue;
+  goal?: DayGoal;
+  attainment?: Attainment;
+}
+
+/** Now is GET /v1/now: where the Account stands (ADR 0045), its Freshness and one
+ *  card per Pin, in Pin order. */
 export interface Now {
   freshness: Freshness;
+  cards: NowCard[];
 }
 
 /** Exclusion is a standing refusal that a stretch of a Metric is Verve's to hold

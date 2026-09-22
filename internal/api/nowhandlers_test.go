@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"testing"
@@ -54,5 +55,30 @@ func TestNowCarriesTheAccountsFreshness(t *testing.T) {
 	f := view.Freshness
 	if f.AgeDays != 3 || len(f.Sources) != 1 || f.Sources[0].Source != "Apple Watch" {
 		t.Fatalf("freshness: %+v", f)
+	}
+}
+
+// A Pin is a card on Now, in the same call as the Freshness.
+func TestNowCarriesAPinnedMetricAtItsLatestValue(t *testing.T) {
+	srv, models, cookie := newTestServer(t)
+	acc, err := models.Accounts.GetByEmail(context.Background(), testEmail)
+	if err != nil {
+		t.Fatalf("get account: %v", err)
+	}
+	at := time.Now().UTC().AddDate(0, 0, -40).Format(time.RFC3339)
+	seedSteps(t, models, testEmail, []data.Measurement{
+		{Metric: "steps", Value: 6500, OriginalUnit: "count", StartAt: at, EndAt: at, Source: "Apple Watch", ContentKey: "s1"},
+	})
+	if _, err := models.Pins.Add(context.Background(), acc.ID, "steps"); err != nil {
+		t.Fatalf("pin: %v", err)
+	}
+
+	_, view := getNow(t, srv, cookie)
+	if len(view.Cards) != 1 {
+		t.Fatalf("cards: %+v", view.Cards)
+	}
+	c := view.Cards[0]
+	if c.Metric != "steps" || c.Latest == nil || c.Latest.Value != 6500 || c.Latest.AgeDays != 40 {
+		t.Fatalf("card: %+v %+v", c, c.Latest)
 	}
 }

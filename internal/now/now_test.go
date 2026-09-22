@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gauthier-se/verve/internal/data"
+	"github.com/gauthier-se/verve/internal/goal"
 	"github.com/gauthier-se/verve/internal/query"
 )
 
@@ -29,7 +30,8 @@ func setup(t *testing.T) (Engine, data.Models, int64) {
 	if err := models.Accounts.Insert(context.Background(), acc); err != nil {
 		t.Fatalf("insert account: %v", err)
 	}
-	return Engine{Query: query.Engine{DB: db}, Models: models}, models, acc.ID
+	q := query.Engine{DB: db}
+	return Engine{Query: q, Goals: goal.Engine{Query: q, Models: models}, Models: models}, models, acc.ID
 }
 
 // seed writes Measurements, filling in the Account and a unique content key.
