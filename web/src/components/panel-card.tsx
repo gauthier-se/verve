@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Link } from "@tanstack/react-router";
-import { ChevronDown, ChevronUp, GripVertical, Plus, Settings2, StickyNote, Trash2, X } from "lucide-react";
+import { ChevronDown, ChevronUp, GripVertical, Maximize2, Plus, Settings2, StickyNote, Trash2, X } from "lucide-react";
 import { useDeletePanel, useUpdatePanel } from "@/hooks/use-dashboards";
 import { useAnnotations } from "@/hooks/use-annotations";
 import { useDayNavigation } from "@/hooks/use-day";
@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { AnnotationDialog } from "./annotation-dialog";
 import { Card } from "./ui/card";
+import { Dialog, DialogContent, DialogTitle } from "./ui/dialog";
 import { LegendItem, Meta, SectionTitle } from "./ui/figure";
 import { Label } from "./ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
@@ -43,6 +44,9 @@ interface PanelCardProps {
    *  reading the categorical ramp (ADR 0020). It is the grid's to hand down: a Panel
    *  cannot know what is next to it, and the colour is a property of the slot. */
   colorOffset?: number;
+  /** expanded is the full-screen view of this Panel: the same card given the
+   *  viewport, with nothing on it that changes the Panel (no drag, no settings). */
+  expanded?: boolean;
 }
 
 /** PanelCard renders one Panel: its Metrics combo-charted over the Dashboard's
@@ -64,7 +68,9 @@ export function PanelCard({
   showAnnotations,
   dragHandle,
   colorOffset = 0,
+  expanded = false,
 }: PanelCardProps) {
+  const [fullOpen, setFullOpen] = React.useState(false);
   const slugs = panel.metrics.map((m) => m.metric);
   const showNotes = showAnnotations !== false;
   // The last bucket the cursor was on, so an "Add a note" opened from this Panel's
@@ -100,10 +106,16 @@ export function PanelCard({
     // hold a longer curve, and a year of nights in 112px is a texture, not a series.
     // The heights are minimums and the card fills its cell, so a grid row takes its
     // tallest Panel's height and every card beside it matches.
-    <Card className={cn("panel-card flex h-full flex-col", panel.width > 1 ? "min-h-80" : "min-h-72")}>
-      <div className="flex items-start justify-between gap-3 px-4 pt-3.5">
+    <Card
+      className={cn(
+        "panel-card flex h-full flex-col",
+        expanded ? "border-0 bg-transparent shadow-none" : panel.width > 1 ? "min-h-80" : "min-h-72",
+      )}
+    >
+      {/* Expanded, the header leaves room for the dialog's close button. */}
+      <div className={cn("flex items-start justify-between gap-3 px-4 pt-3.5", expanded && "pr-12")}>
         <div className="flex min-w-0 items-baseline gap-2">
-          <div className="-ml-1.5 flex shrink-0 -translate-y-px items-center">{dragHandle}</div>
+          {!expanded && <div className="-ml-1.5 flex shrink-0 -translate-y-px items-center">{dragHandle}</div>}
           {!multi && slugs[0] && <MetricIcon slug={slugs[0]} className="size-3.5 shrink-0 -translate-y-px" />}
           {!multi && slugs[0] ? (
             <Link to="/data/$metric" params={{ metric: slugs[0] }} className="min-w-0 hover:underline">
@@ -118,7 +130,21 @@ export function PanelCard({
 
         <div className="flex shrink-0 items-center gap-2">
           {segments.length > 0 && <SegmentLegend segments={segments} className="panel-segments-inline" />}
-          <PanelSettings panel={panel} catalog={catalog} onAddNote={() => setNoteOpen(true)} />
+          {!expanded && (
+            <>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7 text-muted-foreground"
+                onClick={() => setFullOpen(true)}
+                aria-label="Show full screen"
+                title="Show full screen"
+              >
+                <Maximize2 className="size-3.5" />
+              </Button>
+              <PanelSettings panel={panel} catalog={catalog} onAddNote={() => setNoteOpen(true)} />
+            </>
+          )}
         </div>
       </div>
 
@@ -136,7 +162,7 @@ export function PanelCard({
               series={list[0]}
               baseline={query.data?.baseline}
               metric={metric}
-              wide={panel.width > 1}
+              wide={expanded || panel.width > 1}
             />
           )
         ))}
@@ -166,6 +192,25 @@ export function PanelCard({
       {!multi && chartType === "diverging_bar" && <SignLegend />}
 
       <AnnotationDialog open={noteOpen} onOpenChange={setNoteOpen} defaultDay={hovered} />
+
+      {/* Full screen is a view of this Panel, never a copy: the same query keys, so
+          it opens on the cached series, and nothing is stored when it closes. */}
+      {!expanded && (
+        <Dialog open={fullOpen} onOpenChange={setFullOpen}>
+          <DialogContent className="flex h-[92svh] w-[96vw] max-w-[96vw] flex-col gap-0 p-0 pb-2 pt-2 sm:rounded-xl">
+            <DialogTitle className="sr-only">{title}</DialogTitle>
+            <PanelCard
+              panel={panel}
+              catalog={catalog}
+              range={range}
+              baseline={baseline}
+              showAnnotations={showAnnotations}
+              colorOffset={colorOffset}
+              expanded
+            />
+          </DialogContent>
+        </Dialog>
+      )}
     </Card>
   );
 }
