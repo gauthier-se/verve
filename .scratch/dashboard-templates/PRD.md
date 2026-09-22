@@ -59,8 +59,8 @@ where the exact files land, and the test is the arbiter.
 | Panel | Metrics (chart) | Width |
 | --- | --- | --- |
 | 1 | `calorie_balance` (diverging_bar) | 2 |
-| 2 | `body_mass` (line) + `body_fat_percentage` (line) | 1 |
-| 3 | `dietary_energy` (bar) + `total_energy_expenditure` (line) | 2 |
+| 2 | `dietary_energy` (bar) + `total_energy_expenditure` (line) | 1 |
+| 3 | `body_mass` (line) + `body_fat_percentage` (line) | 1 |
 | 4 | `protein_per_kg` (line) | 1 |
 
 **Endurance**: range `3m`, no Baseline.

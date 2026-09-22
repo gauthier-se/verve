@@ -42,6 +42,7 @@ Everything below is merged into `main`, tested, and usable today.
 | Goals | A declared daily bound per metric: a line on the panel and the days that met it out of the days measured, counted and never graded |
 | Now | The screen the app opens on: how old the data is per account and per source, measured on the last datum and never on the last import, and each pin at its latest value with its age |
 | The usual | Each bucket read against the owner's own recent past: the middle half of the 28 days or 12 weeks before it, drawn behind the curve and printed under every pinned figure, descriptive and never graded |
+| Dashboard templates | Sleep, Cut and Endurance as declarative files, offered when creating a dashboard with how much of each you already hold, in the format a shared dashboard will use |
 
 ## Next
 
@@ -73,8 +74,9 @@ below.
   from "how much protein did I get".
 * **Sharing a Dashboard as JSON.** An Archive deliberately holds data and not
   arrangement (ADR 0039). A Dashboard that exports and imports as a file is the
-  other half, and the same shape as a contributed palette: declarative data a
-  pull request can carry.
+  other half. The format exists now: every Dashboard template is a Dashboard
+  file, validated by the same rules as the API (ADR 0047). What remains is the
+  export, the import, and what an import does with a Metric this build lacks.
 * **Merging sources** rather than only ranking them, for the case where two
   devices have complementary coverage instead of overlapping coverage.
 * **More connectors.** The connector interface and its declarative mapping now

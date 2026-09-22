@@ -7,10 +7,10 @@
   "baseline_rule": "none",
   "panels": [
     { "metrics": [{ "metric": "calorie_balance", "chart_type": "diverging_bar" }], "width": 2 },
+    { "metrics": [{ "metric": "dietary_energy", "chart_type": "bar" },
+                  { "metric": "total_energy_expenditure", "chart_type": "line" }] },
     { "metrics": [{ "metric": "body_mass", "chart_type": "line" },
                   { "metric": "body_fat_percentage", "chart_type": "line" }] },
-    { "metrics": [{ "metric": "dietary_energy", "chart_type": "bar" },
-                  { "metric": "total_energy_expenditure", "chart_type": "line" }], "width": 2 },
     { "metrics": [{ "metric": "protein_per_kg", "chart_type": "line" }] }
   ]
 }

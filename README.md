@@ -55,6 +55,10 @@ infrastructure, no telemetry.
   too old is yours to judge.
 * **Dashboards you arrange.** Several dashboards, each a grid of panels, each
   panel carrying one to four metrics over a shared time range.
+* **Dashboards to start from.** Sleep, Cut and Endurance, offered when you create
+  a dashboard, each saying how many of its metrics you already have data for.
+  Picking one gives you an ordinary dashboard to change as you like. They are
+  plain JSON files, so a new one is a pull request.
 * **Cross-metric panels.** Put sleep against resting heart rate, or intake
   against body mass, on one panel with two axes. Curves keep their real
   magnitude, they are never normalized to look comparable.

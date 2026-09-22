@@ -5,9 +5,10 @@ an embedded React SPA, one SQLite file, no framework and no service mesh. That
 makes it easy to run and easy to read, and it means most contributions are
 small and local.
 
-The two contributions Verve wants most are **connectors** (a new source of
-health data) and **palettes** (a new color set). Both are mostly declarative
-data, and both have a section below.
+The contributions Verve wants most are **connectors** (a new source of health
+data), **palettes** (a new color set) and **Dashboard templates** (a curated
+board for a question people ask). All three are mostly declarative data, and
+each has a section below.
 
 ## Getting set up
 
@@ -178,7 +179,7 @@ commit message must be:
 Scopes are optional but encouraged; use the architectural area touched:
 
 `catalog`, `connector`, `ingestion`, `data`, `query`, `api`, `auth`, `spa`,
-`dashboard`, `packaging`, `deps`.
+`dashboard`, `dashtemplate`, `packaging`, `deps`.
 
 ### Breaking changes
 
@@ -312,6 +313,68 @@ every departure in `THIRD-PARTY-NOTICES.md` under that palette.
 to `THIRD-PARTY-NOTICES.md`, and a header comment above the palette's blocks in
 `index.css`. Do not copy values from a paid product: Verve's light Dracula is
 its own derivation precisely because Alucard ships with Dracula PRO.
+
+## Contributing a Dashboard template
+
+A **Dashboard template** is a curated Dashboard an Account can start from
+(CONTEXT.md, ADR 0047). One, the Overview, is seeded at account creation; the
+others are offered in the "New dashboard" dialog, and picking one writes an
+ordinary Dashboard the Account owns, with no link back to the template.
+
+Adding one is a single JSON file in `internal/dashtemplate/templates/`, named
+after its slug, in the Dashboard file format:
+
+```json
+{
+  "format": "verve.dashboard/1",
+  "slug": "sleep",
+  "name": "Sleep",
+  "description": "How long, how deep, and how the body recovered overnight.",
+  "range_preset": "30d",
+  "baseline_rule": "none",
+  "panels": [
+    { "metrics": [{ "metric": "sleep", "chart_type": "stacked_bar" }], "width": 2 },
+    { "metrics": [{ "metric": "resting_heart_rate", "chart_type": "line" },
+                  { "metric": "heart_rate_variability_sdnn", "chart_type": "line" }] }
+  ]
+}
+```
+
+A Panel may also carry `"bucket": "day" | "week" | "month"`; without one it
+derives its bucket from the range, like any Panel. `width` is 1 to 3 columns
+and defaults to 1.
+
+### What `make ci` checks for you
+
+`internal/dashtemplate/templates_test.go` fails the build if a template does not
+decode (an unknown field included), if its slug is not unique or does not name
+its file, or if any Panel would be refused by the API: a Metric outside the
+Catalog, a chart type its aggregation cannot take (`band` is for averages,
+`stacked_bar` for a breakdown, `diverging_bar` for a signed Metric), more than
+four Metrics or two units on one Panel, a bad bucket or width, a `custom` range
+or baseline. It also refuses a Metric named twice on one Panel, two identical
+Panels, and a wide Panel anywhere but first: the grid fits as many columns as the
+screen allows, and one leading wide Panel followed by single-column ones is the
+only arrangement that leaves no hole at every column count. The API and the test run the same validator, so passing one is passing
+the other.
+
+### What you must check yourself
+
+**It answers a question.** "Sleep", "Cut", "Endurance": a template is named for
+what its owner wants to follow, not for the Metrics it happens to hold.
+
+**It carries arrangement, and nothing else.** No Goal, no Annotation, no Pin, and
+nothing that reads as a verdict. A shipped "7 h of sleep" would be Verve deciding
+what is good for someone, which is the one thing it refuses to do (ADR 0044).
+
+**It fills from common hardware, or says why not.** The dialog states how many of
+a template's Metrics an Account has data for and hides nothing, so a template that
+needs a Watch is fine; one that needs a device almost nobody has is a template
+almost nobody sees filled.
+
+**It reads well on real data**, in light and dark, and at a phone width. Import
+`sample_data/` into a scratch data dir, create the Dashboard from the dialog, and
+look at it at two and at three columns.
 
 ## Reporting bugs and security issues
 

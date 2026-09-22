@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 Blocked by: 02
 
 # 04: dashtemplate: Sleep, Cut and Endurance
@@ -32,3 +32,9 @@ Blocked by: 02
 - `TestNoTemplateRepeatsItself` is in `templates_test.go`.
 - Left: the look on the reference Account, in both Modes and at phone width,
   which needs the picker from `05` to reach the boards the way an Account will.
+- Looked at on a real Account in the preview: Sleep and Endurance read as
+  designed. Cut left a hole at two columns (width 2, 1, 2, 1). The grid is an
+  auto-fit of 1 to 5 columns, and the only arrangement with no hole at every
+  count is one leading wide Panel followed by single-column ones, so that is now
+  a rule (`TestAWidePanelOnlyLeads`, and CONTRIBUTING). Cut's energy Panel went to
+  width 1 and moved up; the PRD table is updated.

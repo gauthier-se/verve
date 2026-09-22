@@ -71,3 +71,17 @@ func TestNoTemplateRepeatsItself(t *testing.T) {
 		}
 	}
 }
+
+// TestAWidePanelOnlyLeads holds the one arrangement that leaves no hole on the
+// auto-fit grid, whatever its column count (web/src/components/dashboard-grid.tsx):
+// at most one Panel wider than a column, and it comes first, so every row after it
+// is filled by single-column Panels and only the last row can be short.
+func TestAWidePanelOnlyLeads(t *testing.T) {
+	for _, f := range All() {
+		for i, p := range f.Panels {
+			if p.Width > 1 && i > 0 {
+				t.Errorf("%s: panel %d is %d columns wide; only the first Panel may be", f.Slug, i, p.Width)
+			}
+		}
+	}
+}

@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 Blocked by: 03, 04
 
 # 05: web: starting a Dashboard from a template, and the docs pass
@@ -37,3 +37,17 @@ Blocked by: 03, 04
 - submit sends `template` and navigates to the returned id.
 - Verified in the browser preview on a fresh Account: the three templates are
   listed with their coverage, and each one opens populated.
+
+## Comments
+
+- The web suite tests pure modules only, so the draft logic (the pick, the name
+  that follows it until typed, the request body, the coverage text) is
+  `web/src/lib/new-dashboard.ts` with its tests; the dialog renders it.
+- Enter on a radio would re-click it, so the list submits the form on Enter.
+- Verified in the preview on a real Account: the three templates listed with
+  their coverage, arrows move the pick, a typed name survives a change of pick,
+  Enter from the list creates and navigates, each template opens populated, and
+  the dialog fits a 375 px screen in light mode with no horizontal scroll.
+- Found in passing, not changed here: on a phone the sidebar is hidden and
+  nothing else opens "New dashboard", so a Dashboard cannot be created at all
+  below the sidebar breakpoint.
