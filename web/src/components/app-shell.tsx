@@ -215,8 +215,9 @@ const navRow =
   "flex items-center gap-2 truncate rounded-md px-2 py-1.5 text-[0.8125rem] transition-colors hover:bg-accent";
 const navRowActive = "bg-accent font-medium text-accent-foreground";
 const navRowIdle = "text-muted-foreground";
-// A row on the collapsed rail: the icon or initial alone, centred in the 56px rail.
-const navRowRail = "justify-center px-0";
+// A row on the collapsed rail: the icon or initial alone in a 32px square, centred in
+// the 56px rail, so a hover lights the icon and not a slab the width of the rail.
+const navRowRail = "mx-auto size-8 justify-center p-0";
 
 function ToolLink({
   to,

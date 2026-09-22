@@ -237,6 +237,7 @@ func (s *Server) Handler() http.Handler {
 	// Now: where the Account stands, rather than what a window looked like (ADR
 	// 0045). It takes no range and no bucket: its only clock is the server's today.
 	mux.Handle("GET /v1/now", s.requireAuth(s.handleNow))
+	mux.Handle("GET /v1/now/unusual", s.requireAuth(s.handleNowUnusual))
 
 	// History: the long view — everything the Account holds, and the dated events that
 	// explain its shape. One call, because the band, its Phases and the ledger all have

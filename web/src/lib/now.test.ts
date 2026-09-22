@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ageText, lagText, splitSources } from "./now";
+import { ageText, lagText, needsExport, splitSources } from "./now";
 import type { SourceFreshness } from "./types";
 
 describe("ageText", () => {
@@ -51,5 +51,15 @@ describe("splitSources", () => {
     ]);
     expect(active.map((s) => s.source)).toEqual(["Apple Watch", "iPhone"]);
     expect(retired.map((s) => s.source)).toEqual(["Zepp Life", "Old iPhone"]);
+  });
+});
+
+describe("needsExport", () => {
+  it("asks from two weeks old", () => {
+    expect(needsExport("2026-09-01", 13)).toBe(false);
+    expect(needsExport("2026-09-01", 14)).toBe(true);
+  });
+  it("never asks an empty Account", () => {
+    expect(needsExport(undefined, 0)).toBe(false);
   });
 });

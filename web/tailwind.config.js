@@ -1,3 +1,5 @@
+import defaultTheme from "tailwindcss/defaultTheme";
+
 /** @type {import('tailwindcss').Config} */
 export default {
   darkMode: ["class"],
@@ -9,6 +11,12 @@ export default {
       screens: { "2xl": "1400px" },
     },
     extend: {
+      // "Verve Gap" comes first and covers only the spaces a French number is grouped
+      // with (see index.css), so a figure keeps its mono digits and loses the
+      // full-cell gap a monospace font gives "4 585".
+      fontFamily: {
+        mono: ['"Verve Gap"', ...defaultTheme.fontFamily.mono],
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",

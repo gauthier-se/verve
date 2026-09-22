@@ -93,10 +93,16 @@ type Latest struct {
 	Usual *query.Usual `json:"usual,omitempty"`
 }
 
-// Read is the Now screen: the Account's Freshness and one card per Pin.
+// Read is the Now screen: the Account's Freshness, one card per Pin, and the
+// readings that say where the Account stands without a window (ADR 0049). The
+// unusual Metrics are read apart (Unusual): they cost a Usual per followed Metric,
+// and the rest of the page should not wait on them.
 type Read struct {
-	Freshness Freshness
-	Cards     []Card
+	Freshness   Freshness
+	Cards       []Card
+	LastNight   *Night
+	LastWorkout *Workout
+	Goals       []GoalRow
 }
 
 // Engine reads the Now screen. It composes the read engine, the Goal counts and the
@@ -113,11 +119,20 @@ func (e Engine) Read(ctx context.Context, accountID int64, now time.Time) (Read,
 	if err != nil {
 		return Read{}, err
 	}
-	cards, err := e.Cards(ctx, accountID, now)
-	if err != nil {
+	out := Read{Freshness: freshness}
+	if out.Cards, err = e.Cards(ctx, accountID, now); err != nil {
 		return Read{}, err
 	}
-	return Read{Freshness: freshness, Cards: cards}, nil
+	if out.LastNight, err = e.LastNight(ctx, accountID, now); err != nil {
+		return Read{}, err
+	}
+	if out.LastWorkout, err = e.LastWorkout(ctx, accountID, now); err != nil {
+		return Read{}, err
+	}
+	if out.Goals, err = e.GoalRows(ctx, accountID, now); err != nil {
+		return Read{}, err
+	}
+	return out, nil
 }
 
 // Cards reads each Pin at its Latest value, in Pin order. A Pin whose Metric left
@@ -148,17 +163,8 @@ func (e Engine) Cards(ctx context.Context, accountID int64, now time.Time) ([]Ca
 		}
 		card := Card{Metric: metric.Slug, Unit: metric.Unit, Aggregation: metric.Aggregation}
 
-		latest, err := e.Query.Latest(ctx, accountID, metric.Slug)
-		if err != nil && !errors.Is(err, query.ErrUnsupportedAggregation) {
+		if card.Latest, err = e.latest(ctx, accountID, metric.Slug, date, ""); err != nil {
 			return nil, err
-		}
-		if latest != nil {
-			card.Latest = &Latest{Value: latest.Value, Date: latest.Date, AgeDays: daysBetween(latest.Date, date)}
-			if latest.Date != date {
-				if card.Latest.Usual, err = e.usualOn(ctx, accountID, metric.Slug, latest.Date); err != nil {
-					return nil, err
-				}
-			}
 		}
 
 		card.Goal = goalOn(goals, metric.Slug, date)
@@ -168,6 +174,28 @@ func (e Engine) Cards(ctx context.Context, accountID int64, now time.Time) ([]Ca
 		cards = append(cards, card)
 	}
 	return cards, nil
+}
+
+// latest is a Metric's Latest value with its age against today and its Usual, or nil
+// for a Metric never measured or one the engine does not serve. With since set, a
+// value older than that day is returned without its Usual: the caller is going to
+// drop it, and the Usual is the costly half of the read.
+func (e Engine) latest(ctx context.Context, accountID int64, metric, date, since string) (*Latest, error) {
+	got, err := e.Query.Latest(ctx, accountID, metric)
+	if errors.Is(err, query.ErrUnsupportedAggregation) {
+		return nil, nil
+	}
+	if err != nil || got == nil {
+		return nil, err
+	}
+	out := &Latest{Value: got.Value, Date: got.Date, AgeDays: daysBetween(got.Date, date)}
+	if got.Date == date || got.Date < since {
+		return out, nil
+	}
+	if out.Usual, err = e.usualOn(ctx, accountID, metric, got.Date); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // usualOn is a Metric's Usual on one day, read from the engine's own day bucket so

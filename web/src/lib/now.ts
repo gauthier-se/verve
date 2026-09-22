@@ -42,3 +42,15 @@ export function splitSources(sources: SourceFreshness[]): {
     retired: sources.filter((s) => s.retired),
   };
 }
+
+/** staleAfterDays is the age past which Now asks for a new export. It is a
+ *  reminder and not a verdict: file-based ingestion means the data is always a
+ *  little old, and two weeks is where "a little" usually stops (ADR 0049). */
+export const staleAfterDays = 14;
+
+/** needsExport says whether the Account's last datum is old enough to ask for a
+ *  new export. An Account with no data is not stale, it is empty, and Now shows the
+ *  import invitation instead. */
+export function needsExport(lastDay: string | undefined, ageDays: number): boolean {
+  return !!lastDay && ageDays >= staleAfterDays;
+}
