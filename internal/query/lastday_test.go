@@ -96,3 +96,25 @@ func TestLatestOfAMetricNeverMeasuredIsNil(t *testing.T) {
 		}
 	}
 }
+
+// When the operands' last days leave the anchor incomplete, Latest looks further back
+// rather than reporting a gap as the latest value.
+func TestLatestOfADerivedMetricLooksBackPastAnIncompleteAnchor(t *testing.T) {
+	e, models, acc := setup(t)
+	seed(t, e.DB, models, acc, []meas{
+		{"dietary_energy", 2500, "2026-09-10T12:00:00Z", "Yazio"},
+		{"active_energy", 500, "2026-09-10T12:00:00Z", "Watch"},
+		{"basal_energy", 1700, "2026-09-10T12:00:00Z", "Watch"},
+		{"dietary_energy", 2000, "2026-09-12T12:00:00Z", "Yazio"},
+		{"active_energy", 400, "2026-09-12T12:00:00Z", "Watch"},
+		{"basal_energy", 1700, "2026-09-11T12:00:00Z", "Watch"}, // the anchor: basal stops on the 11th
+	})
+
+	got, err := e.Latest(context.Background(), acc, "calorie_balance")
+	if err != nil {
+		t.Fatalf("Latest: %v", err)
+	}
+	if got == nil || got.Date != "2026-09-10" || got.Value != 300 {
+		t.Fatalf("latest calorie_balance: %+v", got)
+	}
+}

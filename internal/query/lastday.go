@@ -99,12 +99,12 @@ type LatestValue struct {
 	Date  string  `json:"date"`
 }
 
-// latestLookbackDays is how far back from a Metric's last datum Latest reads. The
-// last datum's own day always holds a value for an imported Metric, so the window
-// only matters for a derived one, whose operands can stop on different days and
-// whose last complete day can sit before the last datum of any single operand.
-// Past it, a derived Metric has no Latest value rather than a walk back through
-// its whole history.
+// latestLookbackDays is how far back from a Metric's last datum Latest reads when
+// that day alone holds no value. For an imported Metric it always does, so the
+// window only matters for a derived one, whose operands can stop on different days
+// and whose last complete day can sit before the last datum of any single operand.
+// Past it, a derived Metric has no Latest value rather than a walk back through its
+// whole history.
 const latestLookbackDays = 31
 
 // Latest answers a Metric's Latest value, however far back it lies, or nil for a
@@ -115,6 +115,10 @@ const latestLookbackDays = 31
 // Manual overlay (ADR 0022), sleep's Night (ADR 0027) and a derived Metric's
 // Formula (ADR 0014) apply exactly as they do to the bar a Panel draws on that day.
 // A value computed here any other way would be one a Panel could disagree with.
+//
+// The last datum's own day is read first and alone, because it is nearly always the
+// answer and a Series costs what its window costs: on a real history, 5 ms for one
+// day against 150 ms for thirty-one, paid per Pin on the screen that opens first.
 func (e Engine) Latest(ctx context.Context, accountID int64, slug string) (*LatestValue, error) {
 	metric, ok := catalog.Lookup(slug)
 	if !ok {
@@ -129,13 +133,18 @@ func (e Engine) Latest(ctx context.Context, accountID int64, slug string) (*Late
 		return nil, fmt.Errorf("query: latest: %w", err)
 	}
 
-	series, err := e.Series(ctx, Request{
-		AccountID: accountID,
-		Metric:    slug,
-		Bucket:    timeaxis.Day,
-		From:      day.AddDate(0, 0, -latestLookbackDays+1),
-		To:        day.AddDate(0, 0, 1),
-	})
+	for _, days := range []int{1, latestLookbackDays} {
+		got, err := e.lastPoint(ctx, accountID, slug, day.AddDate(0, 0, -days+1), day.AddDate(0, 0, 1))
+		if err != nil || got != nil {
+			return got, err
+		}
+	}
+	return nil, nil
+}
+
+// lastPoint is the last day on [from, to) that holds a value, or nil.
+func (e Engine) lastPoint(ctx context.Context, accountID int64, slug string, from, to time.Time) (*LatestValue, error) {
+	series, err := e.Series(ctx, Request{AccountID: accountID, Metric: slug, Bucket: timeaxis.Day, From: from, To: to})
 	if err != nil {
 		return nil, err
 	}
