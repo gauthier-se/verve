@@ -5,14 +5,6 @@ import { formatFigure } from "./format";
 import { toStoredValue } from "./metrics";
 import type { Aggregation, Attainment, Goal, GoalDirection, GoalSegment, Metric, Series } from "./types";
 
-/** goalEligible mirrors the server's rule: every Metric but a `latest` one. "75 kg"
- *  is a destination reached once, not a bound held daily, and that question is a
- *  Phase's. Asked of the rule rather than a list, as the server does, so a new
- *  Catalog entry needs no decision here either. */
-export function goalEligible(metric: Metric): boolean {
-  return metric.aggregation !== "latest";
-}
-
 /** isDuration is whether a Metric's Goal is typed as hours and minutes: sleep's
  *  canonical unit is the minute, and nobody sets "at least 420". */
 export function isDuration(metric: Metric): boolean {

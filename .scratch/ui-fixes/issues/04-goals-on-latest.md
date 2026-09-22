@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 
 # 04: api, web: a Goal on every Metric (ADR 0048)
 

@@ -113,21 +113,16 @@ func (s *Server) handleOpenGoal(w http.ResponseWriter, r *http.Request) {
 	s.respond(w, r, http.StatusCreated, envelope{"goal": newGoalView(*goal)})
 }
 
-// validateGoalMetric accepts every Catalog Metric but a `latest` one, asking the rule
-// rather than naming Metrics so a new Catalog entry needs no decision. "75 kg" is a
-// destination reached once, not a bound held daily: that question is a Phase's.
+// validateGoalMetric accepts every Catalog Metric. A `latest` one is judged on the
+// day's last reading, and a day with no reading is a gap, never carried forward
+// (ADR 0048, amending ADR 0044).
 func validateGoalMetric(v *Validator, slug string) {
 	if slug == "" {
 		v.AddError("metric", "must be provided")
 		return
 	}
-	metric, ok := catalog.Lookup(slug)
-	if !ok {
+	if _, ok := catalog.Lookup(slug); !ok {
 		v.AddError("metric", unknownMetricMsg)
-		return
-	}
-	if metric.Aggregation == catalog.Latest {
-		v.AddError("metric", "is a latest-reading Metric: a Goal is a daily bound, and a target body figure is a Phase's question")
 	}
 }
 

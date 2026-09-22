@@ -72,10 +72,9 @@ func TestOpenGoalClosesThePreviousOneOnItsMetric(t *testing.T) {
 	}
 }
 
-// TestOpenGoalEligibilityFollowsTheAggregation: the rule is asked, not a list, so a
-// derived Metric with a negative bound and both by-state Metrics are accepted and a
-// latest one is refused.
-func TestOpenGoalEligibilityFollowsTheAggregation(t *testing.T) {
+// TestEveryMetricIsEligibleForAGoal: a derived Metric with a negative bound, both
+// by-state Metrics, an average and a latest one are all accepted (ADR 0048).
+func TestEveryMetricIsEligibleForAGoal(t *testing.T) {
 	srv, _, cookie := newTestServer(t)
 
 	for _, body := range []map[string]any{
@@ -83,12 +82,12 @@ func TestOpenGoalEligibilityFollowsTheAggregation(t *testing.T) {
 		{"metric": "sleep", "direction": "at_least", "value": 420},
 		{"metric": "training_time", "direction": "at_least", "value": 30},
 		{"metric": "resting_heart_rate", "direction": "at_most", "value": 60},
+		{"metric": "body_mass", "direction": "at_most", "value": 75},
 	} {
 		openGoal(t, srv, cookie, body)
 	}
 
 	for _, body := range []map[string]any{
-		{"metric": "body_mass", "direction": "at_most", "value": 75},
 		{"metric": "not_a_metric", "direction": "at_least", "value": 1},
 		{"direction": "at_least", "value": 1},
 		{"metric": "steps", "direction": "between", "value": 1},
