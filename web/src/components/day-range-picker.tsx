@@ -57,14 +57,26 @@ export function DayRangePicker({
   return (
     <Popover open={isOpen} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant={active ? "secondary" : "outline"} size="sm" className={cn("h-8 gap-1.5", active && "font-medium")}>
+        <Button
+          variant={active ? "secondary" : "outline"}
+          size="sm"
+          className={cn("h-8 gap-1.5", active && "font-medium")}
+          aria-label={typeof label === "string" ? label : placeholder}
+        >
           <CalendarDays className="size-4" />
-          {label}
+          {/* A phone keeps the calendar and drops the word, unless it is the chosen
+              dates, which are the one thing the button has to say. */}
+          <span className={cn(!active && "hidden sm:inline")}>{label}</span>
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0" align={align}>
-        <Calendar mode="range" numberOfMonths={2} selected={range} defaultMonth={range?.from} onSelect={handleSelect} />
+        <Calendar mode="range" numberOfMonths={narrowScreen() ? 1 : 2} selected={range} defaultMonth={range?.from} onSelect={handleSelect} />
       </PopoverContent>
     </Popover>
   );
+}
+
+/** narrowScreen is whether two months side by side would overflow the screen. */
+function narrowScreen(): boolean {
+  return typeof window !== "undefined" && window.matchMedia("(max-width: 639px)").matches;
 }

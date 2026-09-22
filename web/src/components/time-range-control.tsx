@@ -20,14 +20,14 @@ export function TimeRangeControl({ dashboard }: { dashboard: Dashboard }) {
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-1">
-      <div className="flex items-center rounded-md border p-0.5">
+    <div className="flex items-center gap-1 sm:flex-wrap">
+      <div className="flex shrink-0 items-center rounded-md border p-0.5">
         {RANGE_PRESETS.map((preset) => (
           <Button
             key={preset.value}
             variant={dashboard.range_preset === preset.value ? "secondary" : "ghost"}
             size="sm"
-            className="h-7 px-2.5"
+            className="h-7 px-2 sm:px-2.5"
             onClick={() => setPreset(preset.value)}
           >
             {preset.label}

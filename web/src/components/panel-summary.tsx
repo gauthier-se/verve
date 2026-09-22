@@ -157,8 +157,10 @@ export function PanelSummary({
           the band's own width — narrow card, not viewport — without touching the chart. */}
       {/* One line, whatever fits: a summary that wrapped would push this Panel's plot
           below its neighbours' in the same row. What does not fit is truncated, and
-          the whole text stays in the title. */}
-      <div className="panel-summary flex items-baseline gap-x-2 overflow-hidden whitespace-nowrap px-4 pt-2">
+          the whole text stays in the title. On a phone the grid is one column, so
+          there is no neighbour to line up with, and the delta takes its own line
+          rather than being cut. */}
+      <div className="panel-summary flex flex-wrap items-baseline gap-x-2 overflow-hidden whitespace-nowrap px-4 pt-2 sm:flex-nowrap">
         <Figure size={size ?? (wide ? "wide" : "panel")} title={primaryTitle} className="shrink-0">
           {primary}
         </Figure>
@@ -167,7 +169,7 @@ export function PanelSummary({
           // Never green, never red: a delta is a direction and a magnitude, and Verve
           // does not know which direction is good for your Metric (ADR 0019).
           <span
-            className="panel-summary-delta min-w-0 truncate font-mono text-2xs tabular-nums text-muted-foreground"
+            className="panel-summary-delta min-w-0 truncate font-mono max-sm:order-3 max-sm:basis-full text-2xs tabular-nums text-muted-foreground"
             title={`${delta.arrow} ${delta.exact} ${unit} vs the compared period${baselineShown ? ` (${baselineShown})` : ""}`.trim()}
           >
             {delta.arrow} {delta.label}

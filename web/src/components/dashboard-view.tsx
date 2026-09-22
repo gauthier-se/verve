@@ -56,16 +56,16 @@ export function DashboardView() {
     <div className="flex h-full flex-col">
       {/* Translucent and sticky: the controls stay reachable while a year of panels
           scrolls under them, and the blur keeps the curves legible behind it. */}
-      <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b bg-background/85 px-6 py-3.5 backdrop-blur">
+      <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b bg-background/85 px-4 py-3 backdrop-blur sm:px-6 sm:py-3.5">
         <DashboardHeading dashboard={dashboard} />
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:flex-wrap sm:gap-2">
           <AnnotationsControl dashboard={dashboard} />
           <ComparisonControl dashboard={dashboard} />
           <TimeRangeControl dashboard={dashboard} />
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6">
         <MetaLine dashboard={dashboard} axis={axis.data} />
         <ImportCta />
         {dashboard.panels.length === 0 ? (
@@ -151,8 +151,14 @@ function DashboardHeading({ dashboard }: { dashboard: Dashboard }) {
   return (
     <div className="flex min-w-0 items-center gap-2.5">
       <ScreenTitle className="truncate">{dashboard.name}</ScreenTitle>
-      <Button size="sm" variant="outline" className="h-7 gap-1.5 px-2.5 text-xs" onClick={() => setAddOpen(true)}>
-        <Plus className="size-3.5" /> Add panel
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-7 shrink-0 gap-1.5 px-2.5 text-xs"
+        onClick={() => setAddOpen(true)}
+        aria-label="Add panel"
+      >
+        <Plus className="size-3.5" /> <span className="hidden sm:inline">Add panel</span>
       </Button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>

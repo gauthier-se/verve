@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { Eyebrow } from "./ui/figure";
 import { RailTip } from "./rail-tip";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { NewDashboardDialog } from "./new-dashboard-dialog";
 import { SummaryPrefsMenu } from "./panel-prefs";
 import { AppearanceMenu } from "./appearance";
@@ -29,15 +30,16 @@ import { Mark } from "./mark";
 
 /** TOOLS is the fixed lower half of the navigation: the pages that are not a
  *  Dashboard. Declared once so the sidebar and the narrow-screen tab bar cannot
- *  drift apart — a page reachable on a desktop and not on a phone is the failure
- *  mode a hand-written second list produces. */
+ *  drift apart: a page reachable on a desktop and not on a phone is the failure
+ *  mode a hand-written second list produces. `tab` marks the two that get a tab of
+ *  their own on a phone; the rest are one tap away under More. */
 const TOOLS = [
-  { to: "/data", label: "Data", short: "Data", icon: Table2 },
-  { to: "/cross", label: "Cross-metric", short: "Cross", icon: Waypoints },
-  { to: "/history", label: "History", short: "History", icon: History },
-  { to: "/workouts", label: "Workouts", short: "Workouts", icon: Dumbbell },
-  { to: "/plan", label: "Plan", short: "Plan", icon: Target },
-  { to: "/import", label: "Import & export", short: "Import", icon: Download },
+  { to: "/data", label: "Data", short: "Data", icon: Table2, tab: true },
+  { to: "/cross", label: "Cross-metric", short: "Cross", icon: Waypoints, tab: false },
+  { to: "/history", label: "History", short: "History", icon: History, tab: false },
+  { to: "/workouts", label: "Workouts", short: "Workouts", icon: Dumbbell, tab: true },
+  { to: "/plan", label: "Plan", short: "Plan", icon: Target, tab: false },
+  { to: "/import", label: "Import & export", short: "Import", icon: Download, tab: false },
 ] as const;
 
 /** AppShell is the persistent frame: a sidebar listing the Account's dashboards
@@ -65,7 +67,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="flex min-w-0 flex-1 flex-col">
         <NarrowBar />
         <main className="min-h-0 flex-1 overflow-x-hidden">{children}</main>
-        <TabBar />
+        <TabBar onCreate={() => setCreateOpen(true)} />
       </div>
 
       <NewDashboardDialog open={createOpen} onOpenChange={setCreateOpen} />
@@ -162,7 +164,7 @@ function Sidebar({
               )}
             >
               {collapsed ? (
-                <span className="font-mono text-xs font-medium">{dashboardInitial(d.name)}</span>
+                <span className="text-xs font-semibold">{dashboardInitial(d.name)}</span>
               ) : (
                 <span className="truncate">{d.name}</span>
               )}
@@ -272,21 +274,116 @@ function NarrowBar() {
   );
 }
 
-/** TabBar is the narrow-screen navigation: one tab per destination, the active one
- *  marked by a 3px rule in the Palette's accent. It scrolls sideways rather than
- *  dropping entries into a menu — six destinations is the whole app, and a "more"
- *  menu would hide exactly the two pages a new reader has not found yet. */
-function TabBar() {
+/** TabBar is the narrow-screen navigation: five tabs that always fit a phone, the
+ *  active one marked by a 3px rule in the Palette's accent. Dashboards opens the
+ *  list of them, since a phone has no sidebar to switch from, and More opens the
+ *  tools that do not get a tab. Eight tabs used to scroll sideways, which hid the
+ *  last two behind a gesture nobody guesses. */
+function TabBar({ onCreate }: { onCreate: () => void }) {
+  const [sheet, setSheet] = React.useState<"dashboards" | "more" | null>(null);
+  const path = useLocation({ select: (l) => l.pathname });
+  const onDashboard = path === "/d" || path.startsWith("/d/");
+  const more = TOOLS.filter((t) => !t.tab);
+  const onMore = more.some((t) => path === t.to || path.startsWith(`${t.to}/`));
+
   return (
-    <nav className="flex shrink-0 overflow-x-auto border-t bg-background/95 backdrop-blur lg:hidden">
+    <nav className="flex shrink-0 border-t bg-background/95 backdrop-blur lg:hidden">
       <Tab to="/" label="Now" exact />
-      <Tab to="/d" label="Dashboards" />
-      {TOOLS.map((tool) => (
+      <TabButton label="Dashboards" active={onDashboard} onClick={() => setSheet("dashboards")} />
+      {TOOLS.filter((t) => t.tab).map((tool) => (
         <Tab key={tool.to} to={tool.to} label={tool.short} />
       ))}
+      <TabButton label="More" active={onMore} onClick={() => setSheet("more")} />
+
+      <NavSheet open={sheet === "dashboards"} onClose={() => setSheet(null)} title="Dashboards">
+        <DashboardList onPick={() => setSheet(null)} />
+        <button
+          type="button"
+          onClick={() => {
+            setSheet(null);
+            onCreate();
+          }}
+          className={cn(sheetRow, "text-muted-foreground")}
+        >
+          <Plus className="size-4 shrink-0" /> New dashboard
+        </button>
+      </NavSheet>
+
+      <NavSheet open={sheet === "more"} onClose={() => setSheet(null)} title="More">
+        {more.map((tool) => (
+          <Link key={tool.to} to={tool.to} onClick={() => setSheet(null)} className={cn(sheetRow, "text-foreground")}>
+            <tool.icon className="size-4 shrink-0 text-muted-foreground" /> {tool.label}
+          </Link>
+        ))}
+      </NavSheet>
     </nav>
   );
 }
+
+// One row of a narrow-screen sheet: a thumb-sized target.
+const sheetRow = "flex min-h-11 w-full items-center gap-3 rounded-md px-3 text-sm transition-colors hover:bg-accent";
+
+/** NavSheet is a list that rises from the bottom of a phone screen, where the
+ *  thumb already is. It is a Dialog, so focus, Escape and the backdrop behave as
+ *  every other overlay in Verve does. */
+function NavSheet({
+  open,
+  onClose,
+  title,
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent className="bottom-0 left-0 top-auto max-h-[80svh] max-w-none translate-x-0 translate-y-0 gap-2 overflow-y-auto rounded-t-xl p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:rounded-b-none">
+        <DialogHeader className="px-3 pt-1 text-left">
+          <DialogTitle className="text-sm">{title}</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col">{children}</div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** DashboardList is the Account's Dashboards as sheet rows, the current one marked. */
+function DashboardList({ onPick }: { onPick: () => void }) {
+  const dashboards = useDashboards();
+  const params = useParams({ strict: false }) as { dashboardId?: string };
+  return (
+    <>
+      {dashboards.data?.map((d) => (
+        <Link
+          key={d.id}
+          to="/d/$dashboardId"
+          params={{ dashboardId: String(d.id) }}
+          onClick={onPick}
+          className={cn(sheetRow, params.dashboardId === String(d.id) ? "bg-accent font-medium" : "text-foreground")}
+        >
+          <span className="flex size-6 shrink-0 items-center justify-center rounded-md border text-2xs font-semibold">
+            {dashboardInitial(d.name)}
+          </span>
+          <span className="truncate">{d.name}</span>
+        </Link>
+      ))}
+    </>
+  );
+}
+
+function TabButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} className={cn(tabClass, active ? "text-foreground" : "text-muted-foreground")}>
+      <span className={cn("h-[3px] w-4 rounded-full", active ? "bg-primary" : "bg-transparent")} aria-hidden />
+      {label}
+    </button>
+  );
+}
+
+const tabClass =
+  "flex min-h-11 min-w-0 flex-1 flex-col items-center justify-end gap-1.5 px-1 pb-2.5 pt-2 text-2xs transition-colors";
 
 function Tab({ to, label, exact }: { to: string; label: string; exact?: boolean }) {
   const active = useLocation({
@@ -295,10 +392,7 @@ function Tab({ to, label, exact }: { to: string; label: string; exact?: boolean 
   return (
     <Link
       to={to}
-      className={cn(
-        "flex min-h-11 min-w-[4.5rem] flex-1 flex-col items-center justify-end gap-1.5 px-2 pb-2.5 pt-2 text-2xs transition-colors",
-        active ? "text-foreground" : "text-muted-foreground",
-      )}
+      className={cn(tabClass, active ? "text-foreground" : "text-muted-foreground")}
     >
       <span
         className={cn("h-[3px] w-4 rounded-full", active ? "bg-primary" : "bg-transparent")}
