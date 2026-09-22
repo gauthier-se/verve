@@ -20,7 +20,7 @@ import type { AxisDomain } from "recharts/types/util/types";
 import { projectAnnotations, type AnnotationOverlay } from "@/lib/annotations";
 import { AXIS, GRID, NEGATIVE, POSITIVE, SERIES_COLORS, seriesColor } from "@/lib/chart";
 import { mergeSeries, stageKey, type ChartDatum } from "@/lib/chart-data";
-import { formatAxisValue, formatDuration } from "@/lib/format";
+import { formatAxisValue, formatDuration, formatDurationTick } from "@/lib/format";
 import { metricLabel } from "@/lib/metrics";
 import { drawsGoalLine } from "@/lib/goals";
 import { usualLine } from "@/lib/usual";
@@ -121,7 +121,7 @@ export function PanelChart({
   // One axis is one unit, so its ticks are read in that unit's display scale.
   const tickFormatter = (axis: "left" | "right") => {
     const unit = axis === "left" ? leftUnit : (rightUnit ?? "");
-    return unit === "min" ? formatDuration : (v: number) => formatAxisValue(v, unit);
+    return unit === "min" ? formatDurationTick : (v: number) => formatAxisValue(v, unit);
   };
   const xAxis = (
     <XAxis dataKey="bucket" tickFormatter={formatTick(list[0].bucket)} minTickGap={24} {...axisProps} />

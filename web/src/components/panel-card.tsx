@@ -98,7 +98,9 @@ export function PanelCard({
   return (
     // A wider Panel is a taller Panel: a card given two columns was given them to
     // hold a longer curve, and a year of nights in 112px is a texture, not a series.
-    <Card className={cn("flex flex-col", panel.width > 1 ? "h-80" : "h-72")}>
+    // The heights are minimums and the card fills its cell, so a grid row takes its
+    // tallest Panel's height and every card beside it matches.
+    <Card className={cn("panel-card flex h-full flex-col", panel.width > 1 ? "min-h-80" : "min-h-72")}>
       <div className="flex items-start justify-between gap-3 px-4 pt-3.5">
         <div className="flex min-w-0 items-baseline gap-2">
           <div className="-ml-1.5 flex shrink-0 -translate-y-px items-center">{dragHandle}</div>
@@ -115,10 +117,15 @@ export function PanelCard({
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
-          {segments.length > 0 && <SegmentLegend segments={segments} />}
+          {segments.length > 0 && <SegmentLegend segments={segments} className="panel-segments-inline" />}
           <PanelSettings panel={panel} catalog={catalog} onAddNote={() => setNoteOpen(true)} />
         </div>
       </div>
+
+      {/* The same key again, on its own row, for a card too narrow to hold it beside
+          the title: which one shows is the card's width, not the viewport's, since a
+          wide Panel is one column on a phone (index.css). */}
+      {segments.length > 0 && <SegmentLegend segments={segments} className="panel-segments-row px-4 pt-1.5" />}
 
       {list &&
         (multi ? (
@@ -232,9 +239,11 @@ function grainWord(bucket: Bucket): string {
  *  Activities. A stacked bar is the one chart whose parts cannot be told apart by
  *  eye, so its key is not optional, and it reads the same resolved segments the
  *  bars are drawn from. */
-function SegmentLegend({ segments }: { segments: Segment[] }) {
+function SegmentLegend({ segments, className }: { segments: Segment[]; className?: string }) {
   return (
-    <div className="hidden items-center gap-2.5 md:flex">
+    // Its display is left to index.css, which picks the inline or the row copy by the
+    // card's width; a display utility here would fight it.
+    <div className={cn("flex-wrap items-center gap-x-2.5 gap-y-1", className)}>
       {segments.map((segment) => (
         <LegendItem key={segment.key} color={segment.color}>
           {segment.label}

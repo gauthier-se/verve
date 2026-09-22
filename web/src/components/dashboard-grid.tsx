@@ -114,7 +114,7 @@ function SortablePanel({
   };
 
   return (
-    <div ref={setNodeRef} style={style} className={cn(WIDTH_CLASS[panel.width] ?? WIDTH_CLASS[1])} {...attributes}>
+    <div ref={setNodeRef} style={style} className={cn("min-w-0", WIDTH_CLASS[panel.width] ?? WIDTH_CLASS[1])} {...attributes}>
       <PanelCard
         panel={panel}
         catalog={catalog}

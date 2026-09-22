@@ -5,6 +5,7 @@ import {
   formatAxisValue,
   formatBucketKey,
   formatDuration,
+  formatDurationTick,
   formatExact,
   formatFigure,
   formatSummaryValue,
@@ -159,5 +160,22 @@ describe("formatBucketKey", () => {
 
   it("returns an unparseable key unchanged rather than inventing a label", () => {
     expect(formatBucketKey("not-a-day", "week")).toBe("not-a-day");
+  });
+});
+
+describe("formatDurationTick", () => {
+  // An axis is 40 px wide: "60h 0m" wraps onto two lines there and collides with
+  // the tick below it, so a whole hour drops its minutes.
+  it("drops zero minutes from a whole hour", () => {
+    expect(formatDurationTick(3600)).toBe("60h");
+  });
+
+  it("keeps the minutes when there are some", () => {
+    expect(formatDurationTick(45 * 60 + 30)).toBe("45h 30m");
+  });
+
+  it("reads under an hour in minutes, and zero as 0", () => {
+    expect(formatDurationTick(50)).toBe("50m");
+    expect(formatDurationTick(0)).toBe("0");
   });
 });

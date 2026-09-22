@@ -543,6 +543,25 @@
 .panel-summary {
   container-type: inline-size;
 }
+/* A stacked Panel's key sits beside its title on a wide card and on its own row
+   under it on a narrow one, where five Stages beside "Sleep" would cover it. */
+.panel-card {
+  container-type: inline-size;
+}
+.panel-segments-inline {
+  display: flex;
+}
+.panel-segments-row {
+  display: none;
+}
+@container (max-width: 36rem) {
+  .panel-segments-inline {
+    display: none;
+  }
+  .panel-segments-row {
+    display: flex;
+  }
+}
 @container (max-width: 15rem) {
   .panel-summary-secondary {
     display: none;

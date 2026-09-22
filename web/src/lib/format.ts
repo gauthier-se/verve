@@ -34,6 +34,15 @@ export function formatDuration(minutes: number): string {
   return h === 0 ? `${sign}${m}m` : `${sign}${h}h ${m}m`;
 }
 
+/** formatDurationTick is formatDuration for a chart axis, which is 40 px wide: a
+ *  whole hour drops its "0m" ("60h", not "60h 0m", which wraps and collides with the
+ *  next tick), and the axis origin is a bare 0. */
+export function formatDurationTick(minutes: number): string {
+  if (Math.round(minutes) === 0) return "0";
+  const text = formatDuration(minutes);
+  return text.endsWith(" 0m") ? text.slice(0, -3) : text;
+}
+
 /** formatFigure renders any Metric's figure by its Catalog rule: a duration_by_state
  *  value is minutes and reads as a duration ("7h 12m"), everything else is a summary
  *  figure. A night reported as "432" is a number nobody reads as a duration (ADR 0027).

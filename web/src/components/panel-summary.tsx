@@ -155,8 +155,11 @@ export function PanelSummary({
     <>
       {/* panel-summary is a query container (index.css) so the secondary figure drops by
           the band's own width — narrow card, not viewport — without touching the chart. */}
-      <div className="panel-summary flex items-baseline gap-x-2 px-4 pt-2">
-        <Figure size={size ?? (wide ? "wide" : "panel")} title={primaryTitle}>
+      {/* One line, whatever fits: a summary that wrapped would push this Panel's plot
+          below its neighbours' in the same row. What does not fit is truncated, and
+          the whole text stays in the title. */}
+      <div className="panel-summary flex items-baseline gap-x-2 overflow-hidden whitespace-nowrap px-4 pt-2">
+        <Figure size={size ?? (wide ? "wide" : "panel")} title={primaryTitle} className="shrink-0">
           {primary}
         </Figure>
         {primaryValue !== undefined && <FigureUnit unit={unit} aggregation={aggregation} mode={mode} />}
@@ -164,8 +167,8 @@ export function PanelSummary({
           // Never green, never red: a delta is a direction and a magnitude, and Verve
           // does not know which direction is good for your Metric (ADR 0019).
           <span
-            className="font-mono text-2xs tabular-nums text-muted-foreground"
-            title={`${delta.arrow} ${delta.exact} ${unit} vs the compared period`.trim()}
+            className="panel-summary-delta min-w-0 truncate font-mono text-2xs tabular-nums text-muted-foreground"
+            title={`${delta.arrow} ${delta.exact} ${unit} vs the compared period${baselineShown ? ` (${baselineShown})` : ""}`.trim()}
           >
             {delta.arrow} {delta.label}
             {baselineShown && <span className="opacity-70"> (vs {baselineShown})</span>}
@@ -174,7 +177,7 @@ export function PanelSummary({
         {showSecondary && (
           // panel-summary-secondary is dropped on a narrow card by a container query
           // (index.css) — the first thing to go when space is tight (ADR 0019).
-          <span className="panel-summary-secondary ml-auto whitespace-nowrap font-mono text-2xs tabular-nums text-muted-foreground">
+          <span className="panel-summary-secondary ml-auto shrink-0 whitespace-nowrap font-mono text-2xs tabular-nums text-muted-foreground">
             <span className="opacity-70">{formatBucket(last.bucket, bucket)}</span> {fmt(last.value)}
           </span>
         )}
