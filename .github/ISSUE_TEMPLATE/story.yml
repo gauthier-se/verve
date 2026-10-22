@@ -1,0 +1,57 @@
+name: User story
+description: A unit of work small enough for one pull request.
+labels: ["type: story"]
+body:
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Why this story exists. Link the feature spec requirements (docs/features/x.md, FR-n) and decision records.
+    validations:
+      required: true
+  - type: textarea
+    id: user-story
+    attributes:
+      label: User story
+      placeholder: As a <role>, I want <capability>, so that <benefit>.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: Given / When / Then scenarios. Each one becomes at least one test.
+    validations:
+      required: true
+  - type: textarea
+    id: tdd-plan
+    attributes:
+      label: TDD plan
+      description: Ordered list of tests to write before the code, with level (unit, integration, e2e) and file.
+    validations:
+      required: true
+  - type: textarea
+    id: implementation-notes
+    attributes:
+      label: Implementation notes
+      description: Packages and files, expected public types and functions, imposed libraries and versions, known pitfalls.
+    validations:
+      required: true
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      placeholder: "Blocked by #"
+  - type: textarea
+    id: definition-of-done
+    attributes:
+      label: Definition of done
+      value: |
+        - [ ] Every acceptance criterion is covered by a test written first
+        - [ ] CI green (lint, tests, build)
+        - [ ] Docs updated if behavior or configuration changed
+        - [ ] PR title in Conventional Commits format, body contains "Closes #n"

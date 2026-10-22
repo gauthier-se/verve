@@ -1,0 +1,35 @@
+name: Epic
+description: A group of user stories delivering one coherent capability.
+title: "Epic: "
+labels: ["type: epic"]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What this epic delivers and why it matters.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: What is included. Stories are attached as sub-issues.
+    validations:
+      required: true
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+  - type: textarea
+    id: done-when
+    attributes:
+      label: Done when
+      description: Observable outcome that closes the epic.
+    validations:
+      required: true
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: Links to feature specs, requirements and decision records.
