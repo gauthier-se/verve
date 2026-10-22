@@ -1,0 +1,63 @@
+# https://taskfile.dev
+# Run with `task <name>` in the Nix devshell, or `go tool task <name>` without Nix.
+version: "3"
+
+vars:
+  GOLANGCI_LINT_VERSION: 2.15.0
+  VERSION_PKG: github.com/gauthier-se/verve/internal/version
+
+tasks:
+  default:
+    cmds:
+      - "{{.TASK_EXE}} --list"
+    silent: true
+
+  lint:
+    desc: Run the Go linters and format checks
+    deps: [lint:check-version]
+    cmds:
+      - golangci-lint run ./...
+
+  lint:check-version:
+    internal: true
+    silent: true
+    cmds:
+      - |
+        if ! command -v golangci-lint >/dev/null 2>&1; then
+          echo "golangci-lint not found: enter the Nix devshell (direnv allow, or nix develop) or install v{{.GOLANGCI_LINT_VERSION}}" >&2
+          exit 1
+        fi
+        if ! golangci-lint version | grep -q "has version {{.GOLANGCI_LINT_VERSION}} "; then
+          echo "golangci-lint v{{.GOLANGCI_LINT_VERSION}} is required, found: $(golangci-lint version)" >&2
+          exit 1
+        fi
+
+  fmt:
+    desc: Format the Go code
+    deps: [lint:check-version]
+    cmds:
+      - golangci-lint fmt ./...
+
+  test:
+    desc: Run the Go tests with the race detector
+    cmds:
+      - go test -race ./...
+
+  build:
+    desc: Build bin/verve with version metadata
+    vars:
+      VERSION:
+        sh: git describe --tags --always --dirty
+      COMMIT:
+        sh: git rev-parse --short HEAD
+      BUILD_DATE: '{{dateInZone "2006-01-02T15:04:05Z" now "UTC"}}'
+    env:
+      CGO_ENABLED: "0"
+    cmds:
+      - >-
+        go build -trimpath
+        -ldflags "-s -w
+        -X {{.VERSION_PKG}}.version={{.VERSION}}
+        -X {{.VERSION_PKG}}.commit={{.COMMIT}}
+        -X {{.VERSION_PKG}}.date={{.BUILD_DATE}}"
+        -o bin/verve ./cmd/verve

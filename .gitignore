@@ -1,3 +1,17 @@
 # Nix and direnv
 .direnv/
 result
+
+# Build and test output
+bin/
+tmp/
+coverage.*
+*.test
+
+# Local development data
+.dev-data/
+
+# OS and editors
+.DS_Store
+.idea/
+*.swp
