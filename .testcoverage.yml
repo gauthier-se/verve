@@ -1,0 +1,12 @@
+# Coverage floor checked by `task test:coverage` (locally and in CI).
+profile: coverage.out
+
+threshold:
+  total: 80
+
+exclude:
+  paths:
+    - ^cmd/
+    # Generated code
+    - ^internal/store/sqlite/sqlcgen
+    - ^internal/webui

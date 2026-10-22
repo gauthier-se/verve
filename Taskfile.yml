@@ -43,6 +43,48 @@ tasks:
     cmds:
       - go test -race ./...
 
+  test:coverage:
+    desc: Run the Go tests with coverage and enforce the floor from .testcoverage.yml
+    cmds:
+      - go test -race -covermode=atomic -coverpkg=./... -coverprofile=coverage.out ./...
+      - go tool go-test-coverage --config=.testcoverage.yml
+
+  test:coverage-summary:
+    desc: Print the per-package coverage of coverage.out as a Markdown table
+    silent: true
+    cmds:
+      # -coverpkg repeats each block once per test binary: a block counts as
+      # covered if any test binary executed it.
+      - |
+        echo "| Package | Coverage |"
+        echo "|---|---|"
+        awk -v module="$(go list -m)/" '
+          NR > 1 {
+            stmts[$1] = $2
+            if ($3 > 0) hit[$1] = 1
+          }
+          END {
+            for (block in stmts) {
+              split(block, parts, ":")
+              pkg = parts[1]
+              sub(/\/[^\/]*$/, "", pkg)
+              sub("^" module, "", pkg)
+              total[pkg] += stmts[block]
+              if (block in hit) covered[pkg] += stmts[block]
+            }
+            for (pkg in total) printf "| %s | %.1f%% |\n", pkg, 100 * covered[pkg] / total[pkg]
+          }
+        ' coverage.out | sort
+        echo
+        echo "Enforced total (excluding \`cmd/\` and generated code, floor in \`.testcoverage.yml\`):"
+        echo
+        go tool go-test-coverage --config=.testcoverage.yml 2>&1 | grep "Total test coverage" || true
+
+  vuln:
+    desc: Scan the Go dependencies for known vulnerabilities
+    cmds:
+      - go tool govulncheck ./...
+
   build:
     desc: Build bin/verve with version metadata
     vars:

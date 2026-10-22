@@ -8,6 +8,17 @@
 - One story, one branch (`<type>/<issue number>-<short-slug>`), one pull request, squash merged.
 - Development is test-driven. The rules, commands and conventions are in [AGENTS.md](AGENTS.md), which applies to humans as well as coding agents.
 
+## Continuous integration
+
+Every pull request runs these required checks:
+
+| Check | What it verifies | Run it locally |
+|---|---|---|
+| `go` | golangci-lint (linters and formatting), tests with the race detector, total coverage of at least 80 percent outside `cmd/` and generated code, govulncheck | `task lint`, `task test:coverage`, `task vuln` |
+| `pr-title` | The pull request title follows the commit message format below | |
+
+The `go` job writes a per-package coverage table to the run summary (`task test:coverage-summary` locally).
+
 ## Commit messages
 
 Verve follows [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/). The release changelog is generated from commit messages, so the format matters.
