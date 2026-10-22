@@ -23,6 +23,13 @@ Verve is a self-hosted health dashboard for Apple Health data: a single Go binar
 6. Open a pull request using the template. Title in Conventional Commits format (it becomes the squashed commit message). Body contains `Closes #<issue number>`.
 7. Stay within the issue scope. Anything else you notice goes into a new issue or a comment, not into the pull request.
 
+## Environment
+
+- The toolchain comes from the Nix flake (`flake.nix`, `flake.lock`): Go 1.27, Node.js 26, pnpm 12, golangci-lint 2.15, gopls, delve. Go tools (Task, air, sqlc, govulncheck) are pinned in `go.mod` and run with `go tool`; the devshell exposes Task as `task`.
+- Nothing is installed globally: outside the devshell, `go`, `node` and `pnpm` may not exist. If your shell does not load direnv automatically, run every command through the devshell: `direnv exec . task test` or `nix develop -c task test`.
+- Never install or upgrade a toolchain globally, and never rely on `GOTOOLCHAIN` downloads (the devshell sets `GOTOOLCHAIN=local`). Version changes go through `flake.nix`, `flake.lock`, `go.mod` or `web/package.json` in a pull request.
+- On Linux (NixOS), Playwright uses the browsers from nixpkgs. Keep `@playwright/test` on exactly the `playwright-driver` version of `flake.lock`, and bump both together.
+
 ## Test-driven development
 
 TDD is mandatory for all production code.

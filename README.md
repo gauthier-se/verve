@@ -41,6 +41,18 @@ Apple Health collects years of valuable data (activity, heart, sleep, body measu
 - **Frontend**: React single page app built with Vite, TanStack Router, Query, Table, Form and Charts, Tailwind CSS and shadcn/ui, MapLibre GL. Embedded in the binary at build time.
 - **Delivery**: multi-arch Docker image (amd64, arm64) and standalone binaries built with goreleaser.
 
+## Development
+
+The toolchain is pinned with a Nix flake. With [Nix](https://nixos.org) and [direnv](https://direnv.net) (plus [nix-direnv](https://github.com/nix-community/nix-direnv) for caching), run once:
+
+```bash
+direnv allow
+```
+
+Entering the repository then provides Go 1.27, Node.js 26, pnpm 12, golangci-lint 2.15, gopls and delve. Without direnv, use `nix develop`. Go tools (Task, air, sqlc, govulncheck) are pinned in `go.mod` and run through `go tool`; the devshell exposes Task as `task`.
+
+Without Nix, install Go 1.27, Node.js 26, pnpm 12 and golangci-lint 2.15 yourself, and use `go tool task` instead of `task`.
+
 ## Documentation
 
 - [Roadmap](docs/roadmap.md): milestones and the list of features.
