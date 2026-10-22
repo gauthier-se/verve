@@ -1,5 +1,12 @@
 # Contributing
 
+## Workflow
+
+- Work is tracked in GitHub issues: epics group user stories (as sub-issues), and milestones `M0` to `M5` follow the [roadmap](docs/roadmap.md).
+- A story is ready to be implemented once it carries the `agent-ready` label, after review.
+- One story, one branch (`<type>/<issue number>-<short-slug>`), one pull request, squash merged.
+- Development is test-driven. The rules, commands and conventions are in [AGENTS.md](AGENTS.md), which applies to humans as well as coding agents.
+
 ## Commit messages
 
 Verve follows [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/). The release changelog is generated from commit messages, so the format matters.
@@ -30,7 +37,7 @@ Verve follows [Conventional Commits 1.0.0](https://www.conventionalcommits.org/e
 
 ### Scopes
 
-Optional, lowercase, one area of the codebase: `api`, `web`, `ingest`, `store`, `auth`, `jobs`, `sleep`, `workouts`, `energy`, `plans`, `notify`, `backup`, `audit`, `i18n`, `deploy`, `docs`.
+Optional, lowercase, one area of the codebase. Scopes match the `area: *` labels on GitHub: `api`, `web`, `server`, `cli`, `config`, `store`, `ingest`, `auth`, `jobs`, `sleep`, `workouts`, `energy`, `plans`, `notify`, `backup`, `audit`, `i18n`, `obs`, `deploy`, `ci`, `docs`.
 
 ### Rules
 

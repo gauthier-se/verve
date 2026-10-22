@@ -121,6 +121,8 @@ SQLite allows one writer at a time. Writers use short transactions (bounded batc
 | API client | generated from the OpenAPI spec with Hey API (`@hey-api/openapi-ts`) and its TanStack Query plugin |
 | UI | Tailwind CSS 4 and shadcn/ui |
 | Dashboard grid | react-grid-layout |
+| Internationalization | i18next with react-i18next, i18next-cli ([ADR 0009](decisions/0009-i18next.md)) |
+| Tests | Vitest, Testing Library, MSW, Playwright |
 | Maps | MapLibre GL, optional PMTiles |
 
 Routing state that users may want to bookmark or share (metric, period, granularity, filters) lives in typed search params, not in component state.
