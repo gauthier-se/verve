@@ -2,7 +2,7 @@
 profile: coverage.out
 
 threshold:
-  total: 80
+  total: 99
 
 exclude:
   paths:
