@@ -53,6 +53,15 @@ Entering the repository then provides Go 1.27, Node.js 26, pnpm 12, golangci-lin
 
 Without Nix, install Go 1.27, Node.js 26, pnpm 12 and golangci-lint 2.15 yourself, and use `go tool task` instead of `task`.
 
+Common tasks (`task --list` shows them all):
+
+| Task | Purpose |
+|---|---|
+| `task lint` | Linters and format checks |
+| `task fmt` | Format the code |
+| `task test` | Tests with the race detector |
+| `task build` | Build `bin/verve` with version metadata |
+
 ## Documentation
 
 - [Roadmap](docs/roadmap.md): milestones and the list of features.
