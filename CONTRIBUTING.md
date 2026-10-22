@@ -3,6 +3,7 @@
 ## Workflow
 
 - Work is tracked in GitHub issues: epics group user stories (as sub-issues), and milestones `M0` to `M5` follow the [roadmap](docs/roadmap.md).
+- Issue titles carry a stable reference: epics `[M<milestone>-E<epic>] <name>` (for example `[M0-E5] HTTP server and embedded SPA`), stories `[M<milestone>-<epic>.<story>] <summary>` (for example `[M0-5.3] Add the Huma API skeleton`). A new story takes the next free number in its epic. The number is a reference, not an execution order: dependencies define the order. Bugs are not numbered.
 - A story is ready to be implemented once it carries the `agent-ready` label, after review.
 - One story, one branch (`<type>/<issue number>-<short-slug>`), one pull request, squash merged.
 - Development is test-driven. The rules, commands and conventions are in [AGENTS.md](AGENTS.md), which applies to humans as well as coding agents.

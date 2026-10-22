@@ -1,6 +1,6 @@
 name: Epic
 description: A group of user stories delivering one coherent capability.
-title: "Epic: "
+title: "[M?-E?] "
 labels: ["type: epic"]
 body:
   - type: textarea
