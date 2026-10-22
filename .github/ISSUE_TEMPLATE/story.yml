@@ -1,5 +1,6 @@
 name: User story
 description: A unit of work small enough for one pull request.
+title: "[M?-?.?] "
 labels: ["type: story"]
 body:
   - type: textarea
