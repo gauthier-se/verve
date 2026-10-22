@@ -1,0 +1,75 @@
+name: PR title
+
+# Separate from CI so that editing a title re-runs only this check.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  pr-title:
+    name: pr-title
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Keep in sync with CONTRIBUTING.md.
+          types: |
+            feat
+            fix
+            docs
+            refactor
+            perf
+            test
+            build
+            ci
+            style
+            chore
+            revert
+          scopes: |
+            api
+            web
+            server
+            cli
+            config
+            store
+            ingest
+            auth
+            jobs
+            sleep
+            workouts
+            energy
+            plans
+            notify
+            backup
+            audit
+            i18n
+            obs
+            deploy
+            ci
+            docs
+            deps
+            deps-dev
+          requireScope: false
+          subjectPattern: ^[a-z].*[^.]$
+          subjectPatternError: |
+            The subject "{subject}" of the pull request title "{title}" must start
+            with a lowercase letter and must not end with a period.
+
+      - name: Explain the expected format
+        if: ${{ failure() }}
+        run: |
+          {
+            echo "## Pull request title"
+            echo
+            echo "The title becomes the squashed commit message on main, so it must follow Conventional Commits:"
+            echo
+            echo "\`<type>(<optional scope>): <description>\`, for example \`feat(api): add meta endpoint\`."
+            echo
+            echo "Allowed types and scopes: https://github.com/${{ github.repository }}/blob/main/CONTRIBUTING.md#commit-messages"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          exit 1

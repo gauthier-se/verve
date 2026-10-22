@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  go:
+    name: go
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.15.0
+
+      - name: Test with coverage floor
+        run: go tool task test:coverage
+
+      - name: Coverage summary
+        if: ${{ !cancelled() && hashFiles('coverage.out') != '' }}
+        run: |
+          {
+            echo "## Go coverage"
+            echo
+            go tool task --silent test:coverage-summary
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Vulnerability scan
+        run: go tool task vuln
