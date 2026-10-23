@@ -1,5 +1,5 @@
 import { http, HttpResponse } from "msw";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 
 import { server } from "@/test/server";
 
@@ -17,13 +17,13 @@ describe("MSW server", () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {
       // Silence the expected MSW error output.
     });
+    onTestFinished(() => {
+      consoleError.mockRestore();
+    });
 
     await expect(fetch("/api/unhandled")).rejects.toThrow();
     expect(consoleError).toHaveBeenCalledWith(
       expect.stringContaining("without a matching request handler"),
-      expect.anything(),
     );
-
-    consoleError.mockRestore();
   });
 });
