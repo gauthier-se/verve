@@ -13,6 +13,12 @@ tasks:
     silent: true
 
   lint:
+    desc: Run all linters and format checks (Go and web)
+    cmds:
+      - task: go:lint
+      - task: web:lint
+
+  go:lint:
     desc: Run the Go linters and format checks
     deps: [lint:check-version]
     cmds:
@@ -39,6 +45,12 @@ tasks:
       - golangci-lint fmt ./...
 
   test:
+    desc: Run all tests (Go and web)
+    cmds:
+      - task: go:test
+      - task: web:test
+
+  go:test:
     desc: Run the Go tests with the race detector
     cmds:
       - go test -race ./...
@@ -103,3 +115,33 @@ tasks:
         -X {{.VERSION_PKG}}.commit={{.COMMIT}}
         -X {{.VERSION_PKG}}.date={{.BUILD_DATE}}"
         -o bin/verve ./cmd/verve
+
+  web:install:
+    desc: Install the web dependencies from the lockfile
+    dir: web
+    run: once
+    cmds:
+      - pnpm install --frozen-lockfile
+
+  web:lint:
+    desc: Run the web linters, format check and type check
+    dir: web
+    deps: [web:install]
+    cmds:
+      - pnpm lint
+      - pnpm format:check
+      - pnpm typecheck
+
+  web:test:
+    desc: Run the web tests
+    dir: web
+    deps: [web:install]
+    cmds:
+      - pnpm test
+
+  web:build:
+    desc: Build the web app into web/dist
+    dir: web
+    deps: [web:install]
+    cmds:
+      - pnpm build
