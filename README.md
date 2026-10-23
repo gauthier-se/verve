@@ -57,10 +57,13 @@ Common tasks (`task --list` shows them all):
 
 | Task | Purpose |
 |---|---|
-| `task lint` | Linters and format checks |
-| `task fmt` | Format the code |
-| `task test` | Tests with the race detector |
+| `task lint` | Go and web linters, format checks and the web type check |
+| `task fmt` | Format the Go code |
+| `task test` | Go tests with the race detector and web tests |
 | `task build` | Build `bin/verve` with version metadata |
+| `task web:build` | Build the web app into `web/dist` |
+
+`task go:lint` and `task go:test` run the Go side only, and the `web:*` tasks the web side only, for example `task web:test`. The web app lives in `web/` and also has its own scripts (`pnpm dev`, `pnpm test`, `pnpm lint`) for use inside that directory.
 
 ## Documentation
 

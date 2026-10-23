@@ -14,7 +14,7 @@ Every pull request runs these required checks:
 
 | Check | What it verifies | Run it locally |
 |---|---|---|
-| `go` | golangci-lint (linters and formatting), tests with the race detector, total coverage of at least 80 percent outside `cmd/` and generated code, govulncheck | `task lint`, `task test:coverage`, `task vuln` |
+| `go` | golangci-lint (linters and formatting), tests with the race detector, total coverage of at least 80 percent outside `cmd/` and generated code, govulncheck | `task go:lint`, `task test:coverage`, `task vuln` |
 | `pr-title` | The pull request title follows the commit message format below | |
 
 The `go` job writes a per-package coverage table to the run summary (`task test:coverage-summary` locally).
