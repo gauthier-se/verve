@@ -20,6 +20,10 @@ Every pull request runs these required checks:
 
 The `go` job writes a per-package coverage table to the run summary (`task test:coverage-summary` locally). The `web` job writes the Vitest coverage summary to the run summary, without a threshold for now (`web/coverage/coverage-summary.txt` after `pnpm coverage` locally).
 
+CodeQL analyzes the Go and JavaScript/TypeScript code on every pull request, on every push to `main` and weekly, and reports alerts in the repository Security tab.
+
+Dependabot checks Go modules, the npm packages of `web/` and GitHub Actions every Monday. Minor and patch updates are grouped into one pull request per ecosystem, major updates get their own pull request. Its pull requests are labeled `type: chore` and use the commit message format below.
+
 ## Commit messages
 
 Verve follows [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/). The release changelog is generated from commit messages, so the format matters.
@@ -50,7 +54,7 @@ Verve follows [Conventional Commits 1.0.0](https://www.conventionalcommits.org/e
 
 ### Scopes
 
-Optional, lowercase, one area of the codebase. Scopes match the `area: *` labels on GitHub: `api`, `web`, `server`, `cli`, `config`, `store`, `ingest`, `auth`, `jobs`, `sleep`, `workouts`, `energy`, `plans`, `notify`, `backup`, `audit`, `i18n`, `obs`, `deploy`, `ci`, `docs`. Dependabot uses `deps` and `deps-dev` (for example `build(deps): bump ...`).
+Optional, lowercase, one area of the codebase. Scopes match the `area: *` labels on GitHub: `api`, `web`, `server`, `cli`, `config`, `store`, `ingest`, `auth`, `jobs`, `sleep`, `workouts`, `energy`, `plans`, `notify`, `backup`, `audit`, `i18n`, `obs`, `deploy`, `ci`, `docs`. Dependabot uses `deps` and `deps-dev` (for example `build(deps): bump ...` for production dependencies, `build(deps-dev): bump ...` for development dependencies and `ci(deps): bump ...` for GitHub Actions).
 
 ### Rules
 
