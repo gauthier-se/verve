@@ -29,5 +29,16 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
+    coverage: {
+      // The text summary goes to a file that CI adds to the run summary:
+      // reporter options cannot be passed on the command line.
+      reporter: [
+        "text",
+        "html",
+        "json-summary",
+        ["text-summary", { file: "coverage-summary.txt" }],
+      ],
+      reportOnFailure: true,
+    },
   },
 });

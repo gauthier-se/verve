@@ -42,3 +42,52 @@ jobs:
 
       - name: Vulnerability scan
         run: go tool task vuln
+
+  web:
+    name: web
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+
+      # Installs the pnpm version of the packageManager field.
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: web/package.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: web/.nvmrc
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Format check
+        run: pnpm format:check
+
+      - name: Type check
+        run: pnpm typecheck
+
+      - name: Test with coverage
+        run: pnpm coverage
+
+      - name: Coverage summary
+        if: ${{ !cancelled() && hashFiles('web/coverage/coverage-summary.txt') != '' }}
+        run: |
+          {
+            echo "## Web coverage"
+            echo
+            echo '```text'
+            sed '/^$/d' coverage/coverage-summary.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build
+        run: pnpm build
