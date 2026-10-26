@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -36,6 +37,7 @@ func testDeps() Deps {
 func depsWithEnv(env map[string]string) Deps {
 	return Deps{
 		Version: version.Info{Version: "0.1.0", Commit: "abc1234", BuildDate: "2026-10-22T10:00:00Z"},
+		Logger:  slog.New(slog.DiscardHandler),
 		LoadConfig: func(file string) (config.Config, error) {
 			return config.Load(config.LoadOptions{File: file, Env: env})
 		},
@@ -93,17 +95,7 @@ func TestRoot_HelpListsCommands(t *testing.T) {
 	require.Contains(t, res.stdout, "Self-hosted health dashboard for Apple Health data")
 	require.Contains(t, res.stdout, "Available Commands:")
 	require.Contains(t, res.stdout, "version")
-}
-
-// Given `verve` without arguments, then it prints the help for now
-// (it will start the server in a later story).
-func TestRoot_NoArgumentsPrintsHelp(t *testing.T) {
-	t.Parallel()
-
-	res := run(t, testDeps())
-
-	require.Equal(t, 0, res.code)
-	require.Contains(t, res.stdout, "Available Commands:")
+	require.Contains(t, res.stdout, "serve")
 }
 
 // Given `verve nope`, then it exits with status 1 and prints an error that
