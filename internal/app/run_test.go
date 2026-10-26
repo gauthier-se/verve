@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -91,4 +92,32 @@ func TestRun_DataDirLockedFails(t *testing.T) {
 	err = Run(t.Context(), cfg, logger)
 	require.EqualError(t, err, "another Verve process is using "+dataDir)
 	require.NotRegexp(t, loggedAddr, logs.String())
+}
+
+// Given VERVE_PUBLIC_URL unset at startup, then Run logs the configuration warnings once at warn level.
+func TestRun_LogsConfigurationWarningsOnce(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Default()
+	cfg.DataDir = t.TempDir()
+	cfg.ListenAddr = "127.0.0.1:0"
+
+	warnings := cfg.Warnings()
+	require.NotEmpty(t, warnings)
+
+	logger, logs := testLogger()
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+
+	go func() { done <- Run(ctx, cfg, logger) }()
+
+	require.Eventually(t, func() bool { return loggedAddr.MatchString(logs.String()) },
+		5*time.Second, 10*time.Millisecond, "Run must log the bound address")
+
+	cancel()
+	require.NoError(t, <-done)
+
+	for _, w := range warnings {
+		require.Equal(t, 1, strings.Count(logs.String(), `level=WARN msg="`+w), w)
+	}
 }
