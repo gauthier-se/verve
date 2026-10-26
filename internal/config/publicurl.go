@@ -69,3 +69,23 @@ func (p *PublicURL) UnmarshalText(text []byte) error {
 
 	return nil
 }
+
+// IsSet reports whether the public URL is set.
+func (p PublicURL) IsSet() bool {
+	return p.u != nil
+}
+
+// SecureCookies reports whether cookies must be marked Secure, which is when the public URL
+// uses https.
+func (p PublicURL) SecureCookies() bool {
+	return p.u != nil && p.u.Scheme == "https"
+}
+
+// Origin returns the origin of the public URL, such as https://verve.example.com, or "" when unset.
+func (p PublicURL) Origin() string {
+	if p.u == nil {
+		return ""
+	}
+
+	return p.u.Scheme + "://" + p.u.Host
+}

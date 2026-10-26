@@ -34,10 +34,6 @@ func serveRunner(loadConfig func() (config.Config, error), serve serveFunc, logg
 			return fmt.Errorf("invalid configuration:\n%s", bulletList(err))
 		}
 
-		for _, warning := range cfg.Warnings() {
-			logger.Warn(warning)
-		}
-
 		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 
