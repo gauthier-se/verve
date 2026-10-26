@@ -6,11 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/gauthier-se/verve/internal/app"
 	"github.com/gauthier-se/verve/internal/config"
 	"github.com/gauthier-se/verve/internal/version"
 )
@@ -20,6 +22,10 @@ type Deps struct {
 	Version version.Info
 	// LoadConfig loads the configuration with the file given by --config (empty when unset).
 	LoadConfig func(file string) (config.Config, error)
+	// Serve runs the server until ctx is cancelled.
+	Serve serveFunc
+	// Logger is the process logger, writing to stderr.
+	Logger *slog.Logger
 }
 
 // Execute runs the command line with the given arguments and returns the process exit code.
@@ -30,6 +36,8 @@ func Execute(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		LoadConfig: func(file string) (config.Config, error) {
 			return config.Load(config.LoadOptions{File: file, Env: environ})
 		},
+		Serve:  app.Run,
+		Logger: slog.New(slog.NewTextHandler(stderr, nil)),
 	}
 
 	return execute(ctx, deps, args, stdout, stderr)
@@ -73,16 +81,12 @@ func NewRootCommand(deps Deps) *cobra.Command {
 		Short:         "Self-hosted health dashboard for Apple Health data",
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		// Without arguments the help is printed for now: a later story starts the server instead.
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) > 0 {
 				return &usageError{err: fmt.Errorf("unknown command %q", args[0])}
 			}
 
 			return nil
-		},
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			return cmd.Help()
 		},
 	}
 
@@ -97,6 +101,11 @@ func NewRootCommand(deps Deps) *cobra.Command {
 		return deps.LoadConfig(configFile)
 	}
 
+	// Without arguments, verve behaves exactly like `verve serve`.
+	runServe := serveRunner(loadConfig, deps.Serve, deps.Logger)
+	root.RunE = runServe
+
+	root.AddCommand(newServeCommand(runServe))
 	root.AddCommand(newVersionCommand(deps.Version))
 	root.AddCommand(newConfigCommand(loadConfig))
 
