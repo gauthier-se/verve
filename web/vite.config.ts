@@ -25,6 +25,14 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    // In development the Go server (`task dev`) only serves the API and health
+    // checks. `ws` also proxies WebSocket upgrades for future live endpoints.
+    proxy: Object.fromEntries(
+      ["/api", "/healthz", "/readyz"].map((path) => [
+        path,
+        { target: "http://127.0.0.1:8080", ws: true },
+      ]),
+    ),
   },
   test: {
     environment: "jsdom",

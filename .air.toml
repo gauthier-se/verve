@@ -1,0 +1,19 @@
+# Live reload for the Go server, used by `task dev`.
+# https://github.com/air-verse/air
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  cmd = "go build -o ./tmp/verve ./cmd/verve"
+  entrypoint = ["./tmp/verve", "serve"]
+  include_ext = ["go", "sql", "yaml"]
+  exclude_dir = ["web", "tmp", ".dev-data", "bin", "internal/webui/dist", ".direnv", ".git"]
+  # After a compile error, air prints it, keeps the previous server running and
+  # keeps watching: the next successful build replaces the server.
+  stop_on_error = false
+  # Let the server shut down gracefully and release the data directory lock.
+  send_interrupt = true
+  kill_delay = "5s"
+
+[misc]
+  clean_on_exit = true

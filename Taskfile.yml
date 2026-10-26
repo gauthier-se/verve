@@ -116,6 +116,28 @@ tasks:
         -X {{.VERSION_PKG}}.date={{.BUILD_DATE}}"
         -o bin/verve ./cmd/verve
 
+  dev:
+    desc: Run the Go server with live reload and the Vite dev server (http://localhost:5173)
+    deps: [dev:server, dev:web]
+
+  dev:server:
+    desc: Run the Go server on 127.0.0.1:8080 and rebuild it on change
+    env:
+      VERVE_DATA_DIR: .dev-data
+      VERVE_LISTEN_ADDR: 127.0.0.1:8080
+      VERVE_LOG_LEVEL: debug
+      VERVE_LOG_FORMAT: text
+      VERVE_PUBLIC_URL: http://localhost:5173
+    cmds:
+      - go tool air
+
+  dev:web:
+    desc: Run the Vite dev server on port 5173, proxying the API to the Go server
+    dir: web
+    deps: [web:install]
+    cmds:
+      - pnpm dev
+
   web:install:
     desc: Install the web dependencies from the lockfile
     dir: web
