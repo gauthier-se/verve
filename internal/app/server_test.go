@@ -218,7 +218,7 @@ func TestServer_ShutdownTimeoutForcesClose(t *testing.T) {
 	srv.cancel()
 
 	require.NoError(t, srv.wait(t))
-	require.Contains(t, logs.String(), "level=WARN")
+	require.Contains(t, logs.String(), `level=WARN msg="shutdown timeout expired`)
 
 	select {
 	case err := <-clientErr:
