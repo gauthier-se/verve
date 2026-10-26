@@ -48,7 +48,7 @@ func TestConfigCheck_ConfigFlagIsPersistent(t *testing.T) {
 		"--config", path, "config", "check")
 
 	require.Equal(t, 0, res.code, res.stderr)
-	require.Contains(t, res.stdout, `listen_addr: ":9090" # file`)
+	require.Contains(t, res.stdout, "listen_addr: :9090 # file\n")
 }
 
 // Given an invalid configuration, when I run `verve config check`, then it prints every
@@ -95,5 +95,5 @@ func TestConfigCheck_VerveConfig(t *testing.T) {
 	res := run(t, depsWithEnv(map[string]string{"VERVE_CONFIG": path}), "config", "check")
 
 	require.Equal(t, 0, res.code, res.stderr)
-	require.Contains(t, res.stdout, `listen_addr: ":9090" # file`)
+	require.Contains(t, res.stdout, "listen_addr: :9090 # file\n")
 }

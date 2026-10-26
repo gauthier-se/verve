@@ -6,20 +6,44 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/gauthier-se/verve/internal/config"
 	"github.com/gauthier-se/verve/internal/version"
 )
 
 // Deps holds what commands need from the outside world. It grows as commands are added.
 type Deps struct {
 	Version version.Info
+	// LoadConfig loads the configuration with the file given by --config (empty when unset).
+	LoadConfig func(file string) (config.Config, error)
 }
 
 // Execute runs the command line with the given arguments and returns the process exit code.
 func Execute(ctx context.Context, args []string, stdout, stderr io.Writer) int {
-	return execute(ctx, Deps{Version: version.Get()}, args, stdout, stderr)
+	environ := environMap(os.Environ())
+	deps := Deps{
+		Version: version.Get(),
+		LoadConfig: func(file string) (config.Config, error) {
+			return config.Load(config.LoadOptions{File: file, Env: environ})
+		},
+	}
+
+	return execute(ctx, deps, args, stdout, stderr)
+}
+
+// environMap converts KEY=value pairs, as returned by os.Environ, into a map.
+func environMap(environ []string) map[string]string {
+	m := make(map[string]string, len(environ))
+	for _, kv := range environ {
+		key, value, _ := strings.Cut(kv, "=")
+		m[key] = value
+	}
+
+	return m
 }
 
 func execute(ctx context.Context, deps Deps, args []string, stdout, stderr io.Writer) int {
@@ -66,7 +90,15 @@ func NewRootCommand(deps Deps) *cobra.Command {
 		return &usageError{err: err}
 	})
 
+	var configFile string
+	root.PersistentFlags().StringVar(&configFile, "config", "", "path to a YAML configuration file (default $VERVE_CONFIG)")
+
+	loadConfig := func() (config.Config, error) {
+		return deps.LoadConfig(configFile)
+	}
+
 	root.AddCommand(newVersionCommand(deps.Version))
+	root.AddCommand(newConfigCommand(loadConfig))
 
 	return root
 }

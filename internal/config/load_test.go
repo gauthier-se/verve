@@ -4,6 +4,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -182,6 +183,8 @@ func TestLoad_EnvironmentNestedAndTyped(t *testing.T) {
 
 // Given a YAML file with an unknown key `listen_adress`, then loading fails
 // with an error naming the key and the file.
+//
+//nolint:misspell // the misspelled key is what the test is about
 func TestLoad_UnknownKeyInFile(t *testing.T) {
 	t.Parallel()
 
@@ -195,6 +198,8 @@ func TestLoad_UnknownKeyInFile(t *testing.T) {
 }
 
 // Given an unknown nested key, then the error names its full path.
+//
+//nolint:misspell // the misspelled key is what the test is about
 func TestLoad_UnknownNestedKeyInFile(t *testing.T) {
 	t.Parallel()
 
@@ -328,7 +333,7 @@ func TestLoad_PublicURL(t *testing.T) {
 		{name: "no host", in: "https://", wantErr: "host"},
 		{name: "query", in: "https://verve.example.com?x=1", wantErr: "query"},
 		{name: "fragment", in: "https://verve.example.com#x", wantErr: "fragment"},
-		{name: "user info", in: "https://user:pass@verve.example.com", wantErr: "user info"},
+		{name: "user info", in: "https://user:pass@verve.example.com", wantErr: "user info"}, //nolint:gosec // G101: fake credentials, rejected by the test
 	}
 
 	for _, tt := range tests {
@@ -463,4 +468,74 @@ func TestConfig_NoWarningsWithPublicURL(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Empty(t, cfg.Warnings())
+}
+
+// Given a group key with a value instead of settings under it, then the error says the group
+// must be a mapping.
+func TestLoad_GroupWithValueInFile(t *testing.T) {
+	t.Parallel()
+
+	path := writeFile(t, "log: debug\n")
+
+	_, err := Load(LoadOptions{File: path})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), path+`:1: log: must be a mapping of settings`)
+	require.NotContains(t, err.Error(), "unknown key")
+}
+
+// Given a group key without settings under it, then it is ignored like an empty setting.
+func TestLoad_EmptyGroupInFileIsIgnored(t *testing.T) {
+	t.Parallel()
+
+	for _, content := range []string{"log:\n", "log: ~\n"} {
+		path := writeFile(t, content)
+
+		cfg, err := Load(LoadOptions{File: path})
+
+		require.NoError(t, err, content)
+		require.Equal(t, "info", cfg.Log.Level, content)
+	}
+}
+
+// Given a setting with an empty value in YAML, then it is ignored: the default stays.
+func TestLoad_NullValueInFileIsIgnored(t *testing.T) {
+	t.Parallel()
+
+	path := writeFile(t, "max_upload_size: ~\nlisten_addr:\nlog:\n  level: null\n")
+
+	cfg, err := Load(LoadOptions{File: path})
+
+	require.NoError(t, err)
+	require.Equal(t, ByteSize(10_000_000_000), cfg.MaxUploadSize)
+	require.Equal(t, ":8080", cfg.ListenAddr)
+	require.Equal(t, "info", cfg.Log.Level)
+	require.Equal(t, SourceDefault, cfg.Sources["max_upload_size"])
+	require.Equal(t, SourceDefault, cfg.Sources["listen_addr"])
+	require.Equal(t, SourceDefault, cfg.Sources["log.level"])
+}
+
+// sameFieldNames has two settings with the same Go field name and type in different groups,
+// which the environment parser cannot tell apart in its errors.
+type sameFieldNames struct {
+	A struct {
+		Size ByteSize `yaml:"size" env:"SIZE"`
+	} `yaml:"a" envPrefix:"A_"`
+	B struct {
+		Size ByteSize `yaml:"size" env:"SIZE"`
+	} `yaml:"b" envPrefix:"B_"`
+}
+
+// Given an invalid environment variable for a setting whose Go field name is not unique,
+// then the error names the right setting.
+func TestLoadEnv_ErrorNamesSettingWithAmbiguousFieldName(t *testing.T) {
+	t.Parallel()
+
+	var v sameFieldNames
+	settings := indexSettings(settingsOf(reflect.ValueOf(&v).Elem()))
+
+	errs := loadEnv(&v, map[string]string{"VERVE_B_SIZE": "10XB"}, settings, Sources{})
+
+	require.Len(t, errs, 1)
+	require.EqualError(t, errs[0], `b.size (VERVE_B_SIZE): invalid value "10XB": unknown unit "XB", must be one of KB, MB, GB, TB, KiB, MiB, GiB, TiB`)
 }

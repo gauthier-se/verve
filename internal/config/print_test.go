@@ -23,9 +23,9 @@ type printable struct {
 	Ignored string `yaml:"-"`
 }
 
-// Given a configuration and its sources, then WriteYAML prints every value annotated with
+// Given a configuration and its sources, then writeAnnotatedYAML prints every value annotated with
 // its source, and a secret with a value as `********`.
-func TestWriteYAML_SourcesAndSecrets(t *testing.T) {
+func TestWriteAnnotatedYAML_SourcesAndSecrets(t *testing.T) {
 	t.Parallel()
 
 	v := printable{
@@ -48,7 +48,7 @@ func TestWriteYAML_SourcesAndSecrets(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, WriteYAML(&buf, v, sources))
+	require.NoError(t, writeAnnotatedYAML(&buf, v, sources))
 
 	require.Equal(t, strings.Join([]string{
 		`name: verve # default`,

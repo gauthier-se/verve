@@ -34,18 +34,27 @@ Verve is configured through `VERVE_*` environment variables, an optional YAML fi
 - **FR-2**: When a setting is defined by environment or file, the admin UI shows it as read-only with the label "Set by environment".
 - **FR-3**: Core settings:
 
-  | Variable | Default | Purpose |
-  |---|---|---|
-  | `VERVE_DATA_DIR` | `/data` | Database, uploads, exports, backups, map files |
-  | `VERVE_LISTEN_ADDR` | `:8080` | HTTP listen address |
-  | `VERVE_PUBLIC_URL` | none | External URL, used for cookies, links, OIDC redirect and CSRF origin checks |
-  | `VERVE_TRUSTED_PROXIES` | none | CIDRs whose `X-Forwarded-*` headers are trusted |
-  | `VERVE_SECRET_KEY` | generated | Key for encrypting secrets at rest, generated into `secret.key` if absent |
-  | `VERVE_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
-  | `VERVE_LOG_FORMAT` | `text` | `text` or `json` |
-  | `VERVE_MAX_UPLOAD_SIZE` | `10GB` | Upper bound for XML uploads |
-  | `VERVE_MAX_INGEST_BODY` | `1GB` | Upper bound for push ingestion bodies |
-  | `VERVE_METRICS_ADDR` | none | Optional separate listener for `/metrics` |
+  | Variable | YAML key | Default | Purpose |
+  |---|---|---|---|
+  | `VERVE_DATA_DIR` | `data_dir` | `/data` | Database, uploads, exports, backups, map files |
+  | `VERVE_LISTEN_ADDR` | `listen_addr` | `:8080` | HTTP listen address |
+  | `VERVE_PUBLIC_URL` | `public_url` | none | External URL, used for cookies, links, OIDC redirect and CSRF origin checks |
+  | `VERVE_TRUSTED_PROXIES` | `trusted_proxies` | none | CIDRs whose `X-Forwarded-*` headers are trusted |
+  | `VERVE_SECRET_KEY` | none | generated | Key for encrypting secrets at rest, generated into `secret.key` if absent. Not implemented yet (M1): the variable is ignored and has no YAML key |
+  | `VERVE_LOG_LEVEL` | `log.level` | `info` | `debug`, `info`, `warn`, `error` |
+  | `VERVE_LOG_FORMAT` | `log.format` | `text` | `text` or `json` |
+  | `VERVE_MAX_UPLOAD_SIZE` | `max_upload_size` | `10GB` | Upper bound for XML uploads |
+  | `VERVE_MAX_INGEST_BODY` | `max_ingest_body` | `1GB` | Upper bound for push ingestion bodies |
+  | `VERVE_METRICS_ADDR` | `metrics_addr` | none | Optional separate listener for `/metrics` |
+
+  Value formats:
+
+  - The YAML file is given with `--config`, or `VERVE_CONFIG` when the flag is absent. Unknown keys are errors. An environment variable set to an empty string and an empty YAML value (`key:` or `key: ~`) are ignored: the setting keeps its lower-precedence value.
+  - `VERVE_PUBLIC_URL`: an absolute `http` or `https` URL without path, query, fragment or user info (hosting under a sub-path is not supported). A trailing `/` is removed.
+  - `VERVE_TRUSTED_PROXIES`: comma-separated CIDR prefixes or single addresses (a single address means `/32` or `/128`). In YAML, a list.
+  - Sizes: a whole number of bytes, optionally followed by a decimal unit (`KB`, `MB`, `GB`, `TB`, powers of 1000) or a binary unit (`KiB`, `MiB`, `GiB`, `TiB`, powers of 1024), case-insensitive. Must be greater than zero.
+
+  `verve config check` validates the configuration and prints the effective values as YAML, each annotated with its source (`# default`, `# file`, `# env`) and secrets masked. On invalid configuration it prints every error and exits 1.
 
   Feature-specific settings (OIDC, SMTP, map, backups, proxy header) are documented in their feature files.
 
