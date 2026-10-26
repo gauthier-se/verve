@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/gauthier-se/verve/internal/config"
 	"github.com/gauthier-se/verve/internal/version"
 )
 
@@ -27,7 +28,18 @@ func run(t *testing.T, deps Deps, args ...string) result {
 }
 
 func testDeps() Deps {
-	return Deps{Version: version.Info{Version: "0.1.0", Commit: "abc1234", BuildDate: "2026-10-22T10:00:00Z"}}
+	return depsWithEnv(nil)
+}
+
+// depsWithEnv returns test dependencies whose configuration is loaded from env instead of
+// the process environment, so tests can run in parallel.
+func depsWithEnv(env map[string]string) Deps {
+	return Deps{
+		Version: version.Info{Version: "0.1.0", Commit: "abc1234", BuildDate: "2026-10-22T10:00:00Z"},
+		LoadConfig: func(file string) (config.Config, error) {
+			return config.Load(config.LoadOptions{File: file, Env: env})
+		},
+	}
 }
 
 // Given a binary built with version metadata, when I run `verve version`,
