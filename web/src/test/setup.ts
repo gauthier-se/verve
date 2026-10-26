@@ -1,8 +1,9 @@
 import "@testing-library/jest-dom/vitest";
 
 import { cleanup } from "@testing-library/react";
-import { afterAll, afterEach, beforeAll } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach } from "vitest";
 
+import { initI18n } from "@/i18n";
 import { server } from "@/test/server";
 
 // jsdom does not implement scrolling, and TanStack Router resets the scroll
@@ -15,8 +16,14 @@ beforeAll(() => {
   server.listen({ onUnhandledFrame: "error" });
 });
 
+beforeEach(async () => {
+  // A fresh instance per test, in English (the jsdom browser language).
+  await initI18n();
+});
+
 afterEach(() => {
   cleanup();
+  localStorage.clear();
   server.resetHandlers();
 });
 

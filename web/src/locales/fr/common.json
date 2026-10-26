@@ -1,0 +1,15 @@
+{
+  "days_one": "{{count}} jour",
+  "days_many": "{{count}} jours",
+  "days_other": "{{count}} jours",
+  "duration": {
+    "h": "{{h}} h",
+    "hm": "{{h}} h {{m}} min",
+    "m": "{{m}} min",
+    "ms": "{{m}} min {{s}} s",
+    "s": "{{s}} s"
+  },
+  "home": {
+    "tagline": "Vos données de santé, sur votre serveur."
+  }
+}

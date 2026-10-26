@@ -75,6 +75,22 @@ jobs:
       - name: Type check
         run: pnpm typecheck
 
+      - name: Translation check
+        run: pnpm i18n:check
+
+      - name: Translation status
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: |
+          {
+            echo "## Translation status"
+            echo
+            echo '```text'
+            # status exits 1 when translations are missing: keep the report.
+            pnpm --silent i18n:status || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Test with coverage
         run: pnpm coverage
 
