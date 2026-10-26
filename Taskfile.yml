@@ -131,6 +131,19 @@ tasks:
       - pnpm lint
       - pnpm format:check
       - pnpm typecheck
+      - pnpm i18n:check
+
+  generate:
+    desc: Generate code (translation keys and types)
+    cmds:
+      - task: web:generate
+
+  web:generate:
+    desc: Extract translation keys into the locale files and generate their types
+    dir: web
+    deps: [web:install]
+    cmds:
+      - pnpm i18n:extract
 
   web:test:
     desc: Run the web tests

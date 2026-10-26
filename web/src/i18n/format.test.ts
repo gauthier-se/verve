@@ -15,7 +15,7 @@ describe("formatDuration", () => {
     { seconds: 1200, lng: "en", expected: "20m" },
     { seconds: 1200, lng: "fr", expected: "20 min" },
   ])(
-    "given formatDuration($seconds) in $lng, then it returns $expected",
+    "given $seconds seconds, when formatDuration runs in $lng, then it returns $expected",
     ({ seconds, lng, expected }) => {
       expect(formatDuration(seconds, lng)).toBe(expected);
     },
@@ -28,7 +28,7 @@ describe("formatNumber", () => {
     // French groups thousands with a narrow no-break space.
     { lng: "fr", expected: "2 150,5" },
   ])(
-    "given formatNumber(2150.5) in $lng, then it equals the Intl.NumberFormat output $expected",
+    "given 2150.5, when formatNumber runs in $lng, then it equals the Intl.NumberFormat output $expected",
     ({ lng, expected }) => {
       expect(formatNumber(2150.5, lng)).toBe(expected);
       expect(formatNumber(2150.5, lng)).toBe(
@@ -49,7 +49,7 @@ describe("formatDate", () => {
     { lng: "en", expected: "10/26/2026" },
     { lng: "fr", expected: "26/10/2026" },
   ])(
-    "given formatDate(date) in $lng, then it equals the Intl.DateTimeFormat output $expected",
+    "given a date, when formatDate runs in $lng, then it equals the Intl.DateTimeFormat output $expected",
     ({ lng, expected }) => {
       expect(formatDate(date, lng)).toBe(expected);
       expect(formatDate(date, lng)).toBe(
@@ -59,8 +59,8 @@ describe("formatDate", () => {
   );
 
   it("given Intl options, when formatting, then they are passed to Intl.DateTimeFormat", () => {
-    expect(
-      formatDate(date, "fr", { dateStyle: "long", timeZone: "UTC" }),
-    ).toBe("26 octobre 2026");
+    expect(formatDate(date, "fr", { dateStyle: "long", timeZone: "UTC" })).toBe(
+      "26 octobre 2026",
+    );
   });
 });

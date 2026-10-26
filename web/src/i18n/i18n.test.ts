@@ -8,8 +8,8 @@ describe("translations", () => {
     i18n.addResource("en", "common", "testOnly.englishOnly", "English only");
     await i18n.changeLanguage("fr");
 
-    // The key exists only for this test, so it is not in the generated types.
-    expect(i18n.t("testOnly.englishOnly" as never)).toBe("English only");
+    // @ts-expect-error The key exists only in this test, not in the generated types.
+    expect(i18n.t("testOnly.englishOnly")).toBe("English only");
   });
 
   it.each([

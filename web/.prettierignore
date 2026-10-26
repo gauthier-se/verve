@@ -2,3 +2,5 @@ dist
 coverage
 pnpm-lock.yaml
 src/routeTree.gen.ts
+src/i18n/i18next.d.ts
+src/i18n/resources.d.ts

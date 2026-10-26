@@ -1,0 +1,5 @@
+# Dependencies whose install scripts may run. Anything not listed fails the install.
+allowBuilds:
+  # The postinstall only falls back to a WebAssembly build when the platform
+  # binding (an optional dependency) is missing.
+  "@swc/core": false

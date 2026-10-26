@@ -4,11 +4,11 @@ import { initI18n } from "@/i18n";
 import { pseudoLocalize } from "@/i18n/pseudo";
 
 describe("pseudoLocalize", () => {
-  it("given a string, then every letter is accented, it is about 40 percent longer and wrapped in brackets", () => {
+  it("given a string, when it is pseudo-localized, then every letter is accented, it is about 40 percent longer and wrapped in brackets", () => {
     expect(pseudoLocalize("Verve")).toBe("[Ṽéŕṽé~~]");
   });
 
-  it("given a longer sentence, then the content is about 40 percent longer and contains no plain ASCII letters", () => {
+  it("given a longer sentence, when it is pseudo-localized, then the content is about 40 percent longer and contains no plain ASCII letters", () => {
     const source = "Your health data, on your server.";
 
     const result = pseudoLocalize(source);
