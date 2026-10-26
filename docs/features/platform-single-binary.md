@@ -53,7 +53,7 @@ Verve ships as one executable named `verve`. It serves the REST API and the web 
 - **FR-6**: On `SIGTERM` or `SIGINT`, the server stops accepting connections, finishes in-flight requests (with a timeout of 30 seconds, after which the remaining connections are closed and a warning is logged), lets the job worker finish or release its current jobs, checkpoints the WAL and exits. A second signal kills the process immediately.
 - **FR-7**: A lock file in the data directory (`verve.lock`) prevents two `serve` processes from using the same data directory: the second one exits with status 1 and `another Verve process is using <data dir>`. The operating system releases the lock when the process exits, so a crash never leaves a stale lock. `serve` creates the data directory with permissions `0750` when it does not exist. CLI commands that write coordinate through the database (for example the per-user import lock) and short transactions.
 - **FR-8**: The binary reports its version in the UI footer, in `verve version` and in the `/readyz` response.
-- **FR-9**: Development mode: `task dev` runs the Go server with live reload and the Vite dev server, with Vite proxying `/api` to Go. The production build (`task build`) builds the SPA, regenerates the API client, then compiles Go with the assets embedded.
+- **FR-9**: Development mode: `task dev` runs the Go server with live reload and the Vite dev server, with Vite proxying `/api`, `/healthz` and `/readyz` to Go. The production build (`task build`) builds the SPA, regenerates the API client, then compiles Go with the assets embedded.
 
 ## UX notes
 
