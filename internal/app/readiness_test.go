@@ -50,7 +50,7 @@ func serveGated(t *testing.T, h http.Handler, method, target string) *httptest.R
 func TestReadiness_GateAnswersStartingOnApplicationRoutes(t *testing.T) {
 	t.Parallel()
 
-	h := gated(newReadiness("applying migrations"))
+	h := gated(newReadiness())
 
 	for _, req := range []struct{ method, target string }{
 		{http.MethodGet, "/"},
@@ -70,7 +70,7 @@ func TestReadiness_GateAnswersStartingOnApplicationRoutes(t *testing.T) {
 func TestReadiness_GateLetsHealthProbesThrough(t *testing.T) {
 	t.Parallel()
 
-	h := gated(newReadiness("applying migrations"))
+	h := gated(newReadiness())
 
 	for _, target := range []string{"/healthz", "/readyz"} {
 		rec := serveGated(t, h, http.MethodGet, target)
@@ -83,7 +83,7 @@ func TestReadiness_GateLetsHealthProbesThrough(t *testing.T) {
 func TestReadiness_ReadyGateLetsEverythingThrough(t *testing.T) {
 	t.Parallel()
 
-	r := newReadiness("applying migrations")
+	r := newReadiness()
 	r.markReady()
 
 	h := gated(r)
@@ -102,7 +102,7 @@ func TestReadiness_CheckersReportStartingUntilReady(t *testing.T) {
 
 	database := stubChecker{name: "database"}
 	dataDir := stubChecker{name: "data_dir"}
-	r := newReadiness("applying migrations", database, dataDir)
+	r := newReadiness(database, dataDir)
 
 	starting := r.checkers()
 	require.Len(t, starting, 1)

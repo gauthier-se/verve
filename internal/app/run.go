@@ -42,8 +42,7 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger, hook befor
 	}()
 
 	clk := clock.Real()
-	ready := newReadiness("applying migrations",
-		newDatabaseChecker(db), newMigrationsChecker(db), newDataDirChecker(cfg.DataDir, clk))
+	ready := newReadiness(newDatabaseChecker(db), newMigrationsChecker(db), newDataDirChecker(cfg.DataDir, clk))
 
 	handler := httpapi.NewHandler(httpapi.Deps{
 		Logger:         logger,
