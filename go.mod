@@ -8,6 +8,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.12.1
 	go.yaml.in/yaml/v3 v3.0.5
+	modernc.org/sqlite v1.61.0
 )
 
 require (
@@ -70,7 +71,7 @@ require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dlclark/regexp2/v2 v2.7.1 // indirect
 	github.com/dominikbraun/graph v0.23.0 // indirect
-	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/dustin/go-humanize v1.1.0 // indirect
 	github.com/elliotchance/orderedmap/v3 v3.1.1 // indirect
 	github.com/envoyproxy/go-control-plane/envoy v1.39.0 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.3.3 // indirect
@@ -110,11 +111,13 @@ require (
 	github.com/mitchellh/hashstructure/v2 v2.0.2 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/narqo/go-badge v0.0.0-20230821190521-c9a75c019a59 // indirect
+	github.com/ncruces/go-strftime v1.1.0 // indirect
 	github.com/pelletier/go-toml v1.9.5 // indirect
 	github.com/pelletier/go-toml/v2 v2.4.3 // indirect
 	github.com/pierrec/lz4/v4 v4.1.27 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
 	github.com/puzpuzpuz/xsync/v4 v4.5.0 // indirect
+	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rs/zerolog v1.35.1 // indirect
 	github.com/sajari/fuzzy v1.0.0 // indirect
@@ -159,6 +162,9 @@ require (
 	google.golang.org/grpc v1.84.0 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
+	modernc.org/libc v1.79.0 // indirect
+	modernc.org/mathutil v1.7.1 // indirect
+	modernc.org/memory v1.12.1 // indirect
 	mvdan.cc/sh/v3 v3.14.1 // indirect
 	mvdan.cc/sh/x v0.0.0-20260922090537-aebdf2b86f56 // indirect
 )
