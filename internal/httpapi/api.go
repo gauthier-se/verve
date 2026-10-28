@@ -28,18 +28,20 @@ type APIDeps struct {
 var useProblemErrors = sync.OnceFunc(func() { huma.NewError = newHumaError })
 
 // NewAPI registers the API operations on mux and returns the API. The OpenAPI 3.1 spec is served
-// at /api/openapi.json and /api/openapi.yaml, and its schemas under /api/schemas. The
-// documentation page is not served: it would load its assets from a third-party CDN.
+// at /api/openapi.json and /api/openapi.yaml. The documentation page is not served: it would load
+// its assets from a third-party CDN.
 func NewAPI(mux *http.ServeMux, deps APIDeps) huma.API {
 	useProblemErrors()
 
 	config := huma.DefaultConfig("Verve API", apiVersion)
 	config.OpenAPIPath = "/api/openapi"
 	config.DocsPath = ""
-	config.SchemasPath = "/api/schemas"
 	// Drops the default schema link transformer, which adds a $schema field to the response
 	// bodies: they keep the shape of their schema.
 	config.CreateHooks = nil
+	// Nothing links to the schemas once the transformer is gone, and Huma would answer an unknown
+	// schema with 200 null instead of the 404 problem: they are only served in the spec.
+	config.SchemasPath = ""
 
 	api := humago.New(mux, config)
 
