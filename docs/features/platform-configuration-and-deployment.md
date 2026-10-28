@@ -77,6 +77,8 @@ Verve is configured through `VERVE_*` environment variables, an optional YAML fi
     map/          optional PMTiles and assets
   ```
 
+  `serve` creates the missing directories with permissions `0750` and `verve.db` with permissions `0600`. When the data directory is not writable, startup fails with `data directory <path> is not writable: <cause>`.
+
 - **FR-5**: At startup Verve validates the configuration and refuses to start with a clear message on invalid values (for example a malformed CIDR or an unreachable data directory).
 - **FR-6**: Without `VERVE_PUBLIC_URL`, Verve starts but shows an admin warning, because secure cookies, OIDC and absolute links depend on it. `serve` also logs the configuration warnings once at warn level at startup.
 - **FR-7**: Docker image:

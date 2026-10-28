@@ -70,8 +70,8 @@ func TestEnsureDataDir_NotWritableFails(t *testing.T) {
 	}
 
 	root := t.TempDir()
-	require.NoError(t, os.Chmod(root, 0o500))
-	t.Cleanup(func() { require.NoError(t, os.Chmod(root, 0o750)) })
+	require.NoError(t, os.Chmod(root, 0o500))                       //nolint:gosec // G302: a directory needs the execute bit
+	t.Cleanup(func() { require.NoError(t, os.Chmod(root, 0o750)) }) //nolint:gosec // G302: restores the default permission
 
 	_, err := EnsureDataDir(root)
 	require.ErrorContains(t, err, "data directory "+root+" is not writable: ")

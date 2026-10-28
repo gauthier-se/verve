@@ -2,30 +2,28 @@ package app
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
-	"os"
 
 	"github.com/gauthier-se/verve/internal/clock"
 	"github.com/gauthier-se/verve/internal/config"
 	"github.com/gauthier-se/verve/internal/httpapi"
+	"github.com/gauthier-se/verve/internal/store/sqlite"
 )
 
-// dataDirPerm is the permission of the data directory when Verve creates it.
-const dataDirPerm = 0o750
-
-// Run logs the configuration warnings, creates the data directory, takes its lock and serves
-// HTTP until ctx is cancelled. Resources are released in reverse order.
+// Run logs the configuration warnings, creates the data directory layout, takes its lock, opens
+// the database and serves HTTP until ctx is cancelled. Resources are released in reverse order:
+// the database is closed once the server has stopped.
 func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	for _, warning := range cfg.Warnings() {
 		logger.Warn(warning)
 	}
 
-	if err := os.MkdirAll(cfg.DataDir, dataDirPerm); err != nil {
-		return fmt.Errorf("create data directory: %w", err)
+	layout, err := EnsureDataDir(cfg.DataDir)
+	if err != nil {
+		return err
 	}
 
-	lock, err := AcquireLock(cfg.DataDir)
+	lock, err := AcquireLock(layout.Root)
 	if err != nil {
 		return err
 	}
@@ -34,6 +32,21 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		if releaseErr := lock.Release(); releaseErr != nil {
 			logger.Error("release data directory lock", slog.Any("error", releaseErr))
 		}
+	}()
+
+	db, err := sqlite.Open(ctx, layout.DB)
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		if closeErr := db.Close(context.WithoutCancel(ctx)); closeErr != nil {
+			logger.Error("close database", slog.Any("error", closeErr))
+
+			return
+		}
+
+		logger.Info("database closed")
 	}()
 
 	handler := httpapi.NewHandler(httpapi.Deps{
