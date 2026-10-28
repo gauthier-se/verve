@@ -88,8 +88,9 @@ func TestAPI_ServesOpenAPISpec(t *testing.T) {
 }
 
 // Given GET /api/docs, then a 404 problem: the documentation page is deferred to M4, so that no
-// third-party asset is loaded. Given another unknown path under /api/, then the 404 problem still
-// answers it next to the API operations.
+// third-party asset is loaded. Given a schema path, then a 404 problem: the schemas are only in the
+// spec. Given another unknown path under /api/, then the 404 problem still answers it next to the
+// API operations.
 func TestAPI_UnknownPathsReturnProblem(t *testing.T) {
 	t.Parallel()
 
@@ -97,6 +98,8 @@ func TestAPI_UnknownPathsReturnProblem(t *testing.T) {
 
 	for _, tt := range []struct{ method, target string }{
 		{method: http.MethodGet, target: "/api/docs"},
+		{method: http.MethodGet, target: "/api/schemas/Meta.json"},
+		{method: http.MethodGet, target: "/api/schemas/Nope.json"},
 		{method: http.MethodGet, target: "/api/v1/unknown"},
 		{method: http.MethodGet, target: "/api/v1/meta/unknown"},
 		{method: http.MethodPost, target: "/api/v1/unknown"},
