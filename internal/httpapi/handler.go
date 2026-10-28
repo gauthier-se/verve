@@ -10,6 +10,7 @@ import (
 	"github.com/gauthier-se/verve/internal/clock"
 	"github.com/gauthier-se/verve/internal/config"
 	"github.com/gauthier-se/verve/internal/store"
+	"github.com/gauthier-se/verve/internal/version"
 )
 
 // apiPrefix starts the paths of the API.
@@ -21,8 +22,8 @@ type Deps struct {
 	Clock          clock.Clock
 	TrustedProxies config.Prefixes
 	Store          store.Store
-	// Version is the version of the running binary, reported by /readyz.
-	Version string
+	// Version is the build metadata of the running binary, reported by /readyz and /api/v1/meta.
+	Version version.Info
 	// Checkers returns the readiness checks of /readyz, called on each request. Nil means none.
 	Checkers func() []Checker
 	// Gate, when not nil, wraps the router, behind the other middlewares. The server answers the
@@ -32,13 +33,14 @@ type Deps struct {
 	SPA http.Handler
 }
 
-// NewHandler returns the root handler of the server: the health probes, a JSON 404 problem for
-// any unknown path under /api/, and the web app for every other path.
+// NewHandler returns the root handler of the server: the health probes, the API, a JSON 404
+// problem for any unknown path under /api/, and the web app for every other path.
 func NewHandler(d Deps) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", healthz)
-	mux.HandleFunc("GET /readyz", readyz(d.Version, d.Checkers))
+	mux.HandleFunc("GET /readyz", readyz(d.Version.Version, d.Checkers))
 	mux.HandleFunc(apiPrefix, apiNotFound)
+	NewAPI(mux, APIDeps{Version: d.Version})
 
 	if d.SPA != nil {
 		mux.Handle("/", outsideAPI(d.SPA))
