@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/gauthier-se/verve/internal/config"
+	"github.com/gauthier-se/verve/internal/store/sqlite"
 )
 
 var loggedAddr = regexp.MustCompile(`addr=(127\.0\.0\.1:\d+)`)
@@ -167,4 +168,53 @@ func TestRun_LogsConfigurationWarningsOnce(t *testing.T) {
 	for _, w := range warnings {
 		require.Equal(t, 1, strings.Count(logs.String(), `level=WARN msg="`+w), w)
 	}
+}
+
+// Given a fresh database, when Run starts, then the embedded migrations are applied and logged
+// before the server listens.
+func TestRun_MigratesBeforeServing(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Default()
+	cfg.DataDir = t.TempDir()
+	cfg.ListenAddr = "127.0.0.1:0"
+
+	logger, logs := testLogger()
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+
+	go func() { done <- Run(ctx, cfg, logger) }()
+
+	require.Eventually(t, func() bool { return loggedAddr.MatchString(logs.String()) },
+		5*time.Second, 10*time.Millisecond, "Run must log the bound address")
+
+	cancel()
+	require.NoError(t, <-done)
+
+	out := logs.String()
+	applied := strings.Index(out, `msg="applied migration" version=1 name=instance_settings`)
+	listening := strings.Index(out, `msg="server listening"`)
+
+	require.NotEqual(t, -1, applied, "Run must log the applied migration")
+	require.Less(t, applied, listening, "migrations must be applied before the server listens")
+
+	require.Equal(t, sqlite.LatestVersion(), schemaVersion(t, cfg.DataDir))
+}
+
+// Given a database whose version is newer than this binary supports, then Run fails and never
+// listens.
+func TestRun_NewerDatabaseFails(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Default()
+	cfg.DataDir = t.TempDir()
+	cfg.ListenAddr = "127.0.0.1:0"
+
+	setFutureSchemaVersion(t, cfg.DataDir)
+
+	logger, logs := testLogger()
+
+	err := Run(t.Context(), cfg, logger)
+	require.ErrorContains(t, err, "is newer than this binary supports")
+	require.NotRegexp(t, loggedAddr, logs.String())
 }
