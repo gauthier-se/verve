@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/gauthier-se/verve/internal/config"
 	"github.com/gauthier-se/verve/internal/store/sqlite"
+	"github.com/gauthier-se/verve/internal/version"
 )
 
 var loggedAddr = regexp.MustCompile(`addr=(127\.0\.0\.1:\d+)`)
@@ -27,16 +29,31 @@ func testConfig(dataDir string) config.Config {
 	return cfg
 }
 
-// startRun runs Run until it listens. It returns the bound address, the logs and a function that
+// startRun runs Run until it is ready. It returns the bound address, the logs and a function that
 // stops Run and checks that it returned without error.
 func startRun(t *testing.T, cfg config.Config) (string, *syncBuffer, func()) {
+	t.Helper()
+
+	addr, logs, stop := startRunWith(t, cfg, beforeMigrate)
+
+	require.Eventually(t, func() bool {
+		return strings.Contains(logs.String(), `msg="server ready"`)
+	}, 5*time.Second, 10*time.Millisecond, "Run must log that the server is ready")
+
+	return addr, logs, stop
+}
+
+// startRunWith runs Run, with hook called before the pending migrations, until it listens. It
+// returns the bound address, the logs and a function that stops Run and checks that it returned
+// without error.
+func startRunWith(t *testing.T, cfg config.Config, hook beforeMigrateFunc) (string, *syncBuffer, func()) {
 	t.Helper()
 
 	logger, logs := testLogger()
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
 
-	go func() { done <- Run(ctx, cfg, logger) }()
+	go func() { done <- run(ctx, cfg, logger, hook) }()
 
 	var addr string
 
@@ -158,9 +175,9 @@ func TestRun_LogsConfigurationWarningsOnce(t *testing.T) {
 	}
 }
 
-// Given a fresh database, when Run starts, then the embedded migrations are applied and logged
-// before the server listens.
-func TestRun_MigratesBeforeServing(t *testing.T) {
+// Given a fresh database, when Run starts, then the server listens before the embedded
+// migrations are applied and logged, and it is ready once they are.
+func TestRun_ListensBeforeMigrating(t *testing.T) {
 	t.Parallel()
 
 	dataDir := t.TempDir()
@@ -168,17 +185,19 @@ func TestRun_MigratesBeforeServing(t *testing.T) {
 	stop()
 
 	out := logs.String()
-	applied := strings.Index(out, `msg="applied migration" version=1 name=instance_settings`)
 	listening := strings.Index(out, `msg="server listening"`)
+	applied := strings.Index(out, `msg="applied migration" version=1 name=instance_settings`)
+	ready := strings.Index(out, `msg="server ready"`)
 
-	require.NotEqual(t, -1, applied, "Run must log the applied migration")
-	require.Less(t, applied, listening, "migrations must be applied before the server listens")
+	require.NotEqual(t, -1, listening, "the server must log that it listens")
+	require.Less(t, listening, applied, "the server must listen before the migrations are applied")
+	require.Less(t, applied, ready, "the server must be ready once the migrations are applied")
 
 	require.Equal(t, sqlite.LatestVersion(), schemaVersion(t, dataDir))
 }
 
-// Given a database whose version is newer than this binary supports, then Run fails and never
-// listens.
+// Given a database whose version is newer than this binary supports, then Run fails and stops
+// the server without ever being ready.
 func TestRun_NewerDatabaseFails(t *testing.T) {
 	t.Parallel()
 
@@ -189,5 +208,108 @@ func TestRun_NewerDatabaseFails(t *testing.T) {
 
 	err := Run(t.Context(), testConfig(dataDir), logger)
 	require.ErrorContains(t, err, "is newer than this binary supports")
-	require.NotRegexp(t, loggedAddr, logs.String())
+	require.Contains(t, logs.String(), `msg="server stopped"`)
+	require.NotContains(t, logs.String(), `msg="server ready"`)
+}
+
+// fetched is a response read in full.
+type fetched struct {
+	status      int
+	contentType string
+	body        string
+}
+
+func fetch(t *testing.T, url string) fetched {
+	t.Helper()
+
+	res, err := get(t.Context(), url)
+	require.NoError(t, err)
+
+	body, err := io.ReadAll(res.Body)
+	require.NoError(t, err)
+	require.NoError(t, res.Body.Close())
+
+	return fetched{status: res.StatusCode, contentType: res.Header.Get("Content-Type"), body: string(body)}
+}
+
+// Given startup with pending migrations, then the server listens before migrating: meanwhile
+// /healthz is 200, /readyz is 503 with the reason `starting: applying migrations` and every other
+// route is a 503 problem with the code "starting". Given the migrations complete, then /readyz is
+// 200 with the version and the application routes are served.
+func TestRun_GatesApplicationRoutesWhileMigrating(t *testing.T) {
+	t.Parallel()
+
+	migrating := make(chan struct{})
+	release := make(chan struct{})
+	hook := func(ctx context.Context, _ []int64) error {
+		close(migrating)
+
+		select {
+		case <-release:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+
+	addr, _, stop := startRunWith(t, testConfig(t.TempDir()), hook)
+	base := "http://" + addr
+	wantVersion := version.Get().Version
+
+	select {
+	case <-migrating:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run did not start migrating")
+	}
+
+	res := fetch(t, base+"/healthz")
+	require.Equal(t, http.StatusOK, res.status)
+	require.JSONEq(t, `{"status":"ok"}`, res.body)
+
+	res = fetch(t, base+"/readyz")
+	require.Equal(t, http.StatusServiceUnavailable, res.status)
+	require.JSONEq(t, `{"status":"not_ready","version":"`+wantVersion+`","reasons":["starting: applying migrations"]}`, res.body)
+
+	for _, path := range []string{"/", "/api/v1/anything"} {
+		res = fetch(t, base+path)
+		require.Equal(t, http.StatusServiceUnavailable, res.status, path)
+		require.Equal(t, "application/problem+json", res.contentType, path)
+		require.JSONEq(t, wantStartingProblem, res.body, path)
+	}
+
+	close(release)
+
+	require.Eventually(t, func() bool {
+		return fetch(t, base+"/readyz").status == http.StatusOK
+	}, 5*time.Second, 10*time.Millisecond, "the server must be ready once the migrations complete")
+
+	res = fetch(t, base+"/readyz")
+	require.JSONEq(t, `{"status":"ready","version":"`+wantVersion+`"}`, res.body)
+
+	// No application route exists yet: the gate lets the requests through to the router.
+	for _, path := range []string{"/", "/api/v1/anything"} {
+		require.Equal(t, http.StatusNotFound, fetch(t, base+path).status, path)
+	}
+
+	stop()
+}
+
+// Given the server ready and its data directory no longer writable, then /readyz returns 503
+// with the reason of the data directory check.
+func TestRun_ReadyzReportsFailingChecks(t *testing.T) {
+	t.Parallel()
+	skipUnlessPermissionsEnforced(t)
+
+	dataDir := t.TempDir()
+	addr, _, stop := startRun(t, testConfig(dataDir))
+
+	setWritable(t, dataDir, false)
+	res := fetch(t, "http://"+addr+"/readyz")
+	setWritable(t, dataDir, true)
+
+	require.Equal(t, http.StatusServiceUnavailable, res.status)
+	require.JSONEq(t, `{"status":"not_ready","version":"`+version.Get().Version+`",`+
+		`"reasons":["data_dir: not writable: permission denied"]}`, res.body)
+
+	stop()
 }
