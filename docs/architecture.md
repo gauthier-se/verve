@@ -138,6 +138,8 @@ Routing state that users may want to bookmark or share (metric, period, granular
 
 The OpenAPI spec is produced by the binary itself (`verve openapi > web/openapi.json`) and the client is regenerated as part of the build. A change to a Go API type that breaks the frontend fails the frontend type check.
 
+The generated client lives in `web/src/api/generated`, with one TanStack Query options function per operation (for example `getMetaOptions()` for `get-meta`). `web/src/api/client.ts` configures it: requests go to the origin of the app with `credentials: 'same-origin'`, and every request other than GET carries the header `Verve-Csrf: 1`.
+
 ## Data flows
 
 ### Ingestion
@@ -233,6 +235,8 @@ Values are stored in canonical units and converted only for display.
 ### Errors
 
 API errors use RFC 9457 problem details with a stable machine-readable `code`. The frontend translates codes into localized messages.
+
+The errors raised by Huma, such as validation errors, have the same shape: `huma.NewError` is replaced once, when the API is built, by a constructor of `Problem`. Their `code` defaults from the status: 400 `bad_request`, 401 `unauthorized`, 403 `forbidden`, 404 `not_found`, 409 `conflict`, 422 `validation_failed`, 429 `rate_limited`, 503 `unavailable`, any other client error `bad_request` and any other server error `internal`. Validation errors list one entry per invalid field in `errors`, with `message`, `location` (for example `body.name` or `query.limit`) and `value`.
 
 ## Testing strategy (proposed)
 

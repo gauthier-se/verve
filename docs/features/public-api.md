@@ -30,7 +30,7 @@ The REST API used by the SPA is also the public API. It is described by an OpenA
 
 ## Functional requirements
 
-- **FR-1**: The OpenAPI 3.1 spec is served at `/api/openapi.json` and `/api/openapi.yaml`. Interactive documentation at `/api/docs`. Both require no authentication but expose no data.
+- **FR-1**: The OpenAPI 3.1 spec is served at `/api/openapi.json` and `/api/openapi.yaml`. Interactive documentation at `/api/docs`, with its assets bundled in the binary, never loaded from a third-party CDN. Both require no authentication but expose no data. The documentation page comes with M4: until then `/api/docs` returns the JSON 404 problem of unknown API paths.
 - **FR-2**: All endpoints that read the owner's health data accept either a session or a `read` token.
 - **FR-3**: Stability: endpoints are marked stable or experimental in the spec. Stable `v1` endpoints only receive backward-compatible changes. Breaking changes go to `v2`, with `v1` kept for at least one minor release cycle after deprecation.
 - **FR-4**: Convenience endpoint `GET /api/v1/summary/today` returns a flat JSON object with the main daily values (steps, active energy, exercise minutes, resting heart rate, HRV, last night's total sleep, trend weight, calories consumed and target), designed for Home Assistant `rest` sensors.
