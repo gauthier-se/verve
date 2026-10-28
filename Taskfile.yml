@@ -190,8 +190,8 @@ tasks:
       - pnpm test
 
   web:build:
-    desc: Build the web app into web/dist and sync it into internal/webui/dist, which the binary embeds
-    deps: [web:install]
+    desc: Regenerate the API client, build the web app into web/dist and sync it into internal/webui/dist, which the binary embeds
+    deps: [web:install, api:generate]
     cmds:
       - pnpm --dir web build
       # A Go program rather than rsync or cp, so that it works on every OS.

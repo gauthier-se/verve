@@ -236,7 +236,7 @@ Values are stored in canonical units and converted only for display.
 
 API errors use RFC 9457 problem details with a stable machine-readable `code`. The frontend translates codes into localized messages.
 
-The errors raised by Huma, such as validation errors, have the same shape: `huma.NewError` is replaced once, when the API is built, by a constructor of `Problem`. Their `code` defaults from the status: 400 `bad_request`, 401 `unauthorized`, 403 `forbidden`, 404 `not_found`, 409 `conflict`, 422 `validation_failed`, 429 `rate_limited`, 503 `unavailable`, any other client error `bad_request` and any other server error `internal`. Validation errors list one entry per invalid field in `errors`, with `message`, `location` (for example `body.name` or `query.limit`) and `value`.
+The errors raised by Huma, such as validation errors, have the same shape: `huma.NewError` is replaced once, when the API is built, by a constructor of `Problem`. Their `code` defaults from the status: 400 `bad_request`, 401 `unauthorized`, 403 `forbidden`, 404 `not_found`, 409 `conflict`, 422 `validation_failed`, 429 `rate_limited`, 503 `unavailable`, any other client error `bad_request` and any other server error `internal`. Validation errors list one entry per invalid field in `errors`, with `message`, `location` (for example `body.name` or `query.limit`) and `value`. Server errors never have `errors`: an operation that fails with an error that is not a problem answers 500 `internal` with the detail `unexpected error occurred`, because the message of an internal error may hold file paths or queries.
 
 ## Testing strategy (proposed)
 
