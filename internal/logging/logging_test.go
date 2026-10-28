@@ -3,31 +3,14 @@ package logging
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"log/slog"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/gauthier-se/verve/internal/config"
+	"github.com/gauthier-se/verve/internal/logging/loggingtest"
 )
-
-// decodeLines decodes each JSON line written by a logger.
-func decodeLines(t *testing.T, out string) []map[string]any {
-	t.Helper()
-
-	var lines []map[string]any
-
-	for line := range strings.Lines(out) {
-		var m map[string]any
-		require.NoError(t, json.Unmarshal([]byte(line), &m), "line %q", line)
-
-		lines = append(lines, m)
-	}
-
-	return lines
-}
 
 // Given VERVE_LOG_FORMAT=json, then logs are JSON lines with time, level and msg.
 func TestNew_JSONFormatWritesJSONLines(t *testing.T) {
@@ -39,7 +22,7 @@ func TestNew_JSONFormatWritesJSONLines(t *testing.T) {
 	logger.Info("first", slog.String("user", "alice"))
 	logger.Warn("second")
 
-	lines := decodeLines(t, buf.String())
+	lines := loggingtest.DecodeLines(t, buf.String())
 	require.Len(t, lines, 2)
 	require.Equal(t, "INFO", lines[0]["level"])
 	require.Equal(t, "first", lines[0]["msg"])
@@ -88,7 +71,7 @@ func TestNew_LevelFiltersMessages(t *testing.T) {
 			logger.Error("message")
 
 			var got []string
-			for _, line := range decodeLines(t, buf.String()) {
+			for _, line := range loggingtest.DecodeLines(t, buf.String()) {
 				got = append(got, line["level"].(string))
 			}
 
@@ -121,7 +104,7 @@ func TestNew_RedactsSensitiveKeys(t *testing.T) {
 
 	require.NotContains(t, buf.String(), "hunter2")
 
-	line := decodeLines(t, buf.String())[0]
+	line := loggingtest.DecodeLines(t, buf.String())[0]
 	for _, key := range sensitive {
 		require.Equal(t, "[REDACTED]", line[key], key)
 	}
@@ -157,7 +140,7 @@ func TestNew_RedactsSensitiveKeysInGroups(t *testing.T) {
 
 	require.NotContains(t, buf.String(), "hunter2")
 
-	line := decodeLines(t, buf.String())[0]
+	line := loggingtest.DecodeLines(t, buf.String())[0]
 	require.Equal(t, "[REDACTED]", line["cookie"])
 
 	auth := line["auth"].(map[string]any)
@@ -185,7 +168,7 @@ func TestNew_RedactsAttributesOfSensitiveGroup(t *testing.T) {
 
 	require.NotContains(t, buf.String(), "hunter2")
 
-	line := decodeLines(t, buf.String())[0]
+	line := loggingtest.DecodeLines(t, buf.String())[0]
 	require.Equal(t, "alice", line["user"])
 	require.Equal(t, map[string]any{
 		"id":      "[REDACTED]",
@@ -203,7 +186,7 @@ func TestFromContext_ReturnsStoredLogger(t *testing.T) {
 
 	FromContext(WithContext(t.Context(), logger)).Info("from context")
 
-	line := decodeLines(t, buf.String())[0]
+	line := loggingtest.DecodeLines(t, buf.String())[0]
 	require.Equal(t, "abc", line["request_id"])
 	require.Equal(t, "from context", line["msg"])
 }

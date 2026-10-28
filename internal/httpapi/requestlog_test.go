@@ -1,14 +1,11 @@
 package httpapi
 
 import (
-	"bytes"
-	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -17,38 +14,12 @@ import (
 	"github.com/gauthier-se/verve/internal/clock"
 	"github.com/gauthier-se/verve/internal/config"
 	"github.com/gauthier-se/verve/internal/logging"
+	"github.com/gauthier-se/verve/internal/logging/loggingtest"
 )
 
 // jsonLogs collects the output of a JSON logger. It is safe for concurrent use.
 type jsonLogs struct {
-	mu  sync.Mutex
-	buf bytes.Buffer
-}
-
-func (l *jsonLogs) Write(p []byte) (int, error) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	return l.buf.Write(p)
-}
-
-// lines decodes every line logged so far.
-func (l *jsonLogs) lines(t *testing.T) []map[string]any {
-	t.Helper()
-
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	var lines []map[string]any
-
-	for line := range strings.Lines(l.buf.String()) {
-		var m map[string]any
-		require.NoError(t, json.Unmarshal([]byte(line), &m), "line %q", line)
-
-		lines = append(lines, m)
-	}
-
-	return lines
+	loggingtest.Buffer
 }
 
 // withMessage returns the lines logged with msg.
@@ -57,7 +28,7 @@ func (l *jsonLogs) withMessage(t *testing.T, msg string) []map[string]any {
 
 	var lines []map[string]any
 
-	for _, line := range l.lines(t) {
+	for _, line := range l.Lines(t) {
 		if line["msg"] == msg {
 			lines = append(lines, line)
 		}
@@ -134,7 +105,7 @@ func TestRequestLog_LogsOneInfoLinePerRequest(t *testing.T) {
 
 	rec := srv.do(t, http.MethodGet, "/api/v1/meta?token=abc", untrustedPeer, nil)
 
-	lines := srv.logs.lines(t)
+	lines := srv.logs.Lines(t)
 	require.Len(t, lines, 1)
 
 	line := lines[0]
@@ -193,7 +164,7 @@ func TestRequestLog_HealthEndpointsAtDebug(t *testing.T) {
 	info.do(t, http.MethodGet, "/healthz", untrustedPeer, nil)
 	info.do(t, http.MethodGet, "/readyz", untrustedPeer, nil)
 
-	require.Empty(t, info.logs.lines(t))
+	require.Empty(t, info.logs.Lines(t))
 }
 
 // Given a handler that never calls WriteHeader, then the logged status is 200.

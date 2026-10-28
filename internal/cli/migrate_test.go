@@ -11,6 +11,7 @@ import (
 
 	"github.com/gauthier-se/verve/internal/app"
 	"github.com/gauthier-se/verve/internal/config"
+	"github.com/gauthier-se/verve/internal/logging/loggingtest"
 )
 
 // fakeMigrator records the calls of the migration runners and returns canned results.
@@ -161,7 +162,7 @@ func TestMigrate_LoggerFollowsLogConfig(t *testing.T) {
 
 	require.Equal(t, 0, res.code, res.stderr)
 
-	lines := decodeLogLines(t, res.stderr)
+	lines := loggingtest.DecodeLines(t, res.stderr)
 	require.Len(t, lines, 1)
 	require.Equal(t, "applied migration", lines[0]["msg"])
 	require.InDelta(t, 1, lines[0]["version"], 0)
