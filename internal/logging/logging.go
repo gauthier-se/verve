@@ -31,7 +31,7 @@ func New(w io.Writer, cfg config.LogConfig) *slog.Logger {
 	opts := &slog.HandlerOptions{Level: level}
 
 	var h slog.Handler = slog.NewTextHandler(w, opts)
-	if cfg.Format == "json" {
+	if cfg.Format == config.LogFormatJSON {
 		h = slog.NewJSONHandler(w, opts)
 	}
 

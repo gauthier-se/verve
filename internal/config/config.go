@@ -35,10 +35,16 @@ type LogConfig struct {
 	Format string `yaml:"format" env:"FORMAT"`
 }
 
+// Log formats.
+const (
+	LogFormatText = "text"
+	LogFormatJSON = "json"
+)
+
 // Lookup tables, never modified.
 var (
 	logLevels  = []string{"debug", "info", "warn", "error"}
-	logFormats = []string{"text", "json"}
+	logFormats = []string{LogFormatText, LogFormatJSON}
 )
 
 // Default returns the built-in defaults.
@@ -46,7 +52,7 @@ func Default() Config {
 	return Config{
 		DataDir:       "/data",
 		ListenAddr:    ":8080",
-		Log:           LogConfig{Level: "info", Format: "text"},
+		Log:           LogConfig{Level: "info", Format: LogFormatText},
 		MaxUploadSize: 10_000_000_000,
 		MaxIngestBody: 1_000_000_000,
 	}
