@@ -3,6 +3,8 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sync"
@@ -253,7 +255,7 @@ func TestClose_CheckpointsTheWAL(t *testing.T) {
 	require.NoError(t, db.Close(ctx))
 
 	info, err = os.Stat(path + "-wal")
-	if !os.IsNotExist(err) {
+	if !errors.Is(err, fs.ErrNotExist) {
 		require.NoError(t, err)
 		require.Zero(t, info.Size())
 	}

@@ -92,7 +92,7 @@ func TestEnsureDataDir_MissingUnderReadOnlyParentFails(t *testing.T) {
 	}
 
 	parent := t.TempDir()
-	require.NoError(t, os.Chmod(parent, 0o500)) //nolint:gosec // G302: a directory needs the execute bit
+	require.NoError(t, os.Chmod(parent, 0o500))                       //nolint:gosec // G302: a directory needs the execute bit
 	t.Cleanup(func() { require.NoError(t, os.Chmod(parent, 0o750)) }) //nolint:gosec // G302: restores the default permission
 
 	root := filepath.Join(parent, "data")

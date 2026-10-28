@@ -8,6 +8,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.12.1
 	go.yaml.in/yaml/v3 v3.0.5
+	modernc.org/sqlite v1.61.0
 )
 
 require (
@@ -164,7 +165,6 @@ require (
 	modernc.org/libc v1.79.0 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
-	modernc.org/sqlite v1.61.0 // indirect
 	mvdan.cc/sh/v3 v3.14.1 // indirect
 	mvdan.cc/sh/x v0.0.0-20260922090537-aebdf2b86f56 // indirect
 )

@@ -44,7 +44,7 @@ func EnsureDataDir(root string) (Layout, error) {
 	layout := newLayout(root)
 
 	if err := os.MkdirAll(root, dataDirPerm); err != nil {
-		return Layout{}, fmt.Errorf("create data directory: %w", err)
+		return Layout{}, fmt.Errorf("data directory %s is not writable: %w", root, err)
 	}
 
 	if err := checkWritable(root); err != nil {

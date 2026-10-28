@@ -1,5 +1,5 @@
 // Package sqlite is the SQLite implementation of the Verve storage. Nothing outside this package
-// and internal/app imports the SQLite driver.
+// imports the SQLite driver.
 package sqlite
 
 import (
