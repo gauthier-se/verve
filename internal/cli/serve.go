@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/gauthier-se/verve/internal/config"
+	"github.com/gauthier-se/verve/internal/logging"
 )
 
 // serveFunc runs the server until ctx is cancelled.
@@ -24,15 +25,16 @@ func newServeCommand(runServe func(cmd *cobra.Command, args []string) error) *co
 	}
 }
 
-// serveRunner loads the configuration and runs serve until SIGINT or SIGTERM. After the first
-// signal the default behavior is restored, so a second signal kills the process.
-func serveRunner(loadConfig func() (config.Config, error), serve serveFunc, logger *slog.Logger) func(*cobra.Command, []string) error {
+// serveRunner loads the configuration and runs serve, logging to stderr as configured, until
+// SIGINT or SIGTERM. After the first signal the default behavior is restored, so a second signal
+// kills the process.
+func serveRunner(loadConfig func() (config.Config, error), serve serveFunc) func(*cobra.Command, []string) error {
 	return withConfig(loadConfig, func(cmd *cobra.Command, cfg config.Config) error {
 		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 
 		context.AfterFunc(ctx, stop)
 
-		return serve(ctx, cfg, logger)
+		return serve(ctx, cfg, logging.New(cmd.ErrOrStderr(), cfg.Log))
 	})
 }

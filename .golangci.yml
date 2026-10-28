@@ -16,6 +16,11 @@ linters:
     - unconvert
     - unparam
   settings:
+    sloglint:
+      # Attributes only (slog.String("key", v)), never alternating key-value arguments.
+      attr-only: true
+      # Loggers are passed explicitly or taken from the request context, never the slog default.
+      no-global: all
     depguard:
       rules:
         # Domain code accesses data only through the interfaces of internal/store. Only the SQLite

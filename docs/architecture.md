@@ -51,6 +51,7 @@ cmd/verve/                 entry point and CLI commands (cobra)
 internal/
   app/                     dependency wiring, lifecycle
   config/                  env and YAML loading, validation
+  logging/                 slog setup, redaction, request logger in context
   httpapi/                 Huma operations, middleware, SPA handler
   auth/                    passwords, sessions, tokens, totp, oidc, proxy header
   ingest/                  pipeline
