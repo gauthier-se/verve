@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -148,6 +149,28 @@ func TestAPI_ValidationErrorReturnsProblem(t *testing.T) {
 	}`, rec.Body.String())
 }
 
+// Given an operation failing with an error that is not a problem, then 500 with the internal code
+// and without the message of the error, which may hold internal details such as file paths.
+func TestAPI_UnexpectedErrorHidesItsMessage(t *testing.T) {
+	t.Parallel()
+
+	api := NewAPI(http.NewServeMux(), APIDeps{})
+	huma.Register(api, huma.Operation{
+		OperationID: "test-unexpected-error",
+		Method:      http.MethodGet,
+		Path:        "/api/v1/test/unexpected-error",
+	}, func(context.Context, *struct{}) (*struct{}, error) {
+		return nil, errors.New("open /data/verve.db: permission denied")
+	})
+
+	rec := humatest.Wrap(t, api).Get("/api/v1/test/unexpected-error")
+
+	require.Equal(t, http.StatusInternalServerError, rec.Code)
+	require.Equal(t, "application/problem+json", rec.Header().Get("Content-Type"))
+	require.JSONEq(t, `{"type":"about:blank","title":"Internal Server Error","status":500,`+
+		`"detail":"unexpected error occurred","code":"internal"}`, rec.Body.String())
+}
+
 // testErrorInput is the input of a test-only operation that fails with the requested status.
 type testErrorInput struct {
 	Status int `path:"status"`
@@ -168,8 +191,6 @@ func TestAPI_ErrorCodeDefaultsFromStatus(t *testing.T) {
 		return nil, huma.NewError(in.Status, "failed on purpose")
 	})
 
-	testAPI := humatest.Wrap(t, api)
-
 	for _, tt := range []struct {
 		status int
 		code   string
@@ -187,7 +208,9 @@ func TestAPI_ErrorCodeDefaultsFromStatus(t *testing.T) {
 		{status: http.StatusBadGateway, code: "internal"},
 	} {
 		t.Run(strconv.Itoa(tt.status), func(t *testing.T) {
-			rec := testAPI.Get(fmt.Sprintf("/api/v1/test/errors/%d", tt.status))
+			t.Parallel()
+
+			rec := humatest.Wrap(t, api).Get(fmt.Sprintf("/api/v1/test/errors/%d", tt.status))
 
 			require.Equal(t, tt.status, rec.Code)
 			require.Equal(t, "application/problem+json", rec.Header().Get("Content-Type"))
