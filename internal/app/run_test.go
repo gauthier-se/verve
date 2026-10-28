@@ -73,6 +73,53 @@ func TestRun_CreatesDataDirLocksServesAndReleases(t *testing.T) {
 	require.NoError(t, lock.Release())
 }
 
+// Given serve with an empty data directory, then Run creates the layout and verve.db with
+// permissions 0600, and once stopped it closes the database after the HTTP server has stopped.
+func TestRun_OpensDatabaseAndClosesItAfterServer(t *testing.T) {
+	t.Parallel()
+
+	dataDir := filepath.Join(t.TempDir(), "data")
+	cfg := config.Default()
+	cfg.DataDir = dataDir
+	cfg.ListenAddr = "127.0.0.1:0"
+
+	logger, logs := testLogger()
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+
+	go func() { done <- Run(ctx, cfg, logger) }()
+
+	require.Eventually(t, func() bool { return loggedAddr.MatchString(logs.String()) },
+		5*time.Second, 10*time.Millisecond, "Run must log the bound address")
+
+	for _, sub := range []string{"uploads", "inbox", "exports", "backups", "map"} {
+		info, err := os.Stat(filepath.Join(dataDir, sub))
+		require.NoError(t, err, sub)
+		require.Equal(t, os.FileMode(0o750), info.Mode().Perm(), sub)
+	}
+
+	info, err := os.Stat(filepath.Join(dataDir, "verve.db"))
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+
+	cancel()
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run did not return")
+	}
+
+	out := logs.String()
+	serverStopped := strings.Index(out, `msg="server stopped"`)
+	dbClosed := strings.Index(out, `msg="database closed"`)
+
+	require.NotEqual(t, -1, serverStopped, "the server must log its stop")
+	require.NotEqual(t, -1, dbClosed, "Run must log that the database is closed")
+	require.Less(t, serverStopped, dbClosed, "the database must be closed after the server stopped")
+}
+
 // Given another process holds the lock on the data directory, then Run fails with
 // `another Verve process is using <data dir>` and never listens.
 func TestRun_DataDirLockedFails(t *testing.T) {
