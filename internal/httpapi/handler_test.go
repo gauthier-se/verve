@@ -16,8 +16,8 @@ import (
 	"github.com/gauthier-se/verve/internal/logging"
 )
 
-// Given no routes yet, then every request gets a 404.
-func TestNewHandler_UnknownPathReturns404(t *testing.T) {
+// Given no web app handler, then the paths outside the API and the health probes get a 404.
+func TestNewHandler_WithoutSPAReturns404(t *testing.T) {
 	t.Parallel()
 
 	h := NewHandler(Deps{Logger: slog.New(slog.DiscardHandler), Clock: clock.Real()})
@@ -26,6 +26,67 @@ func TestNewHandler_UnknownPathReturns404(t *testing.T) {
 	h.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/anything", nil))
 
 	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+// newSPAServer returns the handler of a server that serves testDist as the web app.
+func newSPAServer(t *testing.T) http.Handler {
+	t.Helper()
+
+	return NewHandler(Deps{
+		Logger: slog.New(slog.DiscardHandler),
+		Clock:  clock.Real(),
+		SPA:    newTestSPA(t, testDist()),
+	})
+}
+
+// Given an unknown path under /api/, whatever the method, then the response is a JSON 404
+// problem, never index.html.
+func TestNewHandler_UnknownAPIPathReturnsProblem(t *testing.T) {
+	t.Parallel()
+
+	h := newSPAServer(t)
+
+	for _, tt := range []struct{ method, target string }{
+		{method: http.MethodGet, target: "/api/v1/unknown"},
+		{method: http.MethodGet, target: "/api/"},
+		{method: http.MethodGet, target: "/api/v1/assets/index-3f9a1c2b.js"},
+		{method: http.MethodPost, target: "/api/v1/unknown"},
+		{method: http.MethodDelete, target: "/api/v1/unknown/1"},
+	} {
+		rec := serve(t, h, tt.method, tt.target)
+
+		require.Equal(t, http.StatusNotFound, rec.Code, tt.target)
+		require.Equal(t, "application/problem+json", rec.Header().Get("Content-Type"), tt.target)
+		require.JSONEq(t, `{"type":"about:blank","title":"Not Found","status":404,"code":"not_found"}`,
+			rec.Body.String(), tt.target)
+	}
+}
+
+// Given a path outside /api/ and the health probes, then the web app answers it.
+func TestNewHandler_OtherPathsReachSPA(t *testing.T) {
+	t.Parallel()
+
+	h := newSPAServer(t)
+
+	for _, tt := range []struct{ target, body string }{
+		{target: "/", body: testIndex},
+		{target: "/workouts/123", body: testIndex},
+		{target: "/apis", body: testIndex},
+		{target: "/assets/index-3f9a1c2b.js", body: testAppJS},
+	} {
+		rec := serve(t, h, http.MethodGet, tt.target)
+
+		require.Equal(t, http.StatusOK, rec.Code, tt.target)
+		require.Equal(t, tt.body, rec.Body.String(), tt.target)
+	}
+
+	rec := serve(t, h, http.MethodPost, "/some/page")
+	require.Equal(t, http.StatusMethodNotAllowed, rec.Code)
+	require.Equal(t, "GET, HEAD", rec.Header().Get("Allow"))
+
+	rec = serve(t, h, http.MethodGet, "/healthz")
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.JSONEq(t, `{"status":"ok"}`, rec.Body.String())
 }
 
 // Given any handler behind the middleware chain, then ClientInfoFrom returns the resolved information.

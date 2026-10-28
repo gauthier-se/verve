@@ -16,6 +16,7 @@ import (
 	"github.com/gauthier-se/verve/internal/config"
 	"github.com/gauthier-se/verve/internal/store/sqlite"
 	"github.com/gauthier-se/verve/internal/version"
+	"github.com/gauthier-se/verve/internal/webui"
 )
 
 var loggedAddr = regexp.MustCompile(`addr=(127\.0\.0\.1:\d+)`)
@@ -99,10 +100,10 @@ func TestRun_CreatesDataDirLocksServesAndReleases(t *testing.T) {
 	_, err = AcquireLock(dataDir)
 	require.EqualError(t, err, "another Verve process is using "+dataDir)
 
-	res, err := get(t.Context(), "http://"+addr+"/")
+	res, err := get(t.Context(), "http://"+addr+"/healthz")
 	require.NoError(t, err)
 	require.NoError(t, res.Body.Close())
-	require.Equal(t, http.StatusNotFound, res.StatusCode)
+	require.Equal(t, http.StatusOK, res.StatusCode)
 
 	stop()
 
@@ -286,12 +287,35 @@ func TestRun_GatesApplicationRoutesWhileMigrating(t *testing.T) {
 	res = fetch(t, base+"/readyz")
 	require.JSONEq(t, `{"status":"ready","version":"`+wantVersion+`"}`, res.body)
 
-	// No application route exists yet: the gate lets the requests through to the router.
-	for _, path := range []string{"/", "/api/v1/anything"} {
-		require.Equal(t, http.StatusNotFound, fetch(t, base+path).status, path)
+	// The gate lets the requests through to the router.
+	res = fetch(t, base+"/")
+	require.Equal(t, http.StatusOK, res.status)
+	require.Equal(t, "text/html; charset=utf-8", res.contentType)
+
+	res = fetch(t, base+"/api/v1/anything")
+	require.Equal(t, http.StatusNotFound, res.status)
+	require.Equal(t, "application/problem+json", res.contentType)
+
+	stop()
+}
+
+// Given a running server, then it serves the embedded web app, or the page explaining that the
+// web UI is not built, on / and on the client routes. Without the web app, Run logs a warning.
+func TestRun_ServesWebApp(t *testing.T) {
+	t.Parallel()
+
+	addr, logs, stop := startRun(t, testConfig(t.TempDir()))
+
+	for _, path := range []string{"/", "/workouts/123"} {
+		res := fetch(t, "http://"+addr+path)
+		require.Equal(t, http.StatusOK, res.status, path)
+		require.Equal(t, "text/html; charset=utf-8", res.contentType, path)
+		require.Equal(t, !webui.Built(), strings.Contains(res.body, "The web UI is not built"), path)
 	}
 
 	stop()
+
+	require.Equal(t, !webui.Built(), strings.Contains(logs.String(), `level=WARN msg="web app not built`))
 }
 
 // Given the server ready and its data directory no longer writable, then /readyz returns 503
