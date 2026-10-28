@@ -137,3 +137,23 @@ func TestHealthcheck_InvalidListenAddrExitsOne(t *testing.T) {
 	require.Equal(t, 1, res.code)
 	require.Contains(t, res.stderr, `Error: healthcheck: invalid listen address "8080"`)
 }
+
+// Given a server that never answers and no timeout configured, then healthcheck gives up after
+// 3 seconds with status 1.
+func TestHealthcheck_DefaultTimeoutIsThreeSeconds(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	t.Cleanup(srv.Close)
+
+	start := time.Now()
+	res := run(t, depsWithEnv(listenAddrEnv(srv.Listener.Addr().String())), "healthcheck")
+	elapsed := time.Since(start)
+
+	require.Equal(t, 1, res.code)
+	require.Contains(t, res.stderr, "Client.Timeout exceeded")
+	require.GreaterOrEqual(t, elapsed, 3*time.Second)
+	require.Less(t, elapsed, 10*time.Second)
+}
