@@ -33,12 +33,15 @@ Verve is multi-user for a household. Each user's health data is isolated. An adm
 
 ## Functional requirements
 
-- **FR-1**: When no user exists, the server prints a one-time setup token in its logs at startup. The `/setup` page requires this token to create the first admin. This prevents someone else on the network from claiming the instance first.
+- **FR-1**: When no user exists, `serve` prints a setup token at startup. The `/setup` page requires this token to create the first admin. This prevents someone else on the network from claiming the instance first.
+  - Output: one dedicated line on stderr, where `serve` writes its logs, containing the link `<VERVE_PUBLIC_URL>/setup#<token>`, or the path `/setup#<token>` to append to the server address when `VERVE_PUBLIC_URL` is not set. The line is written directly to stderr, outside the `slog` handler: it is plain text in both log formats, printed whatever `VERVE_LOG_LEVEL`, and the token is never a log attribute. Under a key that the redaction of [Observability](platform-observability.md) FR-4 hides, such as `setup_token`, it would be written as `[REDACTED]`. This line is the only exception to the rule that logs never contain tokens.
+  - Validity: the token is random, held in memory only and never stored. It stops being valid as soon as a user exists, whether created through `/setup` or with `verve user create --admin` (FR-2), and when the process stops. Each start while no user exists generates and prints a new token. Once a user exists, `serve` prints no setup line.
+  - Use: the link carries the token in the URL fragment, never in the path or query string, and the SPA handles it like the invitation link of FR-4. When the fragment is empty, the page asks for the token.
 - **FR-2**: Alternatively, the first admin can be created with `verve user create --admin`, which disables the setup page.
 - **FR-3**: Roles: `admin` and `member`. Admins have all member capabilities for their own data plus administration.
-- **FR-4**: Admins invite users by creating an invitation (username, optional email, role). Verve produces a single-use invitation link valid for 72 hours, which the admin copies or sends by email when SMTP is configured. The invitee chooses their own password through the link. The link carries its token in the URL fragment, never in the path or query string: `<VERVE_PUBLIC_URL>/invite#<token>`, for example `https://verve.example.com/invite#<token>`. The SPA reads the token from the fragment and sends it to the API in a request body (see the security baseline in [Architecture](../architecture.md#security-baseline)).
+- **FR-4**: Admins invite users by creating an invitation (username, optional email, role). Verve produces a single-use invitation link valid for 72 hours, which the admin copies or sends by email when SMTP is configured. The invitee chooses their own password through the link. The link carries its token in the URL fragment, never in the path or query string: `<VERVE_PUBLIC_URL>/invite#<token>`, for example `https://verve.example.com/invite#<token>`. The SPA reads the token from the fragment and removes the fragment from the address bar with `history.replaceState` right away, before sending any request, so that the token does not stay in the address bar or in the history entry. It keeps the token in memory only (component state, never `sessionStorage` or `localStorage`) and sends it to the API in a request body (see the security baseline in [Architecture](../architecture.md#security-baseline)).
 - **FR-5**: Admins can disable and re-enable accounts. Disabling revokes all sessions and makes all API tokens of that user fail until re-enabled.
-- **FR-6**: Admins can generate a single-use password reset link for a user (valid 24 hours). The admin never sets or sees the password. Like the invitation link, it carries its token in the URL fragment, `<VERVE_PUBLIC_URL>/reset-password#<token>`, and the SPA sends the token to the API in a request body.
+- **FR-6**: Admins can generate a single-use password reset link for a user (valid 24 hours). The admin never sets or sees the password. Like the invitation link, it carries its token in the URL fragment, `<VERVE_PUBLIC_URL>/reset-password#<token>`, and the SPA handles it as in FR-4: it removes the fragment from the address bar with `history.replaceState` right after reading the token, before sending any request, keeps the token in memory only and sends it to the API in a request body.
 - **FR-7**: Self-service password reset by email is available when SMTP is configured (see [Notifications](notifications.md)). The emailed link is a password reset link as described in FR-6.
 - **FR-8**: Admins can promote and demote users. The last active admin cannot be demoted, disabled or deleted.
 - **FR-9**: The admin user list shows metadata only: username, email, role, status, created date, last login, number of samples, storage used, last ingestion per origin. No health values, charts or plans of other users.
@@ -62,6 +65,7 @@ Verve is multi-user for a household. Each user's health data is isolated. An adm
 
 ## Edge cases
 
+- Setup token lost, for example after log rotation: restarting Verve prints a new one and invalidates the old one.
 - Invitation link used twice: second use fails with a clear message.
 - Username collision with an OIDC or proxy header identity: handled by the linking rules in those features.
 - Deleting a user while an import is running: the import is cancelled first.
@@ -69,7 +73,9 @@ Verve is multi-user for a household. Each user's health data is isolated. An adm
 
 ## Acceptance criteria
 
-- [ ] The setup page cannot be used without the token printed in the logs.
+- [ ] The setup page cannot be used without the token printed at startup.
+- [ ] The setup token appears only in the dedicated startup line, never in a log attribute.
+- [ ] Once a user exists, the setup token is rejected and `serve` prints no setup line.
 - [ ] An admin cannot reach any endpoint returning another user's health data.
 - [ ] Disabling a user immediately invalidates their sessions and tokens.
 - [ ] Deleting an account removes all its rows from every user-owned table.
