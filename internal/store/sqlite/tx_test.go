@@ -46,7 +46,7 @@ func requireNoSetting(ctx context.Context, t *testing.T, repos store.Repositorie
 func TestWithTx_CommitsWhenTheFunctionSucceeds(t *testing.T) {
 	t.Parallel()
 
-	s := newTestStore(t, clock.NewFake(txTestNow))
+	s, _ := newTestStore(t, clock.NewFake(txTestNow))
 	ctx := boundedContext(t)
 
 	err := s.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
@@ -67,7 +67,7 @@ func TestWithTx_CommitsWhenTheFunctionSucceeds(t *testing.T) {
 func TestWithTx_FunctionErrorRollsBackEveryWriteAndReturnsTheError(t *testing.T) {
 	t.Parallel()
 
-	s := newTestStore(t, clock.NewFake(txTestNow))
+	s, _ := newTestStore(t, clock.NewFake(txTestNow))
 	ctx := boundedContext(t)
 
 	require.NoError(t, s.InstanceSettings().Set(ctx, "map.mode", "none"))
@@ -104,7 +104,7 @@ func TestWithTx_FunctionErrorRollsBackEveryWriteAndReturnsTheError(t *testing.T)
 func TestWithTx_PanicRollsBackAndIsReRaised(t *testing.T) {
 	t.Parallel()
 
-	s := newTestStore(t, clock.NewFake(txTestNow))
+	s, _ := newTestStore(t, clock.NewFake(txTestNow))
 	ctx := boundedContext(t)
 
 	require.PanicsWithValue(t, "boom", func() {
@@ -127,7 +127,7 @@ func TestWithTx_PanicRollsBackAndIsReRaised(t *testing.T) {
 func TestWithTx_ReadsInsideSeeTheTransactionWrites(t *testing.T) {
 	t.Parallel()
 
-	s := newTestStore(t, clock.NewFake(txTestNow))
+	s, _ := newTestStore(t, clock.NewFake(txTestNow))
 	ctx := boundedContext(t)
 
 	require.NoError(t, s.InstanceSettings().Set(ctx, "map.mode", "none"))
@@ -160,7 +160,7 @@ func TestWithTx_ReadsInsideSeeTheTransactionWrites(t *testing.T) {
 func TestStore_ReadsOutsideWithTxUseTheReaderPool(t *testing.T) {
 	t.Parallel()
 
-	s := newTestStore(t, clock.NewFake(txTestNow))
+	s, _ := newTestStore(t, clock.NewFake(txTestNow))
 	ctx := boundedContext(t)
 
 	require.NoError(t, s.InstanceSettings().Set(ctx, "map.mode", "none"))
@@ -192,7 +192,7 @@ func TestStore_ReadsOutsideWithTxUseTheReaderPool(t *testing.T) {
 func TestStore_WritesOutsideWithTxEachCommitOnTheWriter(t *testing.T) {
 	t.Parallel()
 
-	s := newTestStore(t, clock.NewFake(txTestNow))
+	s, db := newTestStore(t, clock.NewFake(txTestNow))
 	ctx := boundedContext(t)
 
 	const writers = 20
@@ -239,6 +239,11 @@ func TestStore_WritesOutsideWithTxEachCommitOnTheWriter(t *testing.T) {
 			}
 		})
 	}
+
+	// Every write waits for the writer connection that the transaction holds.
+	require.Eventually(t, func() bool {
+		return db.Write().Stats().WaitCount >= writers
+	}, 5*time.Second, 5*time.Millisecond, "the writes must queue for the writer")
 
 	close(release)
 	require.NoError(t, <-txDone)

@@ -16,21 +16,22 @@ import (
 type sqliteStore struct {
 	repositories
 
-	db *DB
+	pool poolQueries
+	db   *DB
 }
 
 // New returns a store on db, which must be migrated, taking the current time from clk. Closing
 // the store closes db.
 func New(db *DB, clk clock.Clock) store.Store {
-	q := poolQueries{reader: sqlcgen.New(db.Read()), writer: db.Write()}
+	pool := poolQueries{reader: sqlcgen.New(db.Read()), writer: db.Write()}
 
-	return &sqliteStore{repositories: repositories{q: q, clk: clk}, db: db}
+	return &sqliteStore{repositories: repositories{q: pool, clk: clk}, pool: pool, db: db}
 }
 
 // WithTx runs fn in a transaction on the writer. Reads through tx see the writes of fn.
 func (s *sqliteStore) WithTx(ctx context.Context, fn func(ctx context.Context, tx store.Repositories) error) error {
-	return inTx(ctx, s.db.Write(), func(tx *sql.Tx) error {
-		return fn(ctx, repositories{q: txQueries{q: sqlcgen.New(tx)}, clk: s.clk})
+	return s.pool.write(ctx, func(q *sqlcgen.Queries) error {
+		return fn(ctx, repositories{q: txQueries{q: q}, clk: s.clk})
 	})
 }
 

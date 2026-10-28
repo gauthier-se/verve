@@ -14,7 +14,7 @@ Every pull request runs these required checks:
 
 | Check | What it verifies | Run it locally |
 |---|---|---|
-| `go` | golangci-lint (linters and formatting), tests with the race detector, total coverage of at least 80 percent outside `cmd/` and generated code, govulncheck | `task go:lint`, `task test:coverage`, `task vuln` |
+| `go` | golangci-lint (linters and formatting), generated code up to date (sqlc), tests with the race detector, total coverage of at least 80 percent outside `cmd/` and generated code, govulncheck | `task go:generate` (no diff), `task go:lint`, `task test:coverage`, `task vuln` |
 | `web` | Dependencies install from the lockfile without changes, ESLint, Prettier format check, TypeScript type check, translation check (files up to date with the keys in code, no hardcoded user-facing text), Vitest tests with coverage, production build | `task web:lint`, `pnpm coverage` in `web/`, `task web:build` |
 | `pr-title` | The pull request title follows the commit message format below | |
 

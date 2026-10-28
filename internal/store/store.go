@@ -15,8 +15,8 @@ var (
 	ErrConflict = errors.New("store: conflict")
 )
 
-// Repositories gives access to every repository. Outside a transaction, reads use a pool that
-// writes never block and each write runs in its own transaction.
+// Repositories gives access to every repository. Used outside WithTx, each write is committed on
+// its own when it returns.
 type Repositories interface {
 	InstanceSettings() InstanceSettingsRepository
 }

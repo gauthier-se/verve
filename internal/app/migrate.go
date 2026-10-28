@@ -28,7 +28,7 @@ func beforeMigrate(context.Context, []int64) error {
 
 // Migrate takes the data directory lock, opens the database and applies the pending migrations.
 func Migrate(ctx context.Context, cfg config.Config, logger *slog.Logger) (MigrateResult, error) {
-	return withOfflineDB(ctx, cfg, func(db *sqlite.DB) (sqlite.MigrateResult, error) {
+	return withOfflineDB(ctx, cfg, func(db *sqlite.DB) (MigrateResult, error) {
 		return migrateDB(ctx, db, logger)
 	})
 }
@@ -36,12 +36,12 @@ func Migrate(ctx context.Context, cfg config.Config, logger *slog.Logger) (Migra
 // MigrationStatus takes the data directory lock, opens the database and lists the migrations
 // with the time they were applied.
 func MigrationStatus(ctx context.Context, cfg config.Config) ([]MigrationState, error) {
-	return withOfflineDB(ctx, cfg, func(db *sqlite.DB) ([]sqlite.MigrationState, error) {
+	return withOfflineDB(ctx, cfg, func(db *sqlite.DB) ([]MigrationState, error) {
 		return sqlite.MigrationStatus(ctx, db)
 	})
 }
 
-func migrateDB(ctx context.Context, db *sqlite.DB, logger *slog.Logger) (sqlite.MigrateResult, error) {
+func migrateDB(ctx context.Context, db *sqlite.DB, logger *slog.Logger) (MigrateResult, error) {
 	return sqlite.Migrate(ctx, db, sqlite.MigrateOptions{BeforeMigrate: beforeMigrate, Logger: logger})
 }
 

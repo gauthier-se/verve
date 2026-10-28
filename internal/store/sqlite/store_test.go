@@ -12,9 +12,9 @@ import (
 	"github.com/gauthier-se/verve/internal/store/storetest"
 )
 
-// newTestStore returns a store on a migrated database in a fresh temporary directory. The store
-// is closed at the end of the test.
-func newTestStore(t *testing.T, clk clock.Clock) store.Store {
+// newTestStore returns a store on a migrated database in a fresh temporary directory, and the
+// database for checks on its pools. The store is closed at the end of the test.
+func newTestStore(t *testing.T, clk clock.Clock) (store.Store, *DB) {
 	t.Helper()
 
 	db, err := Open(t.Context(), filepath.Join(t.TempDir(), "verve.db"))
@@ -26,7 +26,7 @@ func newTestStore(t *testing.T, clk clock.Clock) store.Store {
 	s := New(db, clk)
 	t.Cleanup(func() { require.NoError(t, s.Close(context.Background())) })
 
-	return s
+	return s, db
 }
 
 // Given the contract suite storetest.RunInstanceSettings, then the SQLite implementation passes it.
@@ -36,6 +36,8 @@ func TestStore_InstanceSettingsContract(t *testing.T) {
 	storetest.RunInstanceSettings(t, func(t *testing.T, clk clock.Clock) store.Store {
 		t.Helper()
 
-		return newTestStore(t, clk)
+		s, _ := newTestStore(t, clk)
+
+		return s
 	})
 }
