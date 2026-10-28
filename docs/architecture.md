@@ -226,6 +226,7 @@ Values are stored in canonical units and converted only for display.
 - Secrets at rest (TOTP secrets, OIDC client secret, SMTP password, webhook secrets) are encrypted with a key from `VERVE_SECRET_KEY`, or generated once in the data directory.
 - `X-Forwarded-*` headers are trusted only from `VERVE_TRUSTED_PROXIES`.
 - Logs never contain health values, tokens, passwords or session ids.
+- Secrets (single-use link tokens, API tokens, session ids, passwords) never appear in the path or query string of a URL that Verve serves or generates: the path is written to Verve's request log, and the path and query string reach reverse proxy access logs and the `Referer` header. A link that carries a secret, such as an invitation or password reset link, puts it in the URL fragment (`#...`), which browsers never send to a server, and the SPA sends it to the API in a request body. The OIDC callback is the only exception: it receives `code` and `state` in the query string, the default response mode of the Authorization Code flow, and the code is single-use and bound to PKCE.
 
 ### Errors
 
