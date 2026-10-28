@@ -157,15 +157,23 @@ tasks:
       - pnpm i18n:check
 
   generate:
-    desc: Generate code (sqlc queries, translation keys and types)
+    desc: Generate code (sqlc queries, OpenAPI spec and API client, translation keys and types)
     cmds:
       - task: go:generate
+      - task: api:generate
       - task: web:generate
 
   go:generate:
     desc: Generate the Go code of the SQL queries in internal/store/sqlite/sqlcgen
     cmds:
       - go tool sqlc generate
+
+  api:generate:
+    desc: Write the OpenAPI spec to web/openapi.json and generate the TypeScript API client in web/src/api/generated
+    deps: [web:install]
+    cmds:
+      - go run ./cmd/verve openapi > web/openapi.json
+      - pnpm --dir web generate:api
 
   web:generate:
     desc: Extract translation keys into the locale files and generate their types
@@ -182,8 +190,8 @@ tasks:
       - pnpm test
 
   web:build:
-    desc: Build the web app into web/dist and sync it into internal/webui/dist, which the binary embeds
-    deps: [web:install]
+    desc: Regenerate the API client, build the web app into web/dist and sync it into internal/webui/dist, which the binary embeds
+    deps: [web:install, api:generate]
     cmds:
       - pnpm --dir web build
       # A Go program rather than rsync or cp, so that it works on every OS.

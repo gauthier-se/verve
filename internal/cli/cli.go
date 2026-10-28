@@ -115,6 +115,7 @@ func NewRootCommand(deps Deps) *cobra.Command {
 	root.AddCommand(newVersionCommand(deps.Version))
 	root.AddCommand(newConfigCommand(loadConfig))
 	root.AddCommand(newHealthcheckCommand(loadConfig, deps.HealthcheckTimeout))
+	root.AddCommand(newOpenAPICommand())
 
 	return root
 }

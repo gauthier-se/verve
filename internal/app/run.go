@@ -63,7 +63,7 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger, hook befor
 		// until the schema is migrated. Not closed on its own: the deferred closeDB closes the
 		// database under it.
 		Store:    sqlite.New(db, clk),
-		Version:  version.Get().Version,
+		Version:  version.Get(),
 		Checkers: startup.checkers,
 		Gate:     startup.gate,
 		SPA:      spa,

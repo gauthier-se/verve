@@ -23,18 +23,6 @@ jobs:
         with:
           go-version-file: go.mod
 
-      # Only the Go generators: the web job checks the translation files, and this job has no
-      # Node.js. git status also catches generated files that are new and untracked.
-      - name: Generated code up to date
-        run: |
-          go tool task go:generate
-          if [ -n "$(git status --porcelain)" ]; then
-            git status --short
-            git diff
-            echo "::error::Generated code is out of date: run task generate and commit the result"
-            exit 1
-          fi
-
       - name: Lint
         uses: golangci/golangci-lint-action@v9
         with:
@@ -119,3 +107,36 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+  generated:
+    name: generated
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      # Installs the pnpm version of the packageManager field.
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: web/package.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: web/.nvmrc
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      # Every generator: sqlc queries, OpenAPI spec, API client and translation files. git status
+      # also catches generated files that are new and untracked, which git diff misses.
+      - name: Generated code up to date
+        run: |
+          go tool task generate
+          if [ -n "$(git status --porcelain)" ]; then
+            git status --short
+            git diff
+            echo "::error::Generated code is out of date: run task generate and commit the result"
+            exit 1
+          fi

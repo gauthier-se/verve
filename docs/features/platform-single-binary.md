@@ -42,7 +42,7 @@ Verve ships as one executable named `verve`. It serves the REST API and the web 
   | `import native --user <name> <file>` | Import a Verve native JSON file, for example an export from another instance, see [Data export](data-export.md) |
   | `backup` / `restore <file>` | See [Backups](backups.md) |
   | `user create`, `user list`, `user reset-password`, `user disable`, `user enable` | Break-glass user management |
-  | `openapi` | Print the OpenAPI spec (used by the frontend build) |
+  | `openapi` | Print the OpenAPI spec as JSON (used by the frontend build), without loading the configuration or opening the data directory |
   | `config check` | Validate configuration and print the effective values with secrets masked |
   | `healthcheck` | Call `/healthz` on the configured listen address, through the IPv4 loopback when its host is empty or unspecified (`:8080`, `0.0.0.0:8080`, `[::]:8080`). Exit 1 with the reason on stderr on any status other than 200, a connection error or no answer within 3 seconds (for images without curl) |
   | `version` | Print version, commit and build date |

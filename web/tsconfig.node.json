@@ -20,5 +20,10 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["vite.config.ts", "eslint.config.ts", "i18next.config.ts"]
+  "include": [
+    "vite.config.ts",
+    "eslint.config.ts",
+    "i18next.config.ts",
+    "openapi-ts.config.ts"
+  ]
 }

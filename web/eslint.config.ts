@@ -10,6 +10,7 @@ export default defineConfig(
     "dist",
     "coverage",
     "src/routeTree.gen.ts",
+    "src/api/generated",
     "src/components/ui",
   ]),
   tseslint.configs.strictTypeChecked,
