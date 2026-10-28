@@ -98,7 +98,8 @@ tasks:
       - go tool govulncheck ./...
 
   build:
-    desc: Build bin/verve with version metadata
+    desc: Build bin/verve with version metadata and the web app embedded
+    deps: [web:build]
     vars:
       VERSION:
         sh: git describe --tags --always --dirty
@@ -181,8 +182,9 @@ tasks:
       - pnpm test
 
   web:build:
-    desc: Build the web app into web/dist
-    dir: web
+    desc: Build the web app into web/dist and sync it into internal/webui/dist, which the binary embeds
     deps: [web:install]
     cmds:
-      - pnpm build
+      - pnpm --dir web build
+      # A Go program rather than rsync or cp, so that it works on every OS.
+      - go run ./tools/syncdist web/dist internal/webui/dist
