@@ -4,6 +4,7 @@ linters:
   default: standard
   enable:
     - bodyclose
+    - depguard
     - errorlint
     - gocritic
     - gosec
@@ -14,6 +15,21 @@ linters:
     - testifylint
     - unconvert
     - unparam
+  settings:
+    depguard:
+      rules:
+        # Domain code accesses data only through the interfaces of internal/store. Only the SQLite
+        # implementation and the wiring in internal/app see SQLite.
+        sqlite:
+          files:
+            - $all
+            - "!**/internal/store/sqlite/**"
+            - "!**/internal/app/**"
+          deny:
+            - pkg: modernc.org/sqlite
+              desc: only internal/store/sqlite may use the SQLite driver
+            - pkg: github.com/gauthier-se/verve/internal/store/sqlite
+              desc: depend on the internal/store interfaces; only internal/app wires the SQLite implementation
 
 formatters:
   enable:

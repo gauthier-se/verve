@@ -8,6 +8,7 @@ import (
 
 	"github.com/gauthier-se/verve/internal/clock"
 	"github.com/gauthier-se/verve/internal/config"
+	"github.com/gauthier-se/verve/internal/store"
 )
 
 // Deps holds what the handler needs. It grows as routes are added.
@@ -15,6 +16,7 @@ type Deps struct {
 	Logger         *slog.Logger
 	Clock          clock.Clock
 	TrustedProxies config.Prefixes
+	Store          store.Store
 }
 
 // NewHandler returns the root handler of the server. It has no routes yet and answers 404.

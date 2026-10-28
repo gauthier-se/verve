@@ -10,13 +10,24 @@ import (
 	"github.com/gauthier-se/verve/internal/store/sqlite"
 )
 
+// The migration types of the SQLite store are aliased here, so that the command line does not
+// import it.
+type (
+	// MigrateResult lists the migrations applied by Migrate and the resulting schema version.
+	MigrateResult = sqlite.MigrateResult
+	// Migration identifies a schema migration.
+	Migration = sqlite.Migration
+	// MigrationState is a migration with the time it was applied, zero when it is pending.
+	MigrationState = sqlite.MigrationState
+)
+
 // beforeMigrate runs before pending migrations are applied. M1 takes a backup of the database here.
 func beforeMigrate(context.Context, []int64) error {
 	return nil
 }
 
 // Migrate takes the data directory lock, opens the database and applies the pending migrations.
-func Migrate(ctx context.Context, cfg config.Config, logger *slog.Logger) (sqlite.MigrateResult, error) {
+func Migrate(ctx context.Context, cfg config.Config, logger *slog.Logger) (MigrateResult, error) {
 	return withOfflineDB(ctx, cfg, func(db *sqlite.DB) (sqlite.MigrateResult, error) {
 		return migrateDB(ctx, db, logger)
 	})
@@ -24,7 +35,7 @@ func Migrate(ctx context.Context, cfg config.Config, logger *slog.Logger) (sqlit
 
 // MigrationStatus takes the data directory lock, opens the database and lists the migrations
 // with the time they were applied.
-func MigrationStatus(ctx context.Context, cfg config.Config) ([]sqlite.MigrationState, error) {
+func MigrationStatus(ctx context.Context, cfg config.Config) ([]MigrationState, error) {
 	return withOfflineDB(ctx, cfg, func(db *sqlite.DB) ([]sqlite.MigrationState, error) {
 		return sqlite.MigrationStatus(ctx, db)
 	})
