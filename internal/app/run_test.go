@@ -18,15 +18,19 @@ import (
 
 var loggedAddr = regexp.MustCompile(`addr=(127\.0\.0\.1:\d+)`)
 
-// Given a data directory that does not exist, when Run starts, then it creates the directory
-// with permissions 0750, takes the lock, serves, stops on context cancel and releases the lock.
-func TestRun_CreatesDataDirLocksServesAndReleases(t *testing.T) {
-	t.Parallel()
-
-	dataDir := filepath.Join(t.TempDir(), "data")
+// testConfig returns the default configuration with dataDir and a random local port.
+func testConfig(dataDir string) config.Config {
 	cfg := config.Default()
 	cfg.DataDir = dataDir
 	cfg.ListenAddr = "127.0.0.1:0"
+
+	return cfg
+}
+
+// startRun runs Run until it listens. It returns the bound address, the logs and a function that
+// stops Run and checks that it returned without error.
+func startRun(t *testing.T, cfg config.Config) (string, *syncBuffer, func()) {
+	t.Helper()
 
 	logger, logs := testLogger()
 	ctx, cancel := context.WithCancel(t.Context())
@@ -47,6 +51,29 @@ func TestRun_CreatesDataDirLocksServesAndReleases(t *testing.T) {
 		return true
 	}, 5*time.Second, 10*time.Millisecond, "Run must log the bound address")
 
+	stop := func() {
+		t.Helper()
+		cancel()
+
+		select {
+		case err := <-done:
+			require.NoError(t, err)
+		case <-time.After(5 * time.Second):
+			t.Fatal("Run did not return")
+		}
+	}
+
+	return addr, logs, stop
+}
+
+// Given a data directory that does not exist, when Run starts, then it creates the directory
+// with permissions 0750, takes the lock, serves, stops on context cancel and releases the lock.
+func TestRun_CreatesDataDirLocksServesAndReleases(t *testing.T) {
+	t.Parallel()
+
+	dataDir := filepath.Join(t.TempDir(), "data")
+	addr, _, stop := startRun(t, testConfig(dataDir))
+
 	info, err := os.Stat(dataDir)
 	require.NoError(t, err)
 	require.True(t, info.IsDir())
@@ -60,14 +87,7 @@ func TestRun_CreatesDataDirLocksServesAndReleases(t *testing.T) {
 	require.NoError(t, res.Body.Close())
 	require.Equal(t, http.StatusNotFound, res.StatusCode)
 
-	cancel()
-
-	select {
-	case err := <-done:
-		require.NoError(t, err)
-	case <-time.After(5 * time.Second):
-		t.Fatal("Run did not return")
-	}
+	stop()
 
 	lock, err := AcquireLock(dataDir)
 	require.NoError(t, err)
@@ -80,18 +100,7 @@ func TestRun_OpensDatabaseAndClosesItAfterServer(t *testing.T) {
 	t.Parallel()
 
 	dataDir := filepath.Join(t.TempDir(), "data")
-	cfg := config.Default()
-	cfg.DataDir = dataDir
-	cfg.ListenAddr = "127.0.0.1:0"
-
-	logger, logs := testLogger()
-	ctx, cancel := context.WithCancel(t.Context())
-	done := make(chan error, 1)
-
-	go func() { done <- Run(ctx, cfg, logger) }()
-
-	require.Eventually(t, func() bool { return loggedAddr.MatchString(logs.String()) },
-		5*time.Second, 10*time.Millisecond, "Run must log the bound address")
+	_, logs, stop := startRun(t, testConfig(dataDir))
 
 	for _, sub := range []string{"uploads", "inbox", "exports", "backups", "map"} {
 		info, err := os.Stat(filepath.Join(dataDir, sub))
@@ -103,14 +112,7 @@ func TestRun_OpensDatabaseAndClosesItAfterServer(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 
-	cancel()
-
-	select {
-	case err := <-done:
-		require.NoError(t, err)
-	case <-time.After(5 * time.Second):
-		t.Fatal("Run did not return")
-	}
+	stop()
 
 	out := logs.String()
 	serverStopped := strings.Index(out, `msg="server stopped"`)
@@ -127,9 +129,6 @@ func TestRun_DataDirLockedFails(t *testing.T) {
 	t.Parallel()
 
 	dataDir := t.TempDir()
-	cfg := config.Default()
-	cfg.DataDir = dataDir
-	cfg.ListenAddr = "127.0.0.1:0"
 
 	lock, err := AcquireLock(dataDir)
 	require.NoError(t, err)
@@ -137,7 +136,7 @@ func TestRun_DataDirLockedFails(t *testing.T) {
 
 	logger, logs := testLogger()
 
-	err = Run(t.Context(), cfg, logger)
+	err = Run(t.Context(), testConfig(dataDir), logger)
 	require.EqualError(t, err, "another Verve process is using "+dataDir)
 	require.NotRegexp(t, loggedAddr, logs.String())
 }
@@ -146,24 +145,13 @@ func TestRun_DataDirLockedFails(t *testing.T) {
 func TestRun_LogsConfigurationWarningsOnce(t *testing.T) {
 	t.Parallel()
 
-	cfg := config.Default()
-	cfg.DataDir = t.TempDir()
-	cfg.ListenAddr = "127.0.0.1:0"
+	cfg := testConfig(t.TempDir())
 
 	warnings := cfg.Warnings()
 	require.NotEmpty(t, warnings)
 
-	logger, logs := testLogger()
-	ctx, cancel := context.WithCancel(t.Context())
-	done := make(chan error, 1)
-
-	go func() { done <- Run(ctx, cfg, logger) }()
-
-	require.Eventually(t, func() bool { return loggedAddr.MatchString(logs.String()) },
-		5*time.Second, 10*time.Millisecond, "Run must log the bound address")
-
-	cancel()
-	require.NoError(t, <-done)
+	_, logs, stop := startRun(t, cfg)
+	stop()
 
 	for _, w := range warnings {
 		require.Equal(t, 1, strings.Count(logs.String(), `level=WARN msg="`+w), w)
@@ -175,21 +163,9 @@ func TestRun_LogsConfigurationWarningsOnce(t *testing.T) {
 func TestRun_MigratesBeforeServing(t *testing.T) {
 	t.Parallel()
 
-	cfg := config.Default()
-	cfg.DataDir = t.TempDir()
-	cfg.ListenAddr = "127.0.0.1:0"
-
-	logger, logs := testLogger()
-	ctx, cancel := context.WithCancel(t.Context())
-	done := make(chan error, 1)
-
-	go func() { done <- Run(ctx, cfg, logger) }()
-
-	require.Eventually(t, func() bool { return loggedAddr.MatchString(logs.String()) },
-		5*time.Second, 10*time.Millisecond, "Run must log the bound address")
-
-	cancel()
-	require.NoError(t, <-done)
+	dataDir := t.TempDir()
+	_, logs, stop := startRun(t, testConfig(dataDir))
+	stop()
 
 	out := logs.String()
 	applied := strings.Index(out, `msg="applied migration" version=1 name=instance_settings`)
@@ -198,7 +174,7 @@ func TestRun_MigratesBeforeServing(t *testing.T) {
 	require.NotEqual(t, -1, applied, "Run must log the applied migration")
 	require.Less(t, applied, listening, "migrations must be applied before the server listens")
 
-	require.Equal(t, sqlite.LatestVersion(), schemaVersion(t, cfg.DataDir))
+	require.Equal(t, sqlite.LatestVersion(), schemaVersion(t, dataDir))
 }
 
 // Given a database whose version is newer than this binary supports, then Run fails and never
@@ -206,15 +182,12 @@ func TestRun_MigratesBeforeServing(t *testing.T) {
 func TestRun_NewerDatabaseFails(t *testing.T) {
 	t.Parallel()
 
-	cfg := config.Default()
-	cfg.DataDir = t.TempDir()
-	cfg.ListenAddr = "127.0.0.1:0"
-
-	setFutureSchemaVersion(t, cfg.DataDir)
+	dataDir := t.TempDir()
+	setFutureSchemaVersion(t, dataDir)
 
 	logger, logs := testLogger()
 
-	err := Run(t.Context(), cfg, logger)
+	err := Run(t.Context(), testConfig(dataDir), logger)
 	require.ErrorContains(t, err, "is newer than this binary supports")
 	require.NotRegexp(t, loggedAddr, logs.String())
 }

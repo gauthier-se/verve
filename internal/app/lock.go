@@ -26,10 +26,19 @@ func AcquireLock(dataDir string) (*Lock, error) {
 	}
 
 	if !locked {
-		return nil, fmt.Errorf("another Verve process is using %s", dataDir)
+		return nil, &dataDirInUseError{dir: dataDir}
 	}
 
 	return &Lock{fl: fl}, nil
+}
+
+// dataDirInUseError reports that another process holds the lock on a data directory.
+type dataDirInUseError struct {
+	dir string
+}
+
+func (e *dataDirInUseError) Error() string {
+	return "another Verve process is using " + e.dir
 }
 
 // Release releases the lock.

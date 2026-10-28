@@ -54,23 +54,17 @@ func Migrate(ctx context.Context, db *DB, opts MigrateOptions) (MigrateResult, e
 }
 
 // MigrationStatus lists every embedded migration with the time it was applied, in version order.
+// It refuses a database whose schema version is newer than LatestVersion.
 func MigrationStatus(ctx context.Context, db *DB) ([]MigrationState, error) {
 	return migrationStatus(ctx, db, migrationsFS())
 }
 
 // LatestVersion returns the version of the latest embedded migration.
 func LatestVersion() int64 {
-	entries, err := fs.ReadDir(migrationsFS(), ".")
+	latest, err := latestVersion(migrationsFS())
 	if err != nil {
-		panic(fmt.Sprintf("read embedded migrations: %v", err))
-	}
-
-	var latest int64
-
-	for _, entry := range entries {
-		if version, err := goose.NumericComponent(entry.Name()); err == nil {
-			latest = max(latest, version)
-		}
+		// The embedded file names are checked by TestMigrate_EmbeddedMigrationsApplyCleanly.
+		panic(err)
 	}
 
 	return latest
@@ -92,13 +86,25 @@ func migrationsFS() fs.FS {
 	return sub
 }
 
-func newProvider(db *DB, fsys fs.FS) (*goose.Provider, error) {
-	p, err := goose.NewProvider(goose.DialectSQLite3, db.write, fsys, goose.WithDisableGlobalRegistry(true))
+// latestVersion returns the highest version among the migration files of fsys.
+func latestVersion(fsys fs.FS) (int64, error) {
+	names, err := fs.Glob(fsys, "*.sql")
 	if err != nil {
-		return nil, fmt.Errorf("load migrations: %w", err)
+		return 0, fmt.Errorf("list migrations: %w", err)
 	}
 
-	return p, nil
+	var latest int64
+
+	for _, name := range names {
+		version, err := goose.NumericComponent(name)
+		if err != nil {
+			return 0, fmt.Errorf("migration %s: %w", name, err)
+		}
+
+		latest = max(latest, version)
+	}
+
+	return latest, nil
 }
 
 func migrate(ctx context.Context, db *DB, fsys fs.FS, opts MigrateOptions) (MigrateResult, error) {
@@ -107,33 +113,20 @@ func migrate(ctx context.Context, db *DB, fsys fs.FS, opts MigrateOptions) (Migr
 		logger = slog.New(slog.DiscardHandler)
 	}
 
-	p, err := newProvider(db, fsys)
+	p, current, err := newCheckedProvider(ctx, db, fsys)
 	if err != nil {
 		return MigrateResult{}, err
 	}
 
-	states, err := providerStatus(ctx, p)
+	pending, err := pendingVersions(ctx, p)
 	if err != nil {
 		return MigrateResult{}, err
-	}
-
-	var pending []int64
-
-	for _, s := range states {
-		if s.AppliedAt.IsZero() {
-			pending = append(pending, s.Version)
-		}
 	}
 
 	if len(pending) == 0 {
-		version, err := dbVersion(ctx, p)
-		if err != nil {
-			return MigrateResult{}, err
-		}
+		logger.InfoContext(ctx, fmt.Sprintf("database schema up to date (version %d)", current))
 
-		logger.InfoContext(ctx, fmt.Sprintf("database schema up to date (version %d)", version))
-
-		return MigrateResult{Version: version}, nil
+		return MigrateResult{Version: current}, nil
 	}
 
 	if opts.BeforeMigrate != nil {
@@ -142,23 +135,27 @@ func migrate(ctx context.Context, db *DB, fsys fs.FS, opts MigrateOptions) (Migr
 		}
 	}
 
-	results, upErr := p.Up(ctx)
-
-	if partial, ok := errors.AsType[*goose.PartialError](upErr); ok {
-		results = partial.Applied
-		upErr = fmt.Errorf("apply migration %s: %w", path.Base(partial.Failed.Source.Path), partial.Err)
-	}
-
 	var res MigrateResult
 
-	for _, r := range results {
+	// One migration at a time, so that each one is logged as soon as it is applied.
+	for {
+		r, err := p.UpByOne(ctx)
+		if errors.Is(err, goose.ErrNoNextVersion) {
+			break
+		}
+
+		if partial, ok := errors.AsType[*goose.PartialError](err); ok {
+			return res, fmt.Errorf("migrate database: apply migration %s: %w",
+				path.Base(partial.Failed.Source.Path), partial.Err)
+		}
+
+		if err != nil {
+			return res, fmt.Errorf("migrate database: %w", err)
+		}
+
 		m := migrationOf(r.Source)
 		res.Applied = append(res.Applied, m)
 		logger.InfoContext(ctx, "applied migration", slog.Int64("version", m.Version), slog.String("name", m.Name))
-	}
-
-	if upErr != nil {
-		return res, fmt.Errorf("migrate database: %w", upErr)
 	}
 
 	res.Version, err = dbVersion(ctx, p)
@@ -170,12 +167,12 @@ func migrate(ctx context.Context, db *DB, fsys fs.FS, opts MigrateOptions) (Migr
 }
 
 func migrationStatus(ctx context.Context, db *DB, fsys fs.FS) ([]MigrationState, error) {
-	p, err := newProvider(db, fsys)
+	p, _, err := newCheckedProvider(ctx, db, fsys)
 	if err != nil {
 		return nil, err
 	}
 
-	return providerStatus(ctx, p)
+	return status(ctx, p)
 }
 
 func currentVersion(ctx context.Context, db *DB, fsys fs.FS) (int64, error) {
@@ -187,21 +184,45 @@ func currentVersion(ctx context.Context, db *DB, fsys fs.FS) (int64, error) {
 	return dbVersion(ctx, p)
 }
 
-// providerStatus lists the migrations of p with their applied time, after checking that the
-// database is not newer than the migrations.
-func providerStatus(ctx context.Context, p *goose.Provider) ([]MigrationState, error) {
-	current, err := dbVersion(ctx, p)
+func newProvider(db *DB, fsys fs.FS) (*goose.Provider, error) {
+	p, err := goose.NewProvider(goose.DialectSQLite3, db.write, fsys, goose.WithDisableGlobalRegistry(true))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("load migrations: %w", err)
 	}
 
-	sources := p.ListSources()
-	if latest := sources[len(sources)-1].Version; current > latest {
-		return nil, fmt.Errorf(
+	return p, nil
+}
+
+// newCheckedProvider returns a provider for the migrations of fsys and the current schema version,
+// after checking that the database is not newer than the latest migration: an older binary must
+// not touch a schema it does not know.
+func newCheckedProvider(ctx context.Context, db *DB, fsys fs.FS) (*goose.Provider, int64, error) {
+	p, err := newProvider(db, fsys)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	latest, err := latestVersion(fsys)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	current, err := dbVersion(ctx, p)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	if current > latest {
+		return nil, 0, fmt.Errorf(
 			"database schema version %d is newer than this binary supports (%d); upgrade Verve or restore a backup",
 			current, latest)
 	}
 
+	return p, current, nil
+}
+
+// status lists the migrations of p with the time they were applied, in version order.
+func status(ctx context.Context, p *goose.Provider) ([]MigrationState, error) {
 	statuses, err := p.Status(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("read migration status: %w", err)
@@ -219,6 +240,24 @@ func providerStatus(ctx context.Context, p *goose.Provider) ([]MigrationState, e
 	}
 
 	return states, nil
+}
+
+// pendingVersions returns the versions of the migrations of p that are not applied yet.
+func pendingVersions(ctx context.Context, p *goose.Provider) ([]int64, error) {
+	states, err := status(ctx, p)
+	if err != nil {
+		return nil, err
+	}
+
+	var pending []int64
+
+	for _, s := range states {
+		if s.AppliedAt.IsZero() {
+			pending = append(pending, s.Version)
+		}
+	}
+
+	return pending, nil
 }
 
 func dbVersion(ctx context.Context, p *goose.Provider) (int64, error) {

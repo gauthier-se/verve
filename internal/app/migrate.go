@@ -16,26 +16,18 @@ func beforeMigrate(context.Context, []int64) error {
 }
 
 // Migrate takes the data directory lock, opens the database and applies the pending migrations.
-func Migrate(ctx context.Context, cfg config.Config, logger *slog.Logger) (res sqlite.MigrateResult, err error) {
-	err = withOfflineDB(ctx, cfg, func(db *sqlite.DB) error {
-		res, err = migrateDB(ctx, db, logger)
-
-		return err
+func Migrate(ctx context.Context, cfg config.Config, logger *slog.Logger) (sqlite.MigrateResult, error) {
+	return withOfflineDB(ctx, cfg, func(db *sqlite.DB) (sqlite.MigrateResult, error) {
+		return migrateDB(ctx, db, logger)
 	})
-
-	return res, err
 }
 
 // MigrationStatus takes the data directory lock, opens the database and lists the migrations
 // with the time they were applied.
-func MigrationStatus(ctx context.Context, cfg config.Config) (states []sqlite.MigrationState, err error) {
-	err = withOfflineDB(ctx, cfg, func(db *sqlite.DB) error {
-		states, err = sqlite.MigrationStatus(ctx, db)
-
-		return err
+func MigrationStatus(ctx context.Context, cfg config.Config) ([]sqlite.MigrationState, error) {
+	return withOfflineDB(ctx, cfg, func(db *sqlite.DB) ([]sqlite.MigrationState, error) {
+		return sqlite.MigrationStatus(ctx, db)
 	})
-
-	return states, err
 }
 
 func migrateDB(ctx context.Context, db *sqlite.DB, logger *slog.Logger) (sqlite.MigrateResult, error) {
@@ -44,25 +36,17 @@ func migrateDB(ctx context.Context, db *sqlite.DB, logger *slog.Logger) (sqlite.
 
 // withOfflineDB runs fn on the database of cfg while holding the data directory lock, so that it
 // never runs next to a serving process.
-func withOfflineDB(ctx context.Context, cfg config.Config, fn func(db *sqlite.DB) error) (err error) {
-	layout, err := EnsureDataDir(cfg.DataDir)
+func withOfflineDB[T any](ctx context.Context, cfg config.Config, fn func(db *sqlite.DB) (T, error)) (res T, err error) {
+	db, closeDB, err := openDatabase(ctx, cfg.DataDir)
 	if err != nil {
-		return err
+		if _, inUse := errors.AsType[*dataDirInUseError](err); inUse {
+			err = fmt.Errorf("%w: stop verve serve before running migrations", err)
+		}
+
+		return res, err
 	}
 
-	lock, err := AcquireLock(layout.Root)
-	if err != nil {
-		return fmt.Errorf("%w: stop verve serve before running migrations", err)
-	}
-
-	defer func() { err = errors.Join(err, lock.Release()) }()
-
-	db, err := sqlite.Open(ctx, layout.DB)
-	if err != nil {
-		return err
-	}
-
-	defer func() { err = errors.Join(err, db.Close(context.WithoutCancel(ctx))) }()
+	defer func() { err = errors.Join(err, closeDB(context.WithoutCancel(ctx))) }()
 
 	return fn(db)
 }

@@ -112,7 +112,7 @@ func NewRootCommand(deps Deps) *cobra.Command {
 	root.RunE = runServe
 
 	root.AddCommand(newServeCommand(runServe))
-	root.AddCommand(newMigrateCommand(loadConfig, deps.Migrate, deps.MigrationStatus, deps.Logger))
+	root.AddCommand(newMigrateCommand(loadConfig, deps))
 	root.AddCommand(newVersionCommand(deps.Version))
 	root.AddCommand(newConfigCommand(loadConfig))
 

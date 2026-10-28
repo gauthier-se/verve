@@ -8,20 +8,25 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/gauthier-se/verve/internal/config"
 	"github.com/gauthier-se/verve/internal/store/sqlite"
 )
 
-// schemaVersion opens the database of dataDir and returns its schema version.
-func schemaVersion(t *testing.T, dataDir string) int64 {
+// openDataDirDB opens the database of dataDir and closes it at the end of the test.
+func openDataDirDB(t *testing.T, dataDir string) *sqlite.DB {
 	t.Helper()
 
 	db, err := sqlite.Open(t.Context(), filepath.Join(dataDir, dbFile))
 	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, db.Close(context.Background())) })
 
-	defer func() { require.NoError(t, db.Close(context.Background())) }()
+	return db
+}
 
-	version, err := sqlite.CurrentVersion(t.Context(), db)
+// schemaVersion returns the schema version of the database of dataDir.
+func schemaVersion(t *testing.T, dataDir string) int64 {
+	t.Helper()
+
+	version, err := sqlite.CurrentVersion(t.Context(), openDataDirDB(t, dataDir))
 	require.NoError(t, err)
 
 	return version
@@ -32,12 +37,9 @@ func schemaVersion(t *testing.T, dataDir string) int64 {
 func setFutureSchemaVersion(t *testing.T, dataDir string) {
 	t.Helper()
 
-	db, err := sqlite.Open(t.Context(), filepath.Join(dataDir, dbFile))
-	require.NoError(t, err)
+	db := openDataDirDB(t, dataDir)
 
-	defer func() { require.NoError(t, db.Close(context.Background())) }()
-
-	_, err = sqlite.Migrate(t.Context(), db, sqlite.MigrateOptions{Logger: slog.New(slog.DiscardHandler)})
+	_, err := sqlite.Migrate(t.Context(), db, sqlite.MigrateOptions{})
 	require.NoError(t, err)
 
 	_, err = db.Write().ExecContext(t.Context(),
@@ -45,15 +47,18 @@ func setFutureSchemaVersion(t *testing.T, dataDir string) {
 	require.NoError(t, err)
 }
 
+func discardLogger() *slog.Logger {
+	return slog.New(slog.DiscardHandler)
+}
+
 // Given `verve migrate` on an empty data directory, then it creates the database and applies
 // every embedded migration.
 func TestMigrate_AppliesEmbeddedMigrations(t *testing.T) {
 	t.Parallel()
 
-	cfg := config.Default()
-	cfg.DataDir = filepath.Join(t.TempDir(), "data")
+	cfg := testConfig(filepath.Join(t.TempDir(), "data"))
 
-	res, err := Migrate(t.Context(), cfg, slog.New(slog.DiscardHandler))
+	res, err := Migrate(t.Context(), cfg, discardLogger())
 	require.NoError(t, err)
 	require.NotEmpty(t, res.Applied)
 	require.Equal(t, sqlite.LatestVersion(), res.Version)
@@ -72,8 +77,7 @@ func TestMigrate_AppliesEmbeddedMigrations(t *testing.T) {
 func TestMigrate_DataDirLockedFails(t *testing.T) {
 	t.Parallel()
 
-	cfg := config.Default()
-	cfg.DataDir = t.TempDir()
+	cfg := testConfig(t.TempDir())
 
 	lock, err := AcquireLock(cfg.DataDir)
 	require.NoError(t, err)
@@ -81,7 +85,7 @@ func TestMigrate_DataDirLockedFails(t *testing.T) {
 
 	want := "another Verve process is using " + cfg.DataDir + ": stop verve serve before running migrations"
 
-	_, err = Migrate(t.Context(), cfg, slog.New(slog.DiscardHandler))
+	_, err = Migrate(t.Context(), cfg, discardLogger())
 	require.EqualError(t, err, want)
 
 	_, err = MigrationStatus(t.Context(), cfg)
@@ -92,11 +96,9 @@ func TestMigrate_DataDirLockedFails(t *testing.T) {
 func TestMigrate_NewerDatabaseFails(t *testing.T) {
 	t.Parallel()
 
-	cfg := config.Default()
-	cfg.DataDir = t.TempDir()
-
+	cfg := testConfig(t.TempDir())
 	setFutureSchemaVersion(t, cfg.DataDir)
 
-	_, err := Migrate(t.Context(), cfg, slog.New(slog.DiscardHandler))
+	_, err := Migrate(t.Context(), cfg, discardLogger())
 	require.ErrorContains(t, err, "is newer than this binary supports")
 }

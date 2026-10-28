@@ -13,6 +13,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const newerDatabaseError = "database schema version 3 is newer than this binary supports (2); " +
+	"upgrade Verve or restore a backup"
+
 // testMigrations is a set of three valid migrations for the mechanism tests.
 func testMigrations() fstest.MapFS {
 	return fstest.MapFS{
@@ -22,10 +25,55 @@ func testMigrations() fstest.MapFS {
 	}
 }
 
+// firstTwoMigrations is testMigrations without its third migration.
+func firstTwoMigrations() fstest.MapFS {
+	fsys := testMigrations()
+	delete(fsys, "00003_create_c.sql")
+
+	return fsys
+}
+
+// brokenMigration creates a table, then fails on its second statement.
+func brokenMigration() *fstest.MapFile {
+	return &fstest.MapFile{Data: []byte(
+		"-- +goose Up\nCREATE TABLE half_done (id INTEGER PRIMARY KEY) STRICT;\nINSERT INTO no_such_table VALUES (1);\n",
+	)}
+}
+
+// mustMigrate applies the migrations of fsys and fails the test on error.
+func mustMigrate(t *testing.T, db *DB, fsys fstest.MapFS) {
+	t.Helper()
+
+	_, err := migrate(t.Context(), db, fsys, MigrateOptions{})
+	require.NoError(t, err)
+}
+
+func requireVersion(t *testing.T, db *DB, want int64) {
+	t.Helper()
+
+	version, err := currentVersion(t.Context(), db, testMigrations())
+	require.NoError(t, err)
+	require.Equal(t, want, version)
+}
+
 func bufferLogger() (*slog.Logger, *bytes.Buffer) {
 	var buf bytes.Buffer
 
 	return slog.New(slog.NewTextHandler(&buf, nil)), &buf
+}
+
+// countingHook is a BeforeMigrate hook that records its calls and returns err.
+type countingHook struct {
+	calls   int
+	pending []int64
+	err     error
+}
+
+func (h *countingHook) run(_ context.Context, pending []int64) error {
+	h.calls++
+	h.pending = pending
+
+	return h.err
 }
 
 func tableExists(t *testing.T, db *DB, name string) bool {
@@ -60,9 +108,7 @@ func TestMigrate_FreshDatabaseAppliesAll(t *testing.T) {
 		require.True(t, tableExists(t, db, table), table)
 	}
 
-	version, err := currentVersion(t.Context(), db, testMigrations())
-	require.NoError(t, err)
-	require.Equal(t, int64(3), version)
+	requireVersion(t, db, 3)
 
 	out := logs.String()
 	for _, line := range []string{
@@ -83,26 +129,18 @@ func TestMigrate_IsIdempotent(t *testing.T) {
 	t.Parallel()
 
 	db, _ := openTestDB(t)
-
-	_, err := migrate(t.Context(), db, testMigrations(), MigrateOptions{Logger: slog.New(slog.DiscardHandler)})
-	require.NoError(t, err)
+	mustMigrate(t, db, testMigrations())
 
 	logger, logs := bufferLogger()
-	hookCalls := 0
 
-	res, err := migrate(t.Context(), db, testMigrations(), MigrateOptions{
-		Logger: logger,
-		BeforeMigrate: func(context.Context, []int64) error {
-			hookCalls++
+	var hook countingHook
 
-			return nil
-		},
-	})
+	res, err := migrate(t.Context(), db, testMigrations(), MigrateOptions{Logger: logger, BeforeMigrate: hook.run})
 	require.NoError(t, err)
 
 	require.Empty(t, res.Applied)
 	require.Equal(t, int64(3), res.Version)
-	require.Zero(t, hookCalls, "the hook runs only when migrations are pending")
+	require.Zero(t, hook.calls, "the hook runs only when migrations are pending")
 	require.Contains(t, logs.String(), `msg="database schema up to date (version 3)"`)
 	require.NotContains(t, logs.String(), "applied migration")
 }
@@ -113,30 +151,16 @@ func TestMigrate_NewerDatabaseFails(t *testing.T) {
 	t.Parallel()
 
 	db, _ := openTestDB(t)
+	mustMigrate(t, db, testMigrations())
 
-	_, err := migrate(t.Context(), db, testMigrations(), MigrateOptions{Logger: slog.New(slog.DiscardHandler)})
-	require.NoError(t, err)
+	var hook countingHook
 
-	older := testMigrations()
-	delete(older, "00003_create_c.sql")
+	_, err := migrate(t.Context(), db, firstTwoMigrations(), MigrateOptions{BeforeMigrate: hook.run})
+	require.EqualError(t, err, newerDatabaseError)
+	require.Zero(t, hook.calls)
 
-	hookCalls := 0
-
-	_, err = migrate(t.Context(), db, older, MigrateOptions{
-		Logger: slog.New(slog.DiscardHandler),
-		BeforeMigrate: func(context.Context, []int64) error {
-			hookCalls++
-
-			return nil
-		},
-	})
-	require.EqualError(t, err,
-		"database schema version 3 is newer than this binary supports (2); upgrade Verve or restore a backup")
-	require.Zero(t, hookCalls)
-
-	_, err = migrationStatus(t.Context(), db, older)
-	require.EqualError(t, err,
-		"database schema version 3 is newer than this binary supports (2); upgrade Verve or restore a backup")
+	_, err = migrationStatus(t.Context(), db, firstTwoMigrations())
+	require.EqualError(t, err, newerDatabaseError)
 }
 
 // Given a migration that fails, then its changes are rolled back, the schema version is
@@ -145,25 +169,34 @@ func TestMigrate_FailingMigrationRollsBack(t *testing.T) {
 	t.Parallel()
 
 	db, _ := openTestDB(t)
-	fsys := testMigrations()
-	delete(fsys, "00003_create_c.sql")
+	fsys := firstTwoMigrations()
+	mustMigrate(t, db, fsys)
 
-	_, err := migrate(t.Context(), db, fsys, MigrateOptions{Logger: slog.New(slog.DiscardHandler)})
-	require.NoError(t, err)
+	fsys["00003_broken.sql"] = brokenMigration()
 
-	fsys["00003_broken.sql"] = &fstest.MapFile{Data: []byte(
-		"-- +goose Up\nCREATE TABLE half_done (id INTEGER PRIMARY KEY) STRICT;\nINSERT INTO no_such_table VALUES (1);\n",
-	)}
-
-	_, err = migrate(t.Context(), db, fsys, MigrateOptions{Logger: slog.New(slog.DiscardHandler)})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "00003_broken.sql")
+	_, err := migrate(t.Context(), db, fsys, MigrateOptions{})
+	require.ErrorContains(t, err, "00003_broken.sql")
 
 	require.False(t, tableExists(t, db, "half_done"), "the failed migration must be rolled back")
+	requireVersion(t, db, 2)
+}
 
-	version, err := currentVersion(t.Context(), db, fsys)
-	require.NoError(t, err)
-	require.Equal(t, int64(2), version)
+// Given several pending migrations of which a later one fails, then the earlier ones stay
+// applied and are logged and returned.
+func TestMigrate_FailureKeepsEarlierMigrationsOfTheRun(t *testing.T) {
+	t.Parallel()
+
+	db, _ := openTestDB(t)
+	fsys := firstTwoMigrations()
+	fsys["00003_broken.sql"] = brokenMigration()
+	logger, logs := bufferLogger()
+
+	res, err := migrate(t.Context(), db, fsys, MigrateOptions{Logger: logger})
+	require.ErrorContains(t, err, "00003_broken.sql")
+
+	require.Equal(t, []Migration{{Version: 1, Name: "create_a"}, {Version: 2, Name: "create_b"}}, res.Applied)
+	require.Contains(t, logs.String(), `msg="applied migration" version=2 name=create_b`)
+	requireVersion(t, db, 2)
 }
 
 // Given pending migrations, then the BeforeMigrate hook runs first with the pending versions;
@@ -172,32 +205,15 @@ func TestMigrate_BeforeHookErrorPreventsMigration(t *testing.T) {
 	t.Parallel()
 
 	db, _ := openTestDB(t)
-	fsys := testMigrations()
-	delete(fsys, "00003_create_c.sql")
+	mustMigrate(t, db, firstTwoMigrations())
 
-	_, err := migrate(t.Context(), db, fsys, MigrateOptions{Logger: slog.New(slog.DiscardHandler)})
-	require.NoError(t, err)
+	hook := countingHook{err: errors.New("backup failed")}
 
-	fsys = testMigrations()
-	errBackup := errors.New("backup failed")
-
-	var pending []int64
-
-	_, err = migrate(t.Context(), db, fsys, MigrateOptions{
-		Logger: slog.New(slog.DiscardHandler),
-		BeforeMigrate: func(_ context.Context, versions []int64) error {
-			pending = versions
-
-			return errBackup
-		},
-	})
-	require.ErrorIs(t, err, errBackup)
-	require.Equal(t, []int64{3}, pending)
+	_, err := migrate(t.Context(), db, testMigrations(), MigrateOptions{BeforeMigrate: hook.run})
+	require.ErrorIs(t, err, hook.err)
+	require.Equal(t, []int64{3}, hook.pending)
 	require.False(t, tableExists(t, db, "c"))
-
-	version, err := currentVersion(t.Context(), db, fsys)
-	require.NoError(t, err)
-	require.Equal(t, int64(2), version)
+	requireVersion(t, db, 2)
 }
 
 // Given a partly migrated database, then the status lists each migration with its applied time
@@ -206,11 +222,7 @@ func TestMigrationStatus_ListsAppliedAndPending(t *testing.T) {
 	t.Parallel()
 
 	db, _ := openTestDB(t)
-	fsys := testMigrations()
-	delete(fsys, "00003_create_c.sql")
-
-	_, err := migrate(t.Context(), db, fsys, MigrateOptions{Logger: slog.New(slog.DiscardHandler)})
-	require.NoError(t, err)
+	mustMigrate(t, db, firstTwoMigrations())
 
 	states, err := migrationStatus(t.Context(), db, testMigrations())
 	require.NoError(t, err)
@@ -243,7 +255,7 @@ func TestMigrate_EmbeddedMigrationsApplyCleanly(t *testing.T) {
 		require.Regexp(t, migrationFileName, entry.Name())
 	}
 
-	res, err := Migrate(ctx, db, MigrateOptions{Logger: slog.New(slog.DiscardHandler)})
+	res, err := Migrate(ctx, db, MigrateOptions{})
 	require.NoError(t, err)
 	require.Len(t, res.Applied, len(entries))
 	require.Equal(t, Migration{Version: 1, Name: "instance_settings"}, res.Applied[0])

@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -28,17 +27,12 @@ func newServeCommand(runServe func(cmd *cobra.Command, args []string) error) *co
 // serveRunner loads the configuration and runs serve until SIGINT or SIGTERM. After the first
 // signal the default behavior is restored, so a second signal kills the process.
 func serveRunner(loadConfig func() (config.Config, error), serve serveFunc, logger *slog.Logger) func(*cobra.Command, []string) error {
-	return func(cmd *cobra.Command, _ []string) error {
-		cfg, err := loadConfig()
-		if err != nil {
-			return fmt.Errorf("invalid configuration:\n%s", bulletList(err))
-		}
-
+	return withConfig(loadConfig, func(cmd *cobra.Command, cfg config.Config) error {
 		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 
 		context.AfterFunc(ctx, stop)
 
 		return serve(ctx, cfg, logger)
-	}
+	})
 }

@@ -122,13 +122,26 @@ func TestMigrateStatus_ListsEachMigration(t *testing.T) {
 func TestMigrate_InvalidConfigExits(t *testing.T) {
 	t.Parallel()
 
-	for _, args := range [][]string{{"migrate"}, {"migrate", "status"}} {
-		m := &fakeMigrator{}
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "migrate", args: []string{"migrate"}},
+		{name: "migrate status", args: []string{"migrate", "status"}},
+	}
 
-		res := run(t, depsWithMigrator(map[string]string{"VERVE_LOG_LEVEL": "verbose"}, m), args...)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-		require.Equal(t, 1, res.code, args)
-		require.Contains(t, res.stderr, "invalid configuration", args)
-		require.Zero(t, m.migrateCalls+m.statusCalls, args)
+			m := &fakeMigrator{}
+
+			res := run(t, depsWithMigrator(map[string]string{"VERVE_LOG_LEVEL": "verbose"}, m), tt.args...)
+
+			require.Equal(t, 1, res.code)
+			require.Contains(t, res.stderr, "invalid configuration")
+			require.Contains(t, res.stderr, `log.level (VERVE_LOG_LEVEL): invalid value "verbose"`)
+			require.Zero(t, m.migrateCalls+m.statusCalls)
+		})
 	}
 }
