@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"log/slog"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -37,7 +36,6 @@ func testDeps() Deps {
 func depsWithEnv(env map[string]string) Deps {
 	return Deps{
 		Version: version.Info{Version: "0.1.0", Commit: "abc1234", BuildDate: "2026-10-22T10:00:00Z"},
-		Logger:  slog.New(slog.DiscardHandler),
 		LoadConfig: func(file string) (config.Config, error) {
 			return config.Load(config.LoadOptions{File: file, Env: env})
 		},

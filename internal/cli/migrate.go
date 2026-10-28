@@ -11,6 +11,7 @@ import (
 
 	"github.com/gauthier-se/verve/internal/app"
 	"github.com/gauthier-se/verve/internal/config"
+	"github.com/gauthier-se/verve/internal/logging"
 )
 
 // migrateFunc applies the pending migrations of the configured database.
@@ -25,7 +26,7 @@ func newMigrateCommand(loadConfig func() (config.Config, error), deps Deps) *cob
 		Short: "Apply pending database migrations (also done automatically by serve)",
 		Args:  cobra.NoArgs,
 		RunE: withConfig(loadConfig, func(cmd *cobra.Command, cfg config.Config) error {
-			res, err := deps.Migrate(cmd.Context(), cfg, deps.Logger)
+			res, err := deps.Migrate(cmd.Context(), cfg, logging.New(cmd.ErrOrStderr(), cfg.Log))
 			if err != nil {
 				return err
 			}

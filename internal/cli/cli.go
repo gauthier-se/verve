@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 	"strings"
 
@@ -28,8 +27,6 @@ type Deps struct {
 	Migrate migrateFunc
 	// MigrationStatus lists the database migrations.
 	MigrationStatus migrationStatusFunc
-	// Logger is the process logger, writing to stderr.
-	Logger *slog.Logger
 }
 
 // Execute runs the command line with the given arguments and returns the process exit code.
@@ -43,7 +40,6 @@ func Execute(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		Serve:           app.Run,
 		Migrate:         app.Migrate,
 		MigrationStatus: app.MigrationStatus,
-		Logger:          slog.New(slog.NewTextHandler(stderr, nil)),
 	}
 
 	return execute(ctx, deps, args, stdout, stderr)
@@ -108,7 +104,7 @@ func NewRootCommand(deps Deps) *cobra.Command {
 	}
 
 	// Without arguments, verve behaves exactly like `verve serve`.
-	runServe := serveRunner(loadConfig, deps.Serve, deps.Logger)
+	runServe := serveRunner(loadConfig, deps.Serve)
 	root.RunE = runServe
 
 	root.AddCommand(newServeCommand(runServe))

@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/gauthier-se/verve/internal/config"
+	"github.com/gauthier-se/verve/internal/logging/loggingtest"
 )
 
 // fakeServer records the calls of the server runner instead of starting a server.
@@ -76,4 +77,28 @@ func TestServe_InvalidConfigExitsWithoutServing(t *testing.T) {
 		require.Contains(t, res.stderr, `log.level (VERVE_LOG_LEVEL): invalid value "verbose"`)
 		require.Zero(t, srv.calls)
 	}
+}
+
+// Given VERVE_LOG_FORMAT=json and VERVE_LOG_LEVEL=warn, then serve gets a logger writing JSON
+// lines to stderr without the info messages.
+func TestServe_LoggerFollowsLogConfig(t *testing.T) {
+	t.Parallel()
+
+	deps := depsWithEnv(map[string]string{"VERVE_LOG_FORMAT": "json", "VERVE_LOG_LEVEL": "warn"})
+	deps.Serve = func(_ context.Context, _ config.Config, logger *slog.Logger) error {
+		logger.Info("hidden")
+		logger.Warn("shown", slog.String("password", "hunter2"))
+
+		return nil
+	}
+
+	res := run(t, deps, "serve")
+
+	require.Equal(t, 0, res.code, res.stderr)
+
+	lines := loggingtest.DecodeLines(t, res.stderr)
+	require.Len(t, lines, 1)
+	require.Equal(t, "WARN", lines[0]["level"])
+	require.Equal(t, "shown", lines[0]["msg"])
+	require.Equal(t, "[REDACTED]", lines[0]["password"])
 }

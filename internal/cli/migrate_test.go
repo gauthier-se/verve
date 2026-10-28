@@ -11,6 +11,7 @@ import (
 
 	"github.com/gauthier-se/verve/internal/app"
 	"github.com/gauthier-se/verve/internal/config"
+	"github.com/gauthier-se/verve/internal/logging/loggingtest"
 )
 
 // fakeMigrator records the calls of the migration runners and returns canned results.
@@ -144,4 +145,25 @@ func TestMigrate_InvalidConfigExits(t *testing.T) {
 			require.Zero(t, m.migrateCalls+m.statusCalls)
 		})
 	}
+}
+
+// Given VERVE_LOG_FORMAT=json, then migrate gets a logger writing JSON lines to stderr.
+func TestMigrate_LoggerFollowsLogConfig(t *testing.T) {
+	t.Parallel()
+
+	deps := depsWithEnv(map[string]string{"VERVE_LOG_FORMAT": "json"})
+	deps.Migrate = func(_ context.Context, _ config.Config, logger *slog.Logger) (app.MigrateResult, error) {
+		logger.Info("applied migration", slog.Int64("version", 1))
+
+		return app.MigrateResult{Version: 1}, nil
+	}
+
+	res := run(t, deps, "migrate")
+
+	require.Equal(t, 0, res.code, res.stderr)
+
+	lines := loggingtest.DecodeLines(t, res.stderr)
+	require.Len(t, lines, 1)
+	require.Equal(t, "applied migration", lines[0]["msg"])
+	require.InDelta(t, 1, lines[0]["version"], 0)
 }

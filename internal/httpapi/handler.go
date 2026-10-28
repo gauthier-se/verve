@@ -30,7 +30,9 @@ func NewHandler(d Deps) http.Handler {
 // info, request logging, security headers, router. Middlewares added later keep this order.
 func newHandler(d Deps, routes http.Handler) http.Handler {
 	return chain(routes,
+		RecoverMiddleware(d.Logger),
 		ClientInfoMiddleware(d.TrustedProxies, d.Logger, d.Clock),
+		RequestLogMiddleware(d.Logger, d.Clock),
 	)
 }
 
