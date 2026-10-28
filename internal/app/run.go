@@ -14,8 +14,9 @@ import (
 )
 
 // Run logs the configuration warnings, reads the embedded web app, creates the data directory
-// layout, takes its lock, opens the database and starts serving HTTP. It then applies the pending migrations, during which only
-// the health probes are served, marks the server ready and serves until ctx is cancelled.
+// layout, takes its lock, opens the database and starts serving HTTP. It then applies the pending
+// migrations, during which only the health probes are served, marks the server ready and serves
+// until ctx is cancelled.
 // Resources are released in reverse order: the database is closed once the server has stopped.
 func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	return run(ctx, cfg, logger, beforeMigrate)

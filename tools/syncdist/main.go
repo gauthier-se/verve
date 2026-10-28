@@ -38,7 +38,7 @@ func syncDist(src, dst string) error {
 			continue
 		}
 
-		if err := os.RemoveAll(filepath.Join(dst, e.Name())); err != nil { //nolint:gosec // G703: as above
+		if err := os.RemoveAll(filepath.Join(dst, e.Name())); err != nil { //nolint:gosec // G703: dst comes from the build task, e from its listing
 			return fmt.Errorf("remove stale files: %w", err)
 		}
 	}

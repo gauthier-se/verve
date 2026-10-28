@@ -9,7 +9,7 @@ import (
 )
 
 // Given the placeholder only, then the web app is not built. Given an index.html, then it is.
-func TestBuilt(t *testing.T) {
+func TestBuilt_OnlyWithIndex(t *testing.T) {
 	t.Parallel()
 
 	placeholder := fstest.MapFS{".gitignore": {Data: []byte("*\n!.gitignore\n")}}

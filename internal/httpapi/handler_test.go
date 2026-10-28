@@ -28,8 +28,8 @@ func TestNewHandler_WithoutSPAReturns404(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, rec.Code)
 }
 
-// newSPAServer returns the handler of a server that serves testDist as the web app.
-func newSPAServer(t *testing.T) http.Handler {
+// routerWithSPA returns the handler of a server that serves testDist as the web app.
+func routerWithSPA(t *testing.T) http.Handler {
 	t.Helper()
 
 	return NewHandler(Deps{
@@ -44,7 +44,7 @@ func newSPAServer(t *testing.T) http.Handler {
 func TestNewHandler_UnknownAPIPathReturnsProblem(t *testing.T) {
 	t.Parallel()
 
-	h := newSPAServer(t)
+	h := routerWithSPA(t)
 
 	for _, tt := range []struct{ method, target string }{
 		{method: http.MethodGet, target: "/api/v1/unknown"},
@@ -69,7 +69,7 @@ func TestNewHandler_UnknownAPIPathReturnsProblem(t *testing.T) {
 func TestNewHandler_OtherPathsReachSPA(t *testing.T) {
 	t.Parallel()
 
-	h := newSPAServer(t)
+	h := routerWithSPA(t)
 
 	for _, tt := range []struct{ target, body string }{
 		{target: "/", body: testIndex},

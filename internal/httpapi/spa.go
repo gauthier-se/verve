@@ -121,7 +121,7 @@ func newSPAFile(name string, content []byte) spaFile {
 	sum := sha256.Sum256(content)
 
 	cacheControl := cacheControlRevalidate
-	if strings.HasPrefix(name, assetsDir+"/") {
+	if isAsset(name) {
 		cacheControl = cacheControlImmutable
 	}
 
@@ -179,7 +179,7 @@ func (h *spaHandler) resolve(p string) (spaFile, bool) {
 		return h.index, true
 	}
 
-	if !validName(strings.TrimSuffix(name, "/")) {
+	if !servableName(strings.TrimSuffix(name, "/")) {
 		return spaFile{}, false
 	}
 
@@ -187,16 +187,21 @@ func (h *spaHandler) resolve(p string) (spaFile, bool) {
 		return f, true
 	}
 
-	if name == assetsDir || strings.HasPrefix(name, assetsDir+"/") {
+	if isAsset(name) {
 		return spaFile{}, false
 	}
 
 	return h.index, true
 }
 
-// validName reports whether name is a valid path of an fs.FS without any segment starting with
-// a dot, which rules out "." and "..".
-func validName(name string) bool {
+// isAsset reports whether name is the assets directory or a path under it.
+func isAsset(name string) bool {
+	return name == assetsDir || strings.HasPrefix(name, assetsDir+"/")
+}
+
+// servableName reports whether name is a valid path of an fs.FS without any segment starting with
+// a dot, which rules out dotfiles, "." and "..".
+func servableName(name string) bool {
 	if !fs.ValidPath(name) {
 		return false
 	}
