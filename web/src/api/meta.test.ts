@@ -7,7 +7,7 @@ import { getMetaOptions } from "@/api/generated/@tanstack/react-query.gen";
 import { server } from "@/test/server";
 
 describe("getMetaOptions", () => {
-  it("given the API answers GET /api/v1/meta, when the query client fetches getMetaOptions(), then it returns the typed build metadata", async () => {
+  it("given the API answers GET /api/v1/meta, when the query client queries getMetaOptions(), then it returns the typed build metadata", async () => {
     const meta: Meta = {
       name: "Verve",
       version: "1.2.3",
@@ -16,7 +16,7 @@ describe("getMetaOptions", () => {
     };
     server.use(http.get("/api/v1/meta", () => HttpResponse.json(meta)));
 
-    const data = await new QueryClient().fetchQuery(getMetaOptions());
+    const data = await new QueryClient().query(getMetaOptions());
 
     expectTypeOf(data).toEqualTypeOf<Meta>();
     expect(data).toEqual(meta);
