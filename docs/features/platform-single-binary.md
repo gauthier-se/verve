@@ -44,7 +44,7 @@ Verve ships as one executable named `verve`. It serves the REST API and the web 
   | `user create`, `user list`, `user reset-password`, `user disable`, `user enable` | Break-glass user management |
   | `openapi` | Print the OpenAPI spec (used by the frontend build) |
   | `config check` | Validate configuration and print the effective values with secrets masked |
-  | `healthcheck` | Call `/healthz` and exit non-zero on failure (for images without curl) |
+  | `healthcheck` | Call `/healthz` on the configured listen address, through the IPv4 loopback when its host is empty or unspecified (`:8080`, `0.0.0.0:8080`, `[::]:8080`). Exit 1 with the reason on stderr on any status other than 200, a connection error or no answer within 3 seconds (for images without curl) |
   | `version` | Print version, commit and build date |
 
 - **FR-3**: Static assets are served from an embedded filesystem. Hashed assets get `Cache-Control: public, max-age=31536000, immutable`. `index.html` gets `no-cache`.
