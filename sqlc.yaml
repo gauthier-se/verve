@@ -1,0 +1,11 @@
+# sqlc configuration: `task generate` writes the Go code of the queries into
+# internal/store/sqlite/sqlcgen. Never edit the generated files.
+version: "2"
+sql:
+  - engine: sqlite
+    schema: internal/store/sqlite/migrations
+    queries: internal/store/sqlite/queries
+    gen:
+      go:
+        package: sqlcgen
+        out: internal/store/sqlite/sqlcgen

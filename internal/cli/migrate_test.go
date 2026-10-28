@@ -9,8 +9,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/gauthier-se/verve/internal/app"
 	"github.com/gauthier-se/verve/internal/config"
-	"github.com/gauthier-se/verve/internal/store/sqlite"
 )
 
 // fakeMigrator records the calls of the migration runners and returns canned results.
@@ -18,19 +18,19 @@ type fakeMigrator struct {
 	migrateCalls int
 	statusCalls  int
 	cfg          config.Config
-	result       sqlite.MigrateResult
-	states       []sqlite.MigrationState
+	result       app.MigrateResult
+	states       []app.MigrationState
 	err          error
 }
 
-func (f *fakeMigrator) migrate(_ context.Context, cfg config.Config, _ *slog.Logger) (sqlite.MigrateResult, error) {
+func (f *fakeMigrator) migrate(_ context.Context, cfg config.Config, _ *slog.Logger) (app.MigrateResult, error) {
 	f.migrateCalls++
 	f.cfg = cfg
 
 	return f.result, f.err
 }
 
-func (f *fakeMigrator) status(_ context.Context, cfg config.Config) ([]sqlite.MigrationState, error) {
+func (f *fakeMigrator) status(_ context.Context, cfg config.Config) ([]app.MigrationState, error) {
 	f.statusCalls++
 	f.cfg = cfg
 
@@ -50,8 +50,8 @@ func depsWithMigrator(env map[string]string, m *fakeMigrator) Deps {
 func TestMigrate_PrintsSummaryOfApplied(t *testing.T) {
 	t.Parallel()
 
-	m := &fakeMigrator{result: sqlite.MigrateResult{
-		Applied: []sqlite.Migration{{Version: 1, Name: "instance_settings"}, {Version: 2, Name: "users"}},
+	m := &fakeMigrator{result: app.MigrateResult{
+		Applied: []app.Migration{{Version: 1, Name: "instance_settings"}, {Version: 2, Name: "users"}},
 		Version: 2,
 	}}
 
@@ -71,7 +71,7 @@ func TestMigrate_PrintsSummaryOfApplied(t *testing.T) {
 func TestMigrate_UpToDatePrintsVersion(t *testing.T) {
 	t.Parallel()
 
-	m := &fakeMigrator{result: sqlite.MigrateResult{Version: 3}}
+	m := &fakeMigrator{result: app.MigrateResult{Version: 3}}
 
 	res := run(t, depsWithMigrator(nil, m), "migrate")
 
@@ -100,9 +100,9 @@ func TestMigrateStatus_ListsEachMigration(t *testing.T) {
 	t.Parallel()
 
 	appliedAt := time.Date(2026, 10, 28, 9, 30, 0, 0, time.FixedZone("CET", 3600))
-	m := &fakeMigrator{states: []sqlite.MigrationState{
-		{Migration: sqlite.Migration{Version: 1, Name: "instance_settings"}, AppliedAt: appliedAt},
-		{Migration: sqlite.Migration{Version: 2, Name: "users"}},
+	m := &fakeMigrator{states: []app.MigrationState{
+		{Migration: app.Migration{Version: 1, Name: "instance_settings"}, AppliedAt: appliedAt},
+		{Migration: app.Migration{Version: 2, Name: "users"}},
 	}}
 
 	res := run(t, depsWithMigrator(nil, m), "migrate", "status")

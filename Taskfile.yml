@@ -156,9 +156,15 @@ tasks:
       - pnpm i18n:check
 
   generate:
-    desc: Generate code (translation keys and types)
+    desc: Generate code (sqlc queries, translation keys and types)
     cmds:
+      - task: go:generate
       - task: web:generate
+
+  go:generate:
+    desc: Generate the Go code of the SQL queries in internal/store/sqlite/sqlcgen
+    cmds:
+      - go tool sqlc generate
 
   web:generate:
     desc: Extract translation keys into the locale files and generate their types

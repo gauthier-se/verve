@@ -9,15 +9,15 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/gauthier-se/verve/internal/app"
 	"github.com/gauthier-se/verve/internal/config"
-	"github.com/gauthier-se/verve/internal/store/sqlite"
 )
 
 // migrateFunc applies the pending migrations of the configured database.
-type migrateFunc func(ctx context.Context, cfg config.Config, logger *slog.Logger) (sqlite.MigrateResult, error)
+type migrateFunc func(ctx context.Context, cfg config.Config, logger *slog.Logger) (app.MigrateResult, error)
 
 // migrationStatusFunc lists the migrations of the configured database.
-type migrationStatusFunc func(ctx context.Context, cfg config.Config) ([]sqlite.MigrationState, error)
+type migrationStatusFunc func(ctx context.Context, cfg config.Config) ([]app.MigrationState, error)
 
 func newMigrateCommand(loadConfig func() (config.Config, error), deps Deps) *cobra.Command {
 	cmd := &cobra.Command{
@@ -53,7 +53,7 @@ func newMigrateCommand(loadConfig func() (config.Config, error), deps Deps) *cob
 	return cmd
 }
 
-func printMigrateResult(cmd *cobra.Command, res sqlite.MigrateResult) {
+func printMigrateResult(cmd *cobra.Command, res app.MigrateResult) {
 	out := cmd.OutOrStdout()
 
 	if len(res.Applied) == 0 {
@@ -74,7 +74,7 @@ func printMigrateResult(cmd *cobra.Command, res sqlite.MigrateResult) {
 	_, _ = fmt.Fprintf(out, "Database schema migrated to version %d (%d %s applied)\n", res.Version, len(res.Applied), noun)
 }
 
-func printMigrationStatus(cmd *cobra.Command, states []sqlite.MigrationState) error {
+func printMigrationStatus(cmd *cobra.Command, states []app.MigrationState) error {
 	w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
 	_, _ = fmt.Fprintln(w, "VERSION\tNAME\tAPPLIED")
 
