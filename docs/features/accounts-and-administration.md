@@ -33,7 +33,10 @@ Verve is multi-user for a household. Each user's health data is isolated. An adm
 
 ## Functional requirements
 
-- **FR-1**: When no user exists, the server prints a one-time setup token in its logs at startup. The `/setup` page requires this token to create the first admin. This prevents someone else on the network from claiming the instance first.
+- **FR-1**: When no user exists, `serve` prints a setup token at startup. The `/setup` page requires this token to create the first admin. This prevents someone else on the network from claiming the instance first.
+  - Output: one dedicated line on stderr, where `serve` writes its logs, containing the link `<VERVE_PUBLIC_URL>/setup#<token>`, or the path `/setup#<token>` to append to the server address when `VERVE_PUBLIC_URL` is not set. The line is written directly to stderr, outside the `slog` handler: it is plain text in both log formats, printed whatever `VERVE_LOG_LEVEL`, and the token is never a log attribute. Under a key that the redaction of [Observability](platform-observability.md) FR-4 hides, such as `setup_token`, it would be written as `[REDACTED]`. This line is the only exception to the rule that logs never contain tokens.
+  - Validity: the token is random, held in memory only and never stored. It stops being valid as soon as a user exists, whether created through `/setup` or with `verve user create --admin` (FR-2), and when the process stops. Each start while no user exists generates and prints a new token. Once a user exists, `serve` prints no setup line.
+  - Use: the link carries the token in the URL fragment, never in the path or query string (see the security baseline in [Architecture](../architecture.md#security-baseline)). The SPA reads the token from the fragment, or asks for it when the fragment is empty, and sends it to the API in a request body.
 - **FR-2**: Alternatively, the first admin can be created with `verve user create --admin`, which disables the setup page.
 - **FR-3**: Roles: `admin` and `member`. Admins have all member capabilities for their own data plus administration.
 - **FR-4**: Admins invite users by creating an invitation (username, optional email, role). Verve produces a single-use invitation link valid for 72 hours, which the admin copies or sends by email when SMTP is configured. The invitee chooses their own password through the link. The link carries its token in the URL fragment, never in the path or query string: `<VERVE_PUBLIC_URL>/invite#<token>`, for example `https://verve.example.com/invite#<token>`. The SPA reads the token from the fragment and sends it to the API in a request body (see the security baseline in [Architecture](../architecture.md#security-baseline)).
@@ -62,6 +65,7 @@ Verve is multi-user for a household. Each user's health data is isolated. An adm
 
 ## Edge cases
 
+- Setup token lost, for example after log rotation: restarting Verve prints a new one and invalidates the old one.
 - Invitation link used twice: second use fails with a clear message.
 - Username collision with an OIDC or proxy header identity: handled by the linking rules in those features.
 - Deleting a user while an import is running: the import is cancelled first.
@@ -69,7 +73,9 @@ Verve is multi-user for a household. Each user's health data is isolated. An adm
 
 ## Acceptance criteria
 
-- [ ] The setup page cannot be used without the token printed in the logs.
+- [ ] The setup page cannot be used without the token printed at startup.
+- [ ] The setup token appears only in the dedicated startup line, never in a log attribute.
+- [ ] Once a user exists, the setup token is rejected and `serve` prints no setup line.
 - [ ] An admin cannot reach any endpoint returning another user's health data.
 - [ ] Disabling a user immediately invalidates their sessions and tokens.
 - [ ] Deleting an account removes all its rows from every user-owned table.
