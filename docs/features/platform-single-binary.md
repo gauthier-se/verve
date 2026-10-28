@@ -37,7 +37,7 @@ Verve ships as one executable named `verve`. It serves the REST API and the web 
   | Command | Purpose |
   |---|---|
   | `serve` | Start the HTTP server and the job worker |
-  | `migrate` | Apply pending migrations (also done automatically by `serve`) |
+  | `migrate` | Apply pending migrations (also done automatically by `serve`). `migrate status` lists each migration with its applied time or `pending`. Both refuse to run while `serve` holds the data directory lock |
   | `import xml --user <name> <file>` | Import an Apple Health export, see [XML import](ingestion-xml-import.md) |
   | `import native --user <name> <file>` | Import a Verve native JSON file, for example an export from another instance, see [Data export](data-export.md) |
   | `backup` / `restore <file>` | See [Backups](backups.md) |

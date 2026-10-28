@@ -11,7 +11,7 @@ import (
 )
 
 // Run logs the configuration warnings, creates the data directory layout, takes its lock, opens
-// the database and serves HTTP until ctx is cancelled. Resources are released in reverse order:
+// and migrates the database and serves HTTP until ctx is cancelled. Resources are released in reverse order:
 // the database is closed once the server has stopped.
 func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	for _, warning := range cfg.Warnings() {
@@ -48,6 +48,10 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 
 		logger.Info("database closed")
 	}()
+
+	if _, err := migrateDB(ctx, db, logger); err != nil {
+		return err
+	}
 
 	handler := httpapi.NewHandler(httpapi.Deps{
 		Logger:         logger,
