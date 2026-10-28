@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/gauthier-se/verve/internal/clock"
+	"github.com/gauthier-se/verve/internal/version"
 )
 
 // fakeChecker is a readiness check with a fixed result.
@@ -32,7 +33,7 @@ func healthHandler(checkers ...Checker) http.Handler {
 	return NewHandler(Deps{
 		Logger:   slog.New(slog.DiscardHandler),
 		Clock:    clock.Real(),
-		Version:  "1.2.3",
+		Version:  version.Info{Version: "1.2.3", Commit: "abc1234", BuildDate: "2026-10-28T10:00:00Z"},
 		Checkers: func() []Checker { return checkers },
 	})
 }
