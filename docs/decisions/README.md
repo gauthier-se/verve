@@ -13,3 +13,4 @@ Short records of structural decisions: context, decision, consequences and rejec
 | [0007](0007-ingestion-strategy.md) | Ingestion strategy: XML import, Health Auto Export and a native format | Accepted |
 | [0008](0008-generic-sample-storage.md) | Generic sample storage with precomputed aggregates | Accepted |
 | [0009](0009-i18next.md) | i18next for internationalization | Accepted |
+| [0010](0010-secrets-in-url-fragments.md) | Secrets in URL fragments, never in paths or query strings | Accepted |
