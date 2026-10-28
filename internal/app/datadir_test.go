@@ -77,3 +77,27 @@ func TestEnsureDataDir_NotWritableFails(t *testing.T) {
 	require.ErrorContains(t, err, "data directory "+root+" is not writable: ")
 	require.ErrorIs(t, err, fs.ErrPermission)
 }
+
+// Given a data directory that does not exist under a parent that is not writable, then it fails
+// with `data directory <path> is not writable: <cause>`.
+func TestEnsureDataDir_MissingUnderReadOnlyParentFails(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("directory permissions are not enforced on Windows")
+	}
+
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+
+	parent := t.TempDir()
+	require.NoError(t, os.Chmod(parent, 0o500)) //nolint:gosec // G302: a directory needs the execute bit
+	t.Cleanup(func() { require.NoError(t, os.Chmod(parent, 0o750)) }) //nolint:gosec // G302: restores the default permission
+
+	root := filepath.Join(parent, "data")
+
+	_, err := EnsureDataDir(root)
+	require.ErrorContains(t, err, "data directory "+root+" is not writable: ")
+	require.ErrorIs(t, err, fs.ErrPermission)
+}
