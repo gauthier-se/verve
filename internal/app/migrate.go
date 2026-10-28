@@ -21,6 +21,9 @@ type (
 	MigrationState = sqlite.MigrationState
 )
 
+// beforeMigrateFunc runs before pending migrations are applied, with their versions.
+type beforeMigrateFunc func(ctx context.Context, pending []int64) error
+
 // beforeMigrate runs before pending migrations are applied. M1 takes a backup of the database here.
 func beforeMigrate(context.Context, []int64) error {
 	return nil
@@ -29,7 +32,7 @@ func beforeMigrate(context.Context, []int64) error {
 // Migrate takes the data directory lock, opens the database and applies the pending migrations.
 func Migrate(ctx context.Context, cfg config.Config, logger *slog.Logger) (MigrateResult, error) {
 	return withOfflineDB(ctx, cfg, func(db *sqlite.DB) (MigrateResult, error) {
-		return migrateDB(ctx, db, logger)
+		return migrateDB(ctx, db, logger, beforeMigrate)
 	})
 }
 
@@ -41,8 +44,8 @@ func MigrationStatus(ctx context.Context, cfg config.Config) ([]MigrationState, 
 	})
 }
 
-func migrateDB(ctx context.Context, db *sqlite.DB, logger *slog.Logger) (MigrateResult, error) {
-	return sqlite.Migrate(ctx, db, sqlite.MigrateOptions{BeforeMigrate: beforeMigrate, Logger: logger})
+func migrateDB(ctx context.Context, db *sqlite.DB, logger *slog.Logger, hook beforeMigrateFunc) (MigrateResult, error) {
+	return sqlite.Migrate(ctx, db, sqlite.MigrateOptions{BeforeMigrate: hook, Logger: logger})
 }
 
 // withOfflineDB runs fn on the database of cfg while holding the data directory lock, so that it

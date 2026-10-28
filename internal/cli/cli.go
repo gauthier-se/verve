@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -27,6 +28,8 @@ type Deps struct {
 	Migrate migrateFunc
 	// MigrationStatus lists the database migrations.
 	MigrationStatus migrationStatusFunc
+	// HealthcheckTimeout is how long healthcheck waits for the server, 3 seconds when zero.
+	HealthcheckTimeout time.Duration
 }
 
 // Execute runs the command line with the given arguments and returns the process exit code.
@@ -111,6 +114,7 @@ func NewRootCommand(deps Deps) *cobra.Command {
 	root.AddCommand(newMigrateCommand(loadConfig, deps))
 	root.AddCommand(newVersionCommand(deps.Version))
 	root.AddCommand(newConfigCommand(loadConfig))
+	root.AddCommand(newHealthcheckCommand(loadConfig, deps.HealthcheckTimeout))
 
 	return root
 }

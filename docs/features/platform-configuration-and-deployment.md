@@ -88,7 +88,7 @@ Verve is configured through `VERVE_*` environment variables, an optional YAML fi
   - tags: `latest`, semver (`1`, `1.2`, `1.2.3`) and `edge` for the main branch.
 - **FR-8**: Binaries for Linux (amd64, arm64), macOS (amd64, arm64) and Windows (amd64), with checksums and signatures, attached to GitHub releases by goreleaser.
 - **FR-9**: The repository contains a minimal `docker-compose.yml` and documented reverse proxy examples for Caddy, Traefik and Nginx Proxy Manager, including the large body size needed for uploads and ingestion.
-- **FR-10**: Upgrades: schema migrations run automatically at startup, preceded by an automatic backup. Downgrades are not supported. Restoring the pre-migration backup with the previous version is the rollback path.
+- **FR-10**: Upgrades: schema migrations run automatically at startup, preceded by an automatic backup. The server already listens while they run and answers 503 until they are applied, see [Observability](platform-observability.md). Downgrades are not supported. Restoring the pre-migration backup with the previous version is the rollback path.
 
 ## UX notes
 
