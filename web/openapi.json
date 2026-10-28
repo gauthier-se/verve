@@ -112,7 +112,7 @@
   "paths": {
     "/api/v1/meta": {
       "get": {
-        "description": "Returns the name of the application and the build metadata of the server, without authentication. The web app shows the version and reloads itself when it changes.",
+        "description": "Returns the name of the application and the build metadata of the server, without authentication.",
         "operationId": "get-meta",
         "responses": {
           "200": {

@@ -44,7 +44,7 @@ export const getMetaQueryKey = (options?: Options<GetMetaData>) => createQueryKe
 /**
  * Get the server metadata
  *
- * Returns the name of the application and the build metadata of the server, without authentication. The web app shows the version and reloads itself when it changes.
+ * Returns the name of the application and the build metadata of the server, without authentication.
  */
 export const getMetaOptions = (options?: Options<GetMetaData>) => queryOptions<GetMetaResponse, GetMetaError, GetMetaResponse, ReturnType<typeof getMetaQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {

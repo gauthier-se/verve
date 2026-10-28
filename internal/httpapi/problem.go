@@ -46,7 +46,8 @@ func WriteProblem(w http.ResponseWriter, p Problem) {
 	p.Type = cmp.Or(p.Type, "about:blank")
 	p.Title = cmp.Or(p.Title, http.StatusText(p.Status))
 
-	// Marshaling strings and an int cannot fail.
+	// Marshaling cannot fail: the problems written here have no error details, the only field
+	// holding values of any type.
 	body, _ := json.Marshal(p)
 
 	w.Header().Set("Content-Type", "application/problem+json")
@@ -55,7 +56,9 @@ func WriteProblem(w http.ResponseWriter, p Problem) {
 }
 
 // newHumaError replaces huma.NewError, so that the errors of Huma and of the operations, such as
-// validation errors, are problems. Its code defaults from the status, and errs become its details.
+// validation errors, are problems. Its code defaults from the status, and errs become its details,
+// except for server errors: errs are then internal errors, whose messages may hold file paths or
+// queries.
 func newHumaError(status int, detail string, errs ...error) huma.StatusError {
 	p := &Problem{
 		Type:   "about:blank",
@@ -63,6 +66,10 @@ func newHumaError(status int, detail string, errs ...error) huma.StatusError {
 		Status: status,
 		Detail: detail,
 		Code:   defaultCode(status),
+	}
+
+	if status >= http.StatusInternalServerError {
+		return p
 	}
 
 	for _, err := range errs {

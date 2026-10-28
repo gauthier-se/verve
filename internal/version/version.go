@@ -4,7 +4,8 @@ package version
 import "fmt"
 
 // Set at build time with -ldflags "-X github.com/gauthier-se/verve/internal/version.version=...".
-// These build-time values are the only package-level variables allowed in the codebase.
+// These build-time values are the only package-level variables allowed in the codebase, apart from
+// the sync.OnceFunc of internal/httpapi that replaces huma.NewError, Huma's only error hook.
 var (
 	version = "dev"
 	commit  = "unknown"

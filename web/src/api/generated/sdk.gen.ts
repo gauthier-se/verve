@@ -21,6 +21,6 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
 /**
  * Get the server metadata
  *
- * Returns the name of the application and the build metadata of the server, without authentication. The web app shows the version and reloads itself when it changes.
+ * Returns the name of the application and the build metadata of the server, without authentication.
  */
 export const getMeta = <ThrowOnError extends boolean = false>(options?: Options<GetMetaData, ThrowOnError>): RequestResult<GetMetaResponses, GetMetaErrors, ThrowOnError> => (options?.client ?? client).get<GetMetaResponses, GetMetaErrors, ThrowOnError>({ url: '/api/v1/meta', ...options });

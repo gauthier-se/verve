@@ -17,6 +17,7 @@ type Meta struct {
 	BuildDate string `json:"buildDate" example:"2026-10-28T10:00:00Z" doc:"When the server was built in RFC 3339 format, unknown for a development build."`
 }
 
+// metaOutput is the response of GET /api/v1/meta.
 type metaOutput struct {
 	Body Meta
 }
@@ -29,7 +30,7 @@ func registerMeta(api huma.API, build version.Info) {
 		Path:        "/api/v1/meta",
 		Summary:     "Get the server metadata",
 		Description: "Returns the name of the application and the build metadata of the server, without " +
-			"authentication. The web app shows the version and reloads itself when it changes.",
+			"authentication.",
 		Tags: []string{"Meta"},
 	}, func(context.Context, *struct{}) (*metaOutput, error) {
 		return &metaOutput{Body: Meta{
