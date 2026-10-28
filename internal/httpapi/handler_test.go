@@ -52,6 +52,9 @@ func TestNewHandler_UnknownAPIPathReturnsProblem(t *testing.T) {
 		{method: http.MethodGet, target: "/api/v1/assets/index-3f9a1c2b.js"},
 		{method: http.MethodPost, target: "/api/v1/unknown"},
 		{method: http.MethodDelete, target: "/api/v1/unknown/1"},
+		// The router matches escaped paths: /api%2fv1 is not under /api/ for it.
+		{method: http.MethodGet, target: "/api%2fv1/unknown"},
+		{method: http.MethodPost, target: "/api%2Fv1/unknown"},
 	} {
 		rec := serve(t, h, tt.method, tt.target)
 
