@@ -24,16 +24,28 @@ type Deps struct {
 	// Gate, when not nil, wraps the router, behind the other middlewares. The server answers the
 	// requests there while it starts.
 	Gate func(http.Handler) http.Handler
+	// SPA serves the web app. Nil means none.
+	SPA http.Handler
 }
 
-// NewHandler returns the root handler of the server. Its only routes are the health probes:
-// every other request gets a 404.
+// NewHandler returns the root handler of the server: the health probes, a JSON 404 problem for
+// any unknown path under /api/, and the web app for every other path.
 func NewHandler(d Deps) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", healthz)
 	mux.HandleFunc("GET /readyz", readyz(d.Version, d.Checkers))
+	mux.HandleFunc("/api/", apiNotFound)
+
+	if d.SPA != nil {
+		mux.Handle("/", d.SPA)
+	}
 
 	return newHandler(d, mux)
+}
+
+// apiNotFound answers the unknown paths under /api/, whatever the method.
+func apiNotFound(w http.ResponseWriter, _ *http.Request) {
+	WriteProblem(w, Problem{Status: http.StatusNotFound, Code: "not_found"})
 }
 
 // newHandler wraps routes with the middleware chain. Order, outermost first: recovery, client
