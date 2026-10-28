@@ -10,11 +10,13 @@ import (
 	"github.com/gauthier-se/verve/internal/httpapi"
 	"github.com/gauthier-se/verve/internal/store/sqlite"
 	"github.com/gauthier-se/verve/internal/version"
+	"github.com/gauthier-se/verve/internal/webui"
 )
 
-// Run logs the configuration warnings, creates the data directory layout, takes its lock, opens
-// the database and starts serving HTTP. It then applies the pending migrations, during which only
-// the health probes are served, marks the server ready and serves until ctx is cancelled.
+// Run logs the configuration warnings, reads the embedded web app, creates the data directory
+// layout, takes its lock, opens the database and starts serving HTTP. It then applies the pending
+// migrations, during which only the health probes are served, marks the server ready and serves
+// until ctx is cancelled.
 // Resources are released in reverse order: the database is closed once the server has stopped.
 func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	return run(ctx, cfg, logger, beforeMigrate)
@@ -24,6 +26,15 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 func run(ctx context.Context, cfg config.Config, logger *slog.Logger, hook beforeMigrateFunc) error {
 	for _, warning := range cfg.Warnings() {
 		logger.Warn(warning)
+	}
+
+	spa, err := httpapi.NewSPAHandler(webui.FS())
+	if err != nil {
+		return err
+	}
+
+	if !webui.Built() {
+		logger.Warn("web app not built, serving a placeholder page: run task build to embed it")
 	}
 
 	db, closeDB, err := openDatabase(ctx, cfg.DataDir)
@@ -55,6 +66,7 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger, hook befor
 		Version:  version.Get().Version,
 		Checkers: startup.checkers,
 		Gate:     startup.gate,
+		SPA:      spa,
 	})
 	srv := NewServer(ServerConfig{Addr: cfg.ListenAddr}, handler, logger)
 

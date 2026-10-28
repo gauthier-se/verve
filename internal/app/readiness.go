@@ -3,15 +3,11 @@ package app
 import (
 	"context"
 	"errors"
-	"io"
 	"net/http"
 	"sync/atomic"
 
 	"github.com/gauthier-se/verve/internal/httpapi"
 )
-
-// startingProblem is the RFC 9457 body answered on the application routes while the server starts.
-const startingProblem = `{"type":"about:blank","title":"Service Unavailable","status":503,"code":"starting"}`
 
 // readiness is the startup state of the server: starting while the migrations are applied, then ready.
 type readiness struct {
@@ -46,9 +42,7 @@ func (r *readiness) checkers() []httpapi.Checker {
 func (r *readiness) gate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if !r.ready.Load() && !httpapi.IsHealthProbe(req.URL.Path) {
-			w.Header().Set("Content-Type", "application/problem+json")
-			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = io.WriteString(w, startingProblem)
+			httpapi.WriteProblem(w, httpapi.Problem{Status: http.StatusServiceUnavailable, Code: "starting"})
 
 			return
 		}
