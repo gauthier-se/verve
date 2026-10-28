@@ -54,7 +54,7 @@ func writeInternalError(w http.ResponseWriter, r *http.Request) {
 		w.Header().Del(name)
 	}
 
-	if !strings.HasPrefix(r.URL.Path, "/api/") {
+	if !strings.HasPrefix(r.URL.Path, apiPrefix) {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 
 		return

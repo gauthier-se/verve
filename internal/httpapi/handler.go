@@ -5,11 +5,15 @@ import (
 	"log/slog"
 	"net/http"
 	"slices"
+	"strings"
 
 	"github.com/gauthier-se/verve/internal/clock"
 	"github.com/gauthier-se/verve/internal/config"
 	"github.com/gauthier-se/verve/internal/store"
 )
+
+// apiPrefix starts the paths of the API.
+const apiPrefix = "/api/"
 
 // Deps holds what the handler needs. It grows as routes are added.
 type Deps struct {
@@ -34,10 +38,10 @@ func NewHandler(d Deps) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", healthz)
 	mux.HandleFunc("GET /readyz", readyz(d.Version, d.Checkers))
-	mux.HandleFunc("/api/", apiNotFound)
+	mux.HandleFunc(apiPrefix, apiNotFound)
 
 	if d.SPA != nil {
-		mux.Handle("/", d.SPA)
+		mux.Handle("/", outsideAPI(d.SPA))
 	}
 
 	return newHandler(d, mux)
@@ -46,6 +50,20 @@ func NewHandler(d Deps) http.Handler {
 // apiNotFound answers the unknown paths under /api/, whatever the method.
 func apiNotFound(w http.ResponseWriter, _ *http.Request) {
 	WriteProblem(w, Problem{Status: http.StatusNotFound, Code: "not_found"})
+}
+
+// outsideAPI answers with apiNotFound the paths under /api/ that reach it, and passes the others
+// to next. The router matches the escaped path, so it sends /api%2fv1/... to the catch-all.
+func outsideAPI(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, apiPrefix) {
+			apiNotFound(w, r)
+
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }
 
 // newHandler wraps routes with the middleware chain. Order, outermost first: recovery, client
