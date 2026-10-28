@@ -188,6 +188,7 @@ Every user-owned row carries a `user_id`. All queries are scoped by user, and th
 ### Time
 
 - Samples are stored in UTC with their original UTC offset, so a sample can be shown in the local time where it was recorded.
+- SQLite stores timestamps as `INTEGER` Unix milliseconds in UTC.
 - "Today", daily aggregates and weekly boundaries are computed in the user's timezone preference. Changing the timezone triggers a recompute of daily aggregates.
 - Sleep is attributed to nights using a configurable window (default 18:00 to 18:00, attributed to the wake-up date).
 

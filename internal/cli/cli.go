@@ -24,6 +24,10 @@ type Deps struct {
 	LoadConfig func(file string) (config.Config, error)
 	// Serve runs the server until ctx is cancelled.
 	Serve serveFunc
+	// Migrate applies the pending database migrations.
+	Migrate migrateFunc
+	// MigrationStatus lists the database migrations.
+	MigrationStatus migrationStatusFunc
 	// Logger is the process logger, writing to stderr.
 	Logger *slog.Logger
 }
@@ -36,8 +40,10 @@ func Execute(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		LoadConfig: func(file string) (config.Config, error) {
 			return config.Load(config.LoadOptions{File: file, Env: environ})
 		},
-		Serve:  app.Run,
-		Logger: slog.New(slog.NewTextHandler(stderr, nil)),
+		Serve:           app.Run,
+		Migrate:         app.Migrate,
+		MigrationStatus: app.MigrationStatus,
+		Logger:          slog.New(slog.NewTextHandler(stderr, nil)),
 	}
 
 	return execute(ctx, deps, args, stdout, stderr)
@@ -106,6 +112,7 @@ func NewRootCommand(deps Deps) *cobra.Command {
 	root.RunE = runServe
 
 	root.AddCommand(newServeCommand(runServe))
+	root.AddCommand(newMigrateCommand(loadConfig, deps))
 	root.AddCommand(newVersionCommand(deps.Version))
 	root.AddCommand(newConfigCommand(loadConfig))
 
