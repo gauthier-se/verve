@@ -16,14 +16,14 @@ const startingProblem = `{"type":"about:blank","title":"Service Unavailable","st
 // readiness is the startup state of the server: starting while the migrations are applied, then ready.
 type readiness struct {
 	ready atomic.Bool
-	// running are the readiness checks of the server once it is ready.
-	running []httpapi.Checker
+	// readyCheckers are the readiness checks of the server once it is ready.
+	readyCheckers []httpapi.Checker
 }
 
 // newReadiness returns the state of a starting server whose readiness checks are checkers once
 // it is ready.
 func newReadiness(checkers ...httpapi.Checker) *readiness {
-	return &readiness{running: checkers}
+	return &readiness{readyCheckers: checkers}
 }
 
 // markReady ends the startup.
@@ -38,7 +38,7 @@ func (r *readiness) checkers() []httpapi.Checker {
 		return []httpapi.Checker{startupChecker{}}
 	}
 
-	return r.running
+	return r.readyCheckers
 }
 
 // gate answers the requests other than the health probes with a 503 problem with the code

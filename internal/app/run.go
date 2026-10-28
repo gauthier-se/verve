@@ -42,7 +42,7 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger, hook befor
 	}()
 
 	clk := clock.Real()
-	ready := newReadiness(newDatabaseChecker(db), newMigrationsChecker(db), newDataDirChecker(cfg.DataDir, clk))
+	startup := newReadiness(newDatabaseChecker(db), newMigrationsChecker(db), newDataDirChecker(cfg.DataDir, clk))
 
 	handler := httpapi.NewHandler(httpapi.Deps{
 		Logger:         logger,
@@ -53,8 +53,8 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger, hook befor
 		// database under it.
 		Store:    sqlite.New(db, clk),
 		Version:  version.Get().Version,
-		Checkers: ready.checkers,
-		Gate:     ready.gate,
+		Checkers: startup.checkers,
+		Gate:     startup.gate,
 	})
 	srv := NewServer(ServerConfig{Addr: cfg.ListenAddr}, handler, logger)
 
@@ -77,7 +77,7 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger, hook befor
 		return errors.Join(err, <-served)
 	}
 
-	ready.markReady()
+	startup.markReady()
 	logger.Info("server ready")
 
 	return <-served

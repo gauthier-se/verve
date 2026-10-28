@@ -50,7 +50,7 @@ func healthcheck(ctx context.Context, client *http.Client, listenAddr string) er
 	_ = res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("healthcheck %s: unexpected status %s", url, res.Status)
+		return fmt.Errorf("healthcheck: %s answered %s", url, res.Status)
 	}
 
 	return nil
