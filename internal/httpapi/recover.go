@@ -2,15 +2,11 @@ package httpapi
 
 import (
 	"errors"
-	"io"
 	"log/slog"
 	"net/http"
 	"runtime/debug"
 	"strings"
 )
-
-// internalErrorProblem is the RFC 9457 body answered under /api/ when a handler panics.
-const internalErrorProblem = `{"type":"about:blank","title":"Internal Server Error","status":500,"code":"internal"}`
 
 // RecoverMiddleware recovers from panics in the next handlers, so that the server keeps serving,
 // and handles them with answerPanic. It is the safety net of the middlewares in front of
@@ -64,9 +60,6 @@ func writeInternalError(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h := w.Header()
-	h.Del("Content-Length")
-	h.Set("Content-Type", "application/problem+json")
-	w.WriteHeader(http.StatusInternalServerError)
-	_, _ = io.WriteString(w, internalErrorProblem)
+	w.Header().Del("Content-Length")
+	WriteProblem(w, Problem{Status: http.StatusInternalServerError, Code: "internal"})
 }
