@@ -18,7 +18,7 @@ import (
 func TestNewHandler_UnknownPathReturns404(t *testing.T) {
 	t.Parallel()
 
-	h := NewHandler(Deps{Logger: slog.New(slog.DiscardHandler)})
+	h := NewHandler(Deps{Logger: slog.New(slog.DiscardHandler), Clock: clock.Real()})
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/anything", nil))
