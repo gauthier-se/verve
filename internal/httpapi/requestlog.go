@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
-	"slices"
 
 	"github.com/gauthier-se/verve/internal/clock"
 	"github.com/gauthier-se/verve/internal/logging"
@@ -57,7 +56,7 @@ func RequestLogMiddleware(logger *slog.Logger, clk clock.Clock) func(http.Handle
 				}
 
 				level := slog.LevelInfo
-				if slices.Contains(probePaths, req.URL.Path) {
+				if IsHealthProbe(req.URL.Path) {
 					level = slog.LevelDebug
 				}
 
