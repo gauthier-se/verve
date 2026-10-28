@@ -62,7 +62,8 @@ func TestRecover_PanicElsewhereReturnsPlainText(t *testing.T) {
 	require.Len(t, srv.logs.withMessage(t, "panic serving request"), 1)
 }
 
-// Given a handler that panics, then the request is still logged once, with status 500.
+// Given a handler that panics, then the request is still logged once, with the status and size
+// of the 500 answered.
 func TestRecover_PanickingRequestIsLoggedWithStatus500(t *testing.T) {
 	t.Parallel()
 
@@ -75,6 +76,7 @@ func TestRecover_PanickingRequestIsLoggedWithStatus500(t *testing.T) {
 	require.Equal(t, rec.Header().Get("X-Request-Id"), lines[0]["request_id"])
 	require.Equal(t, "GET /boom", lines[0]["route"])
 	require.InDelta(t, http.StatusInternalServerError, lines[0]["status"], 0)
+	require.InDelta(t, rec.Body.Len(), lines[0]["bytes"], 0)
 }
 
 // Given a handler that panics, then the server keeps serving the next requests.
