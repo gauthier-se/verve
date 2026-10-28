@@ -9,6 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/gauthier-se/verve/internal/clock"
+	"github.com/gauthier-se/verve/internal/config"
+	"github.com/gauthier-se/verve/internal/logging"
 )
 
 // panickingRoutes registers handlers that panic with "boom" under /api/ and elsewhere, and a
@@ -77,6 +79,27 @@ func TestRecover_PanickingRequestIsLoggedWithStatus500(t *testing.T) {
 	require.Equal(t, "GET /boom", lines[0]["route"])
 	require.InDelta(t, http.StatusInternalServerError, lines[0]["status"], 0)
 	require.InDelta(t, rec.Body.Len(), lines[0]["bytes"], 0)
+}
+
+// Given a panic in front of the request logging middleware, for example in another middleware,
+// then the recovery middleware still answers 500 and logs the panic at error level.
+func TestRecoverMiddleware_RecoversPanicsInFrontOfRequestLog(t *testing.T) {
+	t.Parallel()
+
+	logs := &jsonLogs{}
+	h := RecoverMiddleware(logging.New(logs, config.LogConfig{Level: "info", Format: "json"}))(
+		http.HandlerFunc(func(http.ResponseWriter, *http.Request) { panic("boom") }))
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/meta", nil))
+
+	require.Equal(t, http.StatusInternalServerError, rec.Code)
+	require.Equal(t, "application/problem+json", rec.Header().Get("Content-Type"))
+
+	panics := logs.withMessage(t, "panic serving request")
+	require.Len(t, panics, 1)
+	require.Equal(t, "ERROR", panics[0]["level"])
+	require.Equal(t, "boom", panics[0]["panic"])
 }
 
 // Given a handler that panics, then the server keeps serving the next requests.

@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"context"
 	"errors"
 	"io"
 	"log/slog"
@@ -13,57 +12,43 @@ import (
 // internalErrorProblem is the RFC 9457 body answered under /api/ when a handler panics.
 const internalErrorProblem = `{"type":"about:blank","title":"Internal Server Error","status":500,"code":"internal"}`
 
-// panicLogger holds the logger the recovery middleware logs a panic with. The request logging
-// middleware, which runs further in, replaces it with the request logger so that the panic is
-// logged with the request id.
-type panicLogger struct {
-	logger *slog.Logger
-}
-
-type panicLoggerKey struct{}
-
-// setPanicLogger makes the recovery middleware of the request log panics with logger. It does
-// nothing when the recovery middleware did not run.
-func setPanicLogger(ctx context.Context, logger *slog.Logger) {
-	if p, ok := ctx.Value(panicLoggerKey{}).(*panicLogger); ok {
-		p.logger = logger
-	}
-}
-
-// RecoverMiddleware recovers from panics in the next handlers, so that the server keeps serving.
-// It logs the panic value and stack trace at error level and answers 500: a problem under /api/,
-// plain text elsewhere. When the response has already started its status can no longer change,
-// so the response is aborted instead. http.ErrAbortHandler is propagated for net/http to abort
-// the response silently.
+// RecoverMiddleware recovers from panics in the next handlers, so that the server keeps serving,
+// and handles them with answerPanic. It is the safety net of the middlewares in front of
+// RequestLogMiddleware, which recovers the panics behind it itself to log them with the request id.
 func RecoverMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			pl := &panicLogger{logger: logger}
-			rec := &responseRecorder{ResponseWriter: w}
+			sr := &statusRecorder{ResponseWriter: w}
 
 			defer func() {
-				v := recover()
-				if v == nil {
-					return
+				if v := recover(); v != nil {
+					answerPanic(v, sr, r, logger)
 				}
-
-				if err, ok := v.(error); ok && errors.Is(err, http.ErrAbortHandler) {
-					panic(http.ErrAbortHandler)
-				}
-
-				pl.logger.ErrorContext(r.Context(), "panic serving request",
-					slog.Any("panic", v), slog.String("stack", string(debug.Stack())))
-
-				if rec.started() {
-					panic(http.ErrAbortHandler)
-				}
-
-				writeInternalError(w, r)
 			}()
 
-			next.ServeHTTP(rec, r.WithContext(context.WithValue(r.Context(), panicLoggerKey{}, pl)))
+			next.ServeHTTP(sr, r)
 		})
 	}
+}
+
+// answerPanic handles the value v recovered from a panic while serving r. It logs the value and
+// the stack trace at error level and answers 500: a problem under /api/, plain text elsewhere.
+// When the response has already started, its status can no longer change: answerPanic aborts it
+// by panicking with http.ErrAbortHandler. It propagates http.ErrAbortHandler without logging it,
+// for net/http to abort the response silently.
+func answerPanic(v any, w *statusRecorder, r *http.Request, logger *slog.Logger) {
+	if err, ok := v.(error); ok && errors.Is(err, http.ErrAbortHandler) {
+		panic(http.ErrAbortHandler)
+	}
+
+	logger.ErrorContext(r.Context(), "panic serving request",
+		slog.Any("panic", v), slog.String("stack", string(debug.Stack())))
+
+	if w.started() {
+		panic(http.ErrAbortHandler)
+	}
+
+	writeInternalError(w, r)
 }
 
 // writeInternalError answers 500 in place of the response the handler meant to send, dropping the

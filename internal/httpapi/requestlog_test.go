@@ -331,3 +331,40 @@ func TestRequestLog_KeepsResponseControllerWorking(t *testing.T) {
 	require.NoError(t, flushErr)
 	require.True(t, rec.Flushed)
 }
+
+// Given a handler hijacking the connection with http.ResponseController, then it reaches the
+// connection through the middleware wrappers.
+func TestRequestLog_KeepsHijackWorking(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t, "info", func(mux *http.ServeMux, _ *clock.Fake) {
+		mux.HandleFunc("GET /raw", func(w http.ResponseWriter, _ *http.Request) {
+			conn, buf, err := http.NewResponseController(w).Hijack()
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+
+				return
+			}
+
+			defer func() { _ = conn.Close() }()
+
+			_, _ = buf.WriteString("HTTP/1.1 200 OK\r\nContent-Length: 6\r\nConnection: close\r\n\r\nraw ok")
+			_ = buf.Flush()
+		})
+	})
+
+	ts := httptest.NewServer(srv.handler)
+	t.Cleanup(ts.Close)
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, ts.URL+"/raw", nil)
+	require.NoError(t, err)
+
+	resp, err := ts.Client().Do(req)
+	require.NoError(t, err)
+
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "raw ok", string(body))
+}
