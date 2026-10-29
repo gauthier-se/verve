@@ -215,9 +215,9 @@ func TestRun_NewerDatabaseFails(t *testing.T) {
 
 // fetched is a response read in full.
 type fetched struct {
-	status      int
-	contentType string
-	body        string
+	status int
+	header http.Header
+	body   string
 }
 
 func fetch(t *testing.T, url string) fetched {
@@ -230,7 +230,11 @@ func fetch(t *testing.T, url string) fetched {
 	require.NoError(t, err)
 	require.NoError(t, res.Body.Close())
 
-	return fetched{status: res.StatusCode, contentType: res.Header.Get("Content-Type"), body: string(body)}
+	return fetched{
+		status: res.StatusCode,
+		header: res.Header,
+		body:   string(body),
+	}
 }
 
 // Given startup with pending migrations, then the server listens before migrating: meanwhile
@@ -274,7 +278,7 @@ func TestRun_GatesApplicationRoutesWhileMigrating(t *testing.T) {
 	for _, path := range []string{"/", "/api/v1/anything"} {
 		res = fetch(t, base+path)
 		require.Equal(t, http.StatusServiceUnavailable, res.status, path)
-		require.Equal(t, "application/problem+json", res.contentType, path)
+		require.Equal(t, "application/problem+json", res.header.Get("Content-Type"), path)
 		require.JSONEq(t, wantStartingProblem, res.body, path)
 	}
 
@@ -290,11 +294,11 @@ func TestRun_GatesApplicationRoutesWhileMigrating(t *testing.T) {
 	// The gate lets the requests through to the router.
 	res = fetch(t, base+"/")
 	require.Equal(t, http.StatusOK, res.status)
-	require.Equal(t, "text/html; charset=utf-8", res.contentType)
+	require.Equal(t, "text/html; charset=utf-8", res.header.Get("Content-Type"))
 
 	res = fetch(t, base+"/api/v1/anything")
 	require.Equal(t, http.StatusNotFound, res.status)
-	require.Equal(t, "application/problem+json", res.contentType)
+	require.Equal(t, "application/problem+json", res.header.Get("Content-Type"))
 
 	stop()
 }
@@ -309,7 +313,7 @@ func TestRun_ServesWebApp(t *testing.T) {
 	for _, path := range []string{"/", "/workouts/123"} {
 		res := fetch(t, "http://"+addr+path)
 		require.Equal(t, http.StatusOK, res.status, path)
-		require.Equal(t, "text/html; charset=utf-8", res.contentType, path)
+		require.Equal(t, "text/html; charset=utf-8", res.header.Get("Content-Type"), path)
 		require.Equal(t, !webui.Built(), strings.Contains(res.body, "The web UI is not built"), path)
 	}
 
@@ -336,4 +340,39 @@ func TestRun_ReadyzReportsFailingChecks(t *testing.T) {
 		`"reasons":["data_dir: not writable: permission denied"]}`, res.body)
 
 	stop()
+}
+
+// Given VERVE_PUBLIC_URL with https, then responses include Strict-Transport-Security; given it
+// with http or unset, then they do not. Every response carries the Content Security Policy.
+func TestRun_SendsHSTSOnlyForHTTPSPublicURL(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name      string
+		publicURL string
+		want      []string
+	}{
+		{name: "https", publicURL: "https://verve.example.com", want: []string{"max-age=31536000"}},
+		{name: "http", publicURL: "http://verve.example.com"},
+		{name: "unset"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := testConfig(t.TempDir())
+			if tt.publicURL != "" {
+				require.NoError(t, cfg.PublicURL.UnmarshalText([]byte(tt.publicURL)))
+			}
+
+			addr, _, stop := startRun(t, cfg)
+
+			for _, path := range []string{"/", "/healthz", "/api/v1/meta"} {
+				res := fetch(t, "http://"+addr+path)
+				require.Equal(t, tt.want, res.header.Values("Strict-Transport-Security"), path)
+				require.NotEmpty(t, res.header.Get("Content-Security-Policy"), path)
+			}
+
+			stop()
+		})
+	}
 }

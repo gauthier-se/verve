@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -182,4 +183,79 @@ func TestNewHandler_GateWrapsRouter(t *testing.T) {
 	require.Equal(t, "unmatched", lines[0]["route"])
 	require.InDelta(t, http.StatusOK, lines[1]["status"], 0)
 	require.Equal(t, "GET /healthz", lines[1]["route"])
+}
+
+// Given any response (web app, API, problem 404, health probes, gate), then it includes the
+// security headers, and HSTS only when enabled.
+func TestNewHandler_SetsSecurityHeaders(t *testing.T) {
+	t.Parallel()
+
+	gate := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/closed" {
+				WriteProblem(w, Problem{Status: http.StatusServiceUnavailable, Code: "starting"})
+
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+
+	for _, hsts := range []bool{true, false} {
+		t.Run(fmt.Sprintf("hsts=%t", hsts), func(t *testing.T) {
+			t.Parallel()
+
+			h := NewHandler(Deps{
+				Logger: slog.New(slog.DiscardHandler),
+				Clock:  clock.Real(),
+				HSTS:   hsts,
+				Gate:   gate,
+				SPA:    newTestSPA(t, testDist()),
+			})
+
+			for _, tt := range []struct {
+				target string
+				status int
+			}{
+				{target: "/", status: http.StatusOK},
+				{target: "/workouts/123", status: http.StatusOK},
+				{target: "/assets/index-3f9a1c2b.js", status: http.StatusOK},
+				{target: "/api/v1/meta", status: http.StatusOK},
+				{target: "/api/v1/unknown", status: http.StatusNotFound},
+				{target: "/healthz", status: http.StatusOK},
+				{target: "/readyz", status: http.StatusOK},
+				{target: "/closed", status: http.StatusServiceUnavailable},
+			} {
+				rec := serve(t, h, http.MethodGet, tt.target)
+
+				require.Equal(t, tt.status, rec.Code, tt.target)
+				requireSecurityHeaders(t, rec.Header(), tt.target)
+
+				wantHSTS := ""
+				if hsts {
+					wantHSTS = "max-age=31536000"
+				}
+
+				require.Equal(t, wantHSTS, rec.Header().Get("Strict-Transport-Security"), tt.target)
+			}
+		})
+	}
+}
+
+// Given a handler that panics, then the 500 answered in its place includes the security headers.
+func TestNewHandler_PanicResponseHasSecurityHeaders(t *testing.T) {
+	t.Parallel()
+
+	h := newHandler(Deps{
+		Logger: slog.New(slog.DiscardHandler),
+		Clock:  clock.Real(),
+	}, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		panic("boom")
+	}))
+
+	rec := serve(t, h, http.MethodGet, "/api/v1/meta")
+
+	require.Equal(t, http.StatusInternalServerError, rec.Code)
+	requireSecurityHeaders(t, rec.Header())
 }

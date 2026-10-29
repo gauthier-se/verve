@@ -31,6 +31,8 @@ type Deps struct {
 	Gate func(http.Handler) http.Handler
 	// SPA serves the web app. Nil means none.
 	SPA http.Handler
+	// HSTS adds Strict-Transport-Security to every response, for a public URL in https.
+	HSTS bool
 }
 
 // NewHandler returns the root handler of the server: the health probes, the API, a JSON 404
@@ -75,6 +77,7 @@ func newHandler(d Deps, routes http.Handler) http.Handler {
 		RecoverMiddleware(d.Logger),
 		ClientInfoMiddleware(d.TrustedProxies, d.Logger, d.Clock),
 		RequestLogMiddleware(d.Logger, d.Clock),
+		SecurityHeaders(DefaultCSP(), d.HSTS),
 	}
 
 	if d.Gate != nil {

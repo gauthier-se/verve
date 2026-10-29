@@ -38,7 +38,7 @@ Verve is configured through `VERVE_*` environment variables, an optional YAML fi
   |---|---|---|---|
   | `VERVE_DATA_DIR` | `data_dir` | `/data` | Database, uploads, exports, backups, map files |
   | `VERVE_LISTEN_ADDR` | `listen_addr` | `:8080` | HTTP listen address |
-  | `VERVE_PUBLIC_URL` | `public_url` | none | External URL, used for cookies, links, OIDC redirect and CSRF origin checks |
+  | `VERVE_PUBLIC_URL` | `public_url` | none | External URL, used for cookies, links, OIDC redirect, CSRF origin checks and HSTS (sent only for https) |
   | `VERVE_TRUSTED_PROXIES` | `trusted_proxies` | none | CIDRs whose `X-Forwarded-*` headers are trusted |
   | `VERVE_SECRET_KEY` | none | generated | Key for encrypting secrets at rest, generated into `secret.key` if absent. Not implemented yet (M1): the variable is ignored and has no YAML key |
   | `VERVE_LOG_LEVEL` | `log.level` | `info` | `debug`, `info`, `warn`, `error` |

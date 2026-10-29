@@ -75,10 +75,15 @@ func (p PublicURL) IsSet() bool {
 	return p.u != nil
 }
 
+// HTTPS reports whether the public URL uses https.
+func (p PublicURL) HTTPS() bool {
+	return p.u != nil && p.u.Scheme == "https"
+}
+
 // SecureCookies reports whether cookies must be marked Secure, which is when the public URL
 // uses https.
 func (p PublicURL) SecureCookies() bool {
-	return p.u != nil && p.u.Scheme == "https"
+	return p.HTTPS()
 }
 
 // Origin returns the origin of the public URL, such as https://verve.example.com, or "" when unset.

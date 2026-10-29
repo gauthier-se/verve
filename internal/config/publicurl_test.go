@@ -14,17 +14,19 @@ func TestPublicURL_Methods(t *testing.T) {
 		value      string
 		wantSet    bool
 		wantSecure bool
+		wantHTTPS  bool
 		wantOrigin string
 	}{
 		{
-			name:       "given an https URL, then cookies are secure and the origin is the URL",
+			name:       "given an https URL, then it is https, cookies are secure and the origin is the URL",
 			value:      "https://verve.example.com",
 			wantSet:    true,
 			wantSecure: true,
+			wantHTTPS:  true,
 			wantOrigin: "https://verve.example.com",
 		},
 		{
-			name:       "given an http URL with a port and a trailing slash, then cookies are not secure",
+			name:       "given an http URL with a port and a trailing slash, then it is not https and cookies are not secure",
 			value:      "http://verve.example.com:8080/",
 			wantSet:    true,
 			wantOrigin: "http://verve.example.com:8080",
@@ -45,6 +47,7 @@ func TestPublicURL_Methods(t *testing.T) {
 
 			require.Equal(t, tt.wantSet, p.IsSet())
 			require.Equal(t, tt.wantSecure, p.SecureCookies())
+			require.Equal(t, tt.wantHTTPS, p.HTTPS())
 			require.Equal(t, tt.wantOrigin, p.Origin())
 			require.Equal(t, tt.wantOrigin, p.String())
 		})
