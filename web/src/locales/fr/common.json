@@ -1,4 +1,15 @@
 {
+  "connection": {
+    "starting": {
+      "description": "Le serveur se prépare, par exemple après une mise à jour. Verve s'ouvrira dès qu'il sera prêt.",
+      "title": "Verve démarre"
+    },
+    "unreachable": {
+      "description": "Verve ne parvient pas à joindre le serveur. Une nouvelle tentative aura lieu automatiquement.",
+      "retry": "Réessayer",
+      "title": "Serveur injoignable"
+    }
+  },
   "days_one": "{{count}} jour",
   "days_many": "{{count}} jours",
   "days_other": "{{count}} jours",
@@ -11,5 +22,10 @@
   },
   "home": {
     "tagline": "Vos données de santé, sur votre serveur."
+  },
+  "notFound": {
+    "description": "La page que vous cherchez n'existe pas.",
+    "home": "Retour à l'accueil",
+    "title": "Page introuvable"
   }
 }

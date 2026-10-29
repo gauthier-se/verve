@@ -1,4 +1,15 @@
 {
+  "connection": {
+    "starting": {
+      "description": "The server is getting ready, for example after an update. Verve opens as soon as it is ready.",
+      "title": "Verve is starting"
+    },
+    "unreachable": {
+      "description": "Verve cannot reach the server. It will try again automatically.",
+      "retry": "Retry",
+      "title": "Server unreachable"
+    }
+  },
   "days_one": "{{count}} day",
   "days_other": "{{count}} days",
   "duration": {
@@ -10,5 +21,10 @@
   },
   "home": {
     "tagline": "Your health data, on your server."
+  },
+  "notFound": {
+    "description": "The page you are looking for does not exist.",
+    "home": "Back to home",
+    "title": "Page not found"
   }
 }
