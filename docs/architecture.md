@@ -138,7 +138,9 @@ Routing state that users may want to bookmark or share (metric, period, granular
 
 The OpenAPI spec is produced by the binary itself (`verve openapi > web/openapi.json`) and the client is regenerated as part of the build. A change to a Go API type that breaks the frontend fails the frontend type check.
 
-The generated client lives in `web/src/api/generated`, with one TanStack Query options function per operation (for example `getMetaOptions()` for `get-meta`). `web/src/api/client.ts` configures it: requests go to the origin of the app with `credentials: 'same-origin'`, and every request other than GET carries the header `Verve-Csrf: 1`.
+The generated client lives in `web/src/api/generated`, with one TanStack Query options function per operation (for example `getMetaOptions()` for `get-meta`). `web/src/api/client.ts` configures it: requests go to the origin of the app with `credentials: 'same-origin'`, every request other than GET carries the header `Verve-Csrf: 1`, and an error response that is not `application/problem+json`, such as the error page of a reverse proxy, is replaced by a problem with its status and the code `unexpected_response`. The generated client throws the body of an error response, so every error it throws for a response is a problem, and the status of a proxy error is not lost.
+
+The root route renders the app shell. `ConnectionGate` (`web/src/components/status/`) queries `/api/v1/meta` with `metaQueryOptions()` from `web/src/api/meta.ts`, refetched on window focus and every 5 minutes, never retried by TanStack Query, and run even when the browser reports no network (`networkMode: "always"`), so that an offline device gets the unreachable screen instead of a paused query. `classifyApiError()` from `web/src/api/errors.ts` tells a server that cannot be reached (a network error, 502 or 504 from a reverse proxy, or a 503 that is not a Verve problem, as a proxy answers when its backend is down) from a server that is starting (503 with the code `starting`) and from any other error. In the first two cases the gate replaces the layout with a full-page screen and refetches every 5 seconds until the server answers. Other errors let the layout through. `useVersionWatch()` from `web/src/lib/version-watch.ts` remembers the version of the first answer, and once the server reports another one, turns the next client-side navigation into a full page load of its target, so that the frontend of the new version loads.
 
 ## Data flows
 
@@ -237,7 +239,7 @@ Values are stored in canonical units and converted only for display.
 
 ### Errors
 
-API errors use RFC 9457 problem details with a stable machine-readable `code`. The frontend translates codes into localized messages.
+API errors use RFC 9457 problem details with a stable machine-readable `code`. The frontend translates codes into localized messages. One code comes from the API client rather than the server: `unexpected_response`, for an error response that is not a problem, such as the error page of a reverse proxy (see [Frontend](#frontend)).
 
 The errors raised by Huma, such as validation errors, have the same shape: `huma.NewError` is replaced once, when the API is built, by a constructor of `Problem`. Their `code` defaults from the status: 400 `bad_request`, 401 `unauthorized`, 403 `forbidden`, 404 `not_found`, 409 `conflict`, 422 `validation_failed`, 429 `rate_limited`, 503 `unavailable`, any other client error `bad_request` and any other server error `internal`. Validation errors list one entry per invalid field in `errors`, with `message`, `location` (for example `body.name` or `query.limit`) and `value`. Server errors never have `errors`: an operation that fails with an error that is not a problem answers 500 `internal` with the detail `unexpected error occurred`, because the message of an internal error may hold file paths or queries.
 

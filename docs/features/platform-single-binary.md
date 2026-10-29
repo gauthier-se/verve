@@ -57,7 +57,9 @@ Verve ships as one executable named `verve`. It serves the REST API and the web 
 
 ## UX notes
 
-- When the SPA cannot reach the API, it shows a dedicated "server unreachable" screen with a retry button.
+- When the SPA cannot reach the API (a network error, 502 or 504 from a reverse proxy, or a 503 that does not come from Verve, as a proxy answers when its backend is down), it shows a dedicated "server unreachable" screen with a retry button and retries automatically every 5 seconds. While the server applies its migrations (503 with the code `starting`), it shows a "Verve is starting" screen, retried the same way. The layout comes back without reload once the API answers.
+- The footer shows `Verve <version>` from `/api/v1/meta`.
+- The dark theme follows the system preference (`prefers-color-scheme`) until the theme preference arrives in M2.
 
 ## Data and API notes
 
@@ -66,7 +68,7 @@ Verve ships as one executable named `verve`. It serves the REST API and the web 
 ## Edge cases
 
 - A deep link to a client route (for example `/workouts/123`) opened in a new tab must load the SPA, not a 404.
-- A request for a missing hashed asset after an upgrade (old tab open) returns 404, and the SPA reloads itself when it detects a version change.
+- A request for a missing hashed asset after an upgrade (old tab open) returns 404, and the SPA reloads itself when it detects a version change: it refetches `/api/v1/meta` on window focus and every 5 minutes, and once the version differs from the one it loaded with, the next client-side navigation is a full page load of the target URL.
 
 ## Acceptance criteria
 
