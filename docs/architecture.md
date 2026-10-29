@@ -224,7 +224,10 @@ Values are stored in canonical units and converted only for display.
 
 ### Security baseline
 
-- Strict security headers: Content Security Policy (with the map tile host added only when configured), `X-Content-Type-Options`, `Referrer-Policy`, `frame-ancestors 'none'`, `Permissions-Policy`.
+- Strict security headers on every response, set by `internal/httpapi/security.go` after request logging and before the router:
+  - `Content-Security-Policy`: same-origin resources only (`default-src`, `script-src`, `font-src`, `connect-src`, `manifest-src`, `base-uri`, `form-action` are `'self'`), `style-src 'self' 'unsafe-inline'` because UI libraries set inline styles for positioning, `img-src 'self' data: blob:`, `worker-src 'self' blob:`, `object-src 'none'` and `frame-ancestors 'none'`. Scripts never need inline code. The policy is built with `CSP.With`, which the maps feature uses to add the tile host only when configured. A handler that sets its own policy with `Header().Set` keeps it.
+  - `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()`, `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Resource-Policy: same-origin`.
+  - `Strict-Transport-Security: max-age=31536000` only when `VERVE_PUBLIC_URL` is HTTPS.
 - Session cookies are `HttpOnly`, `Secure` when `VERVE_PUBLIC_URL` is HTTPS, `SameSite=Lax`, and use the `__Host-` prefix when possible.
 - State-changing requests require a custom header and a matching `Origin` (CSRF protection).
 - Secrets at rest (TOTP secrets, OIDC client secret, SMTP password, webhook secrets) are encrypted with a key from `VERVE_SECRET_KEY`, or generated once in the data directory.
