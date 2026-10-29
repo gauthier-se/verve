@@ -1,4 +1,8 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  onlineManager,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -58,6 +62,14 @@ describe("ConnectionGate", () => {
       failure: "a 504 from a reverse proxy",
       resolver: () => new HttpResponse(null, { status: 504 }),
     },
+    {
+      failure: "a 503 from a reverse proxy whose backend is down",
+      resolver: () =>
+        new HttpResponse("no available server", {
+          status: 503,
+          headers: { "Content-Type": "text/plain" },
+        }),
+    },
   ])(
     "given /api/v1/meta fails with $failure, then a server unreachable screen replaces the layout with a retry button",
     async ({ resolver }) => {
@@ -77,6 +89,20 @@ describe("ConnectionGate", () => {
       expect(screen.queryByText("Layout")).not.toBeInTheDocument();
     },
   );
+
+  it("given the browser is offline, when the app loads, then the server unreachable screen shows instead of waiting for the network", async () => {
+    onlineManager.setOnline(false);
+    onTestFinished(() => {
+      onlineManager.setOnline(true);
+    });
+    answerMeta(networkError);
+
+    renderGate();
+
+    expect(
+      await screen.findByRole("heading", { name: "Server unreachable" }),
+    ).toBeInTheDocument();
+  });
 
   it("given the server unreachable screen, when the user tabs to the retry button and presses Enter, then the app retries at once and restores the layout", async () => {
     const user = userEvent.setup();

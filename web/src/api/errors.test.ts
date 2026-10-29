@@ -45,6 +45,15 @@ describe("classifyApiError", () => {
       kind: "unreachable",
     },
     {
+      response: "a 503 page from a reverse proxy whose backend is down",
+      resolver: () =>
+        new HttpResponse("no available server", {
+          status: 503,
+          headers: { "Content-Type": "text/plain" },
+        }),
+      kind: "unreachable",
+    },
+    {
       response: 'a 503 problem with code "starting"',
       resolver: () =>
         problemResponse({

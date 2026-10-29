@@ -2,6 +2,7 @@ import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { client } from "@/api/generated/client.gen";
+import { problemResponse } from "@/test/problem";
 import { server } from "@/test/server";
 
 /** Registers a handler for `method` on /api/v1/echo that records the request it receives. */
@@ -36,23 +37,15 @@ describe("API client", () => {
 
   it("given a problem response from Verve, when the client throws, then it throws that problem", async () => {
     const problem = {
-      type: "about:blank",
       title: "Service Unavailable",
       status: 503,
       code: "starting",
     };
-    server.use(
-      http.get("/api/v1/echo", () =>
-        HttpResponse.json(problem, {
-          status: 503,
-          headers: { "Content-Type": "application/problem+json" },
-        }),
-      ),
-    );
+    server.use(http.get("/api/v1/echo", () => problemResponse(problem)));
 
     await expect(
       client.get({ url: "/api/v1/echo", throwOnError: true }),
-    ).rejects.toStrictEqual(problem);
+    ).rejects.toStrictEqual({ type: "about:blank", ...problem });
   });
 
   it.each([
