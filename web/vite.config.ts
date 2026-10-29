@@ -37,6 +37,9 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
+    // Compiles the stylesheet with Tailwind, so that the theme tests check
+    // the CSS that browsers receive. Other stylesheets stay empty in tests.
+    css: { include: [/\/src\/styles\.css$/] },
     coverage: {
       // The text summary goes to a file that CI adds to the run summary:
       // reporter options cannot be passed on the command line.

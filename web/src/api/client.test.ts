@@ -34,6 +34,72 @@ describe("API client", () => {
     expect(received[0]?.headers.has("Verve-Csrf")).toBe(false);
   });
 
+  it("given a problem response from Verve, when the client throws, then it throws that problem", async () => {
+    const problem = {
+      type: "about:blank",
+      title: "Service Unavailable",
+      status: 503,
+      code: "starting",
+    };
+    server.use(
+      http.get("/api/v1/echo", () =>
+        HttpResponse.json(problem, {
+          status: 503,
+          headers: { "Content-Type": "application/problem+json" },
+        }),
+      ),
+    );
+
+    await expect(
+      client.get({ url: "/api/v1/echo", throwOnError: true }),
+    ).rejects.toStrictEqual(problem);
+  });
+
+  it.each([
+    {
+      response: "a text page",
+      resolver: () =>
+        new HttpResponse("Bad Gateway", {
+          status: 502,
+          statusText: "Bad Gateway",
+          headers: { "Content-Type": "text/plain" },
+        }),
+      status: 502,
+      title: "Bad Gateway",
+    },
+    {
+      response: "an empty body",
+      resolver: () =>
+        new HttpResponse(null, { status: 504, statusText: "Gateway Timeout" }),
+      status: 504,
+      title: "Gateway Timeout",
+    },
+    {
+      response: "JSON that is not a problem",
+      resolver: () =>
+        HttpResponse.json(
+          { message: "upstream down" },
+          { status: 500, statusText: "Internal Server Error" },
+        ),
+      status: 500,
+      title: "Internal Server Error",
+    },
+  ])(
+    "given an error response with $response, which does not come from Verve, when the client throws, then it throws a problem with the response status",
+    async ({ resolver, status, title }) => {
+      server.use(http.get("/api/v1/echo", resolver));
+
+      await expect(
+        client.get({ url: "/api/v1/echo", throwOnError: true }),
+      ).rejects.toStrictEqual({
+        type: "about:blank",
+        title,
+        status,
+        code: "unexpected_response",
+      });
+    },
+  );
+
   it.each(["post", "delete"] as const)(
     "given a %s request, when the client sends it, then it carries the header Verve-Csrf: 1",
     async (method) => {
