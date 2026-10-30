@@ -196,3 +196,112 @@ jobs:
         with:
           name: playwright-report
           path: web/playwright-report/
+
+  docker:
+    name: docker
+    runs-on: ubuntu-latest
+    outputs:
+      build-args: ${{ steps.build-args.outputs.value }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      # The commit date rather than the current time, so that a rerun keeps its cached layers.
+      # docker-publish reuses these arguments to restore the layers that passed the smoke test.
+      - name: Set the build arguments
+        id: build-args
+        run: |
+          commit=${GITHUB_SHA::7}
+          version=$commit
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            version=edge
+          fi
+          {
+            echo "value<<EOF"
+            echo "VERSION=$version"
+            echo "COMMIT=$commit"
+            echo "BUILD_DATE=$(TZ=UTC0 git log -1 --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ)"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      # No cache-to: this amd64 manifest would replace the multi-arch one the next build reads.
+      - name: Build the amd64 image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: verve:smoke
+          build-args: ${{ steps.build-args.outputs.value }}
+          cache-from: type=gha
+
+      - name: Smoke test
+        run: scripts/docker-smoke.sh verve:smoke
+
+      # No QEMU: the Dockerfile cross-compiles Go and builds the web app on the build platform.
+      - name: Build the multi-arch image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          build-args: ${{ steps.build-args.outputs.value }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # A separate job because permissions take no expressions: the docker job, which pull requests
+  # run, must not get these.
+  docker-publish:
+    name: docker-publish
+    needs: docker
+    if: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Read the image metadata
+        id: metadata
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=edge,branch=main
+            type=sha
+          # Keeps the license of the Dockerfile: GitHub reports the deprecated identifier AGPL-3.0.
+          labels: |
+            org.opencontainers.image.licenses=AGPL-3.0-only
+
+      - name: Push the multi-arch image
+        id: push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+          build-args: ${{ needs.docker.outputs.build-args }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Attest the build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
