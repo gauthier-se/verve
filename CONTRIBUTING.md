@@ -17,6 +17,7 @@ Every pull request runs these required checks:
 | `go` | golangci-lint (linters and formatting), tests with the race detector, total coverage of at least 80 percent outside `cmd/` and generated code, govulncheck | `task go:lint`, `task test:coverage`, `task vuln` |
 | `generated` | Generated code up to date: sqlc queries, OpenAPI spec (`web/openapi.json`), TypeScript API client (`web/src/api/generated`), translation files and types | `task generate`, then no change in `git status` |
 | `web` | Dependencies install from the lockfile without changes, ESLint, Prettier format check, TypeScript type check, translation check (files up to date with the keys in code, no hardcoded user-facing text), Vitest tests with coverage, production build | `task web:lint`, `pnpm coverage` in `web/`, `task web:build` |
+| `e2e` | Playwright smoke tests in Chromium and WebKit against the production binary. On failure, the HTML report is uploaded as the `playwright-report` artifact | `task e2e` |
 | `pr-title` | The pull request title follows the commit message format below | |
 
 The `go` job writes a per-package coverage table to the run summary (`task test:coverage-summary` locally). The `web` job writes the Vitest coverage summary to the run summary, without a threshold for now (`web/coverage/coverage-summary.txt` after `pnpm coverage` locally), and the translation coverage per language (`pnpm i18n:status` in `web/`).

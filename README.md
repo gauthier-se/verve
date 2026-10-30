@@ -63,10 +63,13 @@ Common tasks (`task --list` shows them all):
 | `task test` | Go tests with the race detector and web tests |
 | `task build` | Build `bin/verve` with version metadata |
 | `task web:build` | Build the web app into `web/dist` |
+| `task e2e` | Build `bin/verve` and run the Playwright tests against it in Chromium and WebKit |
 
 `task dev` runs the Go server with [air](https://github.com/air-verse/air) on `127.0.0.1:8080` (data in `.dev-data/`, debug text logs) and the Vite dev server on port 5173. Open http://localhost:5173: Vite hot-reloads the SPA and proxies `/api`, `/healthz` and `/readyz` to Go, and air rebuilds and restarts the server when a `.go`, `.sql` or `.yaml` file changes. Ctrl+C stops both.
 
 `task go:lint` and `task go:test` run the Go side only, and the `web:*` tasks the web side only, for example `task web:test`. The web app lives in `web/` and also has its own scripts (`pnpm dev`, `pnpm test`, `pnpm lint`) for use inside that directory.
+
+`task e2e` starts the binary on `127.0.0.1:18080` with a temporary data directory and writes the HTML report to `web/playwright-report`. Outside NixOS, download the browsers once with `pnpm --dir web exec playwright install chromium webkit`.
 
 ## Documentation
 

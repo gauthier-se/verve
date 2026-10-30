@@ -79,6 +79,7 @@ web/                       React SPA (Vite)
   src/api/                 generated OpenAPI client and TanStack Query hooks
   src/components/charts/   chart wrapper components (the only place importing TanStack Charts)
   src/locales/             translation files
+  e2e/                     Playwright tests against the production binary
 docs/                      this documentation
 ```
 
@@ -249,4 +250,5 @@ The errors raised by Huma, such as validation errors, have the same shape: `huma
 - Integration tests against a real SQLite database for repositories and the ingestion pipeline.
 - Anonymized fixture exports (small `export.zip` and Health Auto Export payloads, version 1 and 2) checked into the repository.
 - API contract: the generated OpenAPI spec is committed and diffed in CI.
+- Smoke tests with Playwright against the production binary, in Chromium and WebKit, on every pull request.
 - End-to-end tests for critical flows (setup, import, Today page) once M2 is reached.
