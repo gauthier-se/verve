@@ -140,3 +140,59 @@ jobs:
             echo "::error::Generated code is out of date: run task generate and commit the result"
             exit 1
           fi
+
+  e2e:
+    name: e2e
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      # Installs the pnpm version of the packageManager field.
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: web/package.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: web/.nvmrc
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Build
+        run: go tool task build
+
+      # WebKit builds are specific to an Ubuntu release, which runner.os does
+      # not tell apart, and the cached directory name does not depend on it.
+      - name: Read the Playwright and Ubuntu versions
+        id: versions
+        working-directory: web
+        run: |
+          echo "playwright=$(pnpm exec playwright --version | cut -d ' ' -f 2)" >> "$GITHUB_OUTPUT"
+          echo "ubuntu=$(. /etc/os-release && echo "$VERSION_ID")" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the Playwright browsers
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ steps.versions.outputs.playwright }}-ubuntu-${{ steps.versions.outputs.ubuntu }}
+
+      # Browsers restored from the cache are not downloaded again, but the
+      # system packages they need are not cached and are always installed.
+      - name: Install the Playwright browsers
+        working-directory: web
+        run: pnpm exec playwright install --with-deps chromium webkit
+
+      - name: Test
+        working-directory: web
+        run: pnpm exec playwright test
+
+      - name: Upload the Playwright report
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: web/playwright-report/
