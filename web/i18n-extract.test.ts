@@ -53,7 +53,7 @@ describe("i18n:extract script", { timeout: 30_000 }, () => {
     return join(workspace, "src", "locales", lng, "common.json");
   }
 
-  async function addKeyByHand(lng: string, text: string) {
+  async function addTestOnlyKey(lng: string, text: string) {
     const messages = JSON.parse(
       await readFile(localePath(lng), "utf8"),
     ) as object;
@@ -68,8 +68,8 @@ describe("i18n:extract script", { timeout: 30_000 }, () => {
   }
 
   it("given a key added by hand to the locale files and used in code, when the script runs, then the types have the key", async () => {
-    await addKeyByHand("en", "Added by hand");
-    await addKeyByHand("fr", "Ajouté à la main");
+    await addTestOnlyKey("en", "Added by hand");
+    await addTestOnlyKey("fr", "Ajouté à la main");
     // Extraction would remove a key that code does not use, which rewrites the
     // locale files and hides the stale types.
     await writeFile(

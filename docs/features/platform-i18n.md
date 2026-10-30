@@ -2,7 +2,7 @@
 
 - **Status:** In progress
 - **Milestone:** M0
-- **Related:** [User preferences and profile](user-preferences-and-profile.md), [Notifications](notifications.md), [ADR 0009](../decisions/0009-i18next.md)
+- **Related:** [User preferences and profile](user-preferences-and-profile.md), [Notifications](notifications.md), [ADR 0009](../decisions/0009-i18next.md), [ADR 0011](../decisions/0011-separate-translation-types-run.md)
 
 ## Summary
 
@@ -31,7 +31,7 @@ Verve is translated from day one, starting with English and French, so that the 
 
 - **FR-1**: All user-facing strings in the SPA go through i18next (react-i18next) and come from translation files in i18next JSON format, `web/src/locales/<language>/<namespace>.json`, with English as the reference.
 - **FR-2**: CI runs `pnpm i18n:check`: `i18next-cli extract --ci --dry-run` (fails when translation files are out of date with the keys used in code, without writing them) and `i18next-cli lint` (fails on hardcoded user-facing strings). It reports translation coverage per language with `i18next-cli status` in the job summary without failing. The brand name "Verve" is accepted as untranslated text by a lint plugin in `web/i18next.config.ts`. `task lint` runs the same check locally.
-- **FR-3**: TypeScript types for translation keys are generated with `i18next-cli extract --with-types` (`pnpm i18n:extract`, part of `task generate`) into `web/src/i18n/resources.d.ts`, so an unknown key is a type error.
+- **FR-3**: TypeScript types for translation keys are generated with `i18next-cli types` after `i18next-cli extract` (`pnpm i18n:extract`, part of `task generate`) into `web/src/i18n/resources.d.ts`, so an unknown key is a type error. They are always rewritten from the English locale files, so the `generated` CI job fails when the committed types are out of date.
 - **FR-4**: Missing translations fall back to English.
 - **FR-5**: The language is a user preference, defaulting to the browser language when supported, otherwise English. Regional codes resolve to their language (`fr-FR` gives French). Until the server-side preference exists (M2), `localStorage["verve.language"]` set by hand overrides the browser language. Detection never writes to `localStorage`.
 - **FR-6**: The login page follows the browser language.
