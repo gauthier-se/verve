@@ -74,8 +74,9 @@ case $page in
   *) fail "/ does not serve the web app" ;;
 esac
 
-# Every process of the container, which a running healthcheck can add to.
-users=$(docker top "$name" -o pid,uid,gid | awk 'NR > 1 { print $2 ":" $3 }' | sort -u) ||
+# Every process of the container, which a running healthcheck can add to. ps runs on the Docker
+# host, where BusyBox has no uid column and the distroless user has no name, so it prints the IDs.
+users=$(docker top "$name" -o pid,user,group | awk 'NR > 1 { print $2 ":" $3 }' | sort -u) ||
   fail "cannot list the container processes"
 
 [ "$users" = "$expected_user" ] || fail "server runs as ${users:-nobody} instead of $expected_user"

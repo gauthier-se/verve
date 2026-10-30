@@ -1,0 +1,15 @@
+.direnv
+.dev-data
+.git
+bin
+coverage.*
+tmp
+**/node_modules
+web/.tanstack
+web/coverage
+web/dist
+web/playwright-report
+web/test-results
+
+# The image embeds the web app of its own web stage, never a local build.
+internal/webui/dist
