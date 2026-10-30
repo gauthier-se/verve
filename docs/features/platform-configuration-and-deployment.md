@@ -10,7 +10,7 @@ Verve is configured through `VERVE_*` environment variables, an optional YAML fi
 
 ## User stories
 
-- As a self-hoster, I want a `docker-compose.yml` I can copy and start in minutes.
+- As a self-hoster, I want a `compose.yaml` I can copy and start in minutes.
 - As a Raspberry Pi user, I want an arm64 image.
 - As an operator, I want environment variables to win over everything else so my infrastructure-as-code stays the source of truth.
 
@@ -90,7 +90,7 @@ Verve is configured through `VERVE_*` environment variables, an optional YAML fi
   - a build provenance attestation on every image pushed from the main branch,
   - release images signed by digest with cosign keyless signing.
 - **FR-8**: Binaries for Linux (amd64, arm64), macOS (amd64, arm64) and Windows (amd64), with checksums and signatures, attached to GitHub releases by goreleaser. `checksums.txt` is signed with cosign keyless signing and its bundle is attached.
-- **FR-9**: The repository contains a minimal `docker-compose.yml` and documented reverse proxy examples for Caddy, Traefik and Nginx Proxy Manager, including the large body size needed for uploads and ingestion.
+- **FR-9**: The repository contains a minimal `compose.yaml` and documented reverse proxy examples for Caddy, Traefik and Nginx Proxy Manager, including the large body size needed for uploads and ingestion. See the [Docker](../deployment/docker.md), [reverse proxy](../deployment/reverse-proxy.md) and [binary](../deployment/binary.md) guides.
 - **FR-10**: Upgrades: schema migrations run automatically at startup, preceded by an automatic backup. The server already listens while they run and answers 503 until they are applied, see [Observability](platform-observability.md). Downgrades are not supported. Restoring the pre-migration backup with the previous version is the rollback path.
 
 ## UX notes
