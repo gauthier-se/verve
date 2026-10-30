@@ -24,7 +24,7 @@ The `go` job writes a per-package coverage table to the run summary (`task test:
 
 CodeQL analyzes the Go and JavaScript/TypeScript code on every pull request, on every push to `main` and weekly, and reports alerts in the repository Security tab.
 
-Dependabot checks Go modules, the npm packages of `web/` and GitHub Actions every Monday. Minor and patch updates are grouped into one pull request per ecosystem, major updates get their own pull request. Its pull requests are labeled `type: chore` and use the commit message format below.
+Dependabot checks Go modules, the npm packages of `web/` and GitHub Actions every Monday. Minor and patch updates are grouped into one pull request per ecosystem, major updates get their own pull request. Its pull requests are labeled `type: chore` and use the commit message format below. `@playwright/test` is excluded: it stays on the `playwright-driver` version of `flake.lock`, so bump both by hand in the same pull request.
 
 ## Commit messages
 
