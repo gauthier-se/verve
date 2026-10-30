@@ -225,6 +225,7 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
+      # No cache-to: this amd64 manifest would replace the multi-arch one the next build reads.
       - name: Build the amd64 image
         uses: docker/build-push-action@v7
         with:
@@ -234,7 +235,6 @@ jobs:
           tags: verve:smoke
           build-args: ${{ steps.build-args.outputs.value }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       - name: Smoke test
         run: scripts/docker-smoke.sh verve:smoke
