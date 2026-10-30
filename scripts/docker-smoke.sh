@@ -41,7 +41,7 @@ fail() {
 docker volume create "$name" >/dev/null || fail "cannot create the volume"
 
 # A loopback port chosen by Docker, so that the test runs next to anything else on 8080.
-docker run --detach --name "$name" --publish 127.0.0.1::8081 --volume "$name:/data" "$image" >/dev/null ||
+docker run --detach --name "$name" --publish 127.0.0.1::8080 --volume "$name:/data" "$image" >/dev/null ||
   fail "cannot start a container"
 
 deadline=$((SECONDS + healthy_timeout))
@@ -60,7 +60,7 @@ while :; do
   sleep 1
 done
 
-address=$(docker port "$name" 8081/tcp) || fail "port 8080 is not published"
+address=$(docker port "$name" 8080/tcp) || fail "port 8080 is not published"
 address=${address%%$'\n'*}
 
 curl --fail --silent --show-error --max-time 5 --output /dev/null "http://$address/healthz" ||
