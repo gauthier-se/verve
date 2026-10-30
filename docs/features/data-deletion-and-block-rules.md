@@ -49,7 +49,7 @@ Users can delete targeted data and block data from coming back. Because Health A
   Every rule can carry an optional time range on the record start.
 - **FR-5**: Block rules can be created without deleting anything, from the rules page or from the metric explorer ("Never store this metric"). Creating such a rule asks whether existing matching data should also be deleted.
 - **FR-6**: Rules are applied by the ingestion pipeline to every origin (XML, Health Auto Export, native, CLI). Blocked records are counted in import reports.
-- **FR-7**: Deletions run as background jobs for large scopes, then trigger aggregate recomputation for the affected types and ranges, as well as dependent computations (sleep nights, records, energy estimates).
+- **FR-7**: Deletions run as background jobs for large scopes, then trigger aggregate recomputation for the affected types and ranges, as well as dependent computations once they exist (sleep nights and records in M2, energy estimates in M3).
 - **FR-8**: The rules page lists active rules with level, target, time range, creation date, origin (manual or created by a deletion) and the number of records blocked since creation. Rules can be removed.
 - **FR-9**: Removing a rule does not restore data. The UI explains that data will come back only with an import that contains it (for example an XML re-import), since Health Auto Export only resends recent data.
 - **FR-10**: Each deletion and rule change is recorded in the [Audit log](audit-log.md) with scope and counts, never with values.
@@ -75,7 +75,7 @@ Users can delete targeted data and block data from coming back. Because Health A
 - [ ] A deleted weigh-in does not reappear after re-importing the same export.
 - [ ] A deletion with "Block from future imports" unchecked is restored by re-importing.
 - [ ] Type rules prevent any new sample of that type from being stored.
-- [ ] Aggregates, sleep nights, records and energy estimates reflect deletions.
+- [ ] Aggregates reflect deletions, and so do sleep nights, records and energy estimates once they exist.
 
 ## Future ideas
 

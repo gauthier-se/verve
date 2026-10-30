@@ -40,7 +40,7 @@ Import the full Apple Health export (the `export.zip` produced by the Health app
 
   | Element | Handling |
   |---|---|
-  | `Me` | Date of birth, biological sex, blood type and skin type are offered to prefill the profile (never overwriting values set by the user) |
+  | `Me` | From M2, with the profile: date of birth, biological sex, blood type and skin type are offered to prefill the profile (never overwriting values set by the user). Ignored in M1 |
   | `Record` (quantity) | Quantity sample: type, source name and version, device string, unit, creation, start and end dates, value, metadata entries |
   | `Record` (category) | Category sample, value mapped from the HealthKit category constant (for example sleep stages) |
   | `HeartRateVariabilityMetadataList` | Stored as sample metadata (instantaneous beats) |
@@ -52,7 +52,7 @@ Import the full Apple Health export (the `export.zip` produced by the Health app
 - **FR-7**: Progress is estimated from bytes read in the XML entry versus its uncompressed size.
 - **FR-8**: Dates in the export have the format `yyyy-MM-dd HH:mm:ss Z`. The parser also tolerates the format variants produced by older iOS versions and documented in fixtures.
 - **FR-9**: Percentages in the XML export (for example body fat, oxygen saturation) are fractions with unit `%`, converted accordingly.
-- **FR-10**: CLI: `verve import xml --user <username> <path>` runs the same job in-process, prints progress and the final report, and takes the same per-user import lock as the server. It works while the server is running.
+- **FR-10**: CLI: `verve import xml --user <username> <path>` runs the same job in-process, prints progress and the final report, and takes the same per-user import lock as the server (see [Job worker](platform-jobs.md) FR-7). It works while the server is running.
 - **FR-11**: The final report includes per-type counts, the date range covered, and the number of routes attached to workouts.
 
 ## UX notes

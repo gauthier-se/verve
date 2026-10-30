@@ -1,7 +1,7 @@
 # User preferences and profile
 
 - **Status:** Planned
-- **Milestone:** M2
+- **Milestone:** M2 (timezone, FR-3, in M1)
 - **Related:** [Internationalization](platform-i18n.md), [Storage and aggregates](data-storage-and-aggregates.md), [Sleep page](page-sleep.md), [Workouts](page-workouts.md), [Energy expenditure](goals-energy-expenditure.md)
 
 ## Summary
@@ -39,7 +39,7 @@ Per-user settings that drive display and calculations: language, units, timezone
   | Temperature | degC, degF |
   | Elevation | m, ft |
 
-- **FR-3**: Timezone: IANA timezone, detected from the browser at first login and confirmed by the user. Changing it triggers recomputation of daily aggregates.
+- **FR-3** (M1): Timezone: IANA timezone, detected from the browser at first login and confirmed by the user. Changing it triggers recomputation of hourly and daily aggregates.
 - **FR-4**: Week start: Monday or Sunday (default from locale). Used for weekly aggregates, weekly volume and check-in scheduling defaults.
 - **FR-5**: Sleep window: start hour of the 24 hour window used to assign sleep to nights (default 18:00), nights labeled by wake-up date. Sleep goal duration (default 8 h).
 - **FR-6**: Theme: light, dark or system.
@@ -57,12 +57,13 @@ Per-user settings that drive display and calculations: language, units, timezone
 ## Data and API notes
 
 - `user_preferences` and `user_profile` tables.
-- Endpoints: `GET/PATCH /api/v1/account/preferences`, `GET/PATCH /api/v1/account/profile`.
+- Endpoints: `GET/PATCH /api/v1/account/preferences` (timezone only in M1), `GET/PATCH /api/v1/account/profile`.
 - Values are always stored in canonical units, the SPA converts for display and input.
 
 ## Edge cases
 
 - No date of birth: age-based estimates are disabled and pages that need them ask for it.
+- No timezone yet (a user who has not logged in to the web app): aggregates use UTC until the user confirms one.
 - Timezone changed while traveling: the UI suggests updating when the browser timezone differs from the preference for more than 24 hours, without changing it automatically.
 
 ## Acceptance criteria

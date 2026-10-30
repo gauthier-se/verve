@@ -114,7 +114,7 @@ Domain code depends on repository interfaces declared in `internal/store`, never
 
 ### Job worker
 
-A single worker pool polls the `jobs` table. Jobs have a kind, a JSON payload, a status, an attempt counter, a `run_at` time and a lease (`locked_until`). Failed jobs are retried with exponential backoff, then marked failed and surfaced to admins. Kinds include `import.xml`, `import.hae`, `aggregate.recompute`, `workouts.records`, `energy.daily`, `plan.checkin`, `notify.deliver`, `backup.run`, `export.build`, `cleanup.uploads`, `cleanup.sessions`.
+See [Job worker](features/platform-jobs.md). A single worker pool polls the `jobs` table. Jobs have a kind, a JSON payload, a status, an attempt counter, a `run_at` time and a lease (`locked_until`). Failed jobs are retried with exponential backoff, then marked failed and surfaced to admins. Kinds include `import.xml`, `import.hae`, `aggregate.recompute`, `workouts.records`, `energy.daily`, `plan.checkin`, `notify.deliver`, `backup.run`, `export.build`, `cleanup.uploads`, `cleanup.sessions`.
 
 SQLite allows one writer at a time. The database runs in WAL mode with two connection pools: a single writer connection whose transactions start with `BEGIN IMMEDIATE`, so concurrent writers queue instead of failing with `SQLITE_BUSY`, and a read-only pool that long writes (imports) never block. Writers use short transactions (bounded batches) so that API requests are never blocked for long. A `busy_timeout` is set on every connection. On shutdown the database is closed after the HTTP server has stopped, and the WAL is checkpointed with `TRUNCATE`.
 
@@ -203,7 +203,7 @@ Every user-owned row carries a `user_id`. All queries are scoped by user, and th
 
 - Samples are stored in UTC with their original UTC offset, so a sample can be shown in the local time where it was recorded.
 - SQLite stores timestamps as `INTEGER` Unix milliseconds in UTC.
-- "Today", daily aggregates and weekly boundaries are computed in the user's timezone preference. Changing the timezone triggers a recompute of daily aggregates.
+- "Today", daily aggregates and weekly boundaries are computed in the user's timezone preference. Changing the timezone triggers a recompute of hourly and daily aggregates ([ADR 0012](decisions/0012-local-hour-aggregates.md)).
 - Sleep is attributed to nights using a configurable window (default 18:00 to 18:00, attributed to the wake-up date).
 
 ### Units

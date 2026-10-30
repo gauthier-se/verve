@@ -19,6 +19,7 @@ All of your Apple Health data in Verve, deduplicated and backed up.
 
 | Feature | Notes |
 |---|---|
+| [Job worker](features/platform-jobs.md) | Persistent jobs, retries, recurring tasks |
 | [Accounts and administration](features/accounts-and-administration.md) | Setup wizard, invitations, roles, account deletion |
 | [Local accounts and sessions](features/auth-local-accounts-and-sessions.md) | argon2id, server-side sessions, CSRF |
 | [API tokens](features/api-tokens.md) | Scoped Bearer tokens (`ingest`, `read`) |
@@ -31,13 +32,20 @@ All of your Apple Health data in Verve, deduplicated and backed up.
 | [Backups](features/backups.md) | Scheduled `VACUUM INTO`, CLI backup and restore |
 | [Audit log](features/audit-log.md) | Security and data management events |
 
+### Scope of M1
+
+- **Timezone**: the timezone preference moves to M1, because aggregates depend on it. It is asked at first login. The other preferences stay in M2.
+- **Screens**: M1 ships the navigation shell and the screens for setup, login, invitations, password reset, API tokens, XML upload and import history. The other features are first available through the API or the CLI, and their screens (sessions, sources, source priorities, block rules, audit, backups, administration) close the milestone, so that they never block the data work. Acceptance criteria that mention a page of M2, such as the metric explorer, are verified through the API in M1.
+- **Deferred requirements**: a requirement that depends on a later feature carries its milestone in the spec: password reset by email and notifications (M3), disabling local login (M5), computations derived from data such as sleep nights, records and energy estimates (M2, M3).
+- **Validation**: CI checks memory and time on a synthetic export. Acceptance criteria that need a Raspberry Pi 4 or a real export are checked by hand at the end of the milestone. Real data stays out of the repository.
+
 ## M2: Dashboard
 
 First daily use.
 
 | Feature | Notes |
 |---|---|
-| [User preferences and profile](features/user-preferences-and-profile.md) | Units, timezone, language, theme, profile |
+| [User preferences and profile](features/user-preferences-and-profile.md) | Units, language, theme, profile (timezone ships in M1) |
 | [Today page](features/page-today.md) | Key metrics of the day with trends |
 | [Metric explorer](features/page-metric-explorer.md) | Any stored metric, any period |
 | [Sleep page](features/page-sleep.md) | Hypnogram, durations, regularity |

@@ -1,7 +1,7 @@
 # Local accounts and sessions
 
 - **Status:** Planned
-- **Milestone:** M1
+- **Milestone:** M1 (FR-15 in M5)
 - **Related:** [Accounts and administration](accounts-and-administration.md), [TOTP](auth-totp.md), [OIDC](auth-oidc.md), [Proxy header](auth-proxy-header.md), [ADR 0005](../decisions/0005-server-side-sessions.md)
 
 ## Summary
@@ -43,7 +43,7 @@ Username and password login with argon2id hashing and server-side sessions store
 - **FR-12**: The active sessions page lists sessions (device and browser from the user agent, approximate location is not computed, IP, login method, last seen) and allows revoking any of them or all others.
 - **FR-13**: State-changing requests (`POST`, `PUT`, `PATCH`, `DELETE`) authenticated by cookie must carry the custom header `Verve-Csrf: 1` and an `Origin` matching `VERVE_PUBLIC_URL`. Requests authenticated by API token are exempt.
 - **FR-14**: Expired sessions are purged by a periodic job.
-- **FR-15**: Admins can disable local password login once OIDC or proxy header authentication is configured. The CLI `verve user reset-password` stays available as a break-glass path.
+- **FR-15** (M5): Admins can disable local password login once OIDC or proxy header authentication is configured. The CLI `verve user reset-password` stays available as a break-glass path.
 
 ## UX notes
 

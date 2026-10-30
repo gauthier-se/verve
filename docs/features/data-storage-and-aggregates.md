@@ -2,7 +2,7 @@
 
 - **Status:** Planned
 - **Milestone:** M1
-- **Related:** [Ingestion pipeline](ingestion-pipeline.md), [Deduplication and source priority](data-deduplication-and-source-priority.md), [Metric explorer](page-metric-explorer.md), [ADR 0001](../decisions/0001-sqlite-behind-storage-interface.md), [ADR 0008](../decisions/0008-generic-sample-storage.md)
+- **Related:** [Ingestion pipeline](ingestion-pipeline.md), [Deduplication and source priority](data-deduplication-and-source-priority.md), [Metric explorer](page-metric-explorer.md), [ADR 0001](../decisions/0001-sqlite-behind-storage-interface.md), [ADR 0008](../decisions/0008-generic-sample-storage.md), [ADR 0012](../decisions/0012-local-hour-aggregates.md)
 
 ## Summary
 
@@ -58,13 +58,14 @@ All quantity and category samples are stored generically, workouts and routes ha
 - Daylight saving time: local days of 23 or 25 hours are handled because hourly buckets are stored as UTC instants.
 - Timezones with 30 or 45 minute offsets: hourly buckets follow local hour boundaries, so daily totals are exact.
 - Travel: samples keep their original offset for display, but "today" follows the user's timezone preference.
+- No timezone yet (a user who has not logged in to the web app): aggregates use UTC until the user confirms one, then the change recomputes them.
 - Samples far in the future or before 2000: accepted but flagged in the import report as suspicious.
 - Category samples (for example symptoms) aggregate as counts and total duration per bucket.
 
 ## Acceptance criteria
 
 - [ ] A one-year daily chart of steps loads in under 300 ms on a Raspberry Pi 4 with 10 years of data.
-- [ ] Changing the timezone recomputes daily aggregates and Today values accordingly.
+- [ ] Changing the timezone recomputes hourly and daily aggregates and Today values accordingly.
 - [ ] An unknown type received in a payload appears in the metric explorer without code changes.
 - [ ] Aggregates match a full recomputation after any sequence of imports and deletions (property-based test).
 

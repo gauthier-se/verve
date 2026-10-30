@@ -1,6 +1,6 @@
 # 0008. Generic sample storage with precomputed aggregates
 
-- **Status:** Accepted
+- **Status:** Accepted, hourly boundaries superseded by [ADR 0012](0012-local-hour-aggregates.md)
 - **Date:** 2026-10-22
 
 ## Context

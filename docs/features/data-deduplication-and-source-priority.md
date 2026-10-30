@@ -53,7 +53,7 @@ Two problems make naive sums wrong: the same data arrives several times (re-impo
 - **FR-8**: Changing priorities, ignoring a source or merging sources triggers recomputation of the affected aggregates.
 - **FR-9**: Raw sample views (metric explorer table, workout detail) always show the source of each sample and whether it is used in aggregates.
 - **FR-10**: Sleep: for each night, sleep stages come from the highest priority source with sleep data for that night (see [Sleep page](page-sleep.md)).
-- **FR-11**: Workouts: two workouts from different sources with the same activity family overlapping by more than 80 percent of the shorter one are flagged as duplicates. The lower priority one is hidden from lists and totals but kept, and can be shown or promoted.
+- **FR-11**: Workouts: two workouts from different sources or different origins with the same activity family overlapping by more than 80 percent of the shorter one are flagged as duplicates. The lower priority one is hidden from lists and totals but kept, and can be shown or promoted. Between two workouts of the same source, for example received through both an XML import and Health Auto Export, the one with a route is kept, then the one imported first.
 
 ## UX notes
 
