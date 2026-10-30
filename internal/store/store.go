@@ -19,6 +19,7 @@ var (
 // its own when it returns.
 type Repositories interface {
 	InstanceSettings() InstanceSettingsRepository
+	Jobs() JobsRepository
 }
 
 // Store is the storage of Verve.

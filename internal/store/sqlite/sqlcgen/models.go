@@ -4,8 +4,29 @@
 
 package sqlcgen
 
+import (
+	"database/sql"
+)
+
 type InstanceSetting struct {
 	Key       string
 	Value     string
 	UpdatedAt int64
+}
+
+type Job struct {
+	ID          int64
+	Kind        string
+	Payload     string
+	Status      string
+	Attempts    int64
+	Claims      int64
+	LostLeases  int64
+	RunAt       int64
+	LockedUntil sql.NullInt64
+	UserID      sql.NullInt64
+	SerialKey   sql.NullString
+	LastError   sql.NullString
+	CreatedAt   int64
+	FinishedAt  sql.NullInt64
 }

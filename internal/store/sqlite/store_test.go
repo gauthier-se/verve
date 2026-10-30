@@ -21,7 +21,15 @@ import (
 func newTestStore(t *testing.T, clk clock.Clock) (store.Store, *DB) {
 	t.Helper()
 
-	db, err := Open(t.Context(), filepath.Join(t.TempDir(), "verve.db"))
+	return openTestStore(t, filepath.Join(t.TempDir(), "verve.db"), clk)
+}
+
+// openTestStore returns a store on the migrated database at path, and the database. The store is
+// closed at the end of the test.
+func openTestStore(t *testing.T, path string, clk clock.Clock) (store.Store, *DB) {
+	t.Helper()
+
+	db, err := Open(t.Context(), path)
 	require.NoError(t, err)
 
 	_, err = Migrate(t.Context(), db, MigrateOptions{})
@@ -72,20 +80,9 @@ func TestJobs_ConcurrentClaimsOnTwoStoresClaimEachJobOnce(t *testing.T) {
 	clk := clock.NewFake(txTestNow)
 	path := filepath.Join(t.TempDir(), "verve.db")
 
-	openStore := func() store.Store {
-		db, err := Open(ctx, path)
-		require.NoError(t, err)
-
-		_, err = Migrate(ctx, db, MigrateOptions{})
-		require.NoError(t, err)
-
-		s := New(db, clk)
-		t.Cleanup(func() { require.NoError(t, s.Close(context.Background())) })
-
-		return s
-	}
-
-	stores := []store.Store{openStore(), openStore()}
+	first, _ := openTestStore(t, path, clk)
+	second, _ := openTestStore(t, path, clk)
+	stores := []store.Store{first, second}
 
 	for range jobCount {
 		_, err := stores[0].Jobs().Enqueue(ctx, store.NewJob{

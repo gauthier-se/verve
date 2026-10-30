@@ -350,13 +350,14 @@ func runJobsSerialKeys(t *testing.T, newStore NewStoreFunc) {
 func runJobsLostLeases(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
 
-	// loseFiveLeases claims the only due job 6 times, letting each lease expire, and returns the job.
+	// loseFiveLeases claims the only due job 5 times, letting each lease expire, and returns the job
+	// as the last claim left it.
 	loseFiveLeases := func(ctx context.Context, t *testing.T, clk *clock.Fake, jobs store.JobsRepository) store.Job {
 		t.Helper()
 
 		var claimed store.Job
 
-		for lost := range 6 {
+		for lost := range 5 {
 			claimed = mustClaim(ctx, t, jobs)
 			require.Equal(t, int64(lost), claimed.LostLeases)
 
@@ -382,6 +383,7 @@ func runJobsLostLeases(t *testing.T, newStore NewStoreFunc) {
 
 		want := claimed
 		want.Status = store.JobFailed
+		want.LostLeases = 5
 		want.LastError = "abandoned after 5 lost leases"
 		want.LockedUntil = time.Time{}
 		want.FinishedAt = clk.Now()
@@ -480,6 +482,16 @@ func runJobsFencing(t *testing.T, newStore NewStoreFunc) {
 			err := tt.write(ctx, jobs, claimed.ID, claimed.Claims)
 			require.ErrorIs(t, err, store.ErrConflict)
 			require.Equal(t, finished, mustGet(ctx, t, jobs, claimed.ID))
+		})
+
+		// Given a missing job, then the write returns store.ErrNotFound.
+		t.Run(tt.name+"OnAMissingJobReturnsErrNotFound", func(t *testing.T) {
+			t.Parallel()
+
+			jobs := newStore(t, clock.NewFake(jobsTime)).Jobs()
+
+			err := tt.write(t.Context(), jobs, 1, 1)
+			require.ErrorIs(t, err, store.ErrNotFound)
 		})
 	}
 }

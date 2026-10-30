@@ -50,6 +50,10 @@ func (r repositories) InstanceSettings() store.InstanceSettingsRepository {
 	return instanceSettings(r)
 }
 
+func (r repositories) Jobs() store.JobsRepository {
+	return jobs(r)
+}
+
 // queries gives the repositories the sqlc queries to run, either on the pools outside WithTx or
 // on the transaction of WithTx.
 type queries interface {
