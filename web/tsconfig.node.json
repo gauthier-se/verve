@@ -25,6 +25,8 @@
     "eslint.config.ts",
     "i18next.config.ts",
     "i18n-extract.test.ts",
-    "openapi-ts.config.ts"
+    "openapi-ts.config.ts",
+    "playwright.config.ts",
+    "e2e"
   ]
 }
