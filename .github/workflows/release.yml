@@ -1,0 +1,152 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Never cancelled: a release must not stop halfway through its artifacts.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  # The token is a personal one because pull requests opened with GITHUB_TOKEN do not trigger CI.
+  release-please:
+    name: release-please
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - name: Update the release pull request or publish the release
+        id: release
+        uses: googleapis/release-please-action@v5
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+
+  goreleaser:
+    name: goreleaser
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      # Installs the pnpm version of the packageManager field.
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: web/package.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: web/.nvmrc
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      # A full version: this action publishes no v4 tag.
+      - uses: sigstore/cosign-installer@v4.1.2
+
+      - name: Attach the signed archives to the release
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  images:
+    name: images
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}
+      VERSION: ${{ needs.release-please.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+
+      # A full version: this action publishes no v4 tag.
+      - uses: sigstore/cosign-installer@v4.1.2
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # value: this workflow runs on a push to main, where the semver type finds no tag to read.
+      - name: Read the image metadata
+        id: metadata
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: |
+            latest=true
+          tags: |
+            type=semver,pattern={{version}},value=${{ env.VERSION }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ env.VERSION }}
+            type=semver,pattern={{major}},value=${{ env.VERSION }}
+          # Keeps the license of the Dockerfile: GitHub reports the deprecated identifier AGPL-3.0.
+          labels: |
+            org.opencontainers.image.licenses=AGPL-3.0-only
+
+      # The commit date rather than the current time, as in the docker job of CI.
+      - name: Set the build arguments
+        id: build-args
+        run: |
+          {
+            echo "value<<EOF"
+            echo "VERSION=$VERSION"
+            echo "COMMIT=$(git rev-parse --short=7 HEAD)"
+            echo "BUILD_DATE=$(TZ=UTC0 git log -1 --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ)"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Push the multi-arch image
+        id: push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+          build-args: ${{ steps.build-args.outputs.value }}
+          cache-from: type=gha
+
+      - name: Sign the image
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: cosign sign --yes "$IMAGE@$DIGEST"
+
+      - name: Attest the build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true

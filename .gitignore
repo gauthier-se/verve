@@ -4,6 +4,7 @@ result
 
 # Build and test output
 bin/
+/dist/
 tmp/
 coverage.*
 *.test
