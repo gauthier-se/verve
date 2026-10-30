@@ -1,7 +1,7 @@
 # Accounts and administration
 
 - **Status:** Planned
-- **Milestone:** M1
+- **Milestone:** M1 (FR-7 in M3)
 - **Related:** [Local accounts and sessions](auth-local-accounts-and-sessions.md), [API tokens](api-tokens.md), [Audit log](audit-log.md), [OIDC](auth-oidc.md)
 
 ## Summary
@@ -42,18 +42,18 @@ Verve is multi-user for a household. Each user's health data is isolated. An adm
 - **FR-4**: Admins invite users by creating an invitation (username, optional email, role). Verve produces a single-use invitation link valid for 72 hours, which the admin copies or sends by email when SMTP is configured. The invitee chooses their own password through the link. The link carries its token in the URL fragment, never in the path or query string: `<VERVE_PUBLIC_URL>/invite#<token>`, for example `https://verve.example.com/invite#<token>`. The SPA reads the token from the fragment and removes the fragment from the address bar with `history.replaceState` right away, before sending any request, so that the token does not stay in the address bar or in the history entry. It keeps the token in memory only (component state, never `sessionStorage` or `localStorage`) and sends it to the API in a request body (see the security baseline in [Architecture](../architecture.md#security-baseline)).
 - **FR-5**: Admins can disable and re-enable accounts. Disabling revokes all sessions and makes all API tokens of that user fail until re-enabled.
 - **FR-6**: Admins can generate a single-use password reset link for a user (valid 24 hours). The admin never sets or sees the password. Like the invitation link, it carries its token in the URL fragment, `<VERVE_PUBLIC_URL>/reset-password#<token>`, and the SPA handles it as in FR-4: it removes the fragment from the address bar with `history.replaceState` right after reading the token, before sending any request, keeps the token in memory only and sends it to the API in a request body.
-- **FR-7**: Self-service password reset by email is available when SMTP is configured (see [Notifications](notifications.md)). The emailed link is a password reset link as described in FR-6.
+- **FR-7** (M3): Self-service password reset by email is available when SMTP is configured (see [Notifications](notifications.md)). The emailed link is a password reset link as described in FR-6.
 - **FR-8**: Admins can promote and demote users. The last active admin cannot be demoted, disabled or deleted.
 - **FR-9**: The admin user list shows metadata only: username, email, role, status, created date, last login, number of samples, storage used, last ingestion per origin. No health values, charts or plans of other users.
 - **FR-10**: The storage layer exposes no operation that reads another user's health data, so the restriction does not rely on the UI alone.
 - **FR-11**: A user can delete their own account after re-entering their password (or re-authenticating through OIDC). Deletion removes all their data: samples, workouts, aggregates, plans, dashboards, tokens, sessions, uploads, exports, notifications settings. Audit events about the deletion are kept without health content.
 - **FR-12**: An admin can delete another user's account with a confirmation that requires typing the username.
 - **FR-13**: Account deletion runs as a background job and reports completion. The account is disabled immediately.
-- **FR-14**: The instance settings page groups admin-managed settings: general (public URL warning, default language), map, SMTP, backups, OIDC, proxy header, 2FA enforcement.
+- **FR-14**: The instance settings page groups admin-managed settings: general (public URL warning, default language), map, SMTP, backups, OIDC, proxy header, 2FA enforcement. A group appears with the feature it configures.
 
 ## UX notes
 
-- Setup wizard: setup token, admin account, default language and units, then a short guide to importing data.
+- Setup wizard: setup token, admin account, timezone, then a short guide to importing data. Default language and units join it in M2, with [User preferences and profile](user-preferences-and-profile.md).
 - Admin area is a separate section in navigation, visible only to admins.
 - Deleting data is always behind a confirmation dialog describing exactly what will be removed.
 

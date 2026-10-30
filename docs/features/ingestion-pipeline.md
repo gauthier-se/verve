@@ -1,7 +1,7 @@
 # Ingestion pipeline and native API
 
 - **Status:** Planned
-- **Milestone:** M1
+- **Milestone:** M1 (FR-12 in M3)
 - **Related:** [XML import](ingestion-xml-import.md), [Health Auto Export endpoint](ingestion-health-auto-export.md), [Storage and aggregates](data-storage-and-aggregates.md), [Deduplication and source priority](data-deduplication-and-source-priority.md), [Deletion and block rules](data-deletion-and-block-rules.md), [ADR 0007](../decisions/0007-ingestion-strategy.md)
 
 ## Summary
@@ -43,7 +43,7 @@ Every way of getting data into Verve goes through one pipeline that works on nor
   8. **Dirty ranges**: record affected `(type, time range)` per user and enqueue aggregate recomputation once the batch is committed.
   9. **Report**: update counters on the import record.
 - **FR-3**: Import report counters: received, inserted, updated, duplicates, blocked, invalid, unsupported (known but excluded types such as ECG), with up to 100 sample error messages kept for diagnosis.
-- **FR-4**: Only one import runs at a time per user. Concurrent pushes are queued as jobs and processed in arrival order.
+- **FR-4**: Only one import runs at a time per user. Concurrent pushes are queued as jobs and processed in arrival order, with a per-user serial key (see [Job worker](platform-jobs.md) FR-6).
 - **FR-5**: Imports are resumable at batch granularity: if the process stops, the job restarts and duplicates are absorbed by idempotency.
 - **FR-6**: Native endpoint `POST /api/v1/ingest` (scope `ingest`):
   - the body is persisted durably to the inbox, then the server responds `202 Accepted` with an import id,
@@ -59,11 +59,11 @@ Every way of getting data into Verve goes through one pipeline that works on nor
   | `workouts` | `uuid`, activity type, start, end, duration, totals (distance, active energy, total energy, elevation), indoor flag, source, metadata, events (pauses, laps, segments), route points (time, latitude, longitude, altitude, speed, course, accuracies) |
   | `deletions` | List of `uuid` deleted on the device since the last sync |
 
-- **FR-8**: Records with a `uuid` are idempotent on `(user, uuid)`. Deletions remove the matching samples or workouts and do not create block rules, since the deletion happened at the source.
+- **FR-8**: Samples with a `uuid` are idempotent on `(user, uuid)`, workouts on `(user, origin, uuid)`, as in [Deduplication and source priority](data-deduplication-and-source-priority.md) FR-1. Deletions remove the matching samples or workouts and do not create block rules, since the deletion happened at the source.
 - **FR-9**: Each import records its origin (`xml`, `hae`, `native`, `cli`), the token used if any, client metadata, timestamps and status (`queued`, `running`, `completed`, `failed`, `cancelled`).
 - **FR-10**: Users can cancel a queued or running import. Data already committed stays.
 - **FR-11**: Import history keeps the last 200 imports per user, older reports are purged.
-- **FR-12**: When an import completes or fails, a notification event is emitted (see [Notifications](notifications.md)).
+- **FR-12** (M3): When an import completes or fails, a notification event is emitted (see [Notifications](notifications.md)).
 
 ## UX notes
 

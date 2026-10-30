@@ -30,15 +30,15 @@ Verve backs up its database on a schedule, before every migration and on demand,
 
 ## Functional requirements
 
-- **FR-1**: A backup is produced with `VACUUM INTO` into a temporary file, then compressed (zstd) and atomically renamed to `backups/verve-<version>-<UTC timestamp>-<reason>.db.zst`, where reason is `scheduled`, `pre-migration` or `manual`.
+- **FR-1**: A backup is produced with `VACUUM INTO` into a temporary file, then packed into a zstd-compressed tar archive and atomically renamed to `backups/verve-<version>-<UTC timestamp>-<reason>.tar.zst`, where reason is `scheduled`, `pre-migration` or `manual`.
 - **FR-2**: Scheduled backups run daily at 03:00 in the instance timezone by default. Schedule configurable with a cron expression (`VERVE_BACKUP_SCHEDULE`) or disabled.
 - **FR-3**: Retention: keep the last 7 scheduled backups by default (`VERVE_BACKUP_KEEP`). Pre-migration backups are kept for the last 3 migrations. Manual backups are never deleted automatically.
-- **FR-4**: The backup also contains `secret.key` alongside the database in a single archive, because encrypted settings are useless without it. The documentation warns that backup files are therefore sensitive.
+- **FR-4**: The archive contains the database and `secret.key`, because encrypted settings are useless without it. The documentation warns that backup files are therefore sensitive.
 - **FR-5**: `verve backup` creates a manual backup and prints its path. It works while the server is running.
 - **FR-6**: `verve restore <file>` refuses to run while the server holds the data directory lock. It validates the archive, keeps a copy of the current database as `pre-restore`, restores, then runs migrations if the backup comes from an older version.
 - **FR-7**: Backups from a newer Verve version than the binary are refused.
 - **FR-8**: Admin UI shows the list of backups (date, reason, size), a "Back up now" button and the next scheduled run. Download of a backup is available to admins.
-- **FR-9**: A failed backup creates a failed job visible to admins and triggers an admin notification when notifications are configured.
+- **FR-9**: A failed backup creates a failed job visible to admins. From M3, it also triggers an admin notification when notifications are configured.
 - **FR-10**: Before a backup, Verve checks free disk space and aborts with a clear error if the estimated size does not fit.
 
 ## UX notes
@@ -55,6 +55,7 @@ Verve backs up its database on a schedule, before every migration and on demand,
 - Backup during a large import: `VACUUM INTO` sees a consistent snapshot. The import continues.
 - Very large database on small storage: FR-10 prevents filling the disk.
 - Restoring a backup of another instance: works, including users and secret key.
+- Key set through `VERVE_SECRET_KEY`: there is no `secret.key` file, so the archive holds only the database and the operator keeps the key.
 
 ## Acceptance criteria
 
