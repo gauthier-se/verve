@@ -3,6 +3,7 @@
 .git
 bin
 coverage.*
+dist
 tmp
 **/node_modules
 web/.tanstack

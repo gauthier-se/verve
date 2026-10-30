@@ -97,7 +97,7 @@ docs/                      this documentation
 | Auth | argon2id, server-side sessions, `coreos/go-oidc`, `pquerna/otp` ([ADR 0005](decisions/0005-server-side-sessions.md)) |
 | Logging | `log/slog`, JSON or text |
 | CLI | cobra, subcommands of the same binary |
-| Release | goreleaser, GitHub Actions, Taskfile for local development |
+| Release | release-please, goreleaser, GitHub Actions, Taskfile for local development |
 
 ### Storage interfaces
 

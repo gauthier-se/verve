@@ -87,8 +87,9 @@ Verve is configured through `VERVE_*` environment variables, an optional YAML fi
   - runs as UID and GID `65532`: a new named volume is writable as is, a bind mount must be owned by `65532:65532`,
   - a `HEALTHCHECK` using `verve healthcheck`,
   - tags: `latest`, semver (`1`, `1.2`, `1.2.3`), and `edge` and `sha-<7 chars>` for the main branch,
-  - a build provenance attestation on every image pushed from the main branch.
-- **FR-8**: Binaries for Linux (amd64, arm64), macOS (amd64, arm64) and Windows (amd64), with checksums and signatures, attached to GitHub releases by goreleaser.
+  - a build provenance attestation on every image pushed from the main branch,
+  - release images signed by digest with cosign keyless signing.
+- **FR-8**: Binaries for Linux (amd64, arm64), macOS (amd64, arm64) and Windows (amd64), with checksums and signatures, attached to GitHub releases by goreleaser. `checksums.txt` is signed with cosign keyless signing and its bundle is attached.
 - **FR-9**: The repository contains a minimal `docker-compose.yml` and documented reverse proxy examples for Caddy, Traefik and Nginx Proxy Manager, including the large body size needed for uploads and ingestion.
 - **FR-10**: Upgrades: schema migrations run automatically at startup, preceded by an automatic backup. The server already listens while they run and answers 503 until they are applied, see [Observability](platform-observability.md). Downgrades are not supported. Restoring the pre-migration backup with the previous version is the rollback path.
 

@@ -29,6 +29,33 @@ CodeQL analyzes the Go and JavaScript/TypeScript code on every pull request, on 
 
 Dependabot checks Go modules, the npm packages of `web/`, the Dockerfile base images and GitHub Actions every Monday. Minor and patch updates are grouped into one pull request per ecosystem, major updates get their own pull request. Its pull requests are labeled `type: chore` and use the commit message format below. `@playwright/test` is excluded: it stays on the `playwright-driver` version of `flake.lock`, so bump both by hand in the same pull request. The `golang` and `node` images get digest updates only: their versions follow `flake.nix`, so bump them by hand in the same pull request.
 
+## Releases
+
+On every push to `main`, release-please opens or updates a release pull request titled `chore: release <version>`, with the next version and the `CHANGELOG.md` entries. Merging it publishes the release.
+
+- Before 1.0, `feat` and breaking changes bump the minor version, and other releasable commits bump the patch version. The first release is `0.1.0`.
+- The changelog lists features, bug fixes, performance improvements and reverts. Other commit types stay out of it and do not open a release pull request on their own.
+- The `Release` workflow creates the `vX.Y.Z` tag and the GitHub release, attaches the archives and the signed `checksums.txt`, and pushes the signed multi-arch image to `ghcr.io/gauthier-se/verve` with the tags `X.Y.Z`, `X.Y`, `X` and `latest`.
+- When a job fails, use **Re-run failed jobs**: re-running the whole workflow creates no new release, so the jobs would be skipped.
+- The `RELEASE_PLEASE_TOKEN` repository secret is a fine-grained token on this repository with Contents, Issues and Pull requests read and write. With the default `GITHUB_TOKEN`, CI would not run on the release pull request.
+
+Verify a release with cosign:
+
+```sh
+cosign verify-blob checksums.txt \
+  --bundle checksums.txt.sigstore.json \
+  --certificate-identity https://github.com/gauthier-se/verve/.github/workflows/release.yml@refs/heads/main \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+A pull request that changes the release configuration also runs `release-dry-run`, which is `goreleaser check` and a snapshot build that publishes nothing. goreleaser is not part of the devshell, so run it locally with:
+
+```sh
+nix shell --inputs-from . nixpkgs#goreleaser
+goreleaser check
+goreleaser release --snapshot --clean --skip=sign
+```
+
 ## Commit messages
 
 Verve follows [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/). The release changelog is generated from commit messages, so the format matters.
