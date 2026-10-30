@@ -1,10 +1,10 @@
-/// <reference types="vitest/config" />
 import { fileURLToPath } from "node:url";
 
 import tailwindcss from "@tailwindcss/vite";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+import { configDefaults } from "vitest/config";
 
 export default defineConfig({
   plugins: [
@@ -37,6 +37,8 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
+    // Playwright runs these, against the production binary.
+    exclude: [...configDefaults.exclude, "e2e/**"],
     // Compiles the stylesheet with Tailwind, so that the theme tests check
     // the CSS that browsers receive. Other stylesheets stay empty in tests.
     css: { include: [/\/src\/styles\.css(\?|$)/] },

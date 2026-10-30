@@ -117,6 +117,12 @@ tasks:
         -X {{.VERSION_PKG}}.date={{.BUILD_DATE}}"
         -o bin/verve ./cmd/verve
 
+  e2e:
+    desc: Build the binary and run the Playwright tests against it in Chromium and WebKit
+    deps: [build]
+    cmds:
+      - pnpm --dir web exec playwright test
+
   dev:
     desc: Run the Go server with live reload and the Vite dev server (http://localhost:5173)
     deps: [dev:server, dev:web]

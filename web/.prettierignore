@@ -1,5 +1,7 @@
 dist
 coverage
+playwright-report
+test-results
 pnpm-lock.yaml
 src/routeTree.gen.ts
 src/i18n/i18next.d.ts

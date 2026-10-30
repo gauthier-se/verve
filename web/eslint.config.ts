@@ -9,6 +9,8 @@ export default defineConfig(
   globalIgnores([
     "dist",
     "coverage",
+    "playwright-report",
+    "test-results",
     "src/routeTree.gen.ts",
     "src/api/generated",
     "src/components/ui",
