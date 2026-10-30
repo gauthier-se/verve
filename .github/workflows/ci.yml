@@ -205,6 +205,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Validate the compose file
+        run: docker compose config --quiet
+
       - uses: docker/setup-buildx-action@v4
 
       # The commit date rather than the current time, so that a rerun keeps its cached layers.

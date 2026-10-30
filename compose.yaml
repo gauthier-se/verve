@@ -1,0 +1,20 @@
+# Starts Verve on http://localhost:8080. Guides: docs/deployment/docker.md and, to serve it over
+# HTTPS, docs/deployment/reverse-proxy.md.
+services:
+  verve:
+    image: ghcr.io/gauthier-se/verve:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - verve-data:/data
+    environment:
+      # URL users reach Verve at, without a path, for example https://verve.example.com.
+      # Secure cookies, OIDC and absolute links depend on it. While empty, Verve logs a warning.
+      VERVE_PUBLIC_URL: ""
+      # Comma-separated addresses or CIDRs of your reverse proxy, for example 172.30.0.0/24.
+      # X-Forwarded-* headers are ignored unless the peer is listed. Leave empty without a proxy.
+      VERVE_TRUSTED_PROXIES: ""
+
+volumes:
+  verve-data:

@@ -2,7 +2,7 @@
 
 Verve is an open source, self-hostable health dashboard for Apple Health data. It ships as a single Go binary with an embedded web app and a SQLite database, designed to run in a homelab next to the rest of your self-hosted services.
 
-> Status: planning. No code yet. This repository currently contains the product and architecture documentation.
+> Status: early development. Verve is a deployable shell without health features yet, see the [roadmap](docs/roadmap.md).
 
 ## Why
 
@@ -34,6 +34,21 @@ Apple Health collects years of valuable data (activity, heart, sleep, body measu
  Browser / installed PWA  <----------->|    - SQLite database in /data               |
                                        +---------------------------------------------+
 ```
+
+## Quick start
+
+Download the example compose file and start it:
+
+```sh
+curl -fsSLO https://raw.githubusercontent.com/gauthier-se/verve/main/compose.yaml
+docker compose up -d
+```
+
+Verve then runs on http://localhost:8080. To deploy it for real, follow these guides:
+
+- [Docker](docs/deployment/docker.md): compose file, volumes and permissions, upgrades.
+- [Reverse proxy](docs/deployment/reverse-proxy.md): HTTPS with Caddy, Traefik or Nginx Proxy Manager, trusted proxies, public URL, large uploads.
+- [Binary](docs/deployment/binary.md): release binary with a systemd service.
 
 ## Tech stack
 
@@ -74,6 +89,7 @@ Common tasks (`task --list` shows them all):
 ## Documentation
 
 - [Roadmap](docs/roadmap.md): milestones and the list of features.
+- [Deployment](docs/deployment/): Docker, reverse proxy and binary guides.
 - [Architecture](docs/architecture.md): components, data flows, data model and cross-cutting rules.
 - [Decision records](docs/decisions/): why the main technical choices were made.
 - [Features](docs/features/): one specification per feature, built from a [common template](docs/features/_template.md).
