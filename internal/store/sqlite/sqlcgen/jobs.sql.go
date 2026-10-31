@@ -34,6 +34,44 @@ func (q *Queries) AbandonJobs(ctx context.Context, arg AbandonJobsParams) error 
 	return err
 }
 
+const cancelJob = `-- name: CancelJob :execrows
+UPDATE jobs
+SET status = CASE WHEN status = 'queued' THEN 'cancelled' ELSE status END,
+    cancel_requested = 1,
+    finished_at = CASE WHEN status = 'queued' THEN ?1 ELSE finished_at END
+WHERE id = ?2
+  AND status IN ('queued', 'running')
+`
+
+type CancelJobParams struct {
+	FinishedAt sql.NullInt64
+	ID         int64
+}
+
+func (q *Queries) CancelJob(ctx context.Context, arg CancelJobParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, cancelJob, arg.FinishedAt, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const cancelUnconfirmedJobs = `-- name: CancelUnconfirmedJobs :exec
+UPDATE jobs
+SET status = 'cancelled',
+    locked_until = NULL,
+    finished_at = ?1
+WHERE cancel_requested = 1
+  AND (status = 'queued' OR (status = 'running' AND locked_until <= ?1))
+`
+
+// Cancels the jobs that no handler can confirm: back to queued after the request, or left by a
+// process that died.
+func (q *Queries) CancelUnconfirmedJobs(ctx context.Context, now sql.NullInt64) error {
+	_, err := q.db.ExecContext(ctx, cancelUnconfirmedJobs, now)
+	return err
+}
+
 const claimJob = `-- name: ClaimJob :one
 UPDATE jobs
 SET lost_leases = CASE WHEN status = 'running' THEN lost_leases + 1 ELSE lost_leases END,
@@ -58,7 +96,7 @@ WHERE id = (
     ORDER BY candidate.run_at, candidate.id
     LIMIT 1
 )
-RETURNING id, kind, payload, status, attempts, claims, lost_leases, run_at, locked_until, user_id, serial_key, last_error, created_at, finished_at
+RETURNING id, kind, payload, status, attempts, claims, lost_leases, run_at, locked_until, user_id, serial_key, last_error, created_at, finished_at, cancel_requested
 `
 
 type ClaimJobParams struct {
@@ -86,6 +124,7 @@ func (q *Queries) ClaimJob(ctx context.Context, arg ClaimJobParams) (Job, error)
 		&i.LastError,
 		&i.CreatedAt,
 		&i.FinishedAt,
+		&i.CancelRequested,
 	)
 	return i, err
 }
@@ -112,10 +151,32 @@ func (q *Queries) CompleteJob(ctx context.Context, arg CompleteJobParams) (int64
 	return result.RowsAffected()
 }
 
+const confirmCancelJob = `-- name: ConfirmCancelJob :execrows
+UPDATE jobs
+SET status = 'cancelled',
+    locked_until = NULL,
+    finished_at = ?
+WHERE id = ? AND claims = ? AND status = 'running'
+`
+
+type ConfirmCancelJobParams struct {
+	FinishedAt sql.NullInt64
+	ID         int64
+	Claims     int64
+}
+
+func (q *Queries) ConfirmCancelJob(ctx context.Context, arg ConfirmCancelJobParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, confirmCancelJob, arg.FinishedAt, arg.ID, arg.Claims)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const enqueueJob = `-- name: EnqueueJob :one
 INSERT INTO jobs (kind, payload, status, run_at, user_id, serial_key, created_at)
 VALUES (?, ?, 'queued', ?, ?, ?, ?)
-RETURNING id, kind, payload, status, attempts, claims, lost_leases, run_at, locked_until, user_id, serial_key, last_error, created_at, finished_at
+RETURNING id, kind, payload, status, attempts, claims, lost_leases, run_at, locked_until, user_id, serial_key, last_error, created_at, finished_at, cancel_requested
 `
 
 type EnqueueJobParams struct {
@@ -152,6 +213,7 @@ func (q *Queries) EnqueueJob(ctx context.Context, arg EnqueueJobParams) (Job, er
 		&i.LastError,
 		&i.CreatedAt,
 		&i.FinishedAt,
+		&i.CancelRequested,
 	)
 	return i, err
 }
@@ -187,7 +249,7 @@ func (q *Queries) FailJob(ctx context.Context, arg FailJobParams) (int64, error)
 }
 
 const getJob = `-- name: GetJob :one
-SELECT id, kind, payload, status, attempts, claims, lost_leases, run_at, locked_until, user_id, serial_key, last_error, created_at, finished_at
+SELECT id, kind, payload, status, attempts, claims, lost_leases, run_at, locked_until, user_id, serial_key, last_error, created_at, finished_at, cancel_requested
 FROM jobs
 WHERE id = ?
 `
@@ -210,14 +272,16 @@ func (q *Queries) GetJob(ctx context.Context, id int64) (Job, error) {
 		&i.LastError,
 		&i.CreatedAt,
 		&i.FinishedAt,
+		&i.CancelRequested,
 	)
 	return i, err
 }
 
-const heartbeatJob = `-- name: HeartbeatJob :execrows
+const heartbeatJob = `-- name: HeartbeatJob :one
 UPDATE jobs
 SET locked_until = ?
 WHERE id = ? AND claims = ? AND status = 'running'
+RETURNING cancel_requested
 `
 
 type HeartbeatJobParams struct {
@@ -227,11 +291,10 @@ type HeartbeatJobParams struct {
 }
 
 func (q *Queries) HeartbeatJob(ctx context.Context, arg HeartbeatJobParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, heartbeatJob, arg.LockedUntil, arg.ID, arg.Claims)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
+	row := q.db.QueryRowContext(ctx, heartbeatJob, arg.LockedUntil, arg.ID, arg.Claims)
+	var cancel_requested int64
+	err := row.Scan(&cancel_requested)
+	return cancel_requested, err
 }
 
 const releaseJob = `-- name: ReleaseJob :execrows
@@ -248,6 +311,36 @@ type ReleaseJobParams struct {
 
 func (q *Queries) ReleaseJob(ctx context.Context, arg ReleaseJobParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, releaseJob, arg.ID, arg.Claims)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const retryJob = `-- name: RetryJob :execrows
+UPDATE jobs
+SET status = 'queued',
+    attempts = attempts + 1,
+    locked_until = NULL,
+    last_error = ?,
+    run_at = ?
+WHERE id = ? AND claims = ? AND status = 'running'
+`
+
+type RetryJobParams struct {
+	LastError sql.NullString
+	RunAt     int64
+	ID        int64
+	Claims    int64
+}
+
+func (q *Queries) RetryJob(ctx context.Context, arg RetryJobParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, retryJob,
+		arg.LastError,
+		arg.RunAt,
+		arg.ID,
+		arg.Claims,
+	)
 	if err != nil {
 		return 0, err
 	}

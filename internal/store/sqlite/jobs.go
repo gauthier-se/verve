@@ -74,6 +74,10 @@ func (r jobs) Claim(ctx context.Context, lease time.Duration) (store.Job, error)
 	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
 		now := r.clk.Now()
 
+		if err := q.CancelUnconfirmedJobs(ctx, nullMillis(now)); err != nil {
+			return err
+		}
+
 		err := q.AbandonJobs(ctx, sqlcgen.AbandonJobsParams{
 			LastError:     sql.NullString{String: fmt.Sprintf("abandoned after %d lost leases", maxLostLeases), Valid: true},
 			Now:           nullMillis(now),
@@ -107,19 +111,32 @@ func (r jobs) Claim(ctx context.Context, lease time.Duration) (store.Job, error)
 	return jobOf(row), nil
 }
 
-func (r jobs) Heartbeat(ctx context.Context, id, claims int64, lease time.Duration) error {
+func (r jobs) Heartbeat(ctx context.Context, id, claims int64, lease time.Duration) (bool, error) {
+	var cancelRequested bool
+
 	err := r.fenced(ctx, id, func(q *sqlcgen.Queries) (int64, error) {
-		return q.HeartbeatJob(ctx, sqlcgen.HeartbeatJobParams{
+		requested, err := q.HeartbeatJob(ctx, sqlcgen.HeartbeatJobParams{
 			LockedUntil: nullMillis(r.clk.Now().Add(lease)),
 			ID:          id,
 			Claims:      claims,
 		})
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, nil
+		}
+
+		if err != nil {
+			return 0, err
+		}
+
+		cancelRequested = requested != 0
+
+		return 1, nil
 	})
 	if err != nil {
-		return fmt.Errorf("renew lease of job %d: %w", id, err)
+		return false, fmt.Errorf("renew lease of job %d: %w", id, err)
 	}
 
-	return nil
+	return cancelRequested, nil
 }
 
 func (r jobs) Complete(ctx context.Context, id, claims int64) error {
@@ -160,8 +177,51 @@ func (r jobs) Release(ctx context.Context, id, claims int64) error {
 	return nil
 }
 
-// fenced runs a write that applies only to the job id running under its claims value. When it
-// updates no row, it returns store.ErrNotFound for a missing job and store.ErrConflict otherwise.
+func (r jobs) Retry(ctx context.Context, id, claims int64, message string, runAt time.Time) error {
+	err := r.fenced(ctx, id, func(q *sqlcgen.Queries) (int64, error) {
+		return q.RetryJob(ctx, sqlcgen.RetryJobParams{
+			LastError: sql.NullString{String: message, Valid: true},
+			RunAt:     toMillis(runAt),
+			ID:        id,
+			Claims:    claims,
+		})
+	})
+	if err != nil {
+		return fmt.Errorf("retry job %d: %w", id, err)
+	}
+
+	return nil
+}
+
+func (r jobs) Cancel(ctx context.Context, id int64) error {
+	err := r.fenced(ctx, id, func(q *sqlcgen.Queries) (int64, error) {
+		return q.CancelJob(ctx, sqlcgen.CancelJobParams{FinishedAt: nullMillis(r.clk.Now()), ID: id})
+	})
+	if err != nil {
+		return fmt.Errorf("cancel job %d: %w", id, err)
+	}
+
+	return nil
+}
+
+func (r jobs) ConfirmCancel(ctx context.Context, id, claims int64) error {
+	err := r.fenced(ctx, id, func(q *sqlcgen.Queries) (int64, error) {
+		return q.ConfirmCancelJob(ctx, sqlcgen.ConfirmCancelJobParams{
+			FinishedAt: nullMillis(r.clk.Now()),
+			ID:         id,
+			Claims:     claims,
+		})
+	})
+	if err != nil {
+		return fmt.Errorf("confirm cancellation of job %d: %w", id, err)
+	}
+
+	return nil
+}
+
+// fenced runs a write that applies only to a job id in the right state, usually running under its
+// claims value. When it updates no row, it returns store.ErrNotFound for a missing job and
+// store.ErrConflict otherwise.
 func (r jobs) fenced(ctx context.Context, id int64, write func(q *sqlcgen.Queries) (int64, error)) error {
 	return r.q.write(ctx, func(q *sqlcgen.Queries) error {
 		updated, err := write(q)
@@ -188,19 +248,20 @@ func (r jobs) fenced(ctx context.Context, id int64, write func(q *sqlcgen.Querie
 
 func jobOf(row sqlcgen.Job) store.Job {
 	return store.Job{
-		ID:          row.ID,
-		Kind:        row.Kind,
-		Payload:     json.RawMessage(row.Payload),
-		Status:      store.JobStatus(row.Status),
-		Attempts:    row.Attempts,
-		Claims:      row.Claims,
-		LostLeases:  row.LostLeases,
-		RunAt:       fromMillis(row.RunAt),
-		LockedUntil: fromNullMillis(row.LockedUntil),
-		UserID:      row.UserID.Int64,
-		SerialKey:   row.SerialKey.String,
-		LastError:   row.LastError.String,
-		CreatedAt:   fromMillis(row.CreatedAt),
-		FinishedAt:  fromNullMillis(row.FinishedAt),
+		ID:              row.ID,
+		Kind:            row.Kind,
+		Payload:         json.RawMessage(row.Payload),
+		Status:          store.JobStatus(row.Status),
+		Attempts:        row.Attempts,
+		Claims:          row.Claims,
+		LostLeases:      row.LostLeases,
+		CancelRequested: row.CancelRequested != 0,
+		RunAt:           fromMillis(row.RunAt),
+		LockedUntil:     fromNullMillis(row.LockedUntil),
+		UserID:          row.UserID.Int64,
+		SerialKey:       row.SerialKey.String,
+		LastError:       row.LastError.String,
+		CreatedAt:       fromMillis(row.CreatedAt),
+		FinishedAt:      fromNullMillis(row.FinishedAt),
 	}
 }
