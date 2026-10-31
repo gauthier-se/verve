@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/gauthier-se/verve/internal/config"
+	"github.com/gauthier-se/verve/internal/store"
 	"github.com/gauthier-se/verve/internal/store/sqlite"
 	"github.com/gauthier-se/verve/internal/version"
 	"github.com/gauthier-se/verve/internal/webui"
@@ -229,6 +231,81 @@ func TestRun_CommandHoldsDatabaseOpen_StopsWithoutStallOrError(t *testing.T) {
 
 	require.NotContains(t, logs.String(), "level=ERROR")
 	require.Contains(t, logs.String(), `msg="database closed"`)
+}
+
+// Given startup, then the worker starts after the migrations are applied. Given shutdown, then it
+// stops before the database closes.
+func TestRun_StartsWorkerAfterMigrationsAndStopsItBeforeTheDatabaseCloses(t *testing.T) {
+	t.Parallel()
+
+	migrating := make(chan struct{})
+	release := make(chan struct{})
+	hook := func(ctx context.Context, _ []int64) error {
+		close(migrating)
+
+		select {
+		case <-release:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+
+	_, logs, stop := startRunWith(t, testConfig(t.TempDir()), hook)
+
+	select {
+	case <-migrating:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run did not start migrating")
+	}
+
+	require.NotContains(t, logs.String(), `msg="worker started"`)
+
+	close(release)
+
+	require.Eventually(t, func() bool {
+		return strings.Contains(logs.String(), `msg="worker started"`)
+	}, 5*time.Second, 10*time.Millisecond, "the worker must start once the migrations complete")
+
+	stop()
+
+	out := logs.String()
+	workerStarted := strings.Index(out, `msg="worker started"`)
+	workerStopped := strings.Index(out, `msg="worker stopped"`)
+	dbClosed := strings.Index(out, `msg="database closed"`)
+
+	require.Less(t, strings.LastIndex(out, `msg="applied migration"`), workerStarted)
+	require.NotEqual(t, -1, workerStopped, "the worker must log its stop")
+	require.Less(t, workerStopped, dbClosed, "the worker must stop before the database closes")
+}
+
+// Given a job queued before startup, then the worker of the server runs it. Its kind is unknown,
+// because no feature registers one yet.
+func TestRun_WorkerRunsAJobQueuedBeforeStartup(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	cfg := testConfig(t.TempDir())
+
+	_, err := Migrate(ctx, cfg, discardLogger())
+	require.NoError(t, err)
+
+	queued, err := withSharedDB(ctx, cfg, func(s store.Store) (store.Job, error) {
+		return s.Jobs().Enqueue(ctx, store.NewJob{Kind: "test.unknown", Payload: json.RawMessage(`{}`)})
+	})
+	require.NoError(t, err)
+
+	_, _, stop := startRun(t, cfg)
+
+	require.Eventually(t, func() bool {
+		job, err := withSharedDB(ctx, cfg, func(s store.Store) (store.Job, error) {
+			return s.Jobs().Get(ctx, queued.ID)
+		})
+
+		return err == nil && job.Status == store.JobFailed && job.LastError == "unknown job kind"
+	}, 5*time.Second, 10*time.Millisecond, "the worker must run the job")
+
+	stop()
 }
 
 // Given a database whose version is newer than this binary supports, then Run fails and stops

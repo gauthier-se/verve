@@ -123,6 +123,72 @@ func TestWithTx_PanicRollsBackAndIsReRaised(t *testing.T) {
 	requireSetting(ctx, t, s, "smtp.host", "mail.example.com")
 }
 
+// Given AfterCommit outside WithTx, where each write is committed when it returns, then fn runs at
+// once.
+func TestAfterCommit_OutsideWithTx_RunsAtOnce(t *testing.T) {
+	t.Parallel()
+
+	s, _ := newTestStore(t, clock.NewFake(txTestNow))
+	ran := false
+
+	s.AfterCommit(func() { ran = true })
+
+	require.True(t, ran)
+}
+
+// Given AfterCommit inside WithTx, then fn runs after the commit, in the order of the calls, and
+// sees the writes of the transaction from outside.
+func TestAfterCommit_InsideWithTx_RunsAfterTheCommit(t *testing.T) {
+	t.Parallel()
+
+	s, _ := newTestStore(t, clock.NewFake(txTestNow))
+	ctx := boundedContext(t)
+
+	var calls []string
+
+	err := s.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
+		tx.AfterCommit(func() {
+			calls = append(calls, "first")
+
+			requireSetting(ctx, t, s, "map.mode", "none")
+		})
+		tx.AfterCommit(func() { calls = append(calls, "second") })
+
+		require.Empty(t, calls, "nothing runs before the commit")
+
+		return tx.InstanceSettings().Set(ctx, "map.mode", "none")
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"first", "second"}, calls)
+}
+
+// Given AfterCommit inside a WithTx that rolls back, then fn does not run.
+func TestAfterCommit_InsideWithTxThatRollsBack_DoesNotRun(t *testing.T) {
+	t.Parallel()
+
+	s, _ := newTestStore(t, clock.NewFake(txTestNow))
+	ctx := boundedContext(t)
+	errRollback := errors.New("roll back")
+	ran := false
+
+	err := s.WithTx(ctx, func(_ context.Context, tx store.Repositories) error {
+		tx.AfterCommit(func() { ran = true })
+
+		return errRollback
+	})
+	require.ErrorIs(t, err, errRollback)
+	require.False(t, ran)
+
+	require.PanicsWithValue(t, "boom", func() {
+		_ = s.WithTx(ctx, func(_ context.Context, tx store.Repositories) error {
+			tx.AfterCommit(func() { ran = true })
+
+			panic("boom")
+		})
+	})
+	require.False(t, ran)
+}
+
 // Given WithTx, then reads through the transaction see its uncommitted writes.
 func TestWithTx_ReadsInsideSeeTheTransactionWrites(t *testing.T) {
 	t.Parallel()
