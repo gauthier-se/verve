@@ -217,6 +217,7 @@ func TestRun_CommandHoldsDatabaseOpen_StopsWithoutStallOrError(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = reader.Rollback() })
 
+	// The first read takes the snapshot that the transaction then holds.
 	var version int64
 	require.NoError(t, reader.QueryRowContext(ctx, "SELECT max(version_id) FROM goose_db_version").Scan(&version))
 	require.Equal(t, sqlite.LatestVersion(), version)
