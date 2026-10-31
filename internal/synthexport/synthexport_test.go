@@ -537,3 +537,64 @@ func TestWrite_HeartRateVariability_ListsBeatsWithACommaInTheirTime(t *testing.T
 	require.Equal(t, testOptions().Days, lists)
 	require.Greater(t, beats, lists)
 }
+
+// attrsOf identifies an element by all its attributes.
+func attrsOf(e element) string { return fmt.Sprint(e.attrs) }
+
+// Given the correlations, then there are food and blood pressure ones, whose records also exist at
+// top level with the same attributes.
+func TestWrite_Correlations_HoldRecordsThatAlsoExistAtTopLevel(t *testing.T) {
+	t.Parallel()
+
+	var (
+		elements = exportElements(t, testOptions())
+		inner    = withPath(elements, "HealthData/Correlation/Record")
+		topLevel = map[string]bool{}
+		types    = map[string]bool{}
+		within   = map[string]bool{}
+	)
+
+	for _, r := range withPath(elements, "HealthData/Record") {
+		topLevel[attrsOf(r)] = true
+	}
+
+	for _, c := range withPath(elements, "HealthData/Correlation") {
+		types[c.attrs["type"]] = true
+	}
+
+	for _, r := range inner {
+		require.True(t, topLevel[attrsOf(r)], "not at top level: %v", r.attrs)
+
+		within[r.attrs["type"]] = true
+	}
+
+	require.ElementsMatch(t,
+		[]string{"HKCorrelationTypeIdentifierFood", "HKCorrelationTypeIdentifierBloodPressure"},
+		slices.Collect(maps.Keys(types)))
+	require.Subset(t, slices.Collect(maps.Keys(within)), []string{
+		"HKQuantityTypeIdentifierDietaryEnergyConsumed",
+		"HKQuantityTypeIdentifierDietaryProtein",
+		"HKQuantityTypeIdentifierBloodPressureSystolic",
+		"HKQuantityTypeIdentifierBloodPressureDiastolic",
+	})
+}
+
+// Given the food correlations, then they carry metadata as their records do, and their free text
+// needs the escaping of a real export.
+func TestWrite_Correlations_CarryMetadataWithFreeText(t *testing.T) {
+	t.Parallel()
+
+	content := readEntry(t, generate(t, testOptions()), exportXMLName)
+	elements := readElements(t, content)
+
+	var keys []string
+	for _, m := range withPath(elements, "HealthData/Correlation/MetadataEntry") {
+		keys = append(keys, m.attrs["key"])
+	}
+
+	require.Subset(t, keys, []string{"HKExternalUUID", "HKFoodType", "Repas"})
+	require.NotEmpty(t, withPath(elements, "HealthData/Correlation/Record/MetadataEntry"))
+
+	require.Contains(t, string(content), `value="Salade d'été"`)
+	require.Contains(t, string(content), `value="Yaourt &amp; fruits"`)
+}

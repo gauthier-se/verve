@@ -59,7 +59,7 @@ type record struct {
 	beats            []beat
 }
 
-func (e exporter) writeRecord(d document, r record) {
+func (e exporter) writeRecord(d document, depth int, r record) {
 	attrs := []string{
 		"type", r.typ,
 		"sourceName", r.source.name,
@@ -73,28 +73,31 @@ func (e exporter) writeRecord(d document, r record) {
 	}
 
 	if len(r.metadata) == 0 && len(r.beats) == 0 {
-		d.empty(1, "Record", attrs...)
+		d.empty(depth, "Record", attrs...)
 
 		return
 	}
 
-	d.open(1, "Record", attrs...)
-
-	for _, m := range r.metadata {
-		d.empty(2, "MetadataEntry", "key", m.key, "value", m.value)
-	}
+	d.open(depth, "Record", attrs...)
+	writeMetadata(d, depth+1, r.metadata)
 
 	if len(r.beats) > 0 {
-		d.open(2, "HeartRateVariabilityMetadataList")
+		d.open(depth+1, "HeartRateVariabilityMetadataList")
 
 		for _, b := range r.beats {
-			d.empty(3, "InstantaneousBeatsPerMinute", "bpm", b.bpm, "time", b.time)
+			d.empty(depth+2, "InstantaneousBeatsPerMinute", "bpm", b.bpm, "time", b.time)
 		}
 
-		d.closeTag(2, "HeartRateVariabilityMetadataList")
+		d.closeTag(depth+1, "HeartRateVariabilityMetadataList")
 	}
 
-	d.closeTag(1, "Record")
+	d.closeTag(depth, "Record")
+}
+
+func writeMetadata(d document, depth int, entries []metadata) {
+	for _, m := range entries {
+		d.empty(depth, "MetadataEntry", "key", m.key, "value", m.value)
+	}
 }
 
 // device describes a device the way HealthKit prints it. The address changes on every sample.
@@ -233,7 +236,7 @@ func audioExposure(r *rand.Rand, sample int) string {
 
 // recordSections returns what writes each block of records, a day at a time.
 func (e exporter) recordSections() []func(day int, d document) {
-	var sections []func(int, document)
+	sections := e.correlatedSections()
 
 	for i, s := range allSeries() {
 		sections = append(sections, func(day int, d document) { e.writeSeries(s, streamSeries+i, day, d) })
@@ -258,7 +261,7 @@ func (e exporter) writeSeries(s series, stream, day int, d document) {
 			meta = s.metadata(r)
 		}
 
-		e.writeRecord(d, record{
+		e.writeRecord(d, 1, record{
 			typ: s.typ, unit: s.unit, value: s.value(r, sample), source: s.source, device: e.deviceOf(s.source, day, r),
 			start: start, end: start.Add(s.length), metadata: meta,
 		})
@@ -291,7 +294,7 @@ func (e exporter) writeSleep(day int, d document) {
 	}
 
 	sleep := func(value string, s source, start, end time.Time) {
-		e.writeRecord(d, record{
+		e.writeRecord(d, 1, record{
 			typ: typeSleep, value: value, source: s, device: e.deviceOf(s, day, r),
 			start: start, end: end, metadata: zone,
 		})
@@ -329,7 +332,7 @@ func (e exporter) writeStandHours(day int, d document) {
 			value = "HKCategoryValueAppleStandHourStood"
 		}
 
-		e.writeRecord(d, record{
+		e.writeRecord(d, 1, record{
 			typ: "HKCategoryTypeIdentifierAppleStandHour", value: value, source: sourceWatch,
 			device: e.deviceOf(sourceWatch, day, r), start: start, end: start.Add(time.Hour),
 		})
@@ -344,7 +347,7 @@ func (e exporter) writeSleepGoal(day int, d document) {
 
 	at := e.dayStart(day).Add(9 * time.Hour)
 
-	e.writeRecord(d, record{
+	e.writeRecord(d, 1, record{
 		typ: "HKDataTypeSleepDurationGoal", unit: "hr", value: "8", source: sourcePhone, start: at, end: at,
 	})
 }
@@ -363,7 +366,7 @@ func (e exporter) writeHeartRateVariability(day int, d document) {
 		at = at.Add(time.Minute / time.Duration(bpm))
 	}
 
-	e.writeRecord(d, record{
+	e.writeRecord(d, 1, record{
 		typ: typeHeartRateVariability, unit: "ms", value: strconv.FormatFloat(20+r.Float64()*60, 'g', 6, 64),
 		source: sourceWatch, device: e.deviceOf(sourceWatch, day, r),
 		start: end.Add(-time.Minute), end: end,

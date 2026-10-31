@@ -29,6 +29,7 @@ const (
 	streamActivitySummary
 	streamSleep
 	streamStandHours
+	streamCorrelations
 	streamSeries // the first of the series, which take one stream each
 )
 
@@ -161,18 +162,6 @@ func (e exporter) writeExportXML(ctx context.Context, d document) error {
 	d.closeTag(0, "HealthData")
 
 	return nil
-}
-
-func (e exporter) writeCorrelations(day int, d document) {
-	at := e.dayStart(day).Add(12 * time.Hour)
-
-	d.empty(1, "Correlation",
-		"type", "HKCorrelationTypeIdentifierFood",
-		"sourceName", "Nutrio",
-		"sourceVersion", "1200",
-		"creationDate", e.date(at),
-		"startDate", e.date(at),
-		"endDate", e.date(at))
 }
 
 func (e exporter) writeWorkouts(day int, d document) {
