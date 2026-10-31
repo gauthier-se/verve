@@ -197,6 +197,40 @@ func TestRun_ListensBeforeMigrating(t *testing.T) {
 	require.Equal(t, sqlite.LatestVersion(), schemaVersion(t, dataDir))
 }
 
+// Given a running server and a command next to it holding a read transaction, when the server
+// stops, then it does not wait for the busy timeout, logs no error and closes the database.
+func TestRun_CommandHoldsDatabaseOpen_StopsWithoutStallOrError(t *testing.T) {
+	t.Parallel()
+
+	// Well below the busy timeout, the time a checkpoint that waits stalls for.
+	const stallLimit = 2 * time.Second
+
+	ctx := t.Context()
+	cfg := testConfig(filepath.Join(t.TempDir(), "data"))
+	_, logs, stop := startRun(t, cfg)
+
+	command, err := sqlite.Open(ctx, filepath.Join(cfg.DataDir, dbFile))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, command.CloseShared()) })
+
+	reader, err := command.Read().BeginTx(ctx, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reader.Rollback() })
+
+	// The first read takes the snapshot that the transaction then holds.
+	var version int64
+	require.NoError(t, reader.QueryRowContext(ctx, "SELECT max(version_id) FROM goose_db_version").Scan(&version))
+	require.Equal(t, sqlite.LatestVersion(), version)
+
+	start := time.Now()
+
+	stop()
+	require.Less(t, time.Since(start), stallLimit)
+
+	require.NotContains(t, logs.String(), "level=ERROR")
+	require.Contains(t, logs.String(), `msg="database closed"`)
+}
+
 // Given a database whose version is newer than this binary supports, then Run fails and stops
 // the server without ever being ready.
 func TestRun_NewerDatabaseFails(t *testing.T) {

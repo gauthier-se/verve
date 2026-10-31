@@ -102,7 +102,8 @@ func (db *DB) Read() *sql.DB {
 	return db.read
 }
 
-// Close checkpoints the WAL into the database file, truncates it and closes both pools.
+// Close checkpoints the WAL into the database file, truncates it and closes both pools. A
+// checkpoint blocked by another process is not an error, see checkpoint.
 func (db *DB) Close(ctx context.Context) error {
 	readErr := db.read.Close()
 
@@ -116,9 +117,9 @@ func (db *DB) Close(ctx context.Context) error {
 }
 
 // CloseShared closes both pools without a checkpoint, for a process that does not hold the data
-// directory lock. A TRUNCATE checkpoint would wait for the readers of the other processes and hold
-// off their writers, which could then fail with SQLITE_BUSY. SQLite checkpoints on its own as the
-// WAL grows, and when the last connection closes.
+// directory lock. A checkpoint would hold off the writers of the other processes, which could then
+// fail with SQLITE_BUSY. SQLite checkpoints on its own as the WAL grows, and when the last connection
+// closes.
 func (db *DB) CloseShared() error {
 	if err := errors.Join(db.read.Close(), db.write.Close()); err != nil {
 		return fmt.Errorf("close database: %w", err)
@@ -127,17 +128,14 @@ func (db *DB) CloseShared() error {
 	return nil
 }
 
-// checkpoint copies the whole WAL into the database file and truncates it.
+// checkpoint copies the WAL into the database file and truncates it, without waiting for other
+// processes. With no busy timeout, when a command next to the server blocks the TRUNCATE, SQLite
+// copies what it can and only reports it in the result row, ignored here. The WAL then stays in
+// place, which loses nothing, and the last connection to close finishes the checkpoint.
 func (db *DB) checkpoint(ctx context.Context) error {
-	var busy, logFrames, checkpointed int
-
-	err := db.write.QueryRowContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)").Scan(&busy, &logFrames, &checkpointed)
-	if err != nil {
+	// One call, so that both statements run on the same connection.
+	if _, err := db.write.ExecContext(ctx, "PRAGMA busy_timeout(0); PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
 		return fmt.Errorf("checkpoint database: %w", err)
-	}
-
-	if busy != 0 {
-		return errors.New("checkpoint database: blocked by another connection")
 	}
 
 	return nil

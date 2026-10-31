@@ -9,9 +9,13 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
+
+// stallLimit is well below the busy timeout, the time a checkpoint that waits stalls for.
+const stallLimit = 2 * time.Second
 
 // openTestDB opens a database in a fresh temporary directory and closes it at the end of the test.
 func openTestDB(t *testing.T) (*DB, string) {
@@ -291,4 +295,105 @@ func TestClose_CheckpointsTheWAL(t *testing.T) {
 	}
 
 	require.Equal(t, 1, countItems(ctx, t, other))
+}
+
+// beginRead starts a read transaction on the reader pool of db and takes its snapshot.
+func beginRead(ctx context.Context, t *testing.T, db *DB) *sql.Tx {
+	t.Helper()
+
+	tx, err := db.Read().BeginTx(ctx, nil)
+	require.NoError(t, err)
+	require.Equal(t, 1, countItems(ctx, t, tx))
+
+	return tx
+}
+
+// Given another process keeps a TRUNCATE checkpoint from finishing, when the process that holds
+// the data directory lock closes, then it closes without error and without waiting for the busy
+// timeout, and leaves the WAL in place. Once the other process closes too, the last connection
+// removes the WAL and every committed row is there.
+func TestClose_CheckpointBlocked_DoesNotWaitAndLeavesTheWALInPlace(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// hold starts a transaction of other, the process next to db, that blocks the checkpoint.
+		hold      func(ctx context.Context, t *testing.T, db, other *DB) *sql.Tx
+		wantItems int
+	}{
+		{
+			name: "reader on the latest snapshot",
+			hold: func(ctx context.Context, t *testing.T, _, other *DB) *sql.Tx {
+				t.Helper()
+
+				return beginRead(ctx, t, other)
+			},
+			wantItems: 1,
+		},
+		{
+			name: "reader behind the end of the WAL",
+			hold: func(ctx context.Context, t *testing.T, db, other *DB) *sql.Tx {
+				t.Helper()
+
+				tx := beginRead(ctx, t, other)
+
+				_, err := db.Write().ExecContext(ctx, "INSERT INTO items (name) VALUES ('after the snapshot')")
+				require.NoError(t, err)
+
+				return tx
+			},
+			wantItems: 2,
+		},
+		{
+			name: "writer",
+			hold: func(ctx context.Context, t *testing.T, _, other *DB) *sql.Tx {
+				t.Helper()
+
+				tx, err := other.Write().BeginTx(ctx, nil)
+				require.NoError(t, err)
+
+				_, err = tx.ExecContext(ctx, "INSERT INTO items (name) VALUES ('uncommitted')")
+				require.NoError(t, err)
+
+				return tx
+			},
+			wantItems: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			db, path := openTestDB(t)
+			createCounter(t, db)
+			ctx := t.Context()
+
+			other, err := Open(ctx, path)
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = other.CloseShared() })
+
+			tx := tt.hold(ctx, t, db, other)
+			t.Cleanup(func() { _ = tx.Rollback() })
+
+			start := time.Now()
+
+			require.NoError(t, db.Close(ctx))
+			require.Less(t, time.Since(start), stallLimit)
+
+			info, err := os.Stat(path + "-wal")
+			require.NoError(t, err)
+			require.Positive(t, info.Size())
+
+			require.NoError(t, tx.Rollback())
+			require.NoError(t, other.CloseShared())
+			require.NoFileExists(t, path+"-wal")
+
+			reopened, err := Open(ctx, path)
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, reopened.Close(context.Background())) })
+
+			require.Equal(t, tt.wantItems, countItems(ctx, t, reopened.Read()))
+		})
+	}
 }
