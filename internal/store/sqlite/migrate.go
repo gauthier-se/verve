@@ -75,6 +75,14 @@ func CurrentVersion(ctx context.Context, db *DB) (int64, error) {
 	return currentVersion(ctx, db, migrationsFS())
 }
 
+// NewerSchemaError returns the refusal of a database whose schema version current is newer than
+// latest, the version this binary supports.
+func NewerSchemaError(current, latest int64) error {
+	return fmt.Errorf(
+		"database schema version %d is newer than this binary supports (%d); upgrade Verve or restore a backup",
+		current, latest)
+}
+
 // migrationsFS returns the embedded migrations directory.
 func migrationsFS() fs.FS {
 	sub, err := fs.Sub(embeddedMigrations, "migrations")
@@ -213,9 +221,7 @@ func newCheckedProvider(ctx context.Context, db *DB, fsys fs.FS) (*goose.Provide
 	}
 
 	if current > latest {
-		return nil, 0, fmt.Errorf(
-			"database schema version %d is newer than this binary supports (%d); upgrade Verve or restore a backup",
-			current, latest)
+		return nil, 0, NewerSchemaError(current, latest)
 	}
 
 	return p, current, nil

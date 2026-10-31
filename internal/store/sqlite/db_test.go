@@ -229,6 +229,36 @@ func TestReader_ReadsDuringOpenWriteTransaction(t *testing.T) {
 	require.Equal(t, 1, countItems(ctx, t, db.Read()))
 }
 
+// Given another process reading a snapshot behind the end of the WAL, which a TRUNCATE checkpoint
+// must wait for, when a process that shares the database closes, then it closes without error
+// and leaves the WAL in place.
+func TestCloseShared_ReaderPinsTheWAL_LeavesTheWALInPlace(t *testing.T) {
+	t.Parallel()
+
+	serving, path := openTestDB(t)
+	createCounter(t, serving)
+	ctx := t.Context()
+
+	shared, err := Open(ctx, path)
+	require.NoError(t, err)
+
+	reader, err := serving.Read().BeginTx(ctx, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reader.Rollback() })
+	require.Equal(t, 1, countItems(ctx, t, reader))
+
+	_, err = serving.Write().ExecContext(ctx, "INSERT INTO items (name) VALUES ('after the snapshot')")
+	require.NoError(t, err)
+
+	require.NoError(t, shared.CloseShared())
+
+	info, err := os.Stat(path + "-wal")
+	require.NoError(t, err)
+	require.Positive(t, info.Size())
+
+	require.Equal(t, 2, countItems(ctx, t, serving.Read()))
+}
+
 // Given Close, then the WAL is checkpointed with TRUNCATE and verve.db-wal is empty or absent,
 // even while another connection keeps the database open.
 func TestClose_CheckpointsTheWAL(t *testing.T) {

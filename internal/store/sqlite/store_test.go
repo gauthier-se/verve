@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -65,6 +66,55 @@ func TestStore_JobsContract(t *testing.T) {
 
 		return s
 	})
+}
+
+// Given two stores on one file, when both write concurrently in short transactions, then every
+// write lands and no SQLITE_BUSY error surfaces.
+func TestStore_ConcurrentWritesOnTwoStoresAllLand(t *testing.T) {
+	t.Parallel()
+
+	const (
+		writersPerStore = 4
+		writesPerWriter = 25
+	)
+
+	ctx := t.Context()
+	clk := clock.NewFake(txTestNow)
+	path := filepath.Join(t.TempDir(), "verve.db")
+
+	first, _ := openTestStore(t, path, clk)
+	second, _ := openTestStore(t, path, clk)
+	stores := []store.Store{first, second}
+
+	var wg sync.WaitGroup
+
+	errs := make(chan error, len(stores)*writersPerStore*writesPerWriter)
+
+	for i, s := range stores {
+		for writer := range writersPerStore {
+			wg.Go(func() {
+				for write := range writesPerWriter {
+					key := fmt.Sprintf("store-%d-writer-%d-write-%d", i, writer, write)
+					if err := s.InstanceSettings().Set(ctx, key, "value"); err != nil {
+						errs <- err
+					}
+				}
+			})
+		}
+	}
+
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		require.NoError(t, err)
+	}
+
+	for _, s := range stores {
+		settings, err := s.InstanceSettings().List(ctx)
+		require.NoError(t, err)
+		require.Len(t, settings, len(stores)*writersPerStore*writesPerWriter)
+	}
 }
 
 // Given two stores on one file claiming N jobs concurrently, then each job is claimed exactly once.

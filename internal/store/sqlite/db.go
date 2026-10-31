@@ -115,6 +115,18 @@ func (db *DB) Close(ctx context.Context) error {
 	return nil
 }
 
+// CloseShared closes both pools without a checkpoint, for a process that does not hold the data
+// directory lock. A TRUNCATE checkpoint would wait for the readers of the other processes and hold
+// off their writers, which could then fail with SQLITE_BUSY. SQLite checkpoints on its own as the
+// WAL grows, and when the last connection closes.
+func (db *DB) CloseShared() error {
+	if err := errors.Join(db.read.Close(), db.write.Close()); err != nil {
+		return fmt.Errorf("close database: %w", err)
+	}
+
+	return nil
+}
+
 // checkpoint copies the whole WAL into the database file and truncates it.
 func (db *DB) checkpoint(ctx context.Context) error {
 	var busy, logFrames, checkpointed int
