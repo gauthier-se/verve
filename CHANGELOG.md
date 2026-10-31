@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.0](https://github.com/gauthier-se/verve/compare/v0.1.0...v0.2.0) (2026-10-31)
+
+
+### Features
+
+* **jobs:** add the jobs table and repository ([#129](https://github.com/gauthier-se/verve/issues/129)) ([170c7bf](https://github.com/gauthier-se/verve/commit/170c7bf2d34a62ff53835e7fe43a2670f0809926))
+* **jobs:** retry, cancel and cleanly stop jobs ([#137](https://github.com/gauthier-se/verve/issues/137)) ([77146e1](https://github.com/gauthier-se/verve/commit/77146e10574ac93be352dc11ef17b41358d5f7d2))
+* **jobs:** run jobs with a worker pool, leases and heartbeats ([#136](https://github.com/gauthier-se/verve/issues/136)) ([8e2f633](https://github.com/gauthier-se/verve/commit/8e2f633abde3b6fa4956ac600918f98225163254))
+* **store:** open the database next to a running server ([#132](https://github.com/gauthier-se/verve/issues/132)) ([591f573](https://github.com/gauthier-se/verve/commit/591f5738d4d430d02c38077fc1123811b868134f))
+
+
+### Bug Fixes
+
+* **store:** stop waiting for a blocked checkpoint on shutdown ([#133](https://github.com/gauthier-se/verve/issues/133)) ([38ed54e](https://github.com/gauthier-se/verve/commit/38ed54eb29f0edb5154901716c06b17bdf49ad88))
+
 ## 0.1.0 (2026-10-30)
 
 
