@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"os"
@@ -14,6 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/gauthier-se/verve/internal/config"
+	"github.com/gauthier-se/verve/internal/jobs"
+	"github.com/gauthier-se/verve/internal/store"
 	"github.com/gauthier-se/verve/internal/store/sqlite"
 	"github.com/gauthier-se/verve/internal/version"
 	"github.com/gauthier-se/verve/internal/webui"
@@ -35,7 +38,7 @@ func testConfig(dataDir string) config.Config {
 func startRun(t *testing.T, cfg config.Config) (string, *syncBuffer, func()) {
 	t.Helper()
 
-	addr, logs, stop := startRunWith(t, cfg, beforeMigrate)
+	addr, logs, stop := startRunWith(t, cfg, beforeMigrate, jobs.NewRegistry())
 
 	require.Eventually(t, func() bool {
 		return strings.Contains(logs.String(), `msg="server ready"`)
@@ -44,17 +47,17 @@ func startRun(t *testing.T, cfg config.Config) (string, *syncBuffer, func()) {
 	return addr, logs, stop
 }
 
-// startRunWith runs Run, with hook called before the pending migrations, until it listens. It
-// returns the bound address, the logs and a function that stops Run and checks that it returned
-// without error.
-func startRunWith(t *testing.T, cfg config.Config, hook beforeMigrateFunc) (string, *syncBuffer, func()) {
+// startRunWith runs Run, with hook called before the pending migrations and the job kinds of
+// registry, until it listens. It returns the bound address, the logs and a function that stops Run
+// and checks that it returned without error.
+func startRunWith(t *testing.T, cfg config.Config, hook beforeMigrateFunc, registry *jobs.Registry) (string, *syncBuffer, func()) {
 	t.Helper()
 
 	logger, logs := testLogger()
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
 
-	go func() { done <- run(ctx, cfg, logger, hook) }()
+	go func() { done <- run(ctx, cfg, logger, hook, registry) }()
 
 	var addr string
 
@@ -231,6 +234,127 @@ func TestRun_CommandHoldsDatabaseOpen_StopsWithoutStallOrError(t *testing.T) {
 	require.Contains(t, logs.String(), `msg="database closed"`)
 }
 
+// Given startup, then the worker starts after the migrations are applied. Given shutdown, then it
+// stops before the database closes.
+func TestRun_StartsWorkerAfterMigrationsAndStopsItBeforeTheDatabaseCloses(t *testing.T) {
+	t.Parallel()
+
+	migrating := make(chan struct{})
+	release := make(chan struct{})
+	hook := func(ctx context.Context, _ []int64) error {
+		close(migrating)
+
+		select {
+		case <-release:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+
+	_, logs, stop := startRunWith(t, testConfig(t.TempDir()), hook, jobs.NewRegistry())
+
+	select {
+	case <-migrating:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run did not start migrating")
+	}
+
+	require.NotContains(t, logs.String(), `msg="worker started"`)
+
+	close(release)
+
+	require.Eventually(t, func() bool {
+		return strings.Contains(logs.String(), `msg="worker started"`)
+	}, 5*time.Second, 10*time.Millisecond, "the worker must start once the migrations complete")
+
+	stop()
+
+	out := logs.String()
+	workerStarted := strings.Index(out, `msg="worker started"`)
+	workerStopped := strings.Index(out, `msg="worker stopped"`)
+	dbClosed := strings.Index(out, `msg="database closed"`)
+
+	require.Less(t, strings.LastIndex(out, `msg="applied migration"`), workerStarted)
+	require.NotEqual(t, -1, workerStopped, "the worker must log its stop")
+	require.Less(t, workerStopped, dbClosed, "the worker must stop before the database closes")
+}
+
+// Given shutdown and a handler that takes time to stop, then the database closes after it returned,
+// so that its result is still written.
+func TestRun_ShutdownWaitsForARunningJobBeforeClosingTheDatabase(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	cfg := testConfig(t.TempDir())
+
+	_, err := Migrate(ctx, cfg, discardLogger())
+	require.NoError(t, err)
+
+	started := make(chan struct{})
+	registry := jobs.NewRegistry()
+	kind := jobs.Register(registry, "test.slow", jobs.KindOptions{}, func(ctx context.Context, _ jobs.Job[struct{}]) error {
+		close(started)
+		<-ctx.Done()
+		time.Sleep(100 * time.Millisecond)
+
+		return nil
+	})
+
+	slow, err := kind.New(struct{}{})
+	require.NoError(t, err)
+
+	queued, err := withSharedDB(ctx, cfg, func(s store.Store) (store.Job, error) {
+		return s.Jobs().Enqueue(ctx, slow)
+	})
+	require.NoError(t, err)
+
+	_, _, stop := startRunWith(t, cfg, beforeMigrate, registry)
+
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the handler did not start")
+	}
+
+	stop()
+
+	job, err := withSharedDB(ctx, cfg, func(s store.Store) (store.Job, error) {
+		return s.Jobs().Get(ctx, queued.ID)
+	})
+	require.NoError(t, err)
+	require.Equal(t, store.JobCompleted, job.Status)
+}
+
+// Given a job queued before startup, then the worker of the server runs it. Its kind is unknown,
+// because no feature registers one yet.
+func TestRun_WorkerRunsAJobQueuedBeforeStartup(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	cfg := testConfig(t.TempDir())
+
+	_, err := Migrate(ctx, cfg, discardLogger())
+	require.NoError(t, err)
+
+	queued, err := withSharedDB(ctx, cfg, func(s store.Store) (store.Job, error) {
+		return s.Jobs().Enqueue(ctx, store.NewJob{Kind: "test.unknown", Payload: json.RawMessage(`{}`)})
+	})
+	require.NoError(t, err)
+
+	_, _, stop := startRun(t, cfg)
+
+	require.Eventually(t, func() bool {
+		job, err := withSharedDB(ctx, cfg, func(s store.Store) (store.Job, error) {
+			return s.Jobs().Get(ctx, queued.ID)
+		})
+
+		return err == nil && job.Status == store.JobFailed && job.LastError == "unknown job kind"
+	}, 5*time.Second, 10*time.Millisecond, "the worker must run the job")
+
+	stop()
+}
+
 // Given a database whose version is newer than this binary supports, then Run fails and stops
 // the server without ever being ready.
 func TestRun_NewerDatabaseFails(t *testing.T) {
@@ -291,7 +415,7 @@ func TestRun_GatesApplicationRoutesWhileMigrating(t *testing.T) {
 		}
 	}
 
-	addr, _, stop := startRunWith(t, testConfig(t.TempDir()), hook)
+	addr, _, stop := startRunWith(t, testConfig(t.TempDir()), hook, jobs.NewRegistry())
 	base := "http://" + addr
 	wantVersion := version.Get().Version
 

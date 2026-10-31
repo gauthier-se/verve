@@ -23,9 +23,8 @@ linters:
       no-global: all
     depguard:
       rules:
-        # Domain code accesses data only through the interfaces of internal/store. Only the SQLite
-        # implementation and the wiring in internal/app see SQLite.
-        sqlite:
+        # Only the SQLite implementation and the wiring in internal/app see the SQLite driver.
+        sqlite-driver:
           files:
             - $all
             - "!**/internal/store/sqlite/**"
@@ -33,6 +32,15 @@ linters:
           deny:
             - pkg: modernc.org/sqlite
               desc: only internal/store/sqlite may use the SQLite driver
+        # Domain code accesses data only through the interfaces of internal/store. Tests may open
+        # the SQLite store, because database tests use a real file and never a mock.
+        sqlite-store:
+          files:
+            - $all
+            - "!$test"
+            - "!**/internal/store/sqlite/**"
+            - "!**/internal/app/**"
+          deny:
             - pkg: github.com/gauthier-se/verve/internal/store/sqlite
               desc: depend on the internal/store interfaces; only internal/app wires the SQLite implementation
 

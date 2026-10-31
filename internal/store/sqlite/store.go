@@ -30,9 +30,20 @@ func New(db *DB, clk clock.Clock) store.Store {
 
 // WithTx runs fn in a transaction on the writer. Reads through tx see the writes of fn.
 func (s *sqliteStore) WithTx(ctx context.Context, fn func(ctx context.Context, tx store.Repositories) error) error {
-	return s.pool.write(ctx, func(q *sqlcgen.Queries) error {
-		return fn(ctx, repositories{q: txQueries{q: q}, clk: s.clk})
+	var committed []func()
+
+	err := s.pool.write(ctx, func(q *sqlcgen.Queries) error {
+		return fn(ctx, repositories{q: txQueries{q: q, committed: &committed}, clk: s.clk})
 	})
+	if err != nil {
+		return err
+	}
+
+	for _, hook := range committed {
+		hook()
+	}
+
+	return nil
 }
 
 // Close closes the database.
@@ -54,6 +65,10 @@ func (r repositories) Jobs() store.JobsRepository {
 	return jobs(r)
 }
 
+func (r repositories) AfterCommit(fn func()) {
+	r.q.afterCommit(fn)
+}
+
 // queries gives the repositories the sqlc queries to run, either on the pools outside WithTx or
 // on the transaction of WithTx.
 type queries interface {
@@ -61,6 +76,8 @@ type queries interface {
 	read() *sqlcgen.Queries
 	// write runs fn with the queries for writes. It returns the error of fn.
 	write(ctx context.Context, fn func(q *sqlcgen.Queries) error) error
+	// afterCommit calls fn once the writes are committed.
+	afterCommit(fn func())
 }
 
 // poolQueries reads on the reader pool and runs each write in its own transaction on the writer.
@@ -79,9 +96,15 @@ func (p poolQueries) write(ctx context.Context, fn func(q *sqlcgen.Queries) erro
 	})
 }
 
+func (p poolQueries) afterCommit(fn func()) {
+	fn()
+}
+
 // txQueries reads and writes on the transaction of WithTx.
 type txQueries struct {
 	q *sqlcgen.Queries
+	// committed collects what to call once the transaction is committed.
+	committed *[]func()
 }
 
 func (t txQueries) read() *sqlcgen.Queries {
@@ -90,6 +113,10 @@ func (t txQueries) read() *sqlcgen.Queries {
 
 func (t txQueries) write(_ context.Context, fn func(q *sqlcgen.Queries) error) error {
 	return fn(t.q)
+}
+
+func (t txQueries) afterCommit(fn func()) {
+	*t.committed = append(*t.committed, fn)
 }
 
 // inTx runs fn in a transaction of db and commits it when fn returns nil. When fn returns an

@@ -20,6 +20,11 @@ var (
 type Repositories interface {
 	InstanceSettings() InstanceSettingsRepository
 	Jobs() JobsRepository
+
+	// AfterCommit calls fn once the writes made through these repositories are committed: at once
+	// outside WithTx, where each write is committed when it returns, and after the commit inside
+	// WithTx, in the order of the calls. fn does not run when the transaction rolls back.
+	AfterCommit(fn func())
 }
 
 // Store is the storage of Verve.
