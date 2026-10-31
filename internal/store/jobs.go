@@ -22,7 +22,7 @@ const (
 type NewJob struct {
 	Kind    string
 	Payload json.RawMessage
-	// RunAt is the earliest time the job can be claimed.
+	// RunAt is the earliest time the job can be claimed, or zero for now.
 	RunAt time.Time
 	// UserID is the user the job belongs to, or 0 for none.
 	UserID int64

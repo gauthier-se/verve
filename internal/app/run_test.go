@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/gauthier-se/verve/internal/config"
+	"github.com/gauthier-se/verve/internal/jobs"
 	"github.com/gauthier-se/verve/internal/store"
 	"github.com/gauthier-se/verve/internal/store/sqlite"
 	"github.com/gauthier-se/verve/internal/version"
@@ -37,7 +38,7 @@ func testConfig(dataDir string) config.Config {
 func startRun(t *testing.T, cfg config.Config) (string, *syncBuffer, func()) {
 	t.Helper()
 
-	addr, logs, stop := startRunWith(t, cfg, beforeMigrate)
+	addr, logs, stop := startRunWith(t, cfg, beforeMigrate, jobs.NewRegistry())
 
 	require.Eventually(t, func() bool {
 		return strings.Contains(logs.String(), `msg="server ready"`)
@@ -46,17 +47,17 @@ func startRun(t *testing.T, cfg config.Config) (string, *syncBuffer, func()) {
 	return addr, logs, stop
 }
 
-// startRunWith runs Run, with hook called before the pending migrations, until it listens. It
-// returns the bound address, the logs and a function that stops Run and checks that it returned
-// without error.
-func startRunWith(t *testing.T, cfg config.Config, hook beforeMigrateFunc) (string, *syncBuffer, func()) {
+// startRunWith runs Run, with hook called before the pending migrations and the job kinds of
+// registry, until it listens. It returns the bound address, the logs and a function that stops Run
+// and checks that it returned without error.
+func startRunWith(t *testing.T, cfg config.Config, hook beforeMigrateFunc, registry *jobs.Registry) (string, *syncBuffer, func()) {
 	t.Helper()
 
 	logger, logs := testLogger()
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
 
-	go func() { done <- run(ctx, cfg, logger, hook) }()
+	go func() { done <- run(ctx, cfg, logger, hook, registry) }()
 
 	var addr string
 
@@ -251,7 +252,7 @@ func TestRun_StartsWorkerAfterMigrationsAndStopsItBeforeTheDatabaseCloses(t *tes
 		}
 	}
 
-	_, logs, stop := startRunWith(t, testConfig(t.TempDir()), hook)
+	_, logs, stop := startRunWith(t, testConfig(t.TempDir()), hook, jobs.NewRegistry())
 
 	select {
 	case <-migrating:
@@ -277,6 +278,52 @@ func TestRun_StartsWorkerAfterMigrationsAndStopsItBeforeTheDatabaseCloses(t *tes
 	require.Less(t, strings.LastIndex(out, `msg="applied migration"`), workerStarted)
 	require.NotEqual(t, -1, workerStopped, "the worker must log its stop")
 	require.Less(t, workerStopped, dbClosed, "the worker must stop before the database closes")
+}
+
+// Given shutdown and a handler that takes time to stop, then the database closes after it returned,
+// so that its result is still written.
+func TestRun_ShutdownWaitsForARunningJobBeforeClosingTheDatabase(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	cfg := testConfig(t.TempDir())
+
+	_, err := Migrate(ctx, cfg, discardLogger())
+	require.NoError(t, err)
+
+	started := make(chan struct{})
+	registry := jobs.NewRegistry()
+	kind := jobs.Register(registry, "test.slow", jobs.KindOptions{}, func(ctx context.Context, _ jobs.Job[struct{}]) error {
+		close(started)
+		<-ctx.Done()
+		time.Sleep(100 * time.Millisecond)
+
+		return nil
+	})
+
+	slow, err := kind.New(struct{}{})
+	require.NoError(t, err)
+
+	queued, err := withSharedDB(ctx, cfg, func(s store.Store) (store.Job, error) {
+		return s.Jobs().Enqueue(ctx, slow)
+	})
+	require.NoError(t, err)
+
+	_, _, stop := startRunWith(t, cfg, beforeMigrate, registry)
+
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the handler did not start")
+	}
+
+	stop()
+
+	job, err := withSharedDB(ctx, cfg, func(s store.Store) (store.Job, error) {
+		return s.Jobs().Get(ctx, queued.ID)
+	})
+	require.NoError(t, err)
+	require.Equal(t, store.JobCompleted, job.Status)
 }
 
 // Given a job queued before startup, then the worker of the server runs it. Its kind is unknown,
@@ -368,7 +415,7 @@ func TestRun_GatesApplicationRoutesWhileMigrating(t *testing.T) {
 		}
 	}
 
-	addr, _, stop := startRunWith(t, testConfig(t.TempDir()), hook)
+	addr, _, stop := startRunWith(t, testConfig(t.TempDir()), hook, jobs.NewRegistry())
 	base := "http://" + addr
 	wantVersion := version.Get().Version
 

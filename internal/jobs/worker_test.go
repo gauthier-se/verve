@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
@@ -77,15 +78,15 @@ func getJob(ctx context.Context, t *testing.T, s store.Store, id int64) store.Jo
 	return job
 }
 
-// requireStatus waits for the job of id to reach want.
-func requireStatus(ctx context.Context, t *testing.T, s store.Store, id int64, want store.JobStatus) {
+// requireCompleted waits for the job of id to end completed.
+func requireCompleted(ctx context.Context, t *testing.T, s store.Store, id int64) {
 	t.Helper()
 
 	require.Eventually(t, func() bool {
 		job, err := s.Jobs().Get(ctx, id)
 
-		return err == nil && job.Status == want
-	}, waitFor, time.Millisecond, "job %d must become %s", id, want)
+		return err == nil && job.Status == store.JobCompleted
+	}, waitFor, time.Millisecond, "job %d must complete", id)
 }
 
 func waitClosed(t *testing.T, ch <-chan struct{}, what string) {
@@ -141,14 +142,14 @@ func tickInBackground(ctx context.Context, t *testing.T, w *Worker) <-chan struc
 	return done
 }
 
-// finishedLines returns the lines logged for the end of a job.
-func finishedLines(t *testing.T, logs *loggingtest.Buffer) []map[string]any {
+// messageLines returns the lines logged with the message msg.
+func messageLines(t *testing.T, logs *loggingtest.Buffer, msg string) []map[string]any {
 	t.Helper()
 
 	var lines []map[string]any
 
 	for _, line := range logs.Lines(t) {
-		if line["msg"] == "job finished" {
+		if line["msg"] == msg {
 			lines = append(lines, line)
 		}
 	}
@@ -279,7 +280,7 @@ func TestRun_TwoWorkersAndThreeSlowJobs_RunAtMostTwoAtOnce(t *testing.T) {
 	close(release)
 
 	for _, job := range queued {
-		requireStatus(ctx, t, s, job.ID, store.JobCompleted)
+		requireCompleted(ctx, t, s, job.ID)
 	}
 
 	require.Equal(t, int64(2), highest.Load())
@@ -298,7 +299,7 @@ func idleWorker(ctx context.Context, t *testing.T, s store.Store, clk clock.Cloc
 
 	w, _ := newTestWorker(s, reg, clk, Options{Workers: 1, PollInterval: poll})
 	startWorker(t, w)
-	requireStatus(ctx, t, s, first.ID, store.JobCompleted)
+	requireCompleted(ctx, t, s, first.ID)
 
 	return w, kind
 }
@@ -318,7 +319,7 @@ func TestEnqueue_WakesAWorkerWithoutWaitingForThePoll(t *testing.T) {
 	job, err := w.Enqueue(ctx, s, queued)
 	require.NoError(t, err)
 
-	requireStatus(ctx, t, s, job.ID, store.JobCompleted)
+	requireCompleted(ctx, t, s, job.ID)
 }
 
 // Given a job enqueued on the repositories of a WithTx, then a worker wakes up once it is committed.
@@ -343,20 +344,7 @@ func TestEnqueue_OnTheRepositoriesOfAWithTx_WakesAWorkerAfterTheCommit(t *testin
 	})
 	require.NoError(t, err)
 
-	requireStatus(ctx, t, s, job.ID, store.JobCompleted)
-}
-
-// Given a job without a run time, then Enqueue makes it due from the current time, so that it
-// does not jump ahead of the jobs already waiting.
-func TestEnqueue_NoRunAt_IsDueFromNow(t *testing.T) {
-	t.Parallel()
-
-	s, clk := newTestStore(t)
-	w, _ := newTestWorker(s, NewRegistry(), clk, Options{})
-
-	job, err := w.Enqueue(t.Context(), s, store.NewJob{Kind: "test.kind", Payload: json.RawMessage(`{}`)})
-	require.NoError(t, err)
-	require.Equal(t, workerTestNow, job.RunAt)
+	requireCompleted(ctx, t, s, job.ID)
 }
 
 // Given a job written by another process, then it is picked up within the poll interval.
@@ -369,7 +357,7 @@ func TestRun_JobWrittenByAnotherProcess_IsPickedUpByThePoll(t *testing.T) {
 
 	job := enqueue(ctx, t, s, kind, "second")
 
-	requireStatus(ctx, t, s, job.ID, store.JobCompleted)
+	requireCompleted(ctx, t, s, job.ID)
 }
 
 // Given a handler running longer than the lease, then heartbeats keep its lease and no other worker
@@ -455,7 +443,7 @@ func TestTick_HeartbeatConflict_CancelsHandlerAndWritesNoResult(t *testing.T) {
 
 	require.Equal(t, store.JobQueued, getJob(ctx, t, s, queued.ID).Status)
 
-	lines := finishedLines(t, logs)
+	lines := messageLines(t, logs, "job finished")
 	require.Len(t, lines, 1)
 	require.Equal(t, "lease_lost", lines[0]["status"])
 }
@@ -468,8 +456,11 @@ func TestTick_HandlerPanics_LogsItAndRecordsTheFailedAttempt(t *testing.T) {
 	s, clk := newTestStore(t)
 	ctx := t.Context()
 	reg := NewRegistry()
+
+	const secret = "panic value that must stay out of the logs"
+
 	kind := Register(reg, "test.kind", KindOptions{}, func(context.Context, Job[testPayload]) error {
-		panic("boom")
+		panic(secret)
 	})
 	queued := enqueue(ctx, t, s, kind, "first")
 	w, logs := newTestWorker(s, reg, clk, Options{})
@@ -483,19 +474,13 @@ func TestTick_HandlerPanics_LogsItAndRecordsTheFailedAttempt(t *testing.T) {
 	require.Equal(t, int64(1), job.Attempts)
 	require.Equal(t, "handler panicked", job.LastError)
 
-	var panics []map[string]any
-
-	for _, line := range logs.Lines(t) {
-		if line["msg"] == "job handler panicked" {
-			panics = append(panics, line)
-		}
-	}
-
+	panics := messageLines(t, logs, "job handler panicked")
 	require.Len(t, panics, 1)
 	require.Equal(t, "ERROR", panics[0]["level"])
-	require.Equal(t, "boom", panics[0]["panic"])
+	require.Equal(t, "string", panics[0]["panic_type"])
 	require.Equal(t, "test.kind", panics[0]["kind"])
 	require.NotEmpty(t, panics[0]["stack"])
+	require.NotContains(t, fmt.Sprint(logs.Lines(t)), secret)
 }
 
 // Given a job that no handler can run, then it is marked failed with a clear error.
@@ -575,7 +560,7 @@ func TestTick_FinishedJob_LogsOneLineWithoutThePayload(t *testing.T) {
 			_, err := w.Tick(ctx)
 			require.NoError(t, err)
 
-			lines := finishedLines(t, logs)
+			lines := messageLines(t, logs, "job finished")
 			require.Len(t, lines, 1)
 			require.Equal(t, tt.wantLevel, lines[0]["level"])
 			require.Equal(t, "test.kind", lines[0]["kind"])
@@ -616,7 +601,7 @@ func TestRun_Shutdown_CancelsTheHandlerAndClaimsNoMoreJobs(t *testing.T) {
 	require.Zero(t, job.Attempts)
 	require.Equal(t, store.JobQueued, getJob(ctx, t, s, waiting.ID).Status)
 
-	lines := finishedLines(t, logs)
+	lines := messageLines(t, logs, "job finished")
 	require.Len(t, lines, 1)
 	require.Equal(t, "interrupted", lines[0]["status"])
 }
@@ -645,6 +630,191 @@ func TestRun_Shutdown_HandlerThatFinishes_CompletesTheJob(t *testing.T) {
 	stop()
 
 	require.Equal(t, store.JobCompleted, getJob(ctx, t, s, queued.ID).Status)
+}
+
+// lockedResults is a store that cannot write the end of a job, as when another process holds the
+// write lock for longer than the busy timeout.
+type lockedResults struct {
+	store.Store
+}
+
+func (s lockedResults) Jobs() store.JobsRepository {
+	return lockedResultsJobs{JobsRepository: s.Store.Jobs()}
+}
+
+type lockedResultsJobs struct {
+	store.JobsRepository
+}
+
+func (lockedResultsJobs) Complete(context.Context, int64, int64) error {
+	return errors.New("database is locked")
+}
+
+// Given a result that cannot be written, then the log line of the job says so, and the job stays
+// running for its lease to recover.
+func TestTick_ResultCannotBeWritten_LeavesTheJobToTheLease(t *testing.T) {
+	t.Parallel()
+
+	s, clk := newTestStore(t)
+	ctx := t.Context()
+	reg := NewRegistry()
+	kind := Register(reg, "test.kind", KindOptions{}, func(context.Context, Job[testPayload]) error {
+		return nil
+	})
+	queued := enqueue(ctx, t, s, kind, "first")
+	w, logs := newTestWorker(lockedResults{Store: s}, reg, clk, Options{})
+
+	claimed, err := w.Tick(ctx)
+	require.NoError(t, err)
+	require.True(t, claimed)
+
+	require.Equal(t, store.JobRunning, getJob(ctx, t, s, queued.ID).Status)
+
+	lines := messageLines(t, logs, "job finished")
+	require.Len(t, lines, 1)
+	require.Equal(t, "WARN", lines[0]["level"])
+	require.Equal(t, "result_lost", lines[0]["status"])
+	require.Equal(t, "database is locked", lines[0]["error"])
+}
+
+// Given a job taken away before the handler returns and before any heartbeat notices, then the
+// write of its result is refused and the log line says the lease is lost.
+func TestTick_JobLostBeforeItsResultIsWritten_LogsTheLostLease(t *testing.T) {
+	t.Parallel()
+
+	s, clk := newTestStore(t)
+	ctx := t.Context()
+	reg := NewRegistry()
+	kind := Register(reg, "test.kind", KindOptions{}, func(ctx context.Context, job Job[testPayload]) error {
+		running, err := s.Jobs().Get(ctx, job.ID)
+		if err != nil {
+			return err
+		}
+
+		return s.Jobs().Release(ctx, running.ID, running.Claims)
+	})
+	queued := enqueue(ctx, t, s, kind, "first")
+	w, logs := newTestWorker(s, reg, clk, Options{})
+
+	claimed, err := w.Tick(ctx)
+	require.NoError(t, err)
+	require.True(t, claimed)
+
+	require.Equal(t, store.JobQueued, getJob(ctx, t, s, queued.ID).Status)
+
+	lines := messageLines(t, logs, "job finished")
+	require.Len(t, lines, 1)
+	require.Equal(t, "lease_lost", lines[0]["status"])
+}
+
+// failingHeartbeats is a store whose first heartbeats fail, as when another process holds the write
+// lock for longer than the busy timeout.
+type failingHeartbeats struct {
+	store.Store
+
+	failures int64
+	calls    *atomic.Int64
+}
+
+func (s failingHeartbeats) Jobs() store.JobsRepository {
+	return failingHeartbeatsJobs{JobsRepository: s.Store.Jobs(), store: s}
+}
+
+type failingHeartbeatsJobs struct {
+	store.JobsRepository
+
+	store failingHeartbeats
+}
+
+func (j failingHeartbeatsJobs) Heartbeat(ctx context.Context, id, claims int64, lease time.Duration) error {
+	if j.store.calls.Add(1) <= j.store.failures {
+		return errors.New("database is locked")
+	}
+
+	return j.JobsRepository.Heartbeat(ctx, id, claims, lease)
+}
+
+// Given a heartbeat that fails although the job is still held, then the worker logs a warning and
+// tries again at the next one, the handler keeps running and its result is written.
+func TestTick_HeartbeatFailsOnce_KeepsTheHandlerRunning(t *testing.T) {
+	t.Parallel()
+
+	s, clk := newTestStore(t)
+	ctx := t.Context()
+	reg := NewRegistry()
+	started := make(chan struct{})
+	release := make(chan struct{})
+	kind := Register(reg, "test.kind", KindOptions{}, func(ctx context.Context, _ Job[testPayload]) error {
+		close(started)
+
+		select {
+		case <-release:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	})
+	queued := enqueue(ctx, t, s, kind, "first")
+
+	var calls atomic.Int64
+
+	flaky := failingHeartbeats{Store: s, failures: 1, calls: &calls}
+	w, logs := newTestWorker(flaky, reg, clk, Options{HeartbeatInterval: shortInterval})
+	done := tickInBackground(ctx, t, w)
+
+	waitClosed(t, started, "the handler did not start")
+	require.Eventually(t, func() bool { return calls.Load() >= 3 }, waitFor, time.Millisecond,
+		"the heartbeats must go on after the failure")
+
+	close(release)
+	waitClosed(t, done, "Tick did not return")
+
+	require.Equal(t, store.JobCompleted, getJob(ctx, t, s, queued.ID).Status)
+
+	warnings := messageLines(t, logs, "renew job lease")
+	require.Len(t, warnings, 1)
+	require.Equal(t, "WARN", warnings[0]["level"])
+	require.Equal(t, "test.kind", warnings[0]["kind"])
+	require.Equal(t, "database is locked", warnings[0]["error"])
+}
+
+// Given heartbeats that keep failing, then the handler keeps running while the lease holds, and is
+// cancelled once it has run out, because another worker can then claim the job.
+func TestTick_HeartbeatsKeepFailing_CancelsTheHandlerOnceTheLeaseRunsOut(t *testing.T) {
+	t.Parallel()
+
+	const lease = 60 * time.Second
+
+	s, clk := newTestStore(t)
+	ctx := t.Context()
+	reg := NewRegistry()
+	started := make(chan struct{})
+	kind := Register(reg, "test.kind", KindOptions{}, func(ctx context.Context, _ Job[testPayload]) error {
+		close(started)
+		<-ctx.Done()
+
+		return nil
+	})
+	queued := enqueue(ctx, t, s, kind, "first")
+
+	var calls atomic.Int64
+
+	flaky := failingHeartbeats{Store: s, failures: math.MaxInt64, calls: &calls}
+	w, logs := newTestWorker(flaky, reg, clk, Options{Lease: lease, HeartbeatInterval: shortInterval})
+	done := tickInBackground(ctx, t, w)
+
+	waitClosed(t, started, "the handler did not start")
+	require.Eventually(t, func() bool { return calls.Load() >= 3 }, waitFor, time.Millisecond,
+		"the handler must keep running while the lease holds")
+
+	clk.Advance(lease)
+	waitClosed(t, done, "the handler must be cancelled once the lease has run out")
+
+	require.Equal(t, store.JobRunning, getJob(ctx, t, s, queued.ID).Status)
+
+	lines := messageLines(t, logs, "job finished")
+	require.Len(t, lines, 1)
+	require.Equal(t, "lease_lost", lines[0]["status"])
 }
 
 // flakyStore is a store whose first claim fails.
@@ -687,7 +857,7 @@ func TestRun_ClaimFails_LogsAndTriesAgain(t *testing.T) {
 	w, logs := newTestWorker(&flakyStore{Store: s}, reg, clk, Options{Workers: 1, PollInterval: shortInterval})
 	stop := startWorker(t, w)
 
-	requireStatus(ctx, t, s, queued.ID, store.JobCompleted)
+	requireCompleted(ctx, t, s, queued.ID)
 	stop()
 
 	var warnings int

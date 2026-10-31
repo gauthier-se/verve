@@ -25,6 +25,11 @@ type jobs struct {
 func (r jobs) Enqueue(ctx context.Context, job store.NewJob) (store.Job, error) {
 	var row sqlcgen.Job
 
+	now := r.clk.Now()
+	if job.RunAt.IsZero() {
+		job.RunAt = now
+	}
+
 	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
 		var err error
 
@@ -34,7 +39,7 @@ func (r jobs) Enqueue(ctx context.Context, job store.NewJob) (store.Job, error) 
 			RunAt:     toMillis(job.RunAt),
 			UserID:    sql.NullInt64{Int64: job.UserID, Valid: job.UserID != 0},
 			SerialKey: sql.NullString{String: job.SerialKey, Valid: job.SerialKey != ""},
-			CreatedAt: toMillis(r.clk.Now()),
+			CreatedAt: toMillis(now),
 		})
 
 		return err

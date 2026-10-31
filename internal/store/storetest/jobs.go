@@ -136,6 +136,17 @@ func RunJobs(t *testing.T, newStore NewStoreFunc) {
 func runJobsEnqueue(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
 
+	// Given Enqueue without a run_at, then the job is due from the clock's now, so that it does not
+	// jump ahead of the jobs already waiting.
+	t.Run("EnqueueWithoutRunAtIsDueFromNow", func(t *testing.T) {
+		t.Parallel()
+
+		jobs := newStore(t, clock.NewFake(jobsTime)).Jobs()
+
+		job := mustEnqueue(t.Context(), t, jobs, store.NewJob{Kind: "test.job", Payload: json.RawMessage(`{}`)})
+		require.Equal(t, jobsTime, job.RunAt)
+	})
+
 	// Given Enqueue with a kind, a payload, a run_at and optional user id and serial key, then the
 	// job is stored queued with 0 attempts and returned with its id.
 	t.Run("EnqueueStoresTheJobQueuedWithNoAttempts", func(t *testing.T) {
