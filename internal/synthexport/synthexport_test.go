@@ -6,11 +6,16 @@ import (
 	"context"
 	"encoding/xml"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"maps"
 	"math"
+	"os"
+	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"sort"
 	"strconv"
@@ -35,14 +40,12 @@ const (
 	dateLayout    = "2006-01-02 15:04:05 -0700"
 )
 
-// testOptions describes a small export, so that a test runs in milliseconds.
+// update rewrites the golden tree, whose diff then shows every change of the format.
+var update = flag.Bool("update", false, "rewrite the golden tree in testdata")
+
+// testOptions is the fixture, so that the shapes these tests check are the ones it holds.
 func testOptions() synthexport.Options {
-	return synthexport.Options{
-		Seed:    1,
-		End:     time.Date(2026, time.January, 5, 9, 0, 0, 0, time.FixedZone("", 3600)),
-		Days:    8,
-		Density: 1,
-	}
+	return synthexport.Fixture()
 }
 
 // generate returns the zip written for opts.
@@ -904,4 +907,90 @@ func TestWrite_Routes_HavePointsInOrderInsideTheirWorkout(t *testing.T) {
 	}
 
 	require.NotZero(t, routes)
+}
+
+// Given the fixture options, then the content of the zip equals the unpacked tree in testdata, which
+// -update rewrites. Entries are compared rather than the zip, whose bytes depend on compress/flate.
+func TestWrite_Fixture_EqualsTheGoldenTree(t *testing.T) {
+	t.Parallel()
+
+	archive := generate(t, synthexport.Fixture())
+
+	got := map[string][]byte{}
+	for _, f := range openZip(t, archive).File {
+		got[f.Name] = readEntry(t, archive, f.Name)
+	}
+
+	if *update {
+		require.NoError(t, os.RemoveAll(filepath.Join("testdata", "apple_health_export")))
+
+		for name, content := range got {
+			path := filepath.Join("testdata", filepath.FromSlash(name))
+			require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o750))
+			require.NoError(t, os.WriteFile(path, content, 0o600))
+		}
+	}
+
+	want := map[string][]byte{}
+	golden := os.DirFS("testdata")
+
+	require.NoError(t, fs.WalkDir(golden, ".", func(name string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+
+		want[name], err = fs.ReadFile(golden, name)
+
+		return err
+	}))
+
+	require.ElementsMatch(t, slices.Collect(maps.Keys(want)), slices.Collect(maps.Keys(got)))
+
+	for name, content := range got {
+		require.True(t, bytes.Equal(want[name], content), "%s differs from testdata: review it, then run with -update", name)
+	}
+}
+
+// heapWatcher measures the live heap while an export is written to it.
+type heapWatcher struct {
+	written, next int
+	peak          uint64
+}
+
+func (w *heapWatcher) Write(p []byte) (int, error) {
+	const checkEvery = 512 << 10
+
+	w.written += len(p)
+
+	if w.written >= w.next {
+		w.next = w.written + checkEvery
+
+		var stats runtime.MemStats
+
+		runtime.GC()
+		runtime.ReadMemStats(&stats)
+		w.peak = max(w.peak, stats.HeapAlloc)
+	}
+
+	return len(p), nil
+}
+
+// Given an export of several tens of megabytes, then the live heap stays under 16 MiB during
+// generation. Not parallel, since other tests would count in the heap.
+func TestWrite_LargeExport_KeepsTheLiveHeapBounded(t *testing.T) {
+	const (
+		ceiling        = 16 << 20
+		compressedSize = 1 << 20 // more than 20 MB before compression
+	)
+
+	opts := synthexport.Fixture()
+	opts.Days = 30
+	opts.Density = 12
+
+	var watcher heapWatcher
+
+	require.NoError(t, synthexport.Write(t.Context(), &watcher, opts))
+	require.Greater(t, watcher.written, compressedSize)
+	require.NotZero(t, watcher.peak)
+	require.Less(t, watcher.peak, uint64(ceiling))
 }

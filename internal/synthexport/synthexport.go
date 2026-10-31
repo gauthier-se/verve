@@ -54,6 +54,17 @@ type Options struct {
 	Density int
 }
 
+// Fixture returns the options of the export kept in testdata: the smallest one that holds every
+// shape, since the workouts of a week end with its sixth day.
+func Fixture() Options {
+	return Options{
+		Seed:    1,
+		End:     time.Date(2026, time.January, 5, 9, 0, 0, 0, time.FixedZone("", 3600)),
+		Days:    6,
+		Density: 1,
+	}
+}
+
 // Write streams an export.zip to w.
 func Write(ctx context.Context, w io.Writer, opts Options) error {
 	if opts.Days < 1 {
