@@ -19,22 +19,17 @@ import (
 const (
 	folder     = "apple_health_export/"
 	dateLayout = "2006-01-02 15:04:05 -0700"
-
-	sourceWatch = "Apple Watch de Alex"
-	versionOS   = "26.0"
-
-	typeHeartRate            = "HKQuantityTypeIdentifierHeartRate"
-	typeHeartRateVariability = "HKQuantityTypeIdentifierHeartRateVariabilitySDNN"
-	unitBeatsPerMinute       = "count/min"
 )
 
 // A stream of random numbers exists per day, so that anything can be derived again from its day
 // alone, such as the workout of a route.
 const (
-	streamHeartRate = iota
-	streamHeartRateVariability
+	streamHeartRateVariability = iota
 	streamWorkout
 	streamActivitySummary
+	streamSleep
+	streamStandHours
+	streamSeries // the first of the series, which take one stream each
 )
 
 // prolog is what comes before the root element of a real export. It holds the declarations of the
@@ -150,9 +145,8 @@ func (e exporter) writeExportXML(ctx context.Context, d document) error {
 		"HKCharacteristicTypeIdentifierFitzpatrickSkinType", "HKFitzpatrickSkinTypeNotSet",
 		"HKCharacteristicTypeIdentifierCardioFitnessMedicationsUse", "None")
 
-	sections := []func(day int, d document){
-		e.writeRecords, e.writeCorrelations, e.writeWorkouts, e.writeActivitySummary, e.writeHeartRateVariability,
-	}
+	sections := append(e.recordSections(),
+		e.writeCorrelations, e.writeWorkouts, e.writeActivitySummary, e.writeHeartRateVariability)
 
 	for _, section := range sections {
 		for day := range e.opts.Days {
@@ -167,37 +161,6 @@ func (e exporter) writeExportXML(ctx context.Context, d document) error {
 	d.closeTag(0, "HealthData")
 
 	return nil
-}
-
-// record is a Record element.
-type record struct {
-	typ, source, version, unit, value string
-	start, end                        time.Time
-}
-
-func (e exporter) writeRecord(d document, r record) {
-	d.empty(1, "Record",
-		"type", r.typ,
-		"sourceName", r.source,
-		"sourceVersion", r.version,
-		"unit", r.unit,
-		"creationDate", e.date(r.end),
-		"startDate", e.date(r.start),
-		"endDate", e.date(r.end),
-		"value", r.value)
-}
-
-func (e exporter) writeRecords(day int, d document) {
-	r := e.rng(streamHeartRate, day)
-
-	for sample := range 24 * e.opts.Density {
-		at := e.dayStart(day).Add(time.Duration(sample) * time.Hour / time.Duration(e.opts.Density))
-
-		e.writeRecord(d, record{
-			typ: typeHeartRate, source: sourceWatch, version: versionOS, unit: unitBeatsPerMinute,
-			value: strconv.Itoa(50 + r.IntN(40)), start: at, end: at,
-		})
-	}
 }
 
 func (e exporter) writeCorrelations(day int, d document) {
@@ -222,8 +185,8 @@ func (e exporter) writeWorkouts(day int, d document) {
 		"workoutActivityType", "HKWorkoutActivityTypeRunning",
 		"duration", strconv.FormatFloat(run.end.Sub(run.start).Minutes(), 'f', -1, 64),
 		"durationUnit", "min",
-		"sourceName", sourceWatch,
-		"sourceVersion", versionOS,
+		"sourceName", sourceWatch.name,
+		"sourceVersion", sourceWatch.version,
 		"creationDate", e.date(run.end),
 		"startDate", e.date(run.start),
 		"endDate", e.date(run.end))
@@ -243,16 +206,6 @@ func (e exporter) writeActivitySummary(day int, d document) {
 		"appleExerciseTimeGoal", "30",
 		"appleStandHours", strconv.Itoa(6+r.IntN(9)),
 		"appleStandHoursGoal", "12")
-}
-
-func (e exporter) writeHeartRateVariability(day int, d document) {
-	r := e.rng(streamHeartRateVariability, day)
-	end := e.dayStart(day).Add(6 * time.Hour)
-
-	e.writeRecord(d, record{
-		typ: typeHeartRateVariability, source: sourceWatch, version: versionOS, unit: "ms",
-		value: strconv.FormatFloat(20+r.Float64()*60, 'f', 4, 64), start: end.Add(-time.Minute), end: end,
-	})
 }
 
 // run is a running workout.

@@ -25,8 +25,22 @@ func (d document) write(parts ...string) {
 	}
 }
 
+// open writes a start tag.
+func (d document) open(depth int, name string, attrs ...string) {
+	d.tag(depth, name, attrs, ">\n")
+}
+
 // empty writes an element without content.
 func (d document) empty(depth int, name string, attrs ...string) {
+	d.tag(depth, name, attrs, "/>\n")
+}
+
+// closeTag writes an end tag.
+func (d document) closeTag(depth int, name string) {
+	d.write(spaces[:depth], "</", name, ">\n")
+}
+
+func (d document) tag(depth int, name string, attrs []string, end string) {
 	d.write(spaces[:depth], "<", name)
 
 	for i := 0; i+1 < len(attrs); i += 2 {
@@ -35,12 +49,7 @@ func (d document) empty(depth int, name string, attrs ...string) {
 		}
 	}
 
-	d.write("/>\n")
-}
-
-// closeTag writes an end tag.
-func (d document) closeTag(depth int, name string) {
-	d.write(spaces[:depth], "</", name, ">\n")
+	d.write(end)
 }
 
 // flush passes on what is buffered, and stops the export when ctx is done or a write has failed.

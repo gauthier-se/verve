@@ -8,12 +8,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
+	_ "time/tzdata" // for Europe/Paris, on a machine without a time zone database
+	"unicode"
 
 	"github.com/stretchr/testify/require"
 
@@ -23,6 +27,7 @@ import (
 const (
 	exportXMLName = "apple_health_export/export.xml"
 	hrvType       = "HKQuantityTypeIdentifierHeartRateVariabilitySDNN"
+	stepType      = "HKQuantityTypeIdentifierStepCount"
 )
 
 // testOptions describes a small export, so that a test runs in milliseconds.
@@ -283,4 +288,252 @@ func TestWrite_FailingWriter_ReturnsItsError(t *testing.T) {
 	errFull := errors.New("disk full")
 
 	require.ErrorIs(t, synthexport.Write(t.Context(), failingWriter{errFull}, testOptions()), errFull)
+}
+
+// exportElements returns the elements of export.xml for opts.
+func exportElements(t *testing.T, opts synthexport.Options) []element {
+	t.Helper()
+
+	return readElements(t, readEntry(t, generate(t, opts), exportXMLName))
+}
+
+// withPath keeps the elements at one path.
+func withPath(elements []element, path string) []element {
+	var kept []element
+
+	for _, e := range elements {
+		if e.path == path {
+			kept = append(kept, e)
+		}
+	}
+
+	return kept
+}
+
+// Given the records, then each type is one contiguous block, not sorted by date across sources.
+func TestWrite_Records_EachTypeIsOneBlockNotSortedAcrossSources(t *testing.T) {
+	t.Parallel()
+
+	var (
+		records = withPath(exportElements(t, testOptions()), "HealthData/Record")
+		types   []string
+		steps   []element
+	)
+
+	for _, r := range records {
+		types = append(types, r.attrs["type"])
+
+		if r.attrs["type"] == stepType {
+			steps = append(steps, r)
+		}
+	}
+
+	blocks := slices.Compact(slices.Clone(types))
+	slices.Sort(types)
+	require.Len(t, blocks, len(slices.Compact(types)))
+
+	goesBack := false
+	for i := 1; i < len(steps); i++ {
+		goesBack = goesBack || steps[i].attrs["startDate"] < steps[i-1].attrs["startDate"]
+	}
+
+	require.True(t, goesBack, "the block of step counts is sorted by date")
+}
+
+// Given dates of another season, then they still have the format of a real export and the offset of
+// the export, which is not the offset of their own date.
+func TestWrite_Dates_CarryTheOffsetOfTheExportInEverySeason(t *testing.T) {
+	t.Parallel()
+
+	paris, err := time.LoadLocation("Europe/Paris")
+	require.NoError(t, err)
+
+	opts := testOptions()
+	opts.End = time.Date(2026, time.October, 31, 9, 0, 0, 0, paris) // the clocks went back on October 25
+	opts.Days = 10
+
+	format := regexp.MustCompile(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \+0100$`)
+	inSummerTime := false
+
+	for _, e := range exportElements(t, opts) {
+		for name, value := range e.attrs {
+			isDate := name == "creationDate" || name == "startDate" || name == "endDate" || name == "date" ||
+				e.path == "HealthData/ExportDate"
+			if !isDate {
+				continue
+			}
+
+			require.Regexp(t, format, value, "%s of %s", name, e.path)
+
+			inSummerTime = inSummerTime || strings.HasPrefix(value, "2026-10-21 ")
+		}
+	}
+
+	require.True(t, inSummerTime, "no date before the clocks went back")
+}
+
+// Given the records, then they cover the shapes of a real export.
+func TestWrite_Records_CoverTheShapesOfTheFormat(t *testing.T) {
+	t.Parallel()
+
+	instant := func(r element) bool { return r.attrs["startDate"] == r.attrs["endDate"] }
+
+	shapes := map[string]func(r element) bool{
+		"instant quantity": func(r element) bool {
+			return r.attrs["type"] == "HKQuantityTypeIdentifierHeartRate" && r.attrs["unit"] == "count/min" && instant(r)
+		},
+		"interval quantity": func(r element) bool {
+			return r.attrs["type"] == stepType && r.attrs["unit"] == "count" && !instant(r)
+		},
+		"category without unit": func(r element) bool {
+			_, hasUnit := r.attrs["unit"]
+			return r.attrs["type"] == "HKCategoryTypeIdentifierSleepAnalysis" && !hasUnit &&
+				strings.HasPrefix(r.attrs["value"], "HKCategoryValueSleepAnalysis")
+		},
+		"percentage as a fraction": func(r element) bool {
+			value, err := strconv.ParseFloat(r.attrs["value"], 64)
+			return r.attrs["unit"] == "%" && err == nil && value > 0 && value <= 1
+		},
+		"value in scientific notation": func(r element) bool {
+			return regexp.MustCompile(`^\d(\.\d+)?e-\d+$`).MatchString(r.attrs["value"])
+		},
+		"zero": func(r element) bool { return r.attrs["value"] == "0" },
+		"unit with a non-ASCII character": func(r element) bool {
+			return r.attrs["unit"] == "kcal/hr·kg"
+		},
+		"source with a non-ASCII character": func(r element) bool {
+			return strings.ContainsFunc(r.attrs["sourceName"], func(c rune) bool { return c > unicode.MaxASCII })
+		},
+		"without sourceVersion": func(r element) bool {
+			_, hasVersion := r.attrs["sourceVersion"]
+			return !hasVersion
+		},
+		"type outside the prefixes of the catalog": func(r element) bool {
+			return r.attrs["type"] == "HKDataTypeSleepDurationGoal" && r.attrs["unit"] == "hr"
+		},
+	}
+
+	records := withPath(exportElements(t, testOptions()), "HealthData/Record")
+
+	for name, matches := range shapes {
+		require.True(t, slices.ContainsFunc(records, matches), name)
+	}
+}
+
+// Given the step counts, then two sources overlap in time, which source priority has to resolve.
+func TestWrite_StepCounts_OfTwoSourcesOverlapInTime(t *testing.T) {
+	t.Parallel()
+
+	steps := withPath(exportElements(t, testOptions()), "HealthData/Record")
+	steps = slices.DeleteFunc(steps, func(r element) bool { return r.attrs["type"] != stepType })
+
+	overlaps := slices.ContainsFunc(steps, func(a element) bool {
+		return slices.ContainsFunc(steps, func(b element) bool {
+			return a.attrs["sourceName"] != b.attrs["sourceName"] &&
+				a.attrs["startDate"] < b.attrs["endDate"] && b.attrs["startDate"] < a.attrs["endDate"]
+		})
+	})
+
+	require.True(t, overlaps)
+}
+
+// Given the device attributes, then they have the five shapes of the format, and they are escaped.
+func TestWrite_Devices_HaveTheFiveShapesOfTheFormat(t *testing.T) {
+	t.Parallel()
+
+	var (
+		content = readEntry(t, generate(t, testOptions()), exportXMLName)
+		device  = regexp.MustCompile(`^<<HKDevice: 0x[0-9a-f]+>, (.*)>$`)
+		shapes  = map[string]bool{}
+	)
+
+	for _, e := range readElements(t, content) {
+		value, ok := e.attrs["device"]
+		if !ok {
+			continue
+		}
+
+		match := device.FindStringSubmatch(value)
+		require.NotNil(t, match, value)
+
+		var names []string
+
+		for field := range strings.SplitSeq(match[1], ", ") {
+			name, _, found := strings.Cut(field, ":")
+			require.True(t, found, value)
+
+			names = append(names, name)
+		}
+
+		shapes[strings.Join(names, ",")] = true
+	}
+
+	require.ElementsMatch(t, []string{
+		"name,manufacturer,model,hardware,software,creation date",
+		"name,bluetoothIdentifier,manufacturer,model,hardware,firmware,creation date",
+		"name,manufacturer,model,localIdentifier,creation date",
+		"name,localIdentifier,creation date",
+		"name,manufacturer,localIdentifier,creation date",
+	}, slices.Collect(maps.Keys(shapes)))
+	require.Contains(t, string(content), `device="&lt;&lt;HKDevice: 0x`)
+}
+
+// Given the metadata, then it covers the shapes of a real export.
+func TestWrite_Metadata_CoversTheShapesOfTheFormat(t *testing.T) {
+	t.Parallel()
+
+	shapes := map[string]func(key, value string) bool{
+		"HealthKit key": func(key, _ string) bool { return key == "HKMetadataKeyHeartRateMotionContext" },
+		"key written by an app": func(key, _ string) bool {
+			return !strings.HasPrefix(key, "HK")
+		},
+		"non-ASCII value": func(_, value string) bool {
+			return strings.ContainsFunc(value, func(c rune) bool { return c > unicode.MaxASCII })
+		},
+		"value carrying a unit": func(_, value string) bool {
+			return regexp.MustCompile(`^\d+(\.\d+)? (kPa|count/min)$`).MatchString(value)
+		},
+		"time zone": func(key, value string) bool { return key == "HKTimeZone" && value == "Europe/Paris" },
+	}
+
+	entries := withPath(exportElements(t, testOptions()), "HealthData/Record/MetadataEntry")
+
+	for name, matches := range shapes {
+		found := slices.ContainsFunc(entries, func(e element) bool { return matches(e.attrs["key"], e.attrs["value"]) })
+		require.True(t, found, name)
+	}
+}
+
+// Given a heart rate variability record, then it lists its beats, whose time has a comma before its
+// hundredths of a second.
+func TestWrite_HeartRateVariability_ListsBeatsWithACommaInTheirTime(t *testing.T) {
+	t.Parallel()
+
+	const list = "HealthData/Record/HeartRateVariabilityMetadataList"
+
+	var (
+		format = regexp.MustCompile(`^\d{2}:\d{2}:\d{2},\d{2}$`)
+		record element
+		lists  int
+		beats  int
+	)
+
+	for _, e := range exportElements(t, testOptions()) {
+		switch e.path {
+		case "HealthData/Record":
+			record = e
+		case list:
+			lists++
+
+			require.Equal(t, hrvType, record.attrs["type"])
+		case list + "/InstantaneousBeatsPerMinute":
+			beats++
+
+			require.Regexp(t, format, e.attrs["time"])
+			require.Regexp(t, `^\d{2,3}$`, e.attrs["bpm"])
+		}
+	}
+
+	require.Equal(t, testOptions().Days, lists)
+	require.Greater(t, beats, lists)
 }
