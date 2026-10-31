@@ -9,7 +9,7 @@ import (
 
 // Given the attempts of a job, then the delay starts at 30 seconds, doubles per attempt and is
 // capped at 1 hour.
-func TestBackoff(t *testing.T) {
+func TestBackoff_StartsAt30SecondsDoublesAndCapsAtOneHour(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {

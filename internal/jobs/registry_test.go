@@ -110,6 +110,13 @@ func TestPermanent_KeepsTheErrorAndItsCause(t *testing.T) {
 	require.ErrorIs(t, err, cause)
 }
 
+// Given no error, then Permanent returns none, so that a handler can wrap the result of a call.
+func TestPermanent_NoError_ReturnsNil(t *testing.T) {
+	t.Parallel()
+
+	require.NoError(t, Permanent(nil))
+}
+
 // Given a payload that does not encode, then New returns an error naming the kind.
 func TestKind_New_PayloadThatDoesNotEncode_Fails(t *testing.T) {
 	t.Parallel()

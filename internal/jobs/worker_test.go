@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1281,4 +1282,74 @@ func TestRun_ClaimFails_LogsAndTriesAgain(t *testing.T) {
 	}
 
 	require.Equal(t, 1, warnings)
+}
+
+// Given a job whose result waits for the write lock of another process when the shutdown comes,
+// then the write gives way to the deadline of the shutdown, and the lease recovers the job.
+func TestRun_Shutdown_ResultWaitingForTheWriteLock_GivesUpAfterTheDeadline(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "verve.db")
+	s, clk := newTestStoreAt(t, path)
+	ctx := t.Context()
+
+	other, err := sqlite.Open(ctx, path)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, other.CloseShared()) })
+
+	var holder *sql.Tx
+
+	reg := NewRegistry()
+	holding := make(chan struct{})
+	kind := Register(reg, "test.kind", KindOptions{}, func(context.Context, Job[testPayload]) error {
+		defer close(holding)
+
+		var err error
+
+		// The context of the test, because the transaction must outlive the one of the handler.
+		holder, err = other.Write().BeginTx(ctx, nil)
+
+		return err
+	})
+	queued := enqueue(ctx, t, s, kind, "first")
+
+	w, logs := newTestWorker(s, reg, clk, Options{Workers: 1, PollInterval: shortInterval})
+	stop := startWorker(t, w)
+
+	waitClosed(t, holding, "the handler did not take the write lock")
+	t.Cleanup(func() { _ = holder.Rollback() })
+
+	// Long enough for the worker to start waiting for the write lock.
+	time.Sleep(100 * time.Millisecond)
+
+	start := time.Now()
+
+	stop()
+	require.Less(t, time.Since(start), 2*time.Second, "the shutdown must not wait for the busy timeout")
+
+	require.NoError(t, holder.Rollback())
+	require.Equal(t, store.JobRunning, getJob(ctx, t, s, queued.ID).Status)
+
+	lines := messageLines(t, logs, "job finished")
+	require.Len(t, lines, 1)
+	require.Equal(t, "result_lost", lines[0]["status"])
+}
+
+// Given a cancellation requested just before the handler ends, before a heartbeat reports it, then
+// the job keeps its result: its work is done, and only a retry is called off.
+func TestTick_CancelRequestedBeforeTheHandlerEnds_KeepsTheResult(t *testing.T) {
+	t.Parallel()
+
+	s, clk := newTestStore(t)
+	ctx := t.Context()
+	reg := NewRegistry()
+	kind := Register(reg, "test.kind", KindOptions{}, func(ctx context.Context, job Job[testPayload]) error {
+		return s.Jobs().Cancel(ctx, job.ID)
+	})
+	queued := enqueue(ctx, t, s, kind, "first")
+	w, _ := newTestWorker(s, reg, clk, Options{})
+
+	requireTick(ctx, t, w)
+
+	require.Equal(t, store.JobCompleted, getJob(ctx, t, s, queued.ID).Status)
 }

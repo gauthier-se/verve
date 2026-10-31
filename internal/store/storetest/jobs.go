@@ -345,6 +345,24 @@ func runJobsClaim(t *testing.T, newStore NewStoreFunc) {
 func runJobsSerialKeys(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
 
+	// Given a job waiting for its retry, then it does not hold its serial key: a newer job of the key
+	// runs before it.
+	t.Run("AJobWaitingForItsRetryDoesNotHoldItsSerialKey", func(t *testing.T) {
+		t.Parallel()
+
+		jobs := newStore(t, clock.NewFake(jobsTime)).Jobs()
+		ctx := t.Context()
+
+		older := mustEnqueue(ctx, t, jobs, dueJob(jobsTime, "import:7"))
+		newer := mustEnqueue(ctx, t, jobs, dueJob(jobsTime, "import:7"))
+
+		claimed := mustClaim(ctx, t, jobs)
+		require.Equal(t, older.ID, claimed.ID)
+		require.NoError(t, jobs.Retry(ctx, claimed.ID, claimed.Claims, "handler failed", jobsTime.Add(time.Minute)))
+
+		require.Equal(t, newer.ID, mustClaim(ctx, t, jobs).ID)
+	})
+
 	// Given a running job with a valid lease and serial key K, then Claim skips queued jobs with key
 	// K and returns the next job without it. Once the key is free, its queued job is claimed.
 	t.Run("ClaimSkipsQueuedJobsWhoseSerialKeyIsHeld", func(t *testing.T) {

@@ -43,7 +43,9 @@ type Job struct {
 	Claims int64
 	// LostLeases counts the expired leases of the job. Claim counts a lease when it finds it expired.
 	LostLeases int64
-	RunAt      time.Time
+	// CancelRequested is true once a cancellation of the job was requested.
+	CancelRequested bool
+	RunAt           time.Time
 	// LockedUntil is the end of the lease, or zero when the job is not running.
 	LockedUntil time.Time
 	// UserID is the user the job belongs to, or 0 for none.
@@ -58,8 +60,8 @@ type Job struct {
 }
 
 // JobsRepository stores the background jobs. A job is held through the claims value that Claim
-// returns: Heartbeat, Complete, Fail and Release return ErrNotFound for a missing job, and
-// ErrConflict when the job is not running under that value. Both change nothing.
+// returns: Heartbeat, Complete, Fail, Release, Retry and ConfirmCancel return ErrNotFound for a
+// missing job, and ErrConflict when the job is not running under that value. Both change nothing.
 type JobsRepository interface {
 	// Enqueue stores a queued job with the current time as CreatedAt, and returns it.
 	Enqueue(ctx context.Context, job NewJob) (Job, error)
@@ -72,15 +74,27 @@ type JobsRepository interface {
 	// serial key never has two running jobs.
 	//
 	// A job that lost its lease 5 times is marked failed instead of being claimed again, so that a
-	// job that kills the process cannot loop forever. Claim returns ErrNotFound when no job is due.
-	// The claim is atomic across processes.
+	// job that kills the process cannot loop forever. A job whose cancellation was requested and that
+	// no handler can confirm, because it is queued or its lease has expired, is marked cancelled
+	// instead of being claimed. Claim returns ErrNotFound when no job is due. The claim is atomic
+	// across processes.
 	Claim(ctx context.Context, lease time.Duration) (Job, error)
-	// Heartbeat renews the lease of a running job, from now.
-	Heartbeat(ctx context.Context, id, claims int64, lease time.Duration) error
+	// Heartbeat renews the lease of a running job, from now, and reports whether a cancellation of
+	// the job was requested.
+	Heartbeat(ctx context.Context, id, claims int64, lease time.Duration) (cancelRequested bool, err error)
 	// Complete marks a running job completed.
 	Complete(ctx context.Context, id, claims int64) error
 	// Fail marks a running job failed with message as its last error, and counts a failed attempt.
 	Fail(ctx context.Context, id, claims int64, message string) error
 	// Release returns a running job to queued, keeping its RunAt, its attempts and its lost leases.
 	Release(ctx context.Context, id, claims int64) error
+	// Retry returns a running job to queued with runAt as its RunAt and message as its last error,
+	// and counts a failed attempt.
+	Retry(ctx context.Context, id, claims int64, message string, runAt time.Time) error
+	// Cancel cancels a queued job at once, and requests the cancellation of a running one, which its
+	// handler confirms with ConfirmCancel. It returns ErrNotFound for a missing job and ErrConflict
+	// for a finished one.
+	Cancel(ctx context.Context, id int64) error
+	// ConfirmCancel marks a running job cancelled, once its handler has stopped.
+	ConfirmCancel(ctx context.Context, id, claims int64) error
 }

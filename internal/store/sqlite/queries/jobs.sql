@@ -8,6 +8,16 @@ SELECT *
 FROM jobs
 WHERE id = ?;
 
+-- name: CancelUnconfirmedJobs :exec
+-- Cancels the jobs that no handler can confirm: back to queued after the request, or left by a
+-- process that died.
+UPDATE jobs
+SET status = 'cancelled',
+    locked_until = NULL,
+    finished_at = sqlc.arg(now)
+WHERE cancel_requested = 1
+  AND (status = 'queued' OR (status = 'running' AND locked_until <= sqlc.arg(now)));
+
 -- name: AbandonJobs :exec
 -- lost_leases does not count the lease that has just expired yet, as ClaimJob would.
 UPDATE jobs
@@ -48,10 +58,11 @@ WHERE id = (
 )
 RETURNING *;
 
--- name: HeartbeatJob :execrows
+-- name: HeartbeatJob :one
 UPDATE jobs
 SET locked_until = ?
-WHERE id = ? AND claims = ? AND status = 'running';
+WHERE id = ? AND claims = ? AND status = 'running'
+RETURNING cancel_requested;
 
 -- name: CompleteJob :execrows
 UPDATE jobs
@@ -73,4 +84,28 @@ WHERE id = ? AND claims = ? AND status = 'running';
 UPDATE jobs
 SET status = 'queued',
     locked_until = NULL
+WHERE id = ? AND claims = ? AND status = 'running';
+
+-- name: RetryJob :execrows
+UPDATE jobs
+SET status = 'queued',
+    attempts = attempts + 1,
+    locked_until = NULL,
+    last_error = ?,
+    run_at = ?
+WHERE id = ? AND claims = ? AND status = 'running';
+
+-- name: CancelJob :execrows
+UPDATE jobs
+SET status = CASE WHEN status = 'queued' THEN 'cancelled' ELSE status END,
+    cancel_requested = 1,
+    finished_at = CASE WHEN status = 'queued' THEN sqlc.arg(finished_at) ELSE finished_at END
+WHERE id = sqlc.arg(id)
+  AND status IN ('queued', 'running');
+
+-- name: ConfirmCancelJob :execrows
+UPDATE jobs
+SET status = 'cancelled',
+    locked_until = NULL,
+    finished_at = ?
 WHERE id = ? AND claims = ? AND status = 'running';

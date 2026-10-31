@@ -43,7 +43,7 @@ Every way of getting data into Verve goes through one pipeline that works on nor
   8. **Dirty ranges**: record affected `(type, time range)` per user and enqueue aggregate recomputation once the batch is committed.
   9. **Report**: update counters on the import record.
 - **FR-3**: Import report counters: received, inserted, updated, duplicates, blocked, invalid, unsupported (known but excluded types such as ECG), with up to 100 sample error messages kept for diagnosis.
-- **FR-4**: Only one import runs at a time per user. Concurrent pushes are queued as jobs and processed in arrival order, with a per-user serial key (see [Job worker](platform-jobs.md) FR-6).
+- **FR-4**: Only one import runs at a time per user. Concurrent pushes are queued as jobs and processed in arrival order, with a per-user serial key (see [Job worker](platform-jobs.md) FR-6). An import waiting for a retry does not hold back the next ones.
 - **FR-5**: Imports are resumable at batch granularity: if the process stops, the job restarts and duplicates are absorbed by idempotency.
 - **FR-6**: Native endpoint `POST /api/v1/ingest` (scope `ingest`):
   - the body is persisted durably to the inbox, then the server responds `202 Accepted` with an import id,
