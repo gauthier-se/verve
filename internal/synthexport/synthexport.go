@@ -50,7 +50,8 @@ type Options struct {
 	End time.Time
 	// Days is the length of the history, whose last day is the one before End.
 	Days int
-	// Density is the number of samples per hour of the continuous series.
+	// Density is the number of samples per hour of the continuous series and of route points per
+	// minute, up to one per second. A heart rate variability record lists 8 beats per unit of it.
 	Density int
 }
 
@@ -118,7 +119,7 @@ func (e exporter) writeEntries(ctx context.Context, zw *zip.Writer) error {
 				continue
 			}
 
-			if err := writeEntry(ctx, zw, "workout-routes/"+w.routeFile(), e.writeRoute(day, w)); err != nil {
+			if err := writeEntry(ctx, zw, "workout-routes/"+w.routeFile(), e.routeEntry(day, w)); err != nil {
 				return err
 			}
 		}
@@ -183,7 +184,7 @@ func (e exporter) writeActivitySummary(day int, d document) {
 
 	d.empty(1, "ActivitySummary",
 		"dateComponents", e.dayStart(day).Format(time.DateOnly),
-		"activeEnergyBurned", strconv.FormatFloat(250+r.Float64()*400, 'f', 2, 64),
+		"activeEnergyBurned", fixed(250+r.Float64()*400, 2),
 		"activeEnergyBurnedGoal", "500",
 		"activeEnergyBurnedUnit", "kcal",
 		"appleMoveTime", "0",

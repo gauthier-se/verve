@@ -9,6 +9,7 @@ import (
 
 const (
 	typeSleep                = "HKCategoryTypeIdentifierSleepAnalysis"
+	typeHeartRate            = "HKQuantityTypeIdentifierHeartRate"
 	typeHeartRateVariability = "HKQuantityTypeIdentifierHeartRateVariabilitySDNN"
 
 	deviceWatch = "name:Apple Watch, manufacturer:Apple Inc., model:Watch, hardware:Watch7,3, software:26.0"
@@ -18,7 +19,7 @@ const (
 	deviceAirPodsPro = "name:Alex’s AirPods Pro, bluetoothIdentifier:5D8C0E9A-1B2F-4C3D-8E7F-0A1B2C3D4E5F, " +
 		"manufacturer:Apple Inc., model:AirPods Pro, hardware:AirPods2,2, firmware:7A100"
 
-	deviceAirPods = "name:AirPods, manufacturer:Apple Inc., model:0x2002, localIdentifier:02:00:5E:10:00:01-tacl"
+	deviceAirPods = "name:AirPods, manufacturer:Apple Inc., model:0x7777, localIdentifier:02:00:5E:10:00:01-tacl"
 	deviceHeadset = "name:Headset, localIdentifier:02:00:5E:10:00:02-tacl"
 	deviceSpeaker = "name:Speaker, manufacturer:Acme, localIdentifier:02:00:5E:10:00:03-tacl"
 )
@@ -36,7 +37,8 @@ var (
 	sourcePhone        = source{name: "iPhone de Alex", version: "26.0", devices: []string{deviceIPhone}}
 	sourceOxygen       = source{name: "Oxygène sanguin", version: "26.0", devices: []string{deviceWatch}}
 	sourceAudio        = source{
-		name: "Bluetooth Device", devices: []string{deviceAirPodsPro, deviceAirPods, deviceHeadset, deviceSpeaker},
+		name: "Bluetooth Device", version: "26.0",
+		devices: []string{deviceAirPodsPro, deviceAirPods, deviceHeadset, deviceSpeaker},
 	}
 	sourceClock = source{name: "Clock", devices: []string{deviceIPhone}}
 	sourceApp   = source{name: "FitTrack", version: "612"}
@@ -126,6 +128,17 @@ type series struct {
 	metadata  func(r *rand.Rand) []metadata
 }
 
+// fixed writes a number with a fixed number of decimals.
+func fixed(value float64, decimals int) string {
+	return strconv.FormatFloat(value, 'f', decimals, 64)
+}
+
+// significant writes a number with six significant digits, as a real export does for most values,
+// which turns tiny ones to scientific notation.
+func significant(value float64) string {
+	return strconv.FormatFloat(value, 'g', 6, 64)
+}
+
 // integer draws whole numbers.
 func integer(low, high int) func(*rand.Rand, int) string {
 	return func(r *rand.Rand, _ int) string { return strconv.Itoa(low + r.IntN(high-low)) }
@@ -134,7 +147,7 @@ func integer(low, high int) func(*rand.Rand, int) string {
 // decimal draws numbers with a fixed number of decimals.
 func decimal(low, high float64, decimals int) func(*rand.Rand, int) string {
 	return func(r *rand.Rand, _ int) string {
-		return strconv.FormatFloat(low+r.Float64()*(high-low), 'f', decimals, 64)
+		return fixed(low+r.Float64()*(high-low), decimals)
 	}
 }
 
@@ -143,7 +156,7 @@ func decimal(low, high float64, decimals int) func(*rand.Rand, int) string {
 func allSeries() []series {
 	return []series{
 		{
-			typ: "HKQuantityTypeIdentifierHeartRate", unit: "count/min", source: sourceWatch, value: integer(50, 120),
+			typ: typeHeartRate, unit: "count/min", source: sourceWatch, value: integer(50, 120),
 			metadata: func(r *rand.Rand) []metadata {
 				return []metadata{{"HKMetadataKeyHeartRateMotionContext", strconv.Itoa(r.IntN(3))}}
 			},
@@ -180,7 +193,7 @@ func allSeries() []series {
 			typ: "HKQuantityTypeIdentifierOxygenSaturation", unit: "%", source: sourceOxygen, value: decimal(0.93, 1, 2),
 			metadata: func(r *rand.Rand) []metadata {
 				pressure := 98 + r.Float64()*6
-				return []metadata{{"HKMetadataKeyBarometricPressure", strconv.FormatFloat(pressure, 'f', 3, 64) + " kPa"}}
+				return []metadata{{"HKMetadataKeyBarometricPressure", fixed(pressure, 3) + " kPa"}}
 			},
 		},
 		{
@@ -214,15 +227,14 @@ func allSeries() []series {
 	}
 }
 
-// distance is in kilometers, with the six significant digits of a real export, which turn to
-// scientific notation for the tiny distances that open a day.
+// distance is in kilometers. A tiny one opens each day, for scientific notation.
 func distance(r *rand.Rand, sample int) string {
 	km := 0.01 + r.Float64()*0.5
 	if sample == 0 {
 		km *= 1e-9
 	}
 
-	return strconv.FormatFloat(km, 'g', 6, 64)
+	return significant(km)
 }
 
 // audioExposure opens each day with the silence of headphones that nothing plays through.
@@ -231,7 +243,7 @@ func audioExposure(r *rand.Rand, sample int) string {
 		return "0"
 	}
 
-	return strconv.FormatFloat(40+r.Float64()*45, 'g', 6, 64)
+	return significant(40 + r.Float64()*45)
 }
 
 // recordSections returns what writes each block of records, a day at a time.
@@ -247,10 +259,12 @@ func (e exporter) recordSections() []func(day int, d document) {
 
 func (e exporter) writeSeries(s series, stream, day int, d document) {
 	r := e.rng(stream, day)
-	samples, step := 24*e.opts.Density, time.Hour/time.Duration(e.opts.Density)
+	samples, step, length := 24*e.opts.Density, time.Hour/time.Duration(e.opts.Density), s.length
 
 	if s.daily {
 		samples = 1
+	} else {
+		length = min(length, step) // the samples of a source never overlap
 	}
 
 	for sample := range samples {
@@ -263,7 +277,7 @@ func (e exporter) writeSeries(s series, stream, day int, d document) {
 
 		e.writeRecord(d, 1, record{
 			typ: s.typ, unit: s.unit, value: s.value(r, sample), source: s.source, device: e.deviceOf(s.source, day, r),
-			start: start, end: start.Add(s.length), metadata: meta,
+			start: start, end: start.Add(length), metadata: meta,
 		})
 	}
 }
@@ -272,7 +286,7 @@ func (e exporter) writeSeries(s series, stream, day int, d document) {
 // bed, then the stages. The clock of the phone, which has no version, adds the first night in bed.
 func (e exporter) writeSleep(day int, d document) {
 	r := e.rng(streamSleep, day)
-	zone := []metadata{{"HKTimeZone", "Europe/Paris"}}
+	timeZone := []metadata{{"HKTimeZone", "Europe/Paris"}}
 	bedtime := e.dayStart(day).Add(-time.Hour + time.Duration(r.IntN(60))*time.Minute)
 
 	stages := []struct {
@@ -296,7 +310,7 @@ func (e exporter) writeSleep(day int, d document) {
 	sleep := func(value string, s source, start, end time.Time) {
 		e.writeRecord(d, 1, record{
 			typ: typeSleep, value: value, source: s, device: e.deviceOf(s, day, r),
-			start: start, end: end, metadata: zone,
+			start: start, end: end, metadata: timeZone,
 		})
 	}
 
@@ -367,7 +381,7 @@ func (e exporter) writeHeartRateVariability(day int, d document) {
 	}
 
 	e.writeRecord(d, 1, record{
-		typ: typeHeartRateVariability, unit: "ms", value: strconv.FormatFloat(20+r.Float64()*60, 'g', 6, 64),
+		typ: typeHeartRateVariability, unit: "ms", value: significant(20 + r.Float64()*60),
 		source: sourceWatch, device: e.deviceOf(sourceWatch, day, r),
 		start: end.Add(-time.Minute), end: end,
 		metadata: []metadata{{"HKAlgorithmVersion", "2"}}, beats: beats,

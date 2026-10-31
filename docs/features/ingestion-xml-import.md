@@ -43,14 +43,16 @@ Import the full Apple Health export (the `export.zip` produced by the Health app
   | `Me` | From M2, with the profile: date of birth, biological sex, blood type and skin type are offered to prefill the profile (never overwriting values set by the user). Ignored in M1 |
   | `Record` (quantity) | Quantity sample: type, source name and version, device string, unit, creation, start and end dates, value, metadata entries |
   | `Record` (category) | Category sample, value mapped from the HealthKit category constant (for example sleep stages) |
-  | `HeartRateVariabilityMetadataList` | Stored as sample metadata (instantaneous beats) |
+  | `HeartRateVariabilityMetadataList` | Stored as sample metadata (instantaneous beats). The `time` of a beat is a time of day whose format follows the locale of the export, for example `14:05:12,52` |
   | `Correlation` | Inner records are imported as individual samples (blood pressure systolic and diastolic, food entries). Duplicates of top-level records are absorbed by deduplication |
-  | `Workout` | Workout entity with activity type, duration, totals from attributes and `WorkoutStatistics`, `WorkoutEvent` items (pauses, laps, segments), metadata |
+  | `Workout` | Workout entity with activity type, duration, totals from `WorkoutStatistics` (only older exports have `totalDistance` and `totalEnergyBurned` attributes), `WorkoutEvent` items (pauses, laps, segments), metadata |
+  | `WorkoutZoneGroup` | Heart rate zones as the watch computed them, stored as workout metadata. Verve computes its own zones (see [Workouts](page-workouts.md) FR-4) |
+  | `Record` inside `Workout` | Also exists at top level, like the records of a correlation: absorbed by deduplication |
   | `WorkoutRoute` / `FileReference` | Route loaded from the referenced GPX file inside the zip |
   | `ActivitySummary`, `ClinicalRecord`, `Audiogram`, `VisionPrescription` | Counted as unsupported |
 
 - **FR-7**: Progress is estimated from bytes read in the XML entry versus its uncompressed size.
-- **FR-8**: Dates in the export have the format `yyyy-MM-dd HH:mm:ss Z`. The parser also tolerates the format variants produced by older iOS versions and documented in fixtures.
+- **FR-8**: Dates in the export have the format `yyyy-MM-dd HH:mm:ss Z`. The parser also tolerates the format variants produced by older iOS versions and documented in fixtures. Every date carries the offset of the day of the export, even a date from another season: the instant is right, but the offset says nothing about the sample.
 - **FR-9**: Percentages in the XML export (for example body fat, oxygen saturation) are fractions with unit `%`, converted accordingly.
 - **FR-10**: CLI: `verve import xml --user <username> <path>` runs the same job in-process, prints progress and the final report, and takes the same per-user import lock as the server (see [Job worker](platform-jobs.md) FR-7). It works while the server is running.
 - **FR-11**: The final report includes per-type counts, the date range covered, and the number of routes attached to workouts.
@@ -65,6 +67,7 @@ Import the full Apple Health export (the `export.zip` produced by the Health app
 
 - tus endpoint under `/api/v1/uploads/` (plain `net/http` handler, documented manually in the OpenAPI spec).
 - Upload files in `/data/uploads`, deleted after successful import.
+- Tests use a synthetic export with the shape of a real one and invented data: `internal/synthexport` generates it, its `testdata/` keeps the fixture unpacked, and `tools/synthexport` writes an export of any size.
 
 ## Edge cases
 
@@ -74,6 +77,8 @@ Import the full Apple Health export (the `export.zip` produced by the Health app
 - Re-importing a newer export that overlaps an older one: only new samples are inserted.
 - Samples with identical natural keys inside the same file: counted as duplicates.
 - Corrupted zip or truncated XML: the import fails with a clear message; data committed before the failure stays.
+- Elements under the root come in no guaranteed order: heart rate variability records follow `ActivitySummary`, and each type of record is one block, which is not sorted by date across sources.
+- Zip entries use data descriptors: their local headers hold no size, so the uncompressed size that progress needs (FR-7) comes from the central directory.
 
 ## Acceptance criteria
 

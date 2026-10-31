@@ -14,7 +14,6 @@ const (
 	activityStrength = "HKWorkoutActivityTypeTraditionalStrengthTraining"
 
 	typeEffortScore = "HKQuantityTypeIdentifierEstimatedWorkoutEffortScore"
-	typeHeartRate   = "HKQuantityTypeIdentifierHeartRate"
 
 	// loopRadius is the size of a route, in degrees: about a kilometer around latitude 0, longitude
 	// 0, a place in the ocean that nobody mistakes for a real run, where coordinates change sign.
@@ -72,9 +71,9 @@ func runStatistics() []statistic {
 	}
 }
 
-// workoutsOn returns the workouts of a day, on a weekly schedule that the seed does not change: a
-// run, and every other week its Strava copy, a strength session, a walk, then a session logged in an
-// app.
+// workoutsOn returns the workouts of a day, on a weekly schedule: a run, and every other week its
+// Strava copy, a strength session, a walk, then a session logged in an app. The seed changes none of
+// their dates, which name the routes and set the number of their points.
 func (e exporter) workoutsOn(day int) []workout {
 	const (
 		runDay, strengthDay, walkDay, appDay = 0, 2, 4, 5
@@ -82,17 +81,23 @@ func (e exporter) workoutsOn(day int) []workout {
 	)
 
 	r := e.rng(streamWorkout, day)
-	start := e.dayStart(day).Add(7*time.Hour + time.Duration(r.IntN(120))*time.Minute)
-	end := start.Add(25*time.Minute + time.Duration(r.IntN(1800))*time.Second)
+	start := e.dayStart(day).Add(7*time.Hour + time.Duration(day*37%120)*time.Minute)
+	end := start.Add(25*time.Minute + time.Duration(day*411%1800)*time.Second)
 	base := workout{start: start, end: end, source: sourceWatch, device: e.deviceOf(sourceWatch, day, r)}
+
+	outdoor := func(activity string, statistics []statistic) workout {
+		w := base
+		w.activity, w.statistics = activity, statistics
+		w.metadata = watchMetadata(r, false)
+		w.events, w.zones, w.route = true, true, true
+		w.effort = w.effortScore(r)
+
+		return w
+	}
 
 	switch day % daysPerWeek {
 	case runDay:
-		run := base
-		run.activity, run.statistics = activityRunning, runStatistics()
-		run.metadata = watchMetadata(r, false)
-		run.events, run.zones, run.route = true, true, true
-		run.effort = e.effortScore(run, r)
+		run := outdoor(activityRunning, runStatistics())
 
 		if day%copyEvery != 0 {
 			return []workout{run}
@@ -113,13 +118,7 @@ func (e exporter) workoutsOn(day int) []workout {
 
 		return []workout{strength}
 	case walkDay:
-		walk := base
-		walk.activity, walk.statistics = activityWalking, walkStatistics()
-		walk.metadata = watchMetadata(r, false)
-		walk.events, walk.zones, walk.route = true, true, true
-		walk.effort = e.effortScore(walk, r)
-
-		return []workout{walk}
+		return []workout{outdoor(activityWalking, walkStatistics())}
 	case appDay:
 		return []workout{{
 			activity: activityStrength, source: sourceLifts, start: start, end: end,
@@ -149,7 +148,7 @@ func watchMetadata(r *rand.Rand, indoor bool) []metadata {
 	return meta
 }
 
-func (e exporter) effortScore(w workout, r *rand.Rand) record {
+func (w workout) effortScore(r *rand.Rand) record {
 	return record{
 		typ: typeEffortScore, unit: "appleEffortScore", value: integer(2, 7)(r, 0), source: w.source, device: w.device,
 		start: w.start, end: w.end,
@@ -301,9 +300,9 @@ func (w workout) routeFile() string {
 	return "route_" + w.start.Format("2006-01-02_3.04pm") + ".gpx"
 }
 
-// writeRoute returns the GPX entry of a workout: one loop around latitude 0, longitude 0, with
+// routeEntry returns the GPX entry of a workout: one loop around latitude 0, longitude 0, with
 // Density points per minute, and at most one per second since dates have no fraction.
-func (e exporter) writeRoute(day int, w workout) entry {
+func (e exporter) routeEntry(day int, w workout) entry {
 	return func(_ context.Context, d document) error {
 		r := e.rng(streamRoute, day)
 		step := max(time.Minute/time.Duration(e.opts.Density), time.Second)
@@ -334,9 +333,4 @@ func (e exporter) writeRoute(day int, w workout) entry {
 
 func gpxTime(t time.Time) string {
 	return t.UTC().Format(time.RFC3339)
-}
-
-// fixed writes a number with a fixed number of decimals.
-func fixed(value float64, decimals int) string {
-	return strconv.FormatFloat(value, 'f', decimals, 64)
 }

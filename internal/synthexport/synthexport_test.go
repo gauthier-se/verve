@@ -17,7 +17,6 @@ import (
 	"regexp"
 	"runtime"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -42,11 +41,6 @@ const (
 
 // update rewrites the golden tree, whose diff then shows every change of the format.
 var update = flag.Bool("update", false, "rewrite the golden tree in testdata")
-
-// testOptions is the fixture, so that the shapes these tests check are the ones it holds.
-func testOptions() synthexport.Options {
-	return synthexport.Fixture()
-}
 
 // generate returns the zip written for opts.
 func generate(t *testing.T, opts synthexport.Options) []byte {
@@ -129,52 +123,61 @@ func readElements(t *testing.T, content []byte) []element {
 	}
 }
 
-// shapeOf returns the distinct element paths with their attribute names, which values do not change.
-func shapeOf(elements []element) []string {
-	seen := map[string]bool{}
+// structureOf returns every element, in order, with its attribute names, which values do not change.
+func structureOf(elements []element) []string {
+	structure := make([]string, 0, len(elements))
 
 	for _, e := range elements {
-		names := make([]string, 0, len(e.attrs))
-		for name := range e.attrs {
-			names = append(names, name)
-		}
-
-		sort.Strings(names)
-		seen[fmt.Sprintf("%s %v", e.path, names)] = true
+		structure = append(structure, fmt.Sprintf("%s %v", e.path, slices.Sorted(maps.Keys(e.attrs))))
 	}
 
-	shape := make([]string, 0, len(seen))
-	for s := range seen {
-		shape = append(shape, s)
+	return structure
+}
+
+// entryNames returns the names of the entries of archive, in order.
+func entryNames(t *testing.T, archive []byte) []string {
+	t.Helper()
+
+	var names []string
+	for _, f := range openZip(t, archive).File {
+		names = append(names, f.Name)
 	}
 
-	sort.Strings(shape)
-
-	return shape
+	return names
 }
 
 // Given the same options, when Write runs twice, then the bytes are identical.
 func TestWrite_SameOptions_WritesIdenticalBytes(t *testing.T) {
 	t.Parallel()
 
-	first := generate(t, testOptions())
+	first := generate(t, synthexport.Fixture())
 
 	require.NotEmpty(t, first)
-	require.Equal(t, first, generate(t, testOptions()))
+	require.Equal(t, first, generate(t, synthexport.Fixture()))
 }
 
-// Given another seed, then the values differ and the structure stays.
+// Given another seed, then the values differ and the structure stays: the same entries, holding the
+// same elements in the same order.
 func TestWrite_AnotherSeed_ChangesValuesAndKeepsStructure(t *testing.T) {
 	t.Parallel()
 
-	other := testOptions()
+	other := synthexport.Fixture()
 	other.Seed = 2
 
-	first := readEntry(t, generate(t, testOptions()), exportXMLName)
-	second := readEntry(t, generate(t, other), exportXMLName)
+	first, second := generate(t, synthexport.Fixture()), generate(t, other)
 
-	require.NotEqual(t, first, second)
-	require.Equal(t, shapeOf(readElements(t, first)), shapeOf(readElements(t, second)))
+	require.NotEqual(t, readEntry(t, first, exportXMLName), readEntry(t, second, exportXMLName))
+	require.Equal(t, entryNames(t, first), entryNames(t, second))
+
+	for _, name := range entryNames(t, first) {
+		if strings.HasSuffix(name, ".csv") {
+			continue
+		}
+
+		require.Equal(t,
+			structureOf(readElements(t, readEntry(t, first, name))),
+			structureOf(readElements(t, readEntry(t, second, name))), name)
+	}
 }
 
 // Given an export, then the zip holds, in this order, export.xml, the routes, the electrocardiograms
@@ -193,7 +196,7 @@ func TestWrite_Zip_HasTheLayoutOfARealExport(t *testing.T) {
 
 	var order []int
 
-	for _, f := range openZip(t, generate(t, testOptions())).File {
+	for _, f := range openZip(t, generate(t, synthexport.Fixture())).File {
 		group := slices.IndexFunc(groups, func(r *regexp.Regexp) bool { return r.MatchString(f.Name) })
 		require.NotEqual(t, -1, group, "unexpected entry %s", f.Name)
 		require.Equal(t, zip.Deflate, f.Method, f.Name)
@@ -209,7 +212,7 @@ func TestWrite_Zip_HasTheLayoutOfARealExport(t *testing.T) {
 func TestWrite_ExportXML_StartsWithThePrologAndTheDTD(t *testing.T) {
 	t.Parallel()
 
-	content := string(readEntry(t, generate(t, testOptions()), exportXMLName))
+	content := string(readEntry(t, generate(t, synthexport.Fixture()), exportXMLName))
 
 	require.True(t, strings.HasPrefix(content, `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE HealthData [
@@ -229,7 +232,7 @@ func TestWrite_ExportXML_TopLevelComesInTheOrderOfARealExport(t *testing.T) {
 		summaryPassed bool
 	)
 
-	for _, e := range readElements(t, readEntry(t, generate(t, testOptions()), exportXMLName)) {
+	for _, e := range readElements(t, readEntry(t, generate(t, synthexport.Fixture()), exportXMLName)) {
 		name, isTopLevel := strings.CutPrefix(e.path, "HealthData/")
 		if !isTopLevel || strings.Contains(name, "/") {
 			continue
@@ -254,21 +257,22 @@ func TestWrite_ExportXML_TopLevelComesInTheOrderOfARealExport(t *testing.T) {
 func TestWrite_InvalidOptions_FailsBeforeWritingAnything(t *testing.T) {
 	t.Parallel()
 
-	tests := map[string]struct {
+	tests := []struct {
+		name   string
 		change func(*synthexport.Options)
 		want   string
 	}{
-		"no days":          {func(o *synthexport.Options) { o.Days = 0 }, "days must be at least 1"},
-		"negative days":    {func(o *synthexport.Options) { o.Days = -1 }, "days must be at least 1"},
-		"no density":       {func(o *synthexport.Options) { o.Density = 0 }, "density must be at least 1"},
-		"negative density": {func(o *synthexport.Options) { o.Density = -1 }, "density must be at least 1"},
+		{"no days", func(o *synthexport.Options) { o.Days = 0 }, "days must be at least 1"},
+		{"negative days", func(o *synthexport.Options) { o.Days = -1 }, "days must be at least 1"},
+		{"no density", func(o *synthexport.Options) { o.Density = 0 }, "density must be at least 1"},
+		{"negative density", func(o *synthexport.Options) { o.Density = -1 }, "density must be at least 1"},
 	}
 
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			opts := testOptions()
+			opts := synthexport.Fixture()
 			tt.change(&opts)
 
 			var archive bytes.Buffer
@@ -286,7 +290,7 @@ func TestWrite_CancelledContext_StopsWithItsError(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	require.ErrorIs(t, synthexport.Write(ctx, io.Discard, testOptions()), context.Canceled)
+	require.ErrorIs(t, synthexport.Write(ctx, io.Discard, synthexport.Fixture()), context.Canceled)
 }
 
 // failingWriter refuses every write.
@@ -300,7 +304,7 @@ func TestWrite_FailingWriter_ReturnsItsError(t *testing.T) {
 
 	errFull := errors.New("disk full")
 
-	require.ErrorIs(t, synthexport.Write(t.Context(), failingWriter{errFull}, testOptions()), errFull)
+	require.ErrorIs(t, synthexport.Write(t.Context(), failingWriter{errFull}, synthexport.Fixture()), errFull)
 }
 
 // exportElements returns the elements of export.xml for opts.
@@ -328,7 +332,7 @@ func TestWrite_Records_EachTypeIsOneBlockNotSortedAcrossSources(t *testing.T) {
 	t.Parallel()
 
 	var (
-		records = withPath(exportElements(t, testOptions()), "HealthData/Record")
+		records = withPath(exportElements(t, synthexport.Fixture()), "HealthData/Record")
 		types   []string
 		steps   []element
 	)
@@ -361,7 +365,7 @@ func TestWrite_Dates_CarryTheOffsetOfTheExportInEverySeason(t *testing.T) {
 	paris, err := time.LoadLocation("Europe/Paris")
 	require.NoError(t, err)
 
-	opts := testOptions()
+	opts := synthexport.Fixture()
 	opts.End = time.Date(2026, time.October, 31, 9, 0, 0, 0, paris) // the clocks went back on October 25
 	opts.Days = 10
 
@@ -426,7 +430,7 @@ func TestWrite_Records_CoverTheShapesOfTheFormat(t *testing.T) {
 		},
 	}
 
-	records := withPath(exportElements(t, testOptions()), "HealthData/Record")
+	records := withPath(exportElements(t, synthexport.Fixture()), "HealthData/Record")
 
 	for name, matches := range shapes {
 		require.True(t, slices.ContainsFunc(records, matches), name)
@@ -437,7 +441,7 @@ func TestWrite_Records_CoverTheShapesOfTheFormat(t *testing.T) {
 func TestWrite_StepCounts_OfTwoSourcesOverlapInTime(t *testing.T) {
 	t.Parallel()
 
-	steps := withPath(exportElements(t, testOptions()), "HealthData/Record")
+	steps := withPath(exportElements(t, synthexport.Fixture()), "HealthData/Record")
 	steps = slices.DeleteFunc(steps, func(r element) bool { return r.attrs["type"] != stepType })
 
 	overlaps := slices.ContainsFunc(steps, func(a element) bool {
@@ -450,12 +454,33 @@ func TestWrite_StepCounts_OfTwoSourcesOverlapInTime(t *testing.T) {
 	require.True(t, overlaps)
 }
 
+// Given the density of a watch, then the quantities of one source do not overlap, as in a real export.
+func TestWrite_Quantities_OfOneSourceDoNotOverlapAtTheDensityOfAWatch(t *testing.T) {
+	t.Parallel()
+
+	opts := synthexport.Fixture()
+	opts.Days, opts.Density = 1, 30
+
+	previousEnd := map[string]string{}
+
+	for _, r := range withPath(exportElements(t, opts), "HealthData/Record") {
+		if !strings.HasPrefix(r.attrs["type"], "HKQuantityTypeIdentifier") {
+			continue
+		}
+
+		key := r.attrs["type"] + " " + r.attrs["sourceName"]
+		require.GreaterOrEqual(t, r.attrs["startDate"], previousEnd[key], key)
+
+		previousEnd[key] = r.attrs["endDate"]
+	}
+}
+
 // Given the device attributes, then they have the five shapes of the format, and they are escaped.
 func TestWrite_Devices_HaveTheFiveShapesOfTheFormat(t *testing.T) {
 	t.Parallel()
 
 	var (
-		content = readEntry(t, generate(t, testOptions()), exportXMLName)
+		content = readEntry(t, generate(t, synthexport.Fixture()), exportXMLName)
 		device  = regexp.MustCompile(`^<<HKDevice: 0x[0-9a-f]+>, (.*)>$`)
 		shapes  = map[string]bool{}
 	)
@@ -504,12 +529,12 @@ func TestWrite_Metadata_CoversTheShapesOfTheFormat(t *testing.T) {
 			return strings.ContainsFunc(value, func(c rune) bool { return c > unicode.MaxASCII })
 		},
 		"value carrying a unit": func(_, value string) bool {
-			return regexp.MustCompile(`^\d+(\.\d+)? (kPa|count/min)$`).MatchString(value)
+			return regexp.MustCompile(`^\d+\.\d{3} kPa$`).MatchString(value)
 		},
 		"time zone": func(key, value string) bool { return key == "HKTimeZone" && value == "Europe/Paris" },
 	}
 
-	entries := withPath(exportElements(t, testOptions()), "HealthData/Record/MetadataEntry")
+	entries := withPath(exportElements(t, synthexport.Fixture()), "HealthData/Record/MetadataEntry")
 
 	for name, matches := range shapes {
 		found := slices.ContainsFunc(entries, func(e element) bool { return matches(e.attrs["key"], e.attrs["value"]) })
@@ -531,7 +556,7 @@ func TestWrite_HeartRateVariability_ListsBeatsWithACommaInTheirTime(t *testing.T
 		beats  int
 	)
 
-	for _, e := range exportElements(t, testOptions()) {
+	for _, e := range exportElements(t, synthexport.Fixture()) {
 		switch e.path {
 		case "HealthData/Record":
 			record = e
@@ -547,7 +572,7 @@ func TestWrite_HeartRateVariability_ListsBeatsWithACommaInTheirTime(t *testing.T
 		}
 	}
 
-	require.Equal(t, testOptions().Days, lists)
+	require.Equal(t, synthexport.Fixture().Days, lists)
 	require.Greater(t, beats, lists)
 }
 
@@ -560,7 +585,7 @@ func TestWrite_Correlations_HoldRecordsThatAlsoExistAtTopLevel(t *testing.T) {
 	t.Parallel()
 
 	var (
-		elements = exportElements(t, testOptions())
+		elements = exportElements(t, synthexport.Fixture())
 		inner    = withPath(elements, "HealthData/Correlation/Record")
 		topLevel = map[string]bool{}
 		types    = map[string]bool{}
@@ -597,7 +622,7 @@ func TestWrite_Correlations_HoldRecordsThatAlsoExistAtTopLevel(t *testing.T) {
 func TestWrite_Correlations_CarryMetadataWithFreeText(t *testing.T) {
 	t.Parallel()
 
-	content := readEntry(t, generate(t, testOptions()), exportXMLName)
+	content := readEntry(t, generate(t, synthexport.Fixture()), exportXMLName)
 	elements := readElements(t, content)
 
 	var keys []string
@@ -682,28 +707,32 @@ func parseDate(t *testing.T, value string) time.Time {
 func TestWrite_Workouts_HoldTheChildrenOfARealExport(t *testing.T) {
 	t.Parallel()
 
-	workouts := readWorkouts(exportElements(t, testOptions()))
+	workouts := readWorkouts(exportElements(t, synthexport.Fixture()))
 
-	tests := map[string]struct {
+	tests := []struct {
+		name    string
 		matches func(workoutNode) bool
 		want    []string
 	}{
-		"run with a route": {
+		{
+			"run with a route",
 			func(w workoutNode) bool { return w.attrs["workoutActivityType"] == runningType && w.routePath() != "" },
 			[]string{"MetadataEntry", "WorkoutEvent", "WorkoutStatistics", "WorkoutZoneGroup", "WorkoutRoute", "Record"},
 		},
-		"strength session": {
+		{
+			"strength session",
 			func(w workoutNode) bool { return w.attrs["workoutActivityType"] == strengthType && w.routePath() == "" },
 			[]string{"MetadataEntry", "WorkoutStatistics", "WorkoutZoneGroup"},
 		},
-		"third-party copy": {
+		{
+			"third-party copy",
 			func(w workoutNode) bool { return w.attrs["sourceName"] == "Strava" },
 			[]string{"MetadataEntry"},
 		},
 	}
 
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
 			require.Equal(t, tt.want, findWorkout(t, workouts, tt.matches).children())
@@ -716,7 +745,7 @@ func TestWrite_Workouts_HoldTheChildrenOfARealExport(t *testing.T) {
 func TestWrite_Workouts_HoldNoTotalsInTheirAttributes(t *testing.T) {
 	t.Parallel()
 
-	workouts := readWorkouts(exportElements(t, testOptions()))
+	workouts := readWorkouts(exportElements(t, synthexport.Fixture()))
 	require.NotEmpty(t, workouts)
 
 	for _, w := range workouts {
@@ -731,7 +760,7 @@ func TestWrite_Workouts_HoldNoTotalsInTheirAttributes(t *testing.T) {
 func TestWrite_StravaCopy_DuplicatesARun(t *testing.T) {
 	t.Parallel()
 
-	workouts := readWorkouts(exportElements(t, testOptions()))
+	workouts := readWorkouts(exportElements(t, synthexport.Fixture()))
 
 	strava := findWorkout(t, workouts, func(w workoutNode) bool { return w.attrs["sourceName"] == "Strava" })
 	require.Equal(t, runningType, strava.attrs["workoutActivityType"])
@@ -766,7 +795,7 @@ func TestWrite_StravaCopy_DuplicatesARun(t *testing.T) {
 func TestWrite_WorkoutChildren_HaveTheAttributesOfTheFormat(t *testing.T) {
 	t.Parallel()
 
-	workouts := readWorkouts(exportElements(t, testOptions()))
+	workouts := readWorkouts(exportElements(t, synthexport.Fixture()))
 	run := findWorkout(t, workouts, func(w workoutNode) bool { return w.routePath() != "" })
 
 	statistics := withPath(run.below, workoutPath+"/WorkoutStatistics")
@@ -809,7 +838,7 @@ func TestWrite_WorkoutChildren_HaveTheAttributesOfTheFormat(t *testing.T) {
 func TestWrite_WorkoutRecords_AlsoExistAtTopLevel(t *testing.T) {
 	t.Parallel()
 
-	elements := exportElements(t, testOptions())
+	elements := exportElements(t, synthexport.Fixture())
 	inner := withPath(elements, workoutPath+"/Record")
 	require.NotEmpty(t, inner)
 
@@ -828,7 +857,7 @@ func TestWrite_WorkoutRecords_AlsoExistAtTopLevel(t *testing.T) {
 func TestWrite_Routes_AndTheirReferencesMatch(t *testing.T) {
 	t.Parallel()
 
-	archive := generate(t, testOptions())
+	archive := generate(t, synthexport.Fixture())
 
 	var references, entries []string
 
@@ -858,7 +887,7 @@ func TestWrite_Routes_HavePointsInOrderInsideTheirWorkout(t *testing.T) {
 		radius = 0.1
 	)
 
-	archive := generate(t, testOptions())
+	archive := generate(t, synthexport.Fixture())
 	routes := 0
 
 	for _, w := range readWorkouts(readElements(t, readEntry(t, archive, exportXMLName))) {
