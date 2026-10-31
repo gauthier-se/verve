@@ -3,6 +3,7 @@ package synthexport_test
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -258,4 +259,28 @@ func TestWrite_InvalidOptions_FailsBeforeWritingAnything(t *testing.T) {
 			require.Zero(t, archive.Len())
 		})
 	}
+}
+
+// Given a cancelled context, then Write stops with its error.
+func TestWrite_CancelledContext_StopsWithItsError(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	require.ErrorIs(t, synthexport.Write(ctx, io.Discard, testOptions()), context.Canceled)
+}
+
+// failingWriter refuses every write.
+type failingWriter struct{ err error }
+
+func (w failingWriter) Write([]byte) (int, error) { return 0, w.err }
+
+// Given a writer that fails, then Write returns its error.
+func TestWrite_FailingWriter_ReturnsItsError(t *testing.T) {
+	t.Parallel()
+
+	errFull := errors.New("disk full")
+
+	require.ErrorIs(t, synthexport.Write(t.Context(), failingWriter{errFull}, testOptions()), errFull)
 }
