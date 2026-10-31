@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"math"
 	"regexp"
 	"slices"
 	"sort"
@@ -28,6 +29,10 @@ const (
 	exportXMLName = "apple_health_export/export.xml"
 	hrvType       = "HKQuantityTypeIdentifierHeartRateVariabilitySDNN"
 	stepType      = "HKQuantityTypeIdentifierStepCount"
+	runningType   = "HKWorkoutActivityTypeRunning"
+	strengthType  = "HKWorkoutActivityTypeTraditionalStrengthTraining"
+	workoutPath   = "HealthData/Workout"
+	dateLayout    = "2006-01-02 15:04:05 -0700"
 )
 
 // testOptions describes a small export, so that a test runs in milliseconds.
@@ -79,6 +84,7 @@ func readEntry(t *testing.T, archive []byte, name string) []byte {
 type element struct {
 	path  string // names from the root, joined by slashes
 	attrs map[string]string
+	text  string // the text right after the start tag
 }
 
 // readElements decodes content with the strict decoder of encoding/xml, which fails on a document
@@ -110,6 +116,10 @@ func readElements(t *testing.T, content []byte) []element {
 			}
 
 			elements = append(elements, element{path: strings.Join(stack, "/"), attrs: attrs})
+		case xml.CharData:
+			if len(elements) > 0 && elements[len(elements)-1].path == strings.Join(stack, "/") {
+				elements[len(elements)-1].text = string(tok)
+			}
 		case xml.EndElement:
 			stack = stack[:len(stack)-1]
 		}
@@ -597,4 +607,301 @@ func TestWrite_Correlations_CarryMetadataWithFreeText(t *testing.T) {
 
 	require.Contains(t, string(content), `value="Salade d'été"`)
 	require.Contains(t, string(content), `value="Yaourt &amp; fruits"`)
+}
+
+// workoutNode is a Workout element with everything below it.
+type workoutNode struct {
+	element
+	below []element
+}
+
+// readWorkouts groups the elements of export.xml by workout.
+func readWorkouts(elements []element) []workoutNode {
+	var workouts []workoutNode
+
+	for _, e := range elements {
+		switch {
+		case e.path == workoutPath:
+			workouts = append(workouts, workoutNode{element: e})
+		case strings.HasPrefix(e.path, workoutPath+"/"):
+			last := &workouts[len(workouts)-1]
+			last.below = append(last.below, e)
+		}
+	}
+
+	return workouts
+}
+
+// children returns the names of the direct children of a workout, once per group.
+func (w workoutNode) children() []string {
+	var names []string
+
+	for _, e := range w.below {
+		if name := strings.TrimPrefix(e.path, workoutPath+"/"); !strings.Contains(name, "/") {
+			names = append(names, name)
+		}
+	}
+
+	return slices.Compact(names)
+}
+
+// routePath returns the file reference of a workout, if it has one.
+func (w workoutNode) routePath() string {
+	for _, e := range withPath(w.below, workoutPath+"/WorkoutRoute/FileReference") {
+		return e.attrs["path"]
+	}
+
+	return ""
+}
+
+// findWorkout returns the first workout that matches.
+func findWorkout(t *testing.T, workouts []workoutNode, matches func(workoutNode) bool) workoutNode {
+	t.Helper()
+
+	i := slices.IndexFunc(workouts, matches)
+	require.NotEqual(t, -1, i, "no such workout")
+
+	return workouts[i]
+}
+
+// parseDate reads a date of export.xml.
+func parseDate(t *testing.T, value string) time.Time {
+	t.Helper()
+
+	date, err := time.Parse(dateLayout, value)
+	require.NoError(t, err)
+
+	return date
+}
+
+// Given the workouts, then a run with a route, a strength session without route and a third-party
+// copy hold the children of a real export, in its order.
+func TestWrite_Workouts_HoldTheChildrenOfARealExport(t *testing.T) {
+	t.Parallel()
+
+	workouts := readWorkouts(exportElements(t, testOptions()))
+
+	tests := map[string]struct {
+		matches func(workoutNode) bool
+		want    []string
+	}{
+		"run with a route": {
+			func(w workoutNode) bool { return w.attrs["workoutActivityType"] == runningType && w.routePath() != "" },
+			[]string{"MetadataEntry", "WorkoutEvent", "WorkoutStatistics", "WorkoutZoneGroup", "WorkoutRoute", "Record"},
+		},
+		"strength session": {
+			func(w workoutNode) bool { return w.attrs["workoutActivityType"] == strengthType && w.routePath() == "" },
+			[]string{"MetadataEntry", "WorkoutStatistics", "WorkoutZoneGroup"},
+		},
+		"third-party copy": {
+			func(w workoutNode) bool { return w.attrs["sourceName"] == "Strava" },
+			[]string{"MetadataEntry"},
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			require.Equal(t, tt.want, findWorkout(t, workouts, tt.matches).children())
+		})
+	}
+}
+
+// Given the workouts, then none has totals in its attributes, as in a recent export: they come from
+// the statistics.
+func TestWrite_Workouts_HoldNoTotalsInTheirAttributes(t *testing.T) {
+	t.Parallel()
+
+	workouts := readWorkouts(exportElements(t, testOptions()))
+	require.NotEmpty(t, workouts)
+
+	for _, w := range workouts {
+		require.NotContains(t, w.attrs, "totalDistance")
+		require.NotContains(t, w.attrs, "totalEnergyBurned")
+		require.Equal(t, "min", w.attrs["durationUnit"])
+	}
+}
+
+// Given the Strava copy of a run, then it is a run from another source that overlaps the original by
+// more than 80 percent of the shorter one, which makes it a duplicate.
+func TestWrite_StravaCopy_DuplicatesARun(t *testing.T) {
+	t.Parallel()
+
+	workouts := readWorkouts(exportElements(t, testOptions()))
+
+	strava := findWorkout(t, workouts, func(w workoutNode) bool { return w.attrs["sourceName"] == "Strava" })
+	require.Equal(t, runningType, strava.attrs["workoutActivityType"])
+
+	original := findWorkout(t, workouts, func(w workoutNode) bool {
+		return w.attrs["sourceName"] != "Strava" && w.attrs["startDate"][:10] == strava.attrs["startDate"][:10]
+	})
+	require.Equal(t, runningType, original.attrs["workoutActivityType"])
+
+	var (
+		copyStart, copyEnd = parseDate(t, strava.attrs["startDate"]), parseDate(t, strava.attrs["endDate"])
+		start, end         = parseDate(t, original.attrs["startDate"]), parseDate(t, original.attrs["endDate"])
+		overlap            = time.Duration(math.Min(float64(copyEnd.Sub(start)), float64(end.Sub(copyStart))))
+		shorter            = min(copyEnd.Sub(copyStart), end.Sub(start))
+	)
+
+	require.Greater(t, overlap.Seconds(), 0.8*shorter.Seconds())
+
+	var keys []string
+	for _, m := range withPath(strava.below, workoutPath+"/MetadataEntry") {
+		keys = append(keys, m.attrs["key"]+"="+m.attrs["value"])
+	}
+
+	require.Condition(t, func() bool {
+		return slices.ContainsFunc(keys, func(k string) bool {
+			return regexp.MustCompile(`^HKExternalUUID=strava://activities/\d+$`).MatchString(k)
+		})
+	}, "no external identifier in %v", keys)
+}
+
+// Given the children of a workout, then they have the attributes of a real export.
+func TestWrite_WorkoutChildren_HaveTheAttributesOfTheFormat(t *testing.T) {
+	t.Parallel()
+
+	workouts := readWorkouts(exportElements(t, testOptions()))
+	run := findWorkout(t, workouts, func(w workoutNode) bool { return w.routePath() != "" })
+
+	statistics := withPath(run.below, workoutPath+"/WorkoutStatistics")
+	require.True(t, slices.ContainsFunc(statistics, func(s element) bool {
+		_, hasAverage := s.attrs["average"]
+		return s.attrs["unit"] == "kcal" && s.attrs["sum"] != "" && !hasAverage
+	}), "no sum")
+	require.True(t, slices.ContainsFunc(statistics, func(s element) bool {
+		_, hasSum := s.attrs["sum"]
+		return s.attrs["unit"] == "count/min" && !hasSum &&
+			s.attrs["average"] != "" && s.attrs["minimum"] != "" && s.attrs["maximum"] != ""
+	}), "no average")
+
+	events := withPath(run.below, workoutPath+"/WorkoutEvent")
+	require.True(t, slices.ContainsFunc(events, func(e element) bool {
+		return e.attrs["type"] == "HKWorkoutEventTypeSegment" && e.attrs["duration"] != "" && e.attrs["durationUnit"] == "min"
+	}), "no segment")
+	require.True(t, slices.ContainsFunc(events, func(e element) bool {
+		_, hasDuration := e.attrs["duration"]
+		return e.attrs["type"] == "HKWorkoutEventTypePause" && !hasDuration
+	}), "no pause")
+
+	group := withPath(run.below, workoutPath+"/WorkoutZoneGroup")
+	require.Len(t, group, 1)
+	require.Equal(t, map[string]string{
+		"type": "HKQuantityTypeIdentifierHeartRate", "source": "system", "unit": "count/min",
+	}, group[0].attrs)
+
+	zones := withPath(run.below, workoutPath+"/WorkoutZoneGroup/WorkoutZone")
+	require.Len(t, zones, 5)
+	require.NotContains(t, zones[0].attrs, "minimum")
+	require.Contains(t, zones[0].attrs, "maximum")
+	require.Contains(t, zones[2].attrs, "minimum")
+	require.Contains(t, zones[2].attrs, "maximum")
+	require.Contains(t, zones[4].attrs, "minimum")
+	require.NotContains(t, zones[4].attrs, "maximum")
+}
+
+// Given the records inside workouts, then they also exist at top level with the same attributes.
+func TestWrite_WorkoutRecords_AlsoExistAtTopLevel(t *testing.T) {
+	t.Parallel()
+
+	elements := exportElements(t, testOptions())
+	inner := withPath(elements, workoutPath+"/Record")
+	require.NotEmpty(t, inner)
+
+	topLevel := map[string]bool{}
+	for _, r := range withPath(elements, "HealthData/Record") {
+		topLevel[attrsOf(r)] = true
+	}
+
+	for _, r := range inner {
+		require.True(t, topLevel[attrsOf(r)], "not at top level: %v", r.attrs)
+	}
+}
+
+// Given the routes, then every file reference resolves to one GPX entry and every GPX entry is
+// referenced.
+func TestWrite_Routes_AndTheirReferencesMatch(t *testing.T) {
+	t.Parallel()
+
+	archive := generate(t, testOptions())
+
+	var references, entries []string
+
+	for _, w := range readWorkouts(readElements(t, readEntry(t, archive, exportXMLName))) {
+		if path := w.routePath(); path != "" {
+			references = append(references, "apple_health_export"+path)
+		}
+	}
+
+	for _, f := range openZip(t, archive).File {
+		if strings.HasSuffix(f.Name, ".gpx") {
+			entries = append(entries, f.Name)
+		}
+	}
+
+	require.NotEmpty(t, references)
+	require.ElementsMatch(t, entries, references)
+}
+
+// Given a route, then its points are in time order inside their workout, carry the fields of a real
+// export, and stay around latitude 0 and longitude 0.
+func TestWrite_Routes_HavePointsInOrderInsideTheirWorkout(t *testing.T) {
+	t.Parallel()
+
+	const (
+		point  = "gpx/trk/trkseg/trkpt"
+		radius = 0.1
+	)
+
+	archive := generate(t, testOptions())
+	routes := 0
+
+	for _, w := range readWorkouts(readElements(t, readEntry(t, archive, exportXMLName))) {
+		if w.routePath() == "" {
+			continue
+		}
+
+		routes++
+
+		content := readEntry(t, archive, "apple_health_export"+w.routePath())
+		gpx := readElements(t, content)
+		points := withPath(gpx, point)
+
+		require.Contains(t, string(content), `creator="Apple Health Export"`)
+		require.Regexp(t, `^Route \d{4}-\d{2}-\d{2} \d{1,2}:\d{2}[ap]m$`, withPath(gpx, "gpx/trk/name")[0].text)
+		require.Len(t, withPath(gpx, "gpx/metadata/time"), 1)
+		require.Len(t, withPath(gpx, "gpx/trk/trkseg"), 1)
+		require.Greater(t, len(points), 2)
+
+		for _, field := range []string{"ele", "time", "extensions/speed", "extensions/course", "extensions/hAcc", "extensions/vAcc"} {
+			require.Len(t, withPath(gpx, point+"/"+field), len(points), field)
+		}
+
+		for _, p := range points {
+			lat, err := strconv.ParseFloat(p.attrs["lat"], 64)
+			require.NoError(t, err)
+
+			lon, err := strconv.ParseFloat(p.attrs["lon"], 64)
+			require.NoError(t, err)
+
+			require.Less(t, math.Abs(lat), radius)
+			require.Less(t, math.Abs(lon), radius)
+		}
+
+		previous := parseDate(t, w.attrs["startDate"]).Add(-time.Second)
+
+		for _, stamp := range withPath(gpx, point+"/time") {
+			at, err := time.Parse(time.RFC3339, stamp.text)
+			require.NoError(t, err)
+			require.True(t, at.After(previous), "%s comes before the point it follows", stamp.text)
+
+			previous = at
+		}
+
+		require.False(t, previous.After(parseDate(t, w.attrs["endDate"])))
+	}
+
+	require.NotZero(t, routes)
 }

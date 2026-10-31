@@ -242,7 +242,7 @@ func (e exporter) recordSections() []func(day int, d document) {
 		sections = append(sections, func(day int, d document) { e.writeSeries(s, streamSeries+i, day, d) })
 	}
 
-	return append(sections, e.writeSleep, e.writeStandHours, e.writeSleepGoal)
+	return append(sections, e.writeSleep, e.writeStandHours, e.writeSleepGoal, e.writeEffortScores)
 }
 
 func (e exporter) writeSeries(s series, stream, day int, d document) {

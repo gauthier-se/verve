@@ -26,6 +26,8 @@ const (
 const (
 	streamHeartRateVariability = iota
 	streamWorkout
+	streamWorkoutDetail
+	streamRoute
 	streamActivitySummary
 	streamSleep
 	streamStandHours
@@ -100,13 +102,14 @@ func (e exporter) writeEntries(ctx context.Context, zw *zip.Writer) error {
 	}
 
 	for day := range e.opts.Days {
-		run, ok := e.runOn(day)
-		if !ok {
-			continue
-		}
+		for _, w := range e.workoutsOn(day) {
+			if !w.route {
+				continue
+			}
 
-		if err := writeEntry(ctx, zw, "workout-routes/"+run.routeFile(), writeRoute); err != nil {
-			return err
+			if err := writeEntry(ctx, zw, "workout-routes/"+w.routeFile(), e.writeRoute(day, w)); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -164,23 +167,6 @@ func (e exporter) writeExportXML(ctx context.Context, d document) error {
 	return nil
 }
 
-func (e exporter) writeWorkouts(day int, d document) {
-	run, ok := e.runOn(day)
-	if !ok {
-		return
-	}
-
-	d.empty(1, "Workout",
-		"workoutActivityType", "HKWorkoutActivityTypeRunning",
-		"duration", strconv.FormatFloat(run.end.Sub(run.start).Minutes(), 'f', -1, 64),
-		"durationUnit", "min",
-		"sourceName", sourceWatch.name,
-		"sourceVersion", sourceWatch.version,
-		"creationDate", e.date(run.end),
-		"startDate", e.date(run.start),
-		"endDate", e.date(run.end))
-}
-
 func (e exporter) writeActivitySummary(day int, d document) {
 	r := e.rng(streamActivitySummary, day)
 
@@ -195,35 +181,6 @@ func (e exporter) writeActivitySummary(day int, d document) {
 		"appleExerciseTimeGoal", "30",
 		"appleStandHours", strconv.Itoa(6+r.IntN(9)),
 		"appleStandHoursGoal", "12")
-}
-
-// run is a running workout.
-type run struct {
-	start, end time.Time
-}
-
-// routeFile names the route of the run, in the offset of the export.
-func (w run) routeFile() string {
-	return "route_" + w.start.Format("2006-01-02_3.04pm") + ".gpx"
-}
-
-// runOn returns the run of a day, if it has one.
-func (e exporter) runOn(day int) (run, bool) {
-	const everyDays = 7
-	if day%everyDays != 0 {
-		return run{}, false
-	}
-
-	r := e.rng(streamWorkout, day)
-	start := e.dayStart(day).Add(7*time.Hour + time.Duration(r.IntN(120))*time.Minute)
-
-	return run{start: start, end: start.Add(25*time.Minute + time.Duration(r.IntN(30))*time.Minute)}, true
-}
-
-func writeRoute(_ context.Context, d document) error {
-	d.write(`<?xml version="1.0" encoding="UTF-8"?>`, "\n", `<gpx version="1.1" creator="Apple Health Export"/>`, "\n")
-
-	return nil
 }
 
 // writeElectrocardiograms writes two recordings of the first day: the second one takes the suffix a
