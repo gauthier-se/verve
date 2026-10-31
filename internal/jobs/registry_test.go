@@ -99,6 +99,17 @@ func TestRegister_SameKindTwice_Panics(t *testing.T) {
 	})
 }
 
+// Given an error wrapped with Permanent, then it keeps its text and its cause.
+func TestPermanent_KeepsTheErrorAndItsCause(t *testing.T) {
+	t.Parallel()
+
+	cause := errors.New("corrupted file")
+
+	err := Permanent(cause)
+	require.EqualError(t, err, "corrupted file")
+	require.ErrorIs(t, err, cause)
+}
+
 // Given a payload that does not encode, then New returns an error naming the kind.
 func TestKind_New_PayloadThatDoesNotEncode_Fails(t *testing.T) {
 	t.Parallel()

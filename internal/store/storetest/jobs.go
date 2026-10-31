@@ -71,7 +71,9 @@ func jobWrites() []jobWrite {
 		{
 			name: "Heartbeat",
 			write: func(ctx context.Context, jobs store.JobsRepository, id, claims int64) error {
-				return jobs.Heartbeat(ctx, id, claims, 2*jobLease)
+				_, err := jobs.Heartbeat(ctx, id, claims, 2*jobLease)
+
+				return err
 			},
 			want: func(claimed store.Job, now time.Time) store.Job {
 				claimed.LockedUntil = now.Add(2 * jobLease)
@@ -119,6 +121,34 @@ func jobWrites() []jobWrite {
 				return claimed
 			},
 		},
+		{
+			name: "Retry",
+			write: func(ctx context.Context, jobs store.JobsRepository, id, claims int64) error {
+				return jobs.Retry(ctx, id, claims, "handler failed", jobsTime.Add(time.Hour))
+			},
+			want: func(claimed store.Job, _ time.Time) store.Job {
+				claimed.Status = store.JobQueued
+				claimed.Attempts = 1
+				claimed.LastError = "handler failed"
+				claimed.RunAt = jobsTime.Add(time.Hour)
+				claimed.LockedUntil = time.Time{}
+
+				return claimed
+			},
+		},
+		{
+			name: "ConfirmCancel",
+			write: func(ctx context.Context, jobs store.JobsRepository, id, claims int64) error {
+				return jobs.ConfirmCancel(ctx, id, claims)
+			},
+			want: func(claimed store.Job, now time.Time) store.Job {
+				claimed.Status = store.JobCancelled
+				claimed.LockedUntil = time.Time{}
+				claimed.FinishedAt = now
+
+				return claimed
+			},
+		},
 	}
 }
 
@@ -131,6 +161,7 @@ func RunJobs(t *testing.T, newStore NewStoreFunc) {
 	runJobsSerialKeys(t, newStore)
 	runJobsLostLeases(t, newStore)
 	runJobsFencing(t, newStore)
+	runJobsCancel(t, newStore)
 }
 
 func runJobsEnqueue(t *testing.T, newStore NewStoreFunc) {
@@ -503,6 +534,150 @@ func runJobsFencing(t *testing.T, newStore NewStoreFunc) {
 
 			err := tt.write(t.Context(), jobs, 1, 1)
 			require.ErrorIs(t, err, store.ErrNotFound)
+		})
+	}
+
+	// Given a job retried with a later run_at, then it is not due before that time.
+	t.Run("RetryKeepsTheJobUntilItsRunAt", func(t *testing.T) {
+		t.Parallel()
+
+		clk := clock.NewFake(jobsTime)
+		jobs := newStore(t, clk).Jobs()
+		ctx := t.Context()
+
+		mustEnqueue(ctx, t, jobs, dueJob(jobsTime, ""))
+		claimed := mustClaim(ctx, t, jobs)
+
+		require.NoError(t, jobs.Retry(ctx, claimed.ID, claimed.Claims, "handler failed", jobsTime.Add(2*jobLease)))
+
+		clk.Advance(jobLease)
+		requireNoClaim(ctx, t, jobs)
+
+		clk.Advance(jobLease)
+		require.Equal(t, claimed.ID, mustClaim(ctx, t, jobs).ID)
+	})
+}
+
+func runJobsCancel(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+
+	// Given a queued job, when it is cancelled, then it is cancelled at once and never claimed.
+	t.Run("CancelOnAQueuedJobCancelsItAtOnce", func(t *testing.T) {
+		t.Parallel()
+
+		clk := clock.NewFake(jobsTime)
+		jobs := newStore(t, clk).Jobs()
+		ctx := t.Context()
+
+		job := mustEnqueue(ctx, t, jobs, dueJob(jobsTime, ""))
+
+		clk.Advance(time.Second)
+		require.NoError(t, jobs.Cancel(ctx, job.ID))
+
+		got := mustGet(ctx, t, jobs, job.ID)
+		require.Equal(t, store.JobCancelled, got.Status)
+		require.Equal(t, clk.Now(), got.FinishedAt)
+		requireNoClaim(ctx, t, jobs)
+	})
+
+	// Given a running job, when it is cancelled, then it keeps running with the request recorded,
+	// and only the heartbeats after the request report it.
+	t.Run("CancelOnARunningJobRequestsIt", func(t *testing.T) {
+		t.Parallel()
+
+		jobs := newStore(t, clock.NewFake(jobsTime)).Jobs()
+		ctx := t.Context()
+
+		mustEnqueue(ctx, t, jobs, dueJob(jobsTime, ""))
+		claimed := mustClaim(ctx, t, jobs)
+
+		requested, err := jobs.Heartbeat(ctx, claimed.ID, claimed.Claims, jobLease)
+		require.NoError(t, err)
+		require.False(t, requested)
+
+		require.NoError(t, jobs.Cancel(ctx, claimed.ID))
+
+		got := mustGet(ctx, t, jobs, claimed.ID)
+		require.Equal(t, store.JobRunning, got.Status)
+		require.True(t, got.CancelRequested)
+
+		requested, err = jobs.Heartbeat(ctx, claimed.ID, claimed.Claims, jobLease)
+		require.NoError(t, err)
+		require.True(t, requested)
+	})
+
+	// Given a finished job, when it is cancelled, then store.ErrConflict is returned and nothing
+	// changes.
+	for name, finish := range map[string]func(ctx context.Context, jobs store.JobsRepository, job store.Job) error{
+		"Completed": func(ctx context.Context, jobs store.JobsRepository, job store.Job) error {
+			return jobs.Complete(ctx, job.ID, job.Claims)
+		},
+		"Failed": func(ctx context.Context, jobs store.JobsRepository, job store.Job) error {
+			return jobs.Fail(ctx, job.ID, job.Claims, "handler failed")
+		},
+		"Cancelled": func(ctx context.Context, jobs store.JobsRepository, job store.Job) error {
+			return jobs.ConfirmCancel(ctx, job.ID, job.Claims)
+		},
+	} {
+		t.Run("CancelOnA"+name+"JobConflicts", func(t *testing.T) {
+			t.Parallel()
+
+			jobs := newStore(t, clock.NewFake(jobsTime)).Jobs()
+			ctx := t.Context()
+
+			mustEnqueue(ctx, t, jobs, dueJob(jobsTime, ""))
+			claimed := mustClaim(ctx, t, jobs)
+
+			require.NoError(t, finish(ctx, jobs, claimed))
+			finished := mustGet(ctx, t, jobs, claimed.ID)
+
+			require.ErrorIs(t, jobs.Cancel(ctx, claimed.ID), store.ErrConflict)
+			require.Equal(t, finished, mustGet(ctx, t, jobs, claimed.ID))
+		})
+	}
+
+	// Given a missing job, then Cancel returns store.ErrNotFound.
+	t.Run("CancelOnAMissingJobReturnsErrNotFound", func(t *testing.T) {
+		t.Parallel()
+
+		jobs := newStore(t, clock.NewFake(jobsTime)).Jobs()
+
+		require.ErrorIs(t, jobs.Cancel(t.Context(), 1), store.ErrNotFound)
+	})
+
+	// Given a cancellation that its handler could not confirm, because the job went back to queued
+	// or its process died, then the next Claim cancels the job instead of running it.
+	for name, end := range map[string]func(ctx context.Context, jobs store.JobsRepository, clk *clock.Fake, job store.Job) error{
+		"Retried": func(ctx context.Context, jobs store.JobsRepository, _ *clock.Fake, job store.Job) error {
+			return jobs.Retry(ctx, job.ID, job.Claims, "handler failed", jobsTime)
+		},
+		"Released": func(ctx context.Context, jobs store.JobsRepository, _ *clock.Fake, job store.Job) error {
+			return jobs.Release(ctx, job.ID, job.Claims)
+		},
+		"LeaseExpired": func(_ context.Context, _ store.JobsRepository, clk *clock.Fake, _ store.Job) error {
+			clk.Advance(jobLease)
+
+			return nil
+		},
+	} {
+		t.Run("ClaimCancelsA"+name+"JobWhoseCancellationWasRequested", func(t *testing.T) {
+			t.Parallel()
+
+			clk := clock.NewFake(jobsTime)
+			jobs := newStore(t, clk).Jobs()
+			ctx := t.Context()
+
+			mustEnqueue(ctx, t, jobs, dueJob(jobsTime, ""))
+			claimed := mustClaim(ctx, t, jobs)
+
+			require.NoError(t, jobs.Cancel(ctx, claimed.ID))
+			require.NoError(t, end(ctx, jobs, clk, claimed))
+			requireNoClaim(ctx, t, jobs)
+
+			got := mustGet(ctx, t, jobs, claimed.ID)
+			require.Equal(t, store.JobCancelled, got.Status)
+			require.Equal(t, clk.Now(), got.FinishedAt)
+			require.True(t, got.LockedUntil.IsZero())
 		})
 	}
 }
