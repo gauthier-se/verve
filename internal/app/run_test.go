@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/gauthier-se/verve/internal/clock"
 	"github.com/gauthier-se/verve/internal/config"
 	"github.com/gauthier-se/verve/internal/jobs"
 	"github.com/gauthier-se/verve/internal/store"
@@ -391,8 +393,79 @@ func TestRun_ShutdownWaitsForARunningJobBeforeClosingTheDatabase(t *testing.T) {
 	require.Equal(t, store.JobCompleted, job.Status)
 }
 
-// Given a job queued before startup, then the worker of the server runs it. Its kind is unknown,
-// because no feature registers one yet.
+// storedSchedules returns the next runs stored in the database of cfg.
+func storedSchedules(t *testing.T, cfg config.Config) map[string]time.Time {
+	t.Helper()
+
+	ctx := t.Context()
+
+	schedules, err := withSharedDB(ctx, cfg, func(s store.Store) (map[string]time.Time, error) {
+		return s.Jobs().ListSchedules(ctx)
+	})
+	require.NoError(t, err)
+
+	return schedules
+}
+
+// Given serve on a new database, then the purge of jobs is scheduled in a day, and no job is
+// enqueued for it yet.
+func TestRun_SchedulesThePurgeOfJobs(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig(t.TempDir())
+	_, _, stop := startRun(t, cfg)
+
+	require.Eventually(t, func() bool {
+		return len(storedSchedules(t, cfg)) == 1
+	}, 5*time.Second, 10*time.Millisecond, "the server must schedule the purge of jobs")
+
+	stop()
+
+	require.WithinDuration(t, time.Now().Add(24*time.Hour), storedSchedules(t, cfg)["jobs.purge"], time.Minute)
+}
+
+// Given the purge of jobs missed during downtime, then it runs after startup and removes a job
+// finished for more than 7 days, and its next run is computed from now.
+func TestRun_RunsAPurgeMissedDuringDowntime(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	cfg := testConfig(t.TempDir())
+
+	_, err := Migrate(ctx, cfg, discardLogger())
+	require.NoError(t, err)
+
+	db, err := sqlite.Open(ctx, filepath.Join(cfg.DataDir, dbFile))
+	require.NoError(t, err)
+
+	lastWeek := sqlite.New(db, clock.NewFake(time.Now().Add(-8*24*time.Hour))).Jobs()
+
+	old, err := lastWeek.Enqueue(ctx, store.NewJob{Kind: "test.old", Payload: json.RawMessage(`{}`)})
+	require.NoError(t, err)
+
+	claimed, err := lastWeek.Claim(ctx, time.Minute)
+	require.NoError(t, err)
+	require.NoError(t, lastWeek.Complete(ctx, claimed.ID, claimed.Claims))
+	require.NoError(t, lastWeek.SetSchedule(ctx, "jobs.purge", time.Now().Add(-time.Hour)))
+	require.NoError(t, db.CloseShared())
+
+	_, _, stop := startRun(t, cfg)
+
+	require.Eventually(t, func() bool {
+		_, err := withSharedDB(ctx, cfg, func(s store.Store) (store.Job, error) {
+			return s.Jobs().Get(ctx, old.ID)
+		})
+
+		return errors.Is(err, store.ErrNotFound)
+	}, 5*time.Second, 10*time.Millisecond, "the purge must remove the old job")
+
+	stop()
+
+	require.WithinDuration(t, time.Now().Add(24*time.Hour), storedSchedules(t, cfg)["jobs.purge"], time.Minute)
+}
+
+// Given a job queued before startup, then the worker of the server runs it. Its kind is unknown, so
+// that the test does not depend on a handler.
 func TestRun_WorkerRunsAJobQueuedBeforeStartup(t *testing.T) {
 	t.Parallel()
 

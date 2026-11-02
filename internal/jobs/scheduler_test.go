@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/gauthier-se/verve/internal/clock"
 	"github.com/gauthier-se/verve/internal/logging/loggingtest"
 	"github.com/gauthier-se/verve/internal/store"
+	"github.com/gauthier-se/verve/internal/store/sqlite"
 )
 
 const hourlyName = "test.hourly"
@@ -318,6 +320,40 @@ func TestScheduler_TickEnqueuesTheJobAndStoresTheNextRunAtomically(t *testing.T)
 
 	require.Equal(t, map[string]time.Time{hourlyName: workerTestNow}, storedSchedules(ctx, t, s))
 	require.Empty(t, drainJobs(ctx, t, s))
+}
+
+// Given a due schedule waiting for the write lock of another process when the shutdown comes, then
+// the shutdown does not wait for the busy timeout, and the schedule stays due.
+func TestRun_Shutdown_ScheduleWaitingForTheWriteLock_DoesNotStall(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "verve.db")
+	s, clk := newTestStoreAt(t, path)
+	ctx := t.Context()
+	require.NoError(t, s.Jobs().SetSchedule(ctx, hourlyName, workerTestNow))
+
+	other, err := sqlite.Open(ctx, path)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, other.CloseShared()) })
+
+	holder, err := other.Write().BeginTx(ctx, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = holder.Rollback() })
+
+	w, logs := newTestWorker(s, NewRegistry(), clk, Options{PollInterval: noPoll, Schedules: []Schedule{hourly()}})
+	stop := startWorker(t, w)
+
+	// Long enough for the scheduler to start waiting for the write lock.
+	time.Sleep(100 * time.Millisecond)
+
+	start := time.Now()
+
+	stop()
+	require.Less(t, time.Since(start), 2*time.Second, "the shutdown must not wait for the busy timeout")
+
+	require.NoError(t, holder.Rollback())
+	require.Equal(t, map[string]time.Time{hourlyName: workerTestNow}, storedSchedules(ctx, t, s))
+	require.Empty(t, messageLines(t, logs, "schedule recurring jobs"), "a shutdown is not a failure")
 }
 
 // Given a schedule due at startup, then Run enqueues its job and wakes up a worker, without waiting
