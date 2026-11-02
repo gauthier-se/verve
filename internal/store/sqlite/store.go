@@ -69,6 +69,10 @@ func (r repositories) AuditEvents() store.AuditEventsRepository {
 	return auditEvents(r)
 }
 
+func (r repositories) Users() store.UsersRepository {
+	return users(r)
+}
+
 func (r repositories) AfterCommit(fn func()) {
 	r.q.afterCommit(fn)
 }

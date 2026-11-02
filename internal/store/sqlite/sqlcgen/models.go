@@ -44,3 +44,16 @@ type Job struct {
 	FinishedAt      sql.NullInt64
 	CancelRequested int64
 }
+
+type User struct {
+	ID           int64
+	Username     string
+	UsernameFold string
+	Email        sql.NullString
+	EmailFold    sql.NullString
+	PasswordHash sql.NullString
+	Role         string
+	Status       string
+	CreatedAt    int64
+	LastLoginAt  sql.NullInt64
+}

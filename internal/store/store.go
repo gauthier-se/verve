@@ -13,6 +13,8 @@ var (
 	ErrNotFound = errors.New("store: not found")
 	// ErrConflict is returned when a write conflicts with an existing record.
 	ErrConflict = errors.New("store: conflict")
+	// ErrInvalid is returned when a write holds a value that the store refuses.
+	ErrInvalid = errors.New("store: invalid")
 )
 
 // Repositories gives access to every repository. Used outside WithTx, each write is committed on
@@ -21,6 +23,7 @@ type Repositories interface {
 	InstanceSettings() InstanceSettingsRepository
 	Jobs() JobsRepository
 	AuditEvents() AuditEventsRepository
+	Users() UsersRepository
 
 	// AfterCommit calls fn once the writes made through these repositories are committed: at once
 	// outside WithTx, where each write is committed when it returns, and after the commit inside
