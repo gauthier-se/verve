@@ -173,6 +173,19 @@ func (q *Queries) ConfirmCancelJob(ctx context.Context, arg ConfirmCancelJobPara
 	return result.RowsAffected()
 }
 
+const deleteJobSchedule = `-- name: DeleteJobSchedule :execrows
+DELETE FROM job_schedules
+WHERE name = ?
+`
+
+func (q *Queries) DeleteJobSchedule(ctx context.Context, name string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteJobSchedule, name)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const enqueueJob = `-- name: EnqueueJob :one
 INSERT INTO jobs (kind, payload, status, run_at, user_id, serial_key, created_at)
 VALUES (?, ?, 'queued', ?, ?, ?, ?)
@@ -277,6 +290,22 @@ func (q *Queries) GetJob(ctx context.Context, id int64) (Job, error) {
 	return i, err
 }
 
+const hasActiveJob = `-- name: HasActiveJob :one
+SELECT EXISTS (
+    SELECT 1
+    FROM jobs
+    WHERE serial_key = ?
+      AND status IN ('queued', 'running')
+)
+`
+
+func (q *Queries) HasActiveJob(ctx context.Context, serialKey sql.NullString) (bool, error) {
+	row := q.db.QueryRowContext(ctx, hasActiveJob, serialKey)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const heartbeatJob = `-- name: HeartbeatJob :one
 UPDATE jobs
 SET locked_until = ?
@@ -295,6 +324,50 @@ func (q *Queries) HeartbeatJob(ctx context.Context, arg HeartbeatJobParams) (int
 	var cancel_requested int64
 	err := row.Scan(&cancel_requested)
 	return cancel_requested, err
+}
+
+const listJobSchedules = `-- name: ListJobSchedules :many
+SELECT name, next_run
+FROM job_schedules
+`
+
+func (q *Queries) ListJobSchedules(ctx context.Context) ([]JobSchedule, error) {
+	rows, err := q.db.QueryContext(ctx, listJobSchedules)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []JobSchedule
+	for rows.Next() {
+		var i JobSchedule
+		if err := rows.Scan(&i.Name, &i.NextRun); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const purgeFinishedJobs = `-- name: PurgeFinishedJobs :exec
+DELETE FROM jobs
+WHERE (status IN ('completed', 'cancelled') AND finished_at < ?1)
+   OR (status = 'failed' AND finished_at < ?2)
+`
+
+type PurgeFinishedJobsParams struct {
+	CompletedBefore sql.NullInt64
+	FailedBefore    sql.NullInt64
+}
+
+func (q *Queries) PurgeFinishedJobs(ctx context.Context, arg PurgeFinishedJobsParams) error {
+	_, err := q.db.ExecContext(ctx, purgeFinishedJobs, arg.CompletedBefore, arg.FailedBefore)
+	return err
 }
 
 const releaseJob = `-- name: ReleaseJob :execrows
@@ -345,4 +418,20 @@ func (q *Queries) RetryJob(ctx context.Context, arg RetryJobParams) (int64, erro
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const setJobSchedule = `-- name: SetJobSchedule :exec
+INSERT INTO job_schedules (name, next_run)
+VALUES (?, ?)
+ON CONFLICT (name) DO UPDATE SET next_run = excluded.next_run
+`
+
+type SetJobScheduleParams struct {
+	Name    string
+	NextRun int64
+}
+
+func (q *Queries) SetJobSchedule(ctx context.Context, arg SetJobScheduleParams) error {
+	_, err := q.db.ExecContext(ctx, setJobSchedule, arg.Name, arg.NextRun)
+	return err
 }

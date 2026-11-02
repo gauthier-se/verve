@@ -72,6 +72,18 @@ func TestMigrate_AppliesEmbeddedMigrations(t *testing.T) {
 	}
 }
 
+// Given a CLI process, then nothing is scheduled: only the server schedules recurring jobs.
+func TestMigrate_SchedulesNothing(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig(t.TempDir())
+
+	_, err := Migrate(t.Context(), cfg, discardLogger())
+	require.NoError(t, err)
+
+	require.Empty(t, storedSchedules(t, cfg))
+}
+
 // Given a running `verve serve` holding the data directory lock, then migrate and migrate status
 // fail with a clear error.
 func TestMigrate_DataDirLockedFails(t *testing.T) {

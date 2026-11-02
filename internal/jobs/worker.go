@@ -53,15 +53,21 @@ type Options struct {
 	ShutdownTimeout time.Duration
 	// FinishTimeout bounds, in total, the writes that end the jobs stopped by a shutdown.
 	FinishTimeout time.Duration
+	// Schedules declares the recurring jobs that Run enqueues.
+	Schedules []Schedule
+	// Location is the time zone of the cron expressions of Schedules. It defaults to the local time
+	// of the process.
+	Location *time.Location
 }
 
 // Worker is a pool that runs the jobs of a store with the handlers of a registry.
 type Worker struct {
-	store    store.Store
-	registry *Registry
-	clk      clock.Clock
-	logger   *slog.Logger
-	opts     Options
+	store     store.Store
+	registry  *Registry
+	clk       clock.Clock
+	logger    *slog.Logger
+	opts      Options
+	scheduler *Scheduler
 	// wake holds one signal per worker, so that jobs enqueued together wake up the whole pool.
 	wake chan struct{}
 
@@ -90,7 +96,7 @@ func NewWorker(s store.Store, registry *Registry, clk clock.Clock, logger *slog.
 	opts.ShutdownTimeout = cmp.Or(opts.ShutdownTimeout, defaultShutdownTimeout)
 	opts.FinishTimeout = cmp.Or(opts.FinishTimeout, defaultFinishTimeout)
 
-	return &Worker{
+	w := &Worker{
 		store:    s,
 		registry: registry,
 		clk:      clk,
@@ -98,6 +104,9 @@ func NewWorker(s store.Store, registry *Registry, clk clock.Clock, logger *slog.
 		opts:     opts,
 		wake:     make(chan struct{}, opts.Workers),
 	}
+	w.scheduler = &Scheduler{worker: w, schedules: opts.Schedules, location: cmp.Or(opts.Location, time.Local)}
+
+	return w
 }
 
 // Enqueue writes job through repos and wakes up a worker once it is committed, so repos is either
@@ -118,12 +127,15 @@ func (w *Worker) Enqueue(ctx context.Context, repos store.Repositories, job stor
 	return queued, nil
 }
 
-// Run runs jobs until ctx is cancelled. It then stops claiming, cancels the running handlers, waits
-// for them up to the shutdown timeout, writes how the stopped jobs ended and returns.
+// Run runs jobs and enqueues the recurring ones until ctx is cancelled. It then stops claiming,
+// cancels the running handlers, waits for them up to the shutdown timeout, writes how the stopped
+// jobs ended and returns.
 func (w *Worker) Run(ctx context.Context) {
 	w.logger.InfoContext(ctx, "worker started", slog.Int("workers", w.opts.Workers))
 
 	var wg sync.WaitGroup
+
+	wg.Go(func() { w.scheduler.loop(ctx) })
 
 	for range w.opts.Workers {
 		wg.Go(func() { w.loop(ctx) })
