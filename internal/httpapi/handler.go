@@ -71,11 +71,13 @@ func outsideAPI(next http.Handler) http.Handler {
 }
 
 // newHandler wraps routes with the middleware chain. Order, outermost first: recovery, client
-// info, request logging, security headers, gate, router. Middlewares added later keep this order.
+// info, audit metadata, request logging, security headers, gate, router. Middlewares added later
+// keep this order.
 func newHandler(d Deps, routes http.Handler) http.Handler {
 	middlewares := []middleware{
 		RecoverMiddleware(d.Logger),
 		ClientInfoMiddleware(d.TrustedProxies, d.Logger, d.Clock),
+		AuditMetaMiddleware,
 		RequestLogMiddleware(d.Logger, d.Clock),
 		SecurityHeaders(DefaultCSP(), d.HSTS),
 	}
