@@ -162,6 +162,305 @@ func RunJobs(t *testing.T, newStore NewStoreFunc) {
 	runJobsLostLeases(t, newStore)
 	runJobsFencing(t, newStore)
 	runJobsCancel(t, newStore)
+	runJobsSchedules(t, newStore)
+	runJobsActive(t, newStore)
+	runJobsPurge(t, newStore)
+}
+
+func runJobsSchedules(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+
+	// Given no schedule, then ListSchedules returns none.
+	t.Run("ListSchedulesWithoutSchedulesIsEmpty", func(t *testing.T) {
+		t.Parallel()
+
+		schedules, err := newStore(t, clock.NewFake(jobsTime)).Jobs().ListSchedules(t.Context())
+		require.NoError(t, err)
+		require.Empty(t, schedules)
+	})
+
+	// Given SetSchedule with a time in any location, then ListSchedules returns the next run of each
+	// name in UTC.
+	t.Run("SetScheduleStoresTheNextRun", func(t *testing.T) {
+		t.Parallel()
+
+		jobs := newStore(t, clock.NewFake(jobsTime)).Jobs()
+		ctx := t.Context()
+
+		require.NoError(t, jobs.SetSchedule(ctx, "jobs.purge", jobsTime.Add(time.Hour)))
+		require.NoError(t, jobs.SetSchedule(ctx, "backup.run", jobsTime.In(time.FixedZone("UTC+2", 2*60*60))))
+
+		schedules, err := jobs.ListSchedules(ctx)
+		require.NoError(t, err)
+		require.Equal(t, map[string]time.Time{"jobs.purge": jobsTime.Add(time.Hour), "backup.run": jobsTime}, schedules)
+	})
+
+	// Given SetSchedule on a stored name, then its next run is replaced.
+	t.Run("SetScheduleReplacesTheNextRun", func(t *testing.T) {
+		t.Parallel()
+
+		jobs := newStore(t, clock.NewFake(jobsTime)).Jobs()
+		ctx := t.Context()
+
+		require.NoError(t, jobs.SetSchedule(ctx, "jobs.purge", jobsTime))
+		require.NoError(t, jobs.SetSchedule(ctx, "jobs.purge", jobsTime.Add(time.Hour)))
+
+		schedules, err := jobs.ListSchedules(ctx)
+		require.NoError(t, err)
+		require.Equal(t, map[string]time.Time{"jobs.purge": jobsTime.Add(time.Hour)}, schedules)
+	})
+
+	// Given DeleteSchedule, then only the schedule of that name is removed.
+	t.Run("DeleteScheduleRemovesTheSchedule", func(t *testing.T) {
+		t.Parallel()
+
+		jobs := newStore(t, clock.NewFake(jobsTime)).Jobs()
+		ctx := t.Context()
+
+		require.NoError(t, jobs.SetSchedule(ctx, "jobs.purge", jobsTime))
+		require.NoError(t, jobs.SetSchedule(ctx, "backup.run", jobsTime))
+		require.NoError(t, jobs.DeleteSchedule(ctx, "backup.run"))
+
+		schedules, err := jobs.ListSchedules(ctx)
+		require.NoError(t, err)
+		require.Equal(t, map[string]time.Time{"jobs.purge": jobsTime}, schedules)
+	})
+
+	// Given DeleteSchedule on a missing name, then the error satisfies errors.Is(err, store.ErrNotFound).
+	t.Run("DeleteScheduleOnAMissingNameReturnsErrNotFound", func(t *testing.T) {
+		t.Parallel()
+
+		err := newStore(t, clock.NewFake(jobsTime)).Jobs().DeleteSchedule(t.Context(), "jobs.purge")
+		require.ErrorIs(t, err, store.ErrNotFound)
+	})
+
+	// Given SetSchedule through the repositories of WithTx, when the transaction rolls back, then the
+	// next run is the one from before.
+	t.Run("SetScheduleInARolledBackTransactionChangesNothing", func(t *testing.T) {
+		t.Parallel()
+
+		s := newStore(t, clock.NewFake(jobsTime))
+		ctx := t.Context()
+		errRollback := errors.New("roll back")
+
+		require.NoError(t, s.Jobs().SetSchedule(ctx, "jobs.purge", jobsTime))
+
+		err := s.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
+			if err := tx.Jobs().SetSchedule(ctx, "jobs.purge", jobsTime.Add(time.Hour)); err != nil {
+				return err
+			}
+
+			return errRollback
+		})
+		require.ErrorIs(t, err, errRollback)
+
+		schedules, err := s.Jobs().ListSchedules(ctx)
+		require.NoError(t, err)
+		require.Equal(t, map[string]time.Time{"jobs.purge": jobsTime}, schedules)
+	})
+}
+
+func runJobsActive(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+
+	const key = "schedule:jobs.purge"
+
+	// claimed returns jobs with a claimed job of serialKey.
+	claimed := func(ctx context.Context, t *testing.T, jobs store.JobsRepository, serialKey string) store.Job {
+		t.Helper()
+
+		mustEnqueue(ctx, t, jobs, dueJob(jobsTime, serialKey))
+
+		return mustClaim(ctx, t, jobs)
+	}
+
+	tests := []struct {
+		name    string
+		prepare func(ctx context.Context, t *testing.T, jobs store.JobsRepository)
+		want    bool
+	}{
+		{
+			name:    "NoJob",
+			prepare: func(context.Context, *testing.T, store.JobsRepository) {},
+		},
+		{
+			name: "QueuedJob",
+			prepare: func(ctx context.Context, t *testing.T, jobs store.JobsRepository) {
+				t.Helper()
+				mustEnqueue(ctx, t, jobs, dueJob(jobsTime, key))
+			},
+			want: true,
+		},
+		{
+			name: "JobWaitingForItsRetry",
+			prepare: func(ctx context.Context, t *testing.T, jobs store.JobsRepository) {
+				t.Helper()
+
+				job := claimed(ctx, t, jobs, key)
+				require.NoError(t, jobs.Retry(ctx, job.ID, job.Claims, "handler failed", jobsTime.Add(time.Hour)))
+			},
+			want: true,
+		},
+		{
+			name: "RunningJob",
+			prepare: func(ctx context.Context, t *testing.T, jobs store.JobsRepository) {
+				t.Helper()
+				claimed(ctx, t, jobs, key)
+			},
+			want: true,
+		},
+		{
+			name: "CompletedJob",
+			prepare: func(ctx context.Context, t *testing.T, jobs store.JobsRepository) {
+				t.Helper()
+
+				job := claimed(ctx, t, jobs, key)
+				require.NoError(t, jobs.Complete(ctx, job.ID, job.Claims))
+			},
+		},
+		{
+			name: "FailedJob",
+			prepare: func(ctx context.Context, t *testing.T, jobs store.JobsRepository) {
+				t.Helper()
+
+				job := claimed(ctx, t, jobs, key)
+				require.NoError(t, jobs.Fail(ctx, job.ID, job.Claims, "handler failed"))
+			},
+		},
+		{
+			name: "CancelledJob",
+			prepare: func(ctx context.Context, t *testing.T, jobs store.JobsRepository) {
+				t.Helper()
+
+				job := mustEnqueue(ctx, t, jobs, dueJob(jobsTime, key))
+				require.NoError(t, jobs.Cancel(ctx, job.ID))
+			},
+		},
+		{
+			name: "ActiveJobOfAnotherKey",
+			prepare: func(ctx context.Context, t *testing.T, jobs store.JobsRepository) {
+				t.Helper()
+				mustEnqueue(ctx, t, jobs, dueJob(jobsTime, "schedule:backup.run"))
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		// Given jobs in a given state, then HasActiveJob reports whether one of the serial key is queued
+		// or running.
+		t.Run("HasActiveJobWith"+tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			jobs := newStore(t, clock.NewFake(jobsTime)).Jobs()
+			ctx := t.Context()
+
+			tt.prepare(ctx, t, jobs)
+
+			got, err := jobs.HasActiveJob(ctx, key)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got)
+		})
+	}
+
+	// Given HasActiveJob through the repositories of WithTx, then it sees a job of the transaction.
+	t.Run("HasActiveJobSeesTheJobsOfItsTransaction", func(t *testing.T) {
+		t.Parallel()
+
+		s := newStore(t, clock.NewFake(jobsTime))
+		ctx := t.Context()
+
+		err := s.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
+			mustEnqueue(ctx, t, tx.Jobs(), dueJob(jobsTime, key))
+
+			got, err := tx.Jobs().HasActiveJob(ctx, key)
+			require.True(t, got)
+
+			return err
+		})
+		require.NoError(t, err)
+	})
+}
+
+func runJobsPurge(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+
+	// The limit of failed jobs comes first, because they are kept for longer.
+	failedBefore := jobsTime.Add(time.Hour)
+	completedBefore := jobsTime.Add(2 * time.Hour)
+
+	complete := func(ctx context.Context, jobs store.JobsRepository, job store.Job) error {
+		return jobs.Complete(ctx, job.ID, job.Claims)
+	}
+	cancel := func(ctx context.Context, jobs store.JobsRepository, job store.Job) error {
+		return jobs.ConfirmCancel(ctx, job.ID, job.Claims)
+	}
+	fail := func(ctx context.Context, jobs store.JobsRepository, job store.Job) error {
+		return jobs.Fail(ctx, job.ID, job.Claims, "handler failed")
+	}
+
+	tests := []struct {
+		name       string
+		end        func(ctx context.Context, jobs store.JobsRepository, job store.Job) error
+		finishedAt time.Time
+		removed    bool
+	}{
+		{name: "RemovesACompletedJobOlderThanItsLimit", end: complete, finishedAt: completedBefore.Add(-time.Millisecond), removed: true},
+		{name: "KeepsACompletedJobAtItsLimit", end: complete, finishedAt: completedBefore},
+		{name: "RemovesACancelledJobOlderThanItsLimit", end: cancel, finishedAt: completedBefore.Add(-time.Millisecond), removed: true},
+		{name: "KeepsACancelledJobAtItsLimit", end: cancel, finishedAt: completedBefore},
+		{name: "RemovesAFailedJobOlderThanItsLimit", end: fail, finishedAt: failedBefore.Add(-time.Millisecond), removed: true},
+		{name: "KeepsAFailedJobAtItsLimit", end: fail, finishedAt: failedBefore},
+	}
+
+	for _, tt := range tests {
+		// Given a finished job, then PurgeFinished removes it only if it ended before the limit of its
+		// status.
+		t.Run("PurgeFinished"+tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			clk := clock.NewFake(jobsTime)
+			jobs := newStore(t, clk).Jobs()
+			ctx := t.Context()
+
+			mustEnqueue(ctx, t, jobs, dueJob(jobsTime, ""))
+			job := mustClaim(ctx, t, jobs)
+
+			clk.Set(tt.finishedAt)
+			require.NoError(t, tt.end(ctx, jobs, job))
+			require.NoError(t, jobs.PurgeFinished(ctx, completedBefore, failedBefore))
+
+			_, err := jobs.Get(ctx, job.ID)
+			if tt.removed {
+				require.ErrorIs(t, err, store.ErrNotFound)
+
+				return
+			}
+
+			require.NoError(t, err)
+		})
+	}
+
+	// Given queued and running jobs older than both limits, even with an expired lease, then
+	// PurgeFinished keeps them.
+	t.Run("PurgeFinishedKeepsQueuedAndRunningJobs", func(t *testing.T) {
+		t.Parallel()
+
+		jobs := newStore(t, clock.NewFake(jobsTime)).Jobs()
+		ctx := t.Context()
+
+		retried := mustEnqueue(ctx, t, jobs, dueJob(jobsTime, ""))
+		claimed := mustClaim(ctx, t, jobs)
+		require.NoError(t, jobs.Retry(ctx, claimed.ID, claimed.Claims, "handler failed", jobsTime))
+
+		running := mustClaim(ctx, t, jobs)
+		queued := mustEnqueue(ctx, t, jobs, dueJob(jobsTime, ""))
+
+		require.NoError(t, jobs.PurgeFinished(ctx, jobsTime.Add(24*time.Hour), jobsTime.Add(24*time.Hour)))
+
+		require.Equal(t, store.JobRunning, mustGet(ctx, t, jobs, running.ID).Status)
+		require.Equal(t, retried.ID, running.ID)
+		require.Equal(t, store.JobQueued, mustGet(ctx, t, jobs, queued.ID).Status)
+	})
 }
 
 func runJobsEnqueue(t *testing.T, newStore NewStoreFunc) {
