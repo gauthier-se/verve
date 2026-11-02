@@ -8,6 +8,19 @@ import (
 	"database/sql"
 )
 
+type AuditEvent struct {
+	ID         int64
+	OccurredAt int64
+	ActorID    sql.NullInt64
+	SubjectID  sql.NullInt64
+	Type       string
+	ClientIp   sql.NullString
+	UserAgent  sql.NullString
+	Payload    string
+	Count      int64
+	LastAt     int64
+}
+
 type InstanceSetting struct {
 	Key       string
 	Value     string

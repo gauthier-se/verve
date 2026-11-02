@@ -47,7 +47,10 @@ An append-only record of security-relevant and data management events: logins, t
 
 ## Data and API notes
 
-- `audit_events` table indexed by time, actor and subject.
+- `audit_events` table indexed by time, actor and subject, without foreign keys, since events outlive users.
+- Events are built only by the constructors of `internal/audit`, whose payloads are closed lists of fields. A table test checks every constructor against the sensitive keys of `internal/logging`, the one definition of that rule.
+- `audit.Record` runs on `tx.AuditEvents()` inside the `WithTx` of the action, so that an event commits or rolls back with it.
+- The client IP and the user agent, truncated to 256 characters, come from the request context. They are empty for jobs and CLI commands.
 - Endpoints: `GET /api/v1/account/audit`, `GET /api/v1/admin/audit`.
 
 ## Edge cases
