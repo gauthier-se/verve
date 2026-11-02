@@ -109,3 +109,29 @@ SET status = 'cancelled',
     locked_until = NULL,
     finished_at = ?
 WHERE id = ? AND claims = ? AND status = 'running';
+
+-- name: ListJobSchedules :many
+SELECT *
+FROM job_schedules;
+
+-- name: SetJobSchedule :exec
+INSERT INTO job_schedules (name, next_run)
+VALUES (?, ?)
+ON CONFLICT (name) DO UPDATE SET next_run = excluded.next_run;
+
+-- name: DeleteJobSchedule :execrows
+DELETE FROM job_schedules
+WHERE name = ?;
+
+-- name: HasActiveJob :one
+SELECT EXISTS (
+    SELECT 1
+    FROM jobs
+    WHERE serial_key = ?
+      AND status IN ('queued', 'running')
+);
+
+-- name: PurgeFinishedJobs :exec
+DELETE FROM jobs
+WHERE (status IN ('completed', 'cancelled') AND finished_at < sqlc.arg(completed_before))
+   OR (status = 'failed' AND finished_at < sqlc.arg(failed_before));

@@ -45,6 +45,11 @@ type Job struct {
 	CancelRequested int64
 }
 
+type JobSchedule struct {
+	Name    string
+	NextRun int64
+}
+
 type User struct {
 	ID           int64
 	Username     string

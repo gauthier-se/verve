@@ -219,6 +219,74 @@ func (r jobs) ConfirmCancel(ctx context.Context, id, claims int64) error {
 	return nil
 }
 
+func (r jobs) ListSchedules(ctx context.Context) (map[string]time.Time, error) {
+	rows, err := r.q.read().ListJobSchedules(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list job schedules: %w", err)
+	}
+
+	schedules := make(map[string]time.Time, len(rows))
+	for _, row := range rows {
+		schedules[row.Name] = fromMillis(row.NextRun)
+	}
+
+	return schedules, nil
+}
+
+func (r jobs) SetSchedule(ctx context.Context, name string, nextRun time.Time) error {
+	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
+		return q.SetJobSchedule(ctx, sqlcgen.SetJobScheduleParams{Name: name, NextRun: toMillis(nextRun)})
+	})
+	if err != nil {
+		return fmt.Errorf("set job schedule %q: %w", name, err)
+	}
+
+	return nil
+}
+
+func (r jobs) DeleteSchedule(ctx context.Context, name string) error {
+	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
+		deleted, err := q.DeleteJobSchedule(ctx, name)
+		if err != nil {
+			return err
+		}
+
+		if deleted == 0 {
+			return store.ErrNotFound
+		}
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("delete job schedule %q: %w", name, err)
+	}
+
+	return nil
+}
+
+func (r jobs) HasActiveJob(ctx context.Context, serialKey string) (bool, error) {
+	active, err := r.q.read().HasActiveJob(ctx, sql.NullString{String: serialKey, Valid: true})
+	if err != nil {
+		return false, fmt.Errorf("find active job of serial key %q: %w", serialKey, err)
+	}
+
+	return active, nil
+}
+
+func (r jobs) PurgeFinished(ctx context.Context, completedBefore, failedBefore time.Time) error {
+	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
+		return q.PurgeFinishedJobs(ctx, sqlcgen.PurgeFinishedJobsParams{
+			CompletedBefore: nullMillis(completedBefore),
+			FailedBefore:    nullMillis(failedBefore),
+		})
+	})
+	if err != nil {
+		return fmt.Errorf("purge finished jobs: %w", err)
+	}
+
+	return nil
+}
+
 // fenced runs a write that applies only to a job id in the right state, usually running under its
 // claims value. When it updates no row, it returns store.ErrNotFound for a missing job and
 // store.ErrConflict otherwise.

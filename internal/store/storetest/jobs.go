@@ -448,17 +448,18 @@ func runJobsPurge(t *testing.T, newStore NewStoreFunc) {
 		jobs := newStore(t, clock.NewFake(jobsTime)).Jobs()
 		ctx := t.Context()
 
-		retried := mustEnqueue(ctx, t, jobs, dueJob(jobsTime, ""))
-		claimed := mustClaim(ctx, t, jobs)
-		require.NoError(t, jobs.Retry(ctx, claimed.ID, claimed.Claims, "handler failed", jobsTime))
+		mustEnqueue(ctx, t, jobs, dueJob(jobsTime, ""))
+		retried := mustClaim(ctx, t, jobs)
+		require.NoError(t, jobs.Retry(ctx, retried.ID, retried.Claims, "handler failed", jobsTime.Add(time.Hour)))
 
+		mustEnqueue(ctx, t, jobs, dueJob(jobsTime, ""))
 		running := mustClaim(ctx, t, jobs)
 		queued := mustEnqueue(ctx, t, jobs, dueJob(jobsTime, ""))
 
 		require.NoError(t, jobs.PurgeFinished(ctx, jobsTime.Add(24*time.Hour), jobsTime.Add(24*time.Hour)))
 
+		require.Equal(t, store.JobQueued, mustGet(ctx, t, jobs, retried.ID).Status)
 		require.Equal(t, store.JobRunning, mustGet(ctx, t, jobs, running.ID).Status)
-		require.Equal(t, retried.ID, running.ID)
 		require.Equal(t, store.JobQueued, mustGet(ctx, t, jobs, queued.ID).Status)
 	})
 }
