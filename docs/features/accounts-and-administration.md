@@ -60,8 +60,8 @@ Verve is multi-user for a household. Each user's health data is isolated. An adm
 ## Data and API notes
 
 - `users` (username unique, email optional and unique when present, role, status `active`, `disabled` or `deleting`). `password_hash` is empty for the external logins of M5.
-- Usernames have 1 to 64 characters, without `@`, whitespace or control characters. Emails contain `@`. A login is therefore never ambiguous between a username and an email. Lengths count characters, not bytes.
-- Usernames and emails keep the case they were created with, and are unique and looked up ignoring case, in every alphabet. `username_fold` and `email_fold` hold the case-folded values, because `COLLATE NOCASE` and `lower()` only fold ASCII: `élodie` and `Élodie` would be two accounts.
+- Usernames have 1 to 64 characters, without `@`, whitespace, control characters or invisible format characters such as a zero-width space, or the code is `username_invalid`. Emails contain `@`. A login is therefore never ambiguous between a username and an email. Lengths count characters, not bytes.
+- Usernames and emails keep the case they were created with, and are unique and looked up ignoring case, in every alphabet, through the columns `username_fold` and `email_fold` ([ADR 0013](../decisions/0013-case-folded-logins.md)).
 - `invitations` (token hash, role, expiry, used at).
 - Admin endpoints are under `/api/v1/admin/...` and require the admin role.
 

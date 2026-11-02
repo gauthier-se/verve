@@ -16,6 +16,9 @@ import (
 const (
 	saltLength   = 16
 	digestLength = 32
+
+	// paramsFormat is the field of the parameters in a PHC string.
+	paramsFormat = "m=%d,t=%d,p=%d"
 )
 
 // ErrMalformedHash is returned for a password hash that Hasher.Hash cannot have written. Its message
@@ -77,7 +80,7 @@ func (h Hasher) digest(password string, salt []byte) []byte {
 }
 
 func (h Hasher) encodeParams() string {
-	return fmt.Sprintf("m=%d,t=%d,p=%d", h.Memory, h.Iterations, h.Parallelism)
+	return fmt.Sprintf(paramsFormat, h.Memory, h.Iterations, h.Parallelism)
 }
 
 // parsedHash is a decoded PHC string.
@@ -104,7 +107,7 @@ func parseHash(hash string) (parsedHash, error) {
 	// Sscanf stops at the end of its format: encoding the values back rejects what follows, as well
 	// as leading zeros.
 	p := &parsed.params
-	if _, err = fmt.Sscanf(fields[3], "m=%d,t=%d,p=%d", &p.Memory, &p.Iterations, &p.Parallelism); err != nil ||
+	if _, err = fmt.Sscanf(fields[3], paramsFormat, &p.Memory, &p.Iterations, &p.Parallelism); err != nil ||
 		p.encodeParams() != fields[3] || p.Memory == 0 || p.Iterations == 0 || p.Parallelism == 0 {
 		return parsedHash{}, ErrMalformedHash
 	}

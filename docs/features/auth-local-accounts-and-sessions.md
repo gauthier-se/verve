@@ -53,6 +53,7 @@ Username and password login with argon2id hashing and server-side sessions store
 ## Data and API notes
 
 - `sessions` table with hashed id.
+- The password policy answers with the codes `password_too_short`, `password_too_long` and `password_too_common`. Length counts characters, not bytes.
 - Endpoints: `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, `GET /api/v1/auth/me`, `GET /api/v1/account/sessions`, `DELETE /api/v1/account/sessions/{id}`, `POST /api/v1/account/password`.
 
 ## Edge cases

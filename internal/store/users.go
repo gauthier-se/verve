@@ -55,8 +55,8 @@ type User struct {
 // users.
 type UsersRepository interface {
 	// Create stores an active user with the current time as CreatedAt, and returns it. It returns
-	// ErrConflict when the username or the email is taken, and ErrInvalid when the username holds an
-	// @ or the email has none.
+	// ErrConflict when the username or the email is taken, and ErrInvalid when the username is empty
+	// or holds an @, or when the email has none.
 	Create(ctx context.Context, user NewUser) (User, error)
 	// Get returns the user of id, or ErrNotFound.
 	Get(ctx context.Context, id int64) (User, error)

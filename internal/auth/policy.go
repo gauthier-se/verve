@@ -80,8 +80,9 @@ func listed(list, entry string) bool {
 }
 
 // ValidateUsername returns ErrUsernameInvalid unless username has 1 to 64 characters, without @,
-// whitespace or control characters, so that a login is never ambiguous between a username and an
-// email. Length counts characters, not bytes.
+// whitespace, control characters or format characters. So a login is never ambiguous between a
+// username and an email, and two usernames never look the same because of an invisible character.
+// Length counts characters, not bytes.
 func ValidateUsername(username string) error {
 	if username == "" || utf8.RuneCountInString(username) > maxUsernameLength || !utf8.ValidString(username) ||
 		strings.ContainsFunc(username, forbiddenInUsername) {
@@ -92,5 +93,5 @@ func ValidateUsername(username string) error {
 }
 
 func forbiddenInUsername(r rune) bool {
-	return r == '@' || unicode.IsSpace(r) || unicode.IsControl(r)
+	return r == '@' || unicode.IsSpace(r) || unicode.IsControl(r) || unicode.Is(unicode.Cf, r)
 }
