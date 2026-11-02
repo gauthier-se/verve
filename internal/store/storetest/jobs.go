@@ -265,11 +265,11 @@ func runJobsActive(t *testing.T, newStore NewStoreFunc) {
 
 	const key = "schedule:jobs.purge"
 
-	// claimed returns jobs with a claimed job of serialKey.
-	claimed := func(ctx context.Context, t *testing.T, jobs store.JobsRepository, serialKey string) store.Job {
+	// claimed enqueues a job of the serial key, and returns it claimed.
+	claimed := func(ctx context.Context, t *testing.T, jobs store.JobsRepository) store.Job {
 		t.Helper()
 
-		mustEnqueue(ctx, t, jobs, dueJob(jobsTime, serialKey))
+		mustEnqueue(ctx, t, jobs, dueJob(jobsTime, key))
 
 		return mustClaim(ctx, t, jobs)
 	}
@@ -296,7 +296,7 @@ func runJobsActive(t *testing.T, newStore NewStoreFunc) {
 			prepare: func(ctx context.Context, t *testing.T, jobs store.JobsRepository) {
 				t.Helper()
 
-				job := claimed(ctx, t, jobs, key)
+				job := claimed(ctx, t, jobs)
 				require.NoError(t, jobs.Retry(ctx, job.ID, job.Claims, "handler failed", jobsTime.Add(time.Hour)))
 			},
 			want: true,
@@ -305,7 +305,7 @@ func runJobsActive(t *testing.T, newStore NewStoreFunc) {
 			name: "RunningJob",
 			prepare: func(ctx context.Context, t *testing.T, jobs store.JobsRepository) {
 				t.Helper()
-				claimed(ctx, t, jobs, key)
+				claimed(ctx, t, jobs)
 			},
 			want: true,
 		},
@@ -314,7 +314,7 @@ func runJobsActive(t *testing.T, newStore NewStoreFunc) {
 			prepare: func(ctx context.Context, t *testing.T, jobs store.JobsRepository) {
 				t.Helper()
 
-				job := claimed(ctx, t, jobs, key)
+				job := claimed(ctx, t, jobs)
 				require.NoError(t, jobs.Complete(ctx, job.ID, job.Claims))
 			},
 		},
@@ -323,7 +323,7 @@ func runJobsActive(t *testing.T, newStore NewStoreFunc) {
 			prepare: func(ctx context.Context, t *testing.T, jobs store.JobsRepository) {
 				t.Helper()
 
-				job := claimed(ctx, t, jobs, key)
+				job := claimed(ctx, t, jobs)
 				require.NoError(t, jobs.Fail(ctx, job.ID, job.Claims, "handler failed"))
 			},
 		},
