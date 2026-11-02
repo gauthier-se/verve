@@ -221,8 +221,11 @@ func TestScheduler_TickSkipsARunWhileTheLastJobIsActive(t *testing.T) {
 			require.NoError(t, scheduler.Tick(ctx))
 
 			require.Equal(t, map[string]time.Time{hourlyName: clk.Now().Add(time.Hour)}, storedSchedules(ctx, t, s))
-			require.Contains(t, logs.String(), `"msg":"recurring job skipped"`)
-			require.Contains(t, logs.String(), `"name":"`+hourlyName+`"`)
+
+			skipped := messageLines(t, logs, "recurring job skipped")
+			require.Len(t, skipped, 1)
+			require.Equal(t, hourlyName, skipped[0]["name"])
+
 			require.Len(t, finish(), 1)
 			require.Empty(t, drainJobs(ctx, t, s), "no second job was enqueued")
 

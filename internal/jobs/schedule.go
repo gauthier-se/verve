@@ -22,6 +22,11 @@ type Schedule struct {
 	Payload json.RawMessage
 }
 
+// enabled reports whether s has times to run at.
+func (s Schedule) enabled() bool {
+	return s.Every > 0 || s.Cron != ""
+}
+
 // Next returns the first run after now. An interval is real time, and a cron expression is read in
 // the location of now. Next fails on an expression that is invalid or that no date matches.
 func (s Schedule) Next(now time.Time) (time.Time, error) {
