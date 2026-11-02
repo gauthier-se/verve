@@ -1,10 +1,12 @@
 package config
 
 import (
+	"bytes"
 	"net/netip"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -64,6 +66,7 @@ func TestLoad_DefaultSources(t *testing.T) {
 		"listen_addr":     SourceDefault,
 		"public_url":      SourceDefault,
 		"trusted_proxies": SourceDefault,
+		"secret_key":      SourceDefault,
 		"log.level":       SourceDefault,
 		"log.format":      SourceDefault,
 		"max_upload_size": SourceDefault,
@@ -441,6 +444,104 @@ func TestLoad_TrustedProxiesEmptyEntry(t *testing.T) {
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), `trusted_proxies (VERVE_TRUSTED_PROXIES): invalid value ""`)
+}
+
+// Given VERVE_SECRET_KEY, then it sets the secret key.
+func TestLoad_SecretKeyFromEnvironment(t *testing.T) {
+	t.Parallel()
+
+	key := strings.Repeat("k", 32)
+
+	cfg, err := Load(LoadOptions{Env: map[string]string{"VERVE_SECRET_KEY": key}})
+
+	require.NoError(t, err)
+	require.Equal(t, key, cfg.SecretKey)
+	require.Equal(t, SourceEnv, cfg.Sources["secret_key"])
+}
+
+// Given no VERVE_SECRET_KEY, or an empty one, then no key is configured: serve uses secret.key.
+func TestLoad_NoSecretKey(t *testing.T) {
+	t.Parallel()
+
+	for _, environ := range []map[string]string{nil, {"VERVE_SECRET_KEY": ""}} {
+		cfg, err := Load(LoadOptions{Env: environ})
+
+		require.NoError(t, err)
+		require.Empty(t, cfg.SecretKey)
+		require.Equal(t, SourceDefault, cfg.Sources["secret_key"])
+	}
+}
+
+// Given a value of VERVE_SECRET_KEY shorter than 32 characters, then validation fails, naming the
+// variable and never the value.
+func TestLoad_SecretKeyLength(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name    string
+		key     string
+		wantErr bool
+	}{
+		{name: "31 characters", key: strings.Repeat("k", 31), wantErr: true},
+		{name: "32 characters", key: strings.Repeat("k", 32)},
+		{name: "31 characters of 62 bytes", key: strings.Repeat("é", 31), wantErr: true},
+		{name: "32 characters of 64 bytes", key: strings.Repeat("é", 32)},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := Load(LoadOptions{Env: map[string]string{"VERVE_SECRET_KEY": tt.key}})
+
+			if !tt.wantErr {
+				require.NoError(t, err)
+
+				return
+			}
+
+			require.EqualError(t, err, "VERVE_SECRET_KEY: must be at least 32 characters")
+		})
+	}
+}
+
+// Given `secret_key` in the YAML file, then it is an unknown key: the setting has no YAML key, and
+// the error does not hold the value.
+func TestLoad_SecretKeyInFileIsUnknown(t *testing.T) {
+	t.Parallel()
+
+	path := writeFile(t, "secret_key: from-a-file-that-must-stay-out-of-errors\n")
+
+	_, err := Load(LoadOptions{File: path})
+
+	require.EqualError(t, err, path+`:1: unknown key "secret_key"`)
+}
+
+// Given VERVE_SECRET_KEY, then WriteYAML masks it. Given no key, then there is no value to mask.
+func TestConfig_WriteYAML_MasksTheSecretKey(t *testing.T) {
+	t.Parallel()
+
+	key := strings.Repeat("k", 32)
+
+	for _, tt := range []struct {
+		name    string
+		environ map[string]string
+		want    string
+	}{
+		{name: "set", environ: map[string]string{"VERVE_SECRET_KEY": key}, want: `secret_key: "********" # env` + "\n"},
+		{name: "unset", want: `secret_key: "" # default` + "\n"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg, err := Load(LoadOptions{Env: tt.environ})
+			require.NoError(t, err)
+
+			var buf bytes.Buffer
+			require.NoError(t, cfg.WriteYAML(&buf))
+
+			require.Contains(t, buf.String(), tt.want)
+			require.NotContains(t, buf.String(), key)
+		})
+	}
 }
 
 // Given VERVE_PUBLIC_URL is not set, then Warnings contains a warning explaining that
