@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/gauthier-se/verve/internal/config"
 )
 
 // secretKeyFile is the name of the secret key file in the data directory.
@@ -38,7 +40,12 @@ func readSecretKey(path string) (string, error) {
 		return "", fmt.Errorf("read secret key: %w", err)
 	}
 
-	return strings.TrimSpace(string(data)), nil
+	key := strings.TrimSpace(string(data))
+	if err := config.CheckSecretKey(key); err != nil {
+		return "", fmt.Errorf("read secret key: %s: %w", path, err)
+	}
+
+	return key, nil
 }
 
 // generateSecretKey writes a new random key to a temporary file, with the permissions 0600 of

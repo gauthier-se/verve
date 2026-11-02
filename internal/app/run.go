@@ -16,9 +16,9 @@ import (
 )
 
 // Run logs the configuration warnings, reads the embedded web app, creates the data directory
-// layout, takes its lock, opens the database and starts serving HTTP. It then applies the pending
-// migrations, during which only the health probes are served, starts the job worker, marks the
-// server ready and serves until ctx is cancelled.
+// layout, takes its lock, opens the database, loads or generates the secret key and starts serving
+// HTTP. It then applies the pending migrations, during which only the health probes are served,
+// starts the job worker, marks the server ready and serves until ctx is cancelled.
 // Resources are released in reverse order: the database is closed once the server and the worker
 // have stopped.
 func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
@@ -55,6 +55,11 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger, hook befor
 
 		logger.Info("database closed")
 	}()
+
+	// Nothing encrypts with the key yet: backups need the file to exist.
+	if _, err := ensureSecretKey(newLayout(cfg.DataDir).SecretKey, cfg.SecretKey); err != nil {
+		return err
+	}
 
 	clk := clock.Real()
 	startup := newReadiness(newDatabaseChecker(db), newMigrationsChecker(db), newDataDirChecker(cfg.DataDir, clk))
