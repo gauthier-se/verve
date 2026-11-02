@@ -89,7 +89,7 @@ func (h redactHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 }
 
 func (h redactHandler) WithGroup(name string) slog.Handler {
-	return redactHandler{next: h.next.WithGroup(name), all: h.all || isSensitive(name)}
+	return redactHandler{next: h.next.WithGroup(name), all: h.all || IsSensitive(name)}
 }
 
 func (h redactHandler) redact(a slog.Attr) slog.Attr {
@@ -103,7 +103,7 @@ func (h redactHandler) redact(a slog.Attr) slog.Attr {
 // redact returns a with its value replaced when its key is sensitive, and the attributes of a
 // group redacted recursively. LogValuer values are resolved, unless the key is sensitive.
 func redact(a slog.Attr) slog.Attr {
-	if isSensitive(a.Key) {
+	if IsSensitive(a.Key) {
 		return slog.String(a.Key, redacted)
 	}
 
@@ -122,7 +122,9 @@ func redact(a slog.Attr) slog.Attr {
 	return slog.Attr{Key: a.Key, Value: slog.GroupValue(clean...)}
 }
 
-func isSensitive(key string) bool {
+// IsSensitive reports whether the value of key must never be written: it is the one rule shared by
+// the redaction of logs and the payloads of audit events.
+func IsSensitive(key string) bool {
 	key = strings.ToLower(key)
 
 	return slices.ContainsFunc(sensitiveKeys, func(s string) bool { return strings.Contains(key, s) })
