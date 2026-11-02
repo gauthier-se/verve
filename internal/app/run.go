@@ -100,7 +100,8 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger, hook befor
 		return errors.Join(err, <-served)
 	}
 
-	worker := jobs.NewWorker(st, registry, clk, logger, jobs.Options{})
+	schedules := registerJobs(registry, st, clk)
+	worker := jobs.NewWorker(st, registry, clk, logger, jobs.Options{Schedules: schedules})
 
 	var workerDone sync.WaitGroup
 
