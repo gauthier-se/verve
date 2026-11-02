@@ -164,6 +164,37 @@ func TestEnsureSecretKey_UnreadableFileFails(t *testing.T) {
 	})
 }
 
+// Given a secret.key without a usable key, then it fails instead of encrypting with it, and the
+// error does not hold the content of the file. A generated file is never partial, so this is
+// damage that the operator has to see.
+func TestEnsureSecretKey_TooShortFileFails(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name    string
+		content string
+	}{
+		{name: "empty", content: ""},
+		{name: "only a newline", content: "\n"},
+		{name: "31 characters", content: existingKey[:31]},
+		{name: "31 characters and a newline", content: existingKey[:31] + "\n"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			path := secretKeyPath(t)
+			require.NoError(t, os.WriteFile(path, []byte(tt.content), 0o600))
+
+			_, err := ensureSecretKey(path, "")
+			require.EqualError(t, err, "read secret key: "+path+": must be at least 32 characters")
+
+			content, err := os.ReadFile(path) //nolint:gosec // G304: a test file
+			require.NoError(t, err)
+			require.Equal(t, tt.content, string(content))
+		})
+	}
+}
+
 // Given no key and a data directory that refuses new files, then it fails with a clear error.
 func TestEnsureSecretKey_UnwritableDirectoryFails(t *testing.T) {
 	t.Parallel()
