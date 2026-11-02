@@ -11,11 +11,11 @@ import (
 	"github.com/gauthier-se/verve/internal/auth"
 )
 
-const strongPassword = "kettles drift over violet rooftops"
+const longPhrase = "kettles drift over violet rooftops"
 
 // passwordOf returns a password that is not on the list, of exactly n characters.
 func passwordOf(n int) string {
-	return string([]rune(strings.Repeat(strongPassword+" ", n))[:n])
+	return string([]rune(strings.Repeat(longPhrase+" ", n))[:n])
 }
 
 // Given a password, then the policy returns the code of the first rule it breaks. Length counts
@@ -43,7 +43,7 @@ func TestPasswordPolicy_Check(t *testing.T) {
 		{"CommonInLowerCase", "password1234", auth.ErrPasswordTooCommon},
 		{"CommonInUpperCase", "PASSWORD1234", auth.ErrPasswordTooCommon},
 		{"CommonInMixedCase", "PaSsWoRd1234", auth.ErrPasswordTooCommon},
-		{"LongWithoutAnyDigitOrSymbol", strongPassword, nil},
+		{"LongWithoutAnyDigitOrSymbol", longPhrase, nil},
 	}
 
 	for _, tc := range tests {

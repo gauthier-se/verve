@@ -12,6 +12,9 @@ import (
 	"github.com/gauthier-se/verve/internal/store"
 )
 
+// fakeHash stands for a password hash: the store never looks into it.
+const fakeHash = "$argon2id$hash"
+
 // usersTime has sub-millisecond digits and a non-UTC zone, so that the suite checks that CreatedAt
 // is truncated to the millisecond and returned in UTC.
 var usersTime = time.Date(2026, 10, 28, 10, 30, 15, 123_456_789, time.FixedZone("CET", 3600))
@@ -72,7 +75,7 @@ func RunUsers(t *testing.T, newStore NewStoreFunc) {
 		created := mustCreateUser(ctx, t, users, store.NewUser{
 			Username:     "Alice",
 			Email:        "Alice@Example.com",
-			PasswordHash: "$argon2id$hash",
+			PasswordHash: fakeHash,
 			Role:         store.RoleAdmin,
 		})
 
@@ -80,7 +83,7 @@ func RunUsers(t *testing.T, newStore NewStoreFunc) {
 			ID:           created.ID,
 			Username:     "Alice",
 			Email:        "Alice@Example.com",
-			PasswordHash: "$argon2id$hash",
+			PasswordHash: fakeHash,
 			Role:         store.RoleAdmin,
 			Status:       store.UserActive,
 			CreatedAt:    time.Date(2026, 10, 28, 9, 30, 15, 123_000_000, time.UTC),
