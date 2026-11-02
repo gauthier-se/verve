@@ -7,6 +7,7 @@ import (
 	"go/token"
 	"maps"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -16,8 +17,8 @@ import (
 	"github.com/gauthier-se/verve/internal/logging"
 )
 
-// everyConstructor holds an event of each constructor of the package, by the constructor's name.
-func everyConstructor() map[string]Event {
+// eventsByConstructor holds an event of each constructor of the package, by the constructor's name.
+func eventsByConstructor() map[string]Event {
 	return map[string]Event{
 		"LoginFailed": LoginFailed("alice"),
 	}
@@ -105,24 +106,21 @@ func collectSensitiveKeys(value any) []string {
 func TestConstructors_TableListsEveryConstructor(t *testing.T) {
 	t.Parallel()
 
-	require.ElementsMatch(t, constructorNames(t), slices.Collect(maps.Keys(everyConstructor())))
+	require.ElementsMatch(t, constructorNames(t), slices.Collect(maps.Keys(eventsByConstructor())))
 }
 
 // Given every event constructor, then no payload key is sensitive for the redaction rules of
-// internal/logging, and the payload is a JSON object.
+// internal/logging, and the payload is a struct, never a free map.
 func TestConstructors_PayloadsHaveNoSensitiveKey(t *testing.T) {
 	t.Parallel()
 
-	for name, event := range everyConstructor() {
+	for name, event := range eventsByConstructor() {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
 			require.NotEmpty(t, event.eventType)
+			require.Equal(t, reflect.Struct, reflect.TypeOf(event.payload).Kind())
 			require.Empty(t, sensitiveKeys(t, event.payload))
-
-			data, err := json.Marshal(event.payload)
-			require.NoError(t, err)
-			require.Equal(t, byte('{'), data[0])
 		})
 	}
 }

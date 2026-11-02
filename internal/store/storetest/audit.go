@@ -18,7 +18,7 @@ import (
 // of an event are truncated to the millisecond and returned in UTC.
 var auditTime = time.Date(2026, 10, 28, 10, 30, 15, 123_456_789, time.FixedZone("CET", 3600))
 
-// auditEvent returns a complete event of alice about bob.
+// auditEvent returns a complete event of user 7 about user 9.
 func auditEvent() store.NewAuditEvent {
 	return store.NewAuditEvent{
 		ActorID:   7,
@@ -28,6 +28,24 @@ func auditEvent() store.NewAuditEvent {
 		UserAgent: "curl/8.0",
 		Payload:   json.RawMessage(`{"reason":"left"}`),
 	}
+}
+
+func mustAppendEvent(ctx context.Context, t *testing.T, events store.AuditEventsRepository, event store.NewAuditEvent) store.AuditEvent {
+	t.Helper()
+
+	got, err := events.Append(ctx, event)
+	require.NoError(t, err)
+
+	return got
+}
+
+func mustGetEvent(ctx context.Context, t *testing.T, events store.AuditEventsRepository, id int64) store.AuditEvent {
+	t.Helper()
+
+	got, err := events.Get(ctx, id)
+	require.NoError(t, err)
+
+	return got
 }
 
 // RunAuditEvents runs the AuditEventsRepository contract against the stores returned by newStore.
@@ -42,13 +60,10 @@ func RunAuditEvents(t *testing.T, newStore NewStoreFunc) {
 		events := newStore(t, clock.NewFake(auditTime)).AuditEvents()
 		ctx := t.Context()
 
-		appended, err := events.Append(ctx, auditEvent())
-		require.NoError(t, err)
-
+		appended := mustAppendEvent(ctx, t, events, auditEvent())
 		at := time.Date(2026, 10, 28, 9, 30, 15, 123_000_000, time.UTC)
 
-		got, err := events.Get(ctx, appended.ID)
-		require.NoError(t, err)
+		got := mustGetEvent(ctx, t, events, appended.ID)
 		require.JSONEq(t, `{"reason":"left"}`, string(got.Payload))
 
 		got.Payload = nil
@@ -73,14 +88,12 @@ func RunAuditEvents(t *testing.T, newStore NewStoreFunc) {
 		events := newStore(t, clock.NewFake(auditTime)).AuditEvents()
 		ctx := t.Context()
 
-		appended, err := events.Append(ctx, store.NewAuditEvent{
+		appended := mustAppendEvent(ctx, t, events, store.NewAuditEvent{
 			Type:    "system.backup_created",
 			Payload: json.RawMessage(`{}`),
 		})
-		require.NoError(t, err)
 
-		got, err := events.Get(ctx, appended.ID)
-		require.NoError(t, err)
+		got := mustGetEvent(ctx, t, events, appended.ID)
 		require.Zero(t, got.ActorID)
 		require.Zero(t, got.SubjectID)
 		require.Empty(t, got.ClientIP)
@@ -94,11 +107,8 @@ func RunAuditEvents(t *testing.T, newStore NewStoreFunc) {
 		events := newStore(t, clock.NewFake(auditTime)).AuditEvents()
 		ctx := t.Context()
 
-		first, err := events.Append(ctx, auditEvent())
-		require.NoError(t, err)
-
-		second, err := events.Append(ctx, auditEvent())
-		require.NoError(t, err)
+		first := mustAppendEvent(ctx, t, events, auditEvent())
+		second := mustAppendEvent(ctx, t, events, auditEvent())
 
 		require.Greater(t, second.ID, first.ID)
 	})
@@ -149,8 +159,7 @@ func RunAuditEvents(t *testing.T, newStore NewStoreFunc) {
 		})
 		require.NoError(t, err)
 
-		_, err = s.AuditEvents().Get(ctx, id)
-		require.NoError(t, err)
+		mustGetEvent(ctx, t, s.AuditEvents(), id)
 	})
 
 	// Given Get on a missing id, then the error satisfies errors.Is(err, store.ErrNotFound).
@@ -163,19 +172,18 @@ func RunAuditEvents(t *testing.T, newStore NewStoreFunc) {
 		require.ErrorIs(t, err, store.ErrNotFound)
 	})
 
-	// Given a deleted user, then their events stay with their user id: no event depends on the user
-	// still existing, so an event can name an id that no account has.
-	t.Run("EventsDoNotDependOnTheirUsers", func(t *testing.T) {
+	// Given user ids that no account has, as after an account deletion, then the event is stored and
+	// keeps them: no constraint ties an event to its users. The store has no account yet, so this
+	// suite creates none to delete.
+	t.Run("EventsKeepTheIDsOfUsersThatDoNotExist", func(t *testing.T) {
 		t.Parallel()
 
 		events := newStore(t, clock.NewFake(auditTime)).AuditEvents()
 		ctx := t.Context()
 
-		appended, err := events.Append(ctx, auditEvent())
-		require.NoError(t, err)
+		appended := mustAppendEvent(ctx, t, events, auditEvent())
 
-		got, err := events.Get(ctx, appended.ID)
-		require.NoError(t, err)
+		got := mustGetEvent(ctx, t, events, appended.ID)
 		require.Equal(t, int64(7), got.ActorID)
 		require.Equal(t, int64(9), got.SubjectID)
 	})

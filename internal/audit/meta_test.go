@@ -79,6 +79,16 @@ func TestRecord_ReturnsTheErrorOfTheRepository(t *testing.T) {
 	require.ErrorIs(t, err, errAppend)
 }
 
+// Given an event that no constructor built, then Record refuses it and appends nothing.
+func TestRecord_RefusesAnEventWithoutAConstructor(t *testing.T) {
+	t.Parallel()
+
+	events := &fakeEvents{}
+
+	require.Error(t, Record(t.Context(), events, Event{}))
+	require.Empty(t, events.appended)
+}
+
 // Given a user agent, then it is truncated to 256 characters, not bytes.
 func TestWithMeta_TruncatesTheUserAgentTo256Characters(t *testing.T) {
 	t.Parallel()

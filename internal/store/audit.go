@@ -6,8 +6,8 @@ import (
 	"time"
 )
 
-// NewAuditEvent describes an audit event to append. Domain code builds one through the constructors
-// of internal/audit, which keep secrets and health values out of the payload.
+// NewAuditEvent describes an audit event to append. Domain code records events through
+// audit.Record, whose constructors keep secrets and health values out of the payload.
 type NewAuditEvent struct {
 	// ActorID is the user who acted, or 0 for the system.
 	ActorID int64

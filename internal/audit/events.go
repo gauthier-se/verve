@@ -5,6 +5,7 @@ package audit
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/gauthier-se/verve/internal/store"
@@ -38,6 +39,10 @@ func LoginFailed(attempted string) Event {
 // Record appends event to repo, with the client of ctx. For the event to commit with the action it
 // describes, repo is tx.AuditEvents() inside the WithTx of that action.
 func Record(ctx context.Context, repo store.AuditEventsRepository, event Event) error {
+	if event.eventType == "" {
+		return errors.New("record audit event: event not built by a constructor")
+	}
+
 	payload, err := json.Marshal(event.payload)
 	if err != nil {
 		return fmt.Errorf("encode audit event of type %q: %w", event.eventType, err)
