@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// printable is a test-only configuration with a secret, since Config has none yet.
+// printable is a test-only configuration with one field of each kind that WriteYAML prints.
 type printable struct {
 	Name    string   `yaml:"name" env:"NAME"`
 	Token   string   `yaml:"token" env:"TOKEN" secret:"true"`

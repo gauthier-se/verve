@@ -21,14 +21,15 @@ func TestEnsureDataDir_EmptyDirCreatesLayout(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, Layout{
-		Root:    root,
-		DB:      filepath.Join(root, "verve.db"),
-		Lock:    filepath.Join(root, "verve.lock"),
-		Uploads: filepath.Join(root, "uploads"),
-		Inbox:   filepath.Join(root, "inbox"),
-		Exports: filepath.Join(root, "exports"),
-		Backups: filepath.Join(root, "backups"),
-		Map:     filepath.Join(root, "map"),
+		Root:      root,
+		DB:        filepath.Join(root, "verve.db"),
+		Lock:      filepath.Join(root, "verve.lock"),
+		SecretKey: filepath.Join(root, "secret.key"),
+		Uploads:   filepath.Join(root, "uploads"),
+		Inbox:     filepath.Join(root, "inbox"),
+		Exports:   filepath.Join(root, "exports"),
+		Backups:   filepath.Join(root, "backups"),
+		Map:       filepath.Join(root, "map"),
 	}, layout)
 
 	for _, dir := range []string{root, layout.Uploads, layout.Inbox, layout.Exports, layout.Backups, layout.Map} {

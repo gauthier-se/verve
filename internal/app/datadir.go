@@ -15,26 +15,28 @@ const dbFile = "verve.db"
 
 // Layout holds the paths of the data directory content.
 type Layout struct {
-	Root    string
-	DB      string
-	Lock    string
-	Uploads string // in-progress resumable uploads
-	Inbox   string // raw push payloads waiting for processing
-	Exports string // generated user exports
-	Backups string // database backups
-	Map     string // optional PMTiles and assets
+	Root      string
+	DB        string
+	Lock      string
+	SecretKey string // generated secret key, absent when VERVE_SECRET_KEY is set
+	Uploads   string // in-progress resumable uploads
+	Inbox     string // raw push payloads waiting for processing
+	Exports   string // generated user exports
+	Backups   string // database backups
+	Map       string // optional PMTiles and assets
 }
 
 func newLayout(root string) Layout {
 	return Layout{
-		Root:    root,
-		DB:      filepath.Join(root, dbFile),
-		Lock:    filepath.Join(root, lockFile),
-		Uploads: filepath.Join(root, "uploads"),
-		Inbox:   filepath.Join(root, "inbox"),
-		Exports: filepath.Join(root, "exports"),
-		Backups: filepath.Join(root, "backups"),
-		Map:     filepath.Join(root, "map"),
+		Root:      root,
+		DB:        filepath.Join(root, dbFile),
+		Lock:      filepath.Join(root, lockFile),
+		SecretKey: filepath.Join(root, secretKeyFile),
+		Uploads:   filepath.Join(root, "uploads"),
+		Inbox:     filepath.Join(root, "inbox"),
+		Exports:   filepath.Join(root, "exports"),
+		Backups:   filepath.Join(root, "backups"),
+		Map:       filepath.Join(root, "map"),
 	}
 }
 

@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -84,6 +85,33 @@ func TestConfigCheck_PrintsWarnings(t *testing.T) {
 	require.Contains(t, res.stdout, "listen_addr:")
 	require.Contains(t, res.stderr, "Warning:")
 	require.Contains(t, res.stderr, "VERVE_PUBLIC_URL")
+}
+
+// Given VERVE_SECRET_KEY, when I run `verve config check`, then the value is masked.
+func TestConfigCheck_MasksTheSecretKey(t *testing.T) {
+	t.Parallel()
+
+	key := strings.Repeat("k", 32)
+
+	res := run(t, depsWithEnv(map[string]string{"VERVE_SECRET_KEY": key}), "config", "check")
+
+	require.Equal(t, 0, res.code, res.stderr)
+	require.Contains(t, res.stdout, `secret_key: "********" # env`+"\n")
+	require.NotContains(t, res.stdout+res.stderr, key)
+}
+
+// Given a VERVE_SECRET_KEY that is too short, when I run `verve config check`, then it exits 1
+// without printing the value.
+func TestConfigCheck_SecretKeyTooShort(t *testing.T) {
+	t.Parallel()
+
+	key := strings.Repeat("k", 31)
+
+	res := run(t, depsWithEnv(map[string]string{"VERVE_SECRET_KEY": key}), "config", "check")
+
+	require.Equal(t, 1, res.code)
+	require.Contains(t, res.stderr, "VERVE_SECRET_KEY: must be at least 32 characters")
+	require.NotContains(t, res.stdout+res.stderr, key)
 }
 
 // Given VERVE_CONFIG in the environment, when I run `verve config check`, then the file is used.

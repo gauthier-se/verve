@@ -122,7 +122,7 @@ func (l *fileLoader) mapping(node *yaml.Node, prefix string) {
 		// An empty value (`key:` or `key: ~`) leaves the setting or group unset.
 		isNull := value.ShortTag() == "!!null"
 
-		if s, ok := l.settings[path]; ok {
+		if s, ok := l.settings[path]; ok && !s.envOnly {
 			if isNull {
 				continue
 			}

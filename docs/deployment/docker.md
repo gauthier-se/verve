@@ -35,7 +35,7 @@ On invalid configuration, this command prints every error and exits with status 
 
 ## Volumes and permissions
 
-Everything Verve stores lives in `/data`: the SQLite database, uploads, exports, backups and map files. The [layout](../features/platform-configuration-and-deployment.md#functional-requirements) is described in FR-4. The server runs as UID and GID `65532`, so that directory must be writable by this user.
+Everything Verve stores lives in `/data`: the SQLite database, the secret key, uploads, exports, backups and map files. The [layout](../features/platform-configuration-and-deployment.md#functional-requirements) is described in FR-4. The server runs as UID and GID `65532`, so that directory must be writable by this user.
 
 | | Named volume | Bind mount |
 |---|---|---|

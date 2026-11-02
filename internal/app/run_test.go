@@ -162,6 +162,71 @@ func TestRun_DataDirLockedFails(t *testing.T) {
 	require.NotRegexp(t, loggedAddr, logs.String())
 }
 
+// Given no VERVE_SECRET_KEY and no secret.key, when Run starts, then it generates secret.key with
+// permissions 0600. Given a restart, then the file stays the same.
+func TestRun_GeneratesTheSecretKeyAndKeepsItAcrossRestarts(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig(t.TempDir())
+	path := filepath.Join(cfg.DataDir, "secret.key")
+
+	_, _, stop := startRun(t, cfg)
+	stop()
+
+	first, err := os.ReadFile(path) //nolint:gosec // G304: a test file
+	require.NoError(t, err)
+	require.Len(t, first, 64)
+
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+
+	_, _, stop = startRun(t, cfg)
+	stop()
+
+	second, err := os.ReadFile(path) //nolint:gosec // G304: a test file
+	require.NoError(t, err)
+	require.Equal(t, first, second)
+}
+
+// Given VERVE_SECRET_KEY, when Run starts, then no file is created.
+func TestRun_ConfiguredSecretKeyCreatesNoFile(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig(t.TempDir())
+	cfg.SecretKey = configuredKey
+
+	_, _, stop := startRun(t, cfg)
+	stop()
+
+	require.NoFileExists(t, filepath.Join(cfg.DataDir, "secret.key"))
+}
+
+// Given a secret.key that cannot be read, then Run fails with a clear error, never listens and
+// releases the lock.
+func TestRun_UnreadableSecretKeyFails(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	path := filepath.Join(dataDir, "secret.key")
+	require.NoError(t, os.Mkdir(path, 0o750))
+
+	logger, logs := testLogger()
+
+	// Bounded, because a Run that does not fail serves until its context ends.
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	err := Run(ctx, testConfig(dataDir), logger)
+	require.ErrorContains(t, err, "read secret key: ")
+	require.ErrorContains(t, err, path)
+	require.NotRegexp(t, loggedAddr, logs.String())
+
+	lock, err := AcquireLock(dataDir)
+	require.NoError(t, err)
+	require.NoError(t, lock.Release())
+}
+
 // Given VERVE_PUBLIC_URL unset at startup, then Run logs the configuration warnings once at warn level.
 func TestRun_LogsConfigurationWarningsOnce(t *testing.T) {
 	t.Parallel()

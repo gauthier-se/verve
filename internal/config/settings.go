@@ -7,7 +7,9 @@ import (
 
 // tagField describes a struct field that is part of a configuration, from its tags:
 // `yaml` gives the key, `env` the environment variable of a leaf, `envPrefix` marks a
-// group of nested settings and `secret:"true"` hides the value when printed.
+// group of nested settings and `secret:"true"` hides the value when printed. A leaf with
+// `yaml:"-"` and an environment variable is set by the environment only: the YAML file
+// rejects it, and it is listed under the lowercase name of the variable.
 type tagField struct {
 	index     int
 	goName    string
@@ -16,10 +18,11 @@ type tagField struct {
 	envPrefix string
 	group     bool
 	secret    bool
+	envOnly   bool
 }
 
 // fieldsOf returns the configuration fields of a struct type in declaration order,
-// skipping unexported fields and fields without a YAML key.
+// skipping unexported fields and fields with neither a YAML key nor an environment variable.
 func fieldsOf(t reflect.Type) []tagField {
 	var fields []tagField
 
@@ -27,11 +30,18 @@ func fieldsOf(t reflect.Type) []tagField {
 		sf := t.Field(i)
 
 		key, _, _ := strings.Cut(sf.Tag.Get("yaml"), ",")
+		envKey, _, _ := strings.Cut(sf.Tag.Get("env"), ",")
+
+		// Without an environment variable, the key stays empty or "-": the field is skipped below.
+		envOnly := key == "-"
+		if envOnly {
+			key = strings.ToLower(envKey)
+		}
+
 		if !sf.IsExported() || key == "" || key == "-" {
 			continue
 		}
 
-		envKey, _, _ := strings.Cut(sf.Tag.Get("env"), ",")
 		prefix, group := sf.Tag.Lookup("envPrefix")
 
 		fields = append(fields, tagField{
@@ -42,6 +52,7 @@ func fieldsOf(t reflect.Type) []tagField {
 			envPrefix: prefix,
 			group:     group,
 			secret:    sf.Tag.Get("secret") == "true",
+			envOnly:   envOnly,
 		})
 	}
 
@@ -50,14 +61,19 @@ func fieldsOf(t reflect.Type) []tagField {
 
 // setting is a leaf of a configuration.
 type setting struct {
-	path   string        // YAML path, for example "log.level"
-	env    string        // environment variable, for example "VERVE_LOG_LEVEL"
-	goName string        // Go field name, as reported by the environment parser
-	value  reflect.Value // the field, settable when the configuration was addressable
+	path    string        // YAML path, for example "log.level", which is not a YAML key when envOnly is set
+	env     string        // environment variable, for example "VERVE_LOG_LEVEL"
+	goName  string        // Go field name, as reported by the environment parser
+	value   reflect.Value // the field, settable when the configuration was addressable
+	envOnly bool          // the path is not a YAML key: only the environment sets this setting
 }
 
 // name identifies the setting in error messages, for example "log.level (VERVE_LOG_LEVEL)".
 func (s setting) name() string {
+	if s.envOnly {
+		return s.env
+	}
+
 	return s.path + " (" + s.env + ")"
 }
 
@@ -87,10 +103,11 @@ func appendSettings(settings []setting, v reflect.Value, path, env string) []set
 		}
 
 		settings = append(settings, setting{
-			path:   path + f.yaml,
-			env:    env + f.env,
-			goName: f.goName,
-			value:  fv,
+			path:    path + f.yaml,
+			env:     env + f.env,
+			goName:  f.goName,
+			value:   fv,
+			envOnly: f.envOnly,
 		})
 	}
 

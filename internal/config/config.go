@@ -8,18 +8,24 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"unicode/utf8"
 )
 
 // envPrefix is the prefix of every environment variable.
 const envPrefix = "VERVE_"
 
+// minSecretKeyLength is the shortest accepted secret key, in characters.
+const minSecretKeyLength = 32
+
 // Config is the effective configuration. The yaml tags give the YAML keys, the env tags
-// the environment variables without envPrefix.
+// the environment variables without envPrefix. A setting with `yaml:"-"` and an env tag
+// is set by the environment only.
 type Config struct {
 	DataDir        string    `yaml:"data_dir"        env:"DATA_DIR"`
 	ListenAddr     string    `yaml:"listen_addr"     env:"LISTEN_ADDR"`
 	PublicURL      PublicURL `yaml:"public_url"      env:"PUBLIC_URL"`
 	TrustedProxies Prefixes  `yaml:"trusted_proxies" env:"TRUSTED_PROXIES"`
+	SecretKey      string    `yaml:"-"               env:"SECRET_KEY" secret:"true"`
 	Log            LogConfig `yaml:"log"             envPrefix:"LOG_"`
 	MaxUploadSize  ByteSize  `yaml:"max_upload_size" env:"MAX_UPLOAD_SIZE"`
 	MaxIngestBody  ByteSize  `yaml:"max_ingest_body" env:"MAX_INGEST_BODY"`
@@ -87,7 +93,24 @@ func (c Config) validate(settings map[string]setting) []error {
 	positive("max_upload_size", c.MaxUploadSize)
 	positive("max_ingest_body", c.MaxIngestBody)
 
+	// Not through invalid, which would print the key.
+	if c.SecretKey != "" {
+		if err := CheckSecretKey(c.SecretKey); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", settings["secret_key"].name(), err))
+		}
+	}
+
 	return errs
+}
+
+// CheckSecretKey rejects a secret key that is too short, wherever it comes from. The error does
+// not hold the key.
+func CheckSecretKey(key string) error {
+	if utf8.RuneCountInString(key) < minSecretKeyLength {
+		return fmt.Errorf("must be at least %d characters", minSecretKeyLength)
+	}
+
+	return nil
 }
 
 // Warnings returns problems that do not prevent Verve from starting but deserve the admin's attention.

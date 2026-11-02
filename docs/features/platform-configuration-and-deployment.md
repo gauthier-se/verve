@@ -40,7 +40,7 @@ Verve is configured through `VERVE_*` environment variables, an optional YAML fi
   | `VERVE_LISTEN_ADDR` | `listen_addr` | `:8080` | HTTP listen address |
   | `VERVE_PUBLIC_URL` | `public_url` | none | External URL, used for cookies, links, OIDC redirect, CSRF origin checks and HSTS (sent only for https) |
   | `VERVE_TRUSTED_PROXIES` | `trusted_proxies` | none | CIDRs whose `X-Forwarded-*` headers are trusted |
-  | `VERVE_SECRET_KEY` | none | generated | Key for encrypting secrets at rest, generated into `secret.key` if absent. Not implemented yet (M1): the variable is ignored and has no YAML key |
+  | `VERVE_SECRET_KEY` | none | generated | Key for encrypting secrets at rest, generated into `secret.key` if absent |
   | `VERVE_LOG_LEVEL` | `log.level` | `info` | `debug`, `info`, `warn`, `error` |
   | `VERVE_LOG_FORMAT` | `log.format` | `text` | `text` or `json` |
   | `VERVE_MAX_UPLOAD_SIZE` | `max_upload_size` | `10GB` | Upper bound for XML uploads |
@@ -58,6 +58,7 @@ Verve is configured through `VERVE_*` environment variables, an optional YAML fi
     - The RFC 7239 `Forwarded` header is not supported and is ignored.
 
     When an untrusted peer sends `X-Forwarded-*` headers, Verve logs a warning suggesting `VERVE_TRUSTED_PROXIES`, at most once per hour.
+  - `VERVE_SECRET_KEY`: at least 32 characters. It has no YAML key: the YAML file rejects `secret_key` as an unknown key, and `verve config check` lists the masked value under that name. When it is set, it wins over `secret.key`, and no file is created. Otherwise `serve` generates 32 random bytes, hex encoded, into `secret.key` with permissions `0600`, then reuses that file. Whitespace around the content of the file is not part of the key. A `secret.key` that cannot be read or that holds fewer than 32 characters stops startup with a clear error. Generating the file needs hard links, so a data directory on a file system without them needs `VERVE_SECRET_KEY`.
   - Sizes: a whole number of bytes, optionally followed by a decimal unit (`KB`, `MB`, `GB`, `TB`, powers of 1000) or a binary unit (`KiB`, `MiB`, `GiB`, `TiB`, powers of 1024), case-insensitive. Must be greater than zero.
 
   `verve config check` validates the configuration and prints the effective values as YAML, each annotated with its source (`# default`, `# file`, `# env`) and secrets masked. On invalid configuration it prints every error and exits 1.
@@ -77,7 +78,7 @@ Verve is configured through `VERVE_*` environment variables, an optional YAML fi
     map/          optional PMTiles and assets
   ```
 
-  `serve` creates the missing directories with permissions `0750` and `verve.db` with permissions `0600`. When the data directory is not writable, startup fails with `data directory <path> is not writable: <cause>`.
+  `serve` creates the missing directories with permissions `0750`, `verve.db` with permissions `0600` and, without `VERVE_SECRET_KEY`, `secret.key` with permissions `0600`. When the data directory is not writable, startup fails with `data directory <path> is not writable: <cause>`.
 
 - **FR-5**: At startup Verve validates the configuration and refuses to start with a clear message on invalid values (for example a malformed CIDR or an unreachable data directory).
 - **FR-6**: Without `VERVE_PUBLIC_URL`, Verve starts but shows an admin warning, because secure cookies, OIDC and absolute links depend on it. `serve` also logs the configuration warnings once at warn level at startup.
