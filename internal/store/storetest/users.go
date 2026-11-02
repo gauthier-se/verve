@@ -191,6 +191,18 @@ func RunUsers(t *testing.T, newStore NewStoreFunc) {
 		requireUserCount(ctx, t, users, 0)
 	})
 
+	// Given an empty username, then store.ErrInvalid: it would match the empty login.
+	t.Run("EmptyUsernameIsInvalid", func(t *testing.T) {
+		t.Parallel()
+
+		users := newStore(t, clock.NewFake(usersTime)).Users()
+		ctx := t.Context()
+
+		_, err := users.Create(ctx, newUser("", ""))
+		require.ErrorIs(t, err, store.ErrInvalid)
+		requireUserCount(ctx, t, users, 0)
+	})
+
 	// Given Get on a missing id, then the error satisfies errors.Is(err, store.ErrNotFound).
 	t.Run("GetOnMissingIDReturnsErrNotFound", func(t *testing.T) {
 		t.Parallel()

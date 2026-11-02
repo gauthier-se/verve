@@ -20,7 +20,7 @@ func passwordOf(n int) string {
 
 // Given a password, then the policy returns the code of the first rule it breaks. Length counts
 // characters, not bytes, and there are no composition rules.
-func TestPasswordPolicy_Check(t *testing.T) {
+func TestPasswordPolicy_ReturnsTheCodeOfTheFirstBrokenRule(t *testing.T) {
 	t.Parallel()
 
 	policy := auth.NewPasswordPolicy()
@@ -99,19 +99,16 @@ func TestCommonPasswords_ListIsSortedAndRecordsItsSource(t *testing.T) {
 	require.Contains(t, header, "Copyright (c) 2018 Daniel Miessler")
 	require.NotEmpty(t, entries)
 
+	var misplaced []string
+
 	for i, entry := range entries {
-		if length := utf8.RuneCountInString(entry); length < 12 || length > 128 {
-			t.Fatalf("entry %d has %d characters", i, length)
-		}
-
-		if strings.ToLower(entry) != entry {
-			t.Fatalf("entry %d is not in lower case", i)
-		}
-
-		if i > 0 && entries[i-1] >= entry {
-			t.Fatalf("entry %d is not after the previous one", i)
+		length := utf8.RuneCountInString(entry)
+		if length < 12 || length > 128 || strings.ToLower(entry) != entry || (i > 0 && entries[i-1] >= entry) {
+			misplaced = append(misplaced, entry)
 		}
 	}
+
+	require.Empty(t, misplaced)
 }
 
 // Given entries spread over the list, including its first and last ones, then the policy finds them
@@ -141,8 +138,9 @@ func TestPasswordPolicy_SearchesTheWholeList(t *testing.T) {
 }
 
 // Given a username, then it is accepted, or rejected when it holds what could make a login
-// ambiguous. Length counts characters, not bytes.
-func TestValidateUsername(t *testing.T) {
+// ambiguous: an @ reads as an email, and invisible characters make two usernames look the same.
+// Length counts characters, not bytes.
+func TestValidateUsername_RejectsWhatMakesALoginAmbiguous(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -166,12 +164,16 @@ func TestValidateUsername(t *testing.T) {
 		{"TrailingSpace", "alice ", false},
 		{"Tab", "alice\tmartin", false},
 		{"Newline", "alice\n", false},
-		{"NoBreakSpace", "alice martin", false},
-		{"EmSpace", "alice martin", false},
-		{"IdeographicSpace", "alice　martin", false},
+		{"NoBreakSpace", "alice\u00a0martin", false},
+		{"EmSpace", "alice\u2003martin", false},
+		{"IdeographicSpace", "alice\u3000martin", false},
 		{"Null", "alice\x00", false},
 		{"Delete", "alice\x7f", false},
 		{"ControlOfTheLatin1Block", "alice\u0085", false},
+		{"ZeroWidthSpace", "alice\u200b", false},
+		{"SoftHyphen", "ali\u00adce", false},
+		{"RightToLeftOverride", "\u202ealice", false},
+		{"ByteOrderMark", "\ufeffalice", false},
 		{"InvalidUTF8", "alice\xff", false},
 	}
 
