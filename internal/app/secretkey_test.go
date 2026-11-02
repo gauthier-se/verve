@@ -23,6 +23,14 @@ func secretKeyPath(t *testing.T) string {
 	return newLayout(t.TempDir()).SecretKey
 }
 
+func requireFileContent(t *testing.T, path, want string) {
+	t.Helper()
+
+	content, err := os.ReadFile(path) //nolint:gosec // G304: a test file
+	require.NoError(t, err)
+	require.Equal(t, want, string(content))
+}
+
 // Given no VERVE_SECRET_KEY and no secret.key, then 32 random bytes, hex encoded, are written to
 // secret.key with permissions 0600.
 func TestEnsureSecretKey_NoKeyGeneratesTheFile(t *testing.T) {
@@ -37,9 +45,7 @@ func TestEnsureSecretKey_NoKeyGeneratesTheFile(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, raw, 32)
 
-	content, err := os.ReadFile(path) //nolint:gosec // G304: a test file
-	require.NoError(t, err)
-	require.Equal(t, key, string(content))
+	requireFileContent(t, path, key)
 
 	info, err := os.Stat(path)
 	require.NoError(t, err)
@@ -81,9 +87,7 @@ func TestEnsureSecretKey_ExistingFileIsReusedUnchanged(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, existingKey, key)
 
-			content, err := os.ReadFile(path) //nolint:gosec // G304: a test file
-			require.NoError(t, err)
-			require.Equal(t, tt.content, string(content))
+			requireFileContent(t, path, tt.content)
 		})
 	}
 }
@@ -112,9 +116,7 @@ func TestEnsureSecretKey_ConfiguredKeyWinsOverTheFile(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, configuredKey, key)
 
-	content, err := os.ReadFile(path) //nolint:gosec // G304: a test file
-	require.NoError(t, err)
-	require.Equal(t, existingKey, string(content))
+	requireFileContent(t, path, existingKey)
 }
 
 // Given VERVE_SECRET_KEY and a secret.key that cannot be read, then the file is not even read.
@@ -146,10 +148,7 @@ func TestEnsureSecretKey_UnreadableFileFails(t *testing.T) {
 		require.ErrorIs(t, err, fs.ErrPermission)
 
 		require.NoError(t, os.Chmod(path, 0o600))
-
-		content, err := os.ReadFile(path) //nolint:gosec // G304: a test file
-		require.NoError(t, err)
-		require.Equal(t, existingKey, string(content))
+		requireFileContent(t, path, existingKey)
 	})
 
 	t.Run("a directory in its place", func(t *testing.T) {
@@ -188,9 +187,7 @@ func TestEnsureSecretKey_TooShortFileFails(t *testing.T) {
 			_, err := ensureSecretKey(path, "")
 			require.EqualError(t, err, "read secret key: "+path+": must be at least 32 characters")
 
-			content, err := os.ReadFile(path) //nolint:gosec // G304: a test file
-			require.NoError(t, err)
-			require.Equal(t, tt.content, string(content))
+			requireFileContent(t, path, tt.content)
 		})
 	}
 }
@@ -242,13 +239,12 @@ func TestEnsureSecretKey_ConcurrentGenerationsEndWithTheSameKey(t *testing.T) {
 		close(start)
 		done.Wait()
 
-		content, err := os.ReadFile(path) //nolint:gosec // G304: a test file
-		require.NoError(t, err)
-
 		for i := range processes {
 			require.NoError(t, errs[i])
-			require.Equal(t, string(content), keys[i])
+			require.Equal(t, keys[0], keys[i])
 		}
+
+		requireFileContent(t, path, keys[0])
 
 		entries, err := os.ReadDir(dir)
 		require.NoError(t, err)
