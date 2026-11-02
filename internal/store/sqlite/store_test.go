@@ -81,6 +81,19 @@ func TestStore_AuditEventsContract(t *testing.T) {
 	})
 }
 
+// Given the contract suite storetest.RunUsers, then the SQLite implementation passes it.
+func TestStore_UsersContract(t *testing.T) {
+	t.Parallel()
+
+	storetest.RunUsers(t, func(t *testing.T, clk clock.Clock) store.Store {
+		t.Helper()
+
+		s, _ := newTestStore(t, clk)
+
+		return s
+	})
+}
+
 // Given two stores on one file, when both write concurrently in short transactions, then every
 // write lands and no SQLITE_BUSY error surfaces.
 func TestStore_ConcurrentWritesOnTwoStoresAllLand(t *testing.T) {

@@ -173,8 +173,8 @@ func RunAuditEvents(t *testing.T, newStore NewStoreFunc) {
 	})
 
 	// Given user ids that no account has, as after an account deletion, then the event is stored and
-	// keeps them: no constraint ties an event to its users. The store has no account yet, so this
-	// suite creates none to delete.
+	// keeps them: no constraint ties an event to its users. No repository deletes an account yet, so
+	// this suite creates none.
 	t.Run("EventsKeepTheIDsOfUsersThatDoNotExist", func(t *testing.T) {
 		t.Parallel()
 
