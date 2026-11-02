@@ -12,6 +12,23 @@ import (
 	"github.com/gauthier-se/verve/internal/logging/loggingtest"
 )
 
+// Given a key, then IsSensitive applies the redaction rule, ignoring case.
+func TestIsSensitive(t *testing.T) {
+	t.Parallel()
+
+	for key, want := range map[string]bool{
+		"password":     true,
+		"NewPassword":  true,
+		"api_token":    true,
+		"session_id":   true,
+		"Secret-Value": true,
+		"attempted":    false,
+		"name":         false,
+	} {
+		require.Equal(t, want, IsSensitive(key), key)
+	}
+}
+
 // Given VERVE_LOG_FORMAT=json, then logs are JSON lines with time, level and msg.
 func TestNew_JSONFormatWritesJSONLines(t *testing.T) {
 	t.Parallel()
