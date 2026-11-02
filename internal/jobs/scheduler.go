@@ -50,9 +50,7 @@ func (s *Scheduler) Tick(ctx context.Context) error {
 	var errs []error
 
 	for _, schedule := range s.schedules {
-		nextRun, isStored := stored[schedule.Name]
-
-		if err := s.update(ctx, schedule, nextRun, isStored, now); err != nil {
+		if err := s.reconcile(ctx, schedule, stored, now); err != nil {
 			errs = append(errs, fmt.Errorf("schedule %q: %w", schedule.Name, err))
 		}
 	}
@@ -60,10 +58,12 @@ func (s *Scheduler) Tick(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-// update handles schedule at time now, with its stored next run if it has one. A schedule that is
-// not stored yet has missed nothing: it only gets its first run.
-func (s *Scheduler) update(ctx context.Context, schedule Schedule, nextRun time.Time, isStored bool, now time.Time) error {
+// reconcile brings schedule in line with the stored next runs at time now: it removes the next run
+// of a disabled schedule, stores the first one of a new schedule and enqueues a due schedule. A new
+// schedule has missed nothing, so it only gets its first run.
+func (s *Scheduler) reconcile(ctx context.Context, schedule Schedule, stored map[string]time.Time, now time.Time) error {
 	jobs := s.worker.store.Jobs()
+	nextRun, isStored := stored[schedule.Name]
 
 	switch {
 	case !schedule.enabled() && isStored:
@@ -76,6 +76,8 @@ func (s *Scheduler) update(ctx context.Context, schedule Schedule, nextRun time.
 	if err != nil {
 		return err
 	}
+
+	next = next.UTC()
 
 	if !isStored {
 		return jobs.SetSchedule(ctx, schedule.Name, next)

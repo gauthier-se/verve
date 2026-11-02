@@ -39,7 +39,7 @@ func (s Schedule) Next(now time.Time) (time.Time, error) {
 		return time.Time{}, fmt.Errorf("parse cron expression %q: time zones are not supported", s.Cron)
 	}
 
-	expression, err := cron.ParseStandard(s.Cron)
+	expression, err := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow).Parse(s.Cron)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("parse cron expression %q: %w", s.Cron, err)
 	}
