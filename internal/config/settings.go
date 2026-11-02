@@ -32,7 +32,8 @@ func fieldsOf(t reflect.Type) []tagField {
 		key, _, _ := strings.Cut(sf.Tag.Get("yaml"), ",")
 		envKey, _, _ := strings.Cut(sf.Tag.Get("env"), ",")
 
-		envOnly := key == "-" && envKey != "" && envKey != "-"
+		// Without an environment variable, the key stays empty or "-": the field is skipped below.
+		envOnly := key == "-"
 		if envOnly {
 			key = strings.ToLower(envKey)
 		}
