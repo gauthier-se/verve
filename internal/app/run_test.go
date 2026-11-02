@@ -438,7 +438,8 @@ func TestRun_RunsAPurgeMissedDuringDowntime(t *testing.T) {
 	db, err := sqlite.Open(ctx, filepath.Join(cfg.DataDir, dbFile))
 	require.NoError(t, err)
 
-	lastWeek := sqlite.New(db, clock.NewFake(time.Now().Add(-8*24*time.Hour))).Jobs()
+	now := time.Now().UTC()
+	lastWeek := sqlite.New(db, clock.NewFake(now.Add(-8*24*time.Hour))).Jobs()
 
 	old, err := lastWeek.Enqueue(ctx, store.NewJob{Kind: "test.old", Payload: json.RawMessage(`{}`)})
 	require.NoError(t, err)
@@ -446,7 +447,7 @@ func TestRun_RunsAPurgeMissedDuringDowntime(t *testing.T) {
 	claimed, err := lastWeek.Claim(ctx, time.Minute)
 	require.NoError(t, err)
 	require.NoError(t, lastWeek.Complete(ctx, claimed.ID, claimed.Claims))
-	require.NoError(t, lastWeek.SetSchedule(ctx, "jobs.purge", time.Now().Add(-time.Hour)))
+	require.NoError(t, lastWeek.SetSchedule(ctx, "jobs.purge", now.Add(-time.Hour)))
 	require.NoError(t, db.CloseShared())
 
 	_, _, stop := startRun(t, cfg)

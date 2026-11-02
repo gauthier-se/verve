@@ -179,8 +179,7 @@ func runJobsSchedules(t *testing.T, newStore NewStoreFunc) {
 		require.Empty(t, schedules)
 	})
 
-	// Given SetSchedule with a time in any location, then ListSchedules returns the next run of each
-	// name in UTC.
+	// Given SetSchedule, then ListSchedules returns the next run of each name.
 	t.Run("SetScheduleStoresTheNextRun", func(t *testing.T) {
 		t.Parallel()
 
@@ -188,7 +187,7 @@ func runJobsSchedules(t *testing.T, newStore NewStoreFunc) {
 		ctx := t.Context()
 
 		require.NoError(t, jobs.SetSchedule(ctx, "jobs.purge", jobsTime.Add(time.Hour)))
-		require.NoError(t, jobs.SetSchedule(ctx, "backup.run", jobsTime.In(time.FixedZone("UTC+2", 2*60*60))))
+		require.NoError(t, jobs.SetSchedule(ctx, "backup.run", jobsTime))
 
 		schedules, err := jobs.ListSchedules(ctx)
 		require.NoError(t, err)

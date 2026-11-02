@@ -278,31 +278,89 @@ func TestScheduler_TickReportsAScheduleThatCannotRunAndHandlesTheOthers(t *testi
 	require.Equal(t, map[string]time.Time{hourlyName: workerTestNow.Add(time.Hour)}, storedSchedules(ctx, t, s))
 }
 
-// failingNextRuns is a store whose transactions fail to store a next run.
-type failingNextRuns struct {
+// nextRunSpy is a store that passes the next runs to setSchedule instead of storing them.
+type nextRunSpy struct {
 	store.Store
+	setSchedule func(nextRun time.Time) error
 }
 
-func (s failingNextRuns) WithTx(ctx context.Context, fn func(ctx context.Context, tx store.Repositories) error) error {
+func (s nextRunSpy) Jobs() store.JobsRepository {
+	return nextRunSpyJobs{JobsRepository: s.Store.Jobs(), setSchedule: s.setSchedule}
+}
+
+func (s nextRunSpy) WithTx(ctx context.Context, fn func(ctx context.Context, tx store.Repositories) error) error {
 	return s.Store.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
-		return fn(ctx, failingNextRunRepositories{Repositories: tx})
+		return fn(ctx, nextRunSpyRepositories{Repositories: tx, setSchedule: s.setSchedule})
 	})
 }
 
-type failingNextRunRepositories struct {
+type nextRunSpyRepositories struct {
 	store.Repositories
+	setSchedule func(nextRun time.Time) error
 }
 
-func (r failingNextRunRepositories) Jobs() store.JobsRepository {
-	return failingNextRunJobs{JobsRepository: r.Repositories.Jobs()}
+func (r nextRunSpyRepositories) Jobs() store.JobsRepository {
+	return nextRunSpyJobs{JobsRepository: r.Repositories.Jobs(), setSchedule: r.setSchedule}
 }
 
-type failingNextRunJobs struct {
+type nextRunSpyJobs struct {
 	store.JobsRepository
+	setSchedule func(nextRun time.Time) error
 }
 
-func (failingNextRunJobs) SetSchedule(context.Context, string, time.Time) error {
-	return errSetSchedule
+func (j nextRunSpyJobs) SetSchedule(_ context.Context, _ string, nextRun time.Time) error {
+	return j.setSchedule(nextRun)
+}
+
+// Given a location other than UTC, then the next runs of a new and of a due schedule still cross
+// the interface of the store in UTC.
+func TestScheduler_TickPassesTheNextRunsToTheStoreInUTC(t *testing.T) {
+	t.Parallel()
+
+	s, clk := newTestStore(t)
+	ctx := t.Context()
+
+	due := hourly()
+	require.NoError(t, s.Jobs().SetSchedule(ctx, due.Name, workerTestNow))
+
+	added := hourly()
+	added.Name = "test.added"
+
+	var nextRuns []time.Time
+
+	spy := nextRunSpy{Store: s, setSchedule: func(nextRun time.Time) error {
+		nextRuns = append(nextRuns, nextRun)
+
+		return nil
+	}}
+
+	scheduler, _ := newTestScheduler(spy, clk, Options{Schedules: []Schedule{due, added}, Location: parisLocation(t)})
+	require.NoError(t, scheduler.Tick(ctx))
+
+	require.Len(t, nextRuns, 2)
+
+	for _, nextRun := range nextRuns {
+		require.Equal(t, "UTC", nextRun.Location().String())
+	}
+}
+
+// Given a process that uses a worker without Run, then nothing is scheduled: a due schedule stays
+// as it is, and no job is enqueued.
+func TestTick_SchedulesNothing(t *testing.T) {
+	t.Parallel()
+
+	s, clk := newTestStore(t)
+	ctx := t.Context()
+	require.NoError(t, s.Jobs().SetSchedule(ctx, hourlyName, workerTestNow))
+
+	w, _ := newTestWorker(s, NewRegistry(), clk, Options{Schedules: []Schedule{hourly()}})
+
+	claimed, err := w.Tick(ctx)
+	require.NoError(t, err)
+	require.False(t, claimed)
+
+	require.Equal(t, map[string]time.Time{hourlyName: workerTestNow}, storedSchedules(ctx, t, s))
+	require.Empty(t, drainJobs(ctx, t, s))
 }
 
 // Given the next run cannot be stored, then the job of that run is not enqueued either, so that the
@@ -314,7 +372,8 @@ func TestScheduler_TickEnqueuesTheJobAndStoresTheNextRunAtomically(t *testing.T)
 	ctx := t.Context()
 	require.NoError(t, s.Jobs().SetSchedule(ctx, hourlyName, workerTestNow))
 
-	scheduler, _ := newTestScheduler(failingNextRuns{Store: s}, clk, Options{Schedules: []Schedule{hourly()}})
+	failing := nextRunSpy{Store: s, setSchedule: func(time.Time) error { return errSetSchedule }}
+	scheduler, _ := newTestScheduler(failing, clk, Options{Schedules: []Schedule{hourly()}})
 
 	require.ErrorIs(t, scheduler.Tick(ctx), errSetSchedule)
 

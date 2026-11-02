@@ -52,6 +52,12 @@ func TestSchedule_Next(t *testing.T) {
 			want:     time.Date(2026, 7, 2, 1, 0, 0, 0, time.UTC),
 		},
 		{
+			name:     "CronTakesPrecedenceOverAnInterval",
+			schedule: Schedule{Every: time.Hour, Cron: daily.Cron},
+			now:      time.Date(2026, 7, 1, 10, 0, 0, 0, paris),
+			want:     time.Date(2026, 7, 2, 1, 0, 0, 0, time.UTC),
+		},
+		{
 			name:     "CronMovesPastARunThatIsNow",
 			schedule: daily,
 			now:      time.Date(2026, 7, 2, 3, 0, 0, 0, paris),
@@ -101,8 +107,9 @@ func TestSchedule_Next(t *testing.T) {
 }
 
 // Given a cron expression that is invalid or that no date matches, then Next fails instead of
-// returning a time that would always be due. A time zone in the expression is invalid too: cron
-// expressions are read in the local time of the process, and the parser panics on some of them.
+// returning a time that would always be due. Only the standard five fields are valid: not a
+// descriptor, and not a time zone, because cron expressions are read in the local time of the
+// process and the parser panics on some of them.
 func TestSchedule_NextFailsOnACronExpressionThatCannotRun(t *testing.T) {
 	t.Parallel()
 
@@ -114,6 +121,8 @@ func TestSchedule_NextFailsOnACronExpressionThatCannotRun(t *testing.T) {
 		"0 0 3 * * *",
 		"99 3 * * *",
 		"0 3 30 2 *",
+		"@daily",
+		"@every 1s",
 		"TZ=UTC",
 		"CRON_TZ=Europe/Paris 0 3 * * *",
 	} {
