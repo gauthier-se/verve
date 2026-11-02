@@ -61,7 +61,7 @@ func fieldsOf(t reflect.Type) []tagField {
 
 // setting is a leaf of a configuration.
 type setting struct {
-	path    string        // YAML path, for example "log.level"
+	path    string        // YAML path, for example "log.level", which is not a YAML key when envOnly is set
 	env     string        // environment variable, for example "VERVE_LOG_LEVEL"
 	goName  string        // Go field name, as reported by the environment parser
 	value   reflect.Value // the field, settable when the configuration was addressable

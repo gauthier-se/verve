@@ -51,8 +51,8 @@ func readSecretKey(path string) (string, error) {
 // generateSecretKey writes a new random key to a temporary file, with the permissions 0600 of
 // os.CreateTemp, and links it to path. Like O_CREATE|O_EXCL, the link fails when another process
 // got there first, whose key is then read back. Unlike it, path only ever appears complete: a
-// process that lost the race cannot read an empty file, and a crash or a full disk leaves no
-// partial key behind.
+// process that lost the race cannot read an empty file, and a crash or a full disk cannot leave a
+// partial key there. A crash can leave the temporary file behind, which nothing reads.
 func generateSecretKey(path string) (string, error) {
 	tmp, err := os.CreateTemp(filepath.Dir(path), "."+secretKeyFile+"-*")
 	if err != nil {
