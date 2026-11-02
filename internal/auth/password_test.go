@@ -100,9 +100,9 @@ func TestHasher_VerifyUsesTheParametersOfTheHash(t *testing.T) {
 	require.False(t, ok)
 }
 
-// Given a malformed hash, then verification and NeedsRehash return an error rather than a verdict.
-// The parameters of a stored hash reach argon2, which panics on zero iterations, zero parallelism or
-// an empty digest, and a digest that is too short would accept passwords that are wrong.
+// Given a malformed hash, then verification and NeedsRehash return an error rather than a verdict,
+// and never panic: the parameters of a stored hash reach argon2, which panics on zero iterations or
+// zero parallelism.
 func TestHasher_MalformedHashIsAnError(t *testing.T) {
 	t.Parallel()
 
