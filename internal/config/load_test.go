@@ -48,6 +48,7 @@ func TestLoad_Defaults(t *testing.T) {
 	require.Empty(t, cfg.PublicURL.String())
 	require.Empty(t, cfg.TrustedProxies)
 	require.Empty(t, cfg.MetricsAddr)
+	require.Equal(t, 365, cfg.Audit.RetentionDays)
 
 	def := Default()
 	def.Sources = cfg.Sources
@@ -62,16 +63,17 @@ func TestLoad_DefaultSources(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, Sources{
-		"data_dir":        SourceDefault,
-		"listen_addr":     SourceDefault,
-		"public_url":      SourceDefault,
-		"trusted_proxies": SourceDefault,
-		"secret_key":      SourceDefault,
-		"log.level":       SourceDefault,
-		"log.format":      SourceDefault,
-		"max_upload_size": SourceDefault,
-		"max_ingest_body": SourceDefault,
-		"metrics_addr":    SourceDefault,
+		"data_dir":             SourceDefault,
+		"listen_addr":          SourceDefault,
+		"public_url":           SourceDefault,
+		"trusted_proxies":      SourceDefault,
+		"secret_key":           SourceDefault,
+		"log.level":            SourceDefault,
+		"log.format":           SourceDefault,
+		"max_upload_size":      SourceDefault,
+		"max_ingest_body":      SourceDefault,
+		"metrics_addr":         SourceDefault,
+		"audit.retention_days": SourceDefault,
 	}, cfg.Sources)
 }
 
@@ -299,6 +301,126 @@ func TestLoad_ZeroSizeIsInvalid(t *testing.T) {
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), `max_ingest_body (VERVE_MAX_INGEST_BODY): invalid value "0": must be greater than zero`)
+}
+
+// Given the default configuration, then audit events are kept 365 days. Given
+// VERVE_AUDIT_RETENTION_DAYS or the YAML key audit.retention_days, then that value applies, and the
+// environment wins over the file.
+func TestLoad_AuditRetentionDays(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		file    string
+		environ map[string]string
+		want    int
+		source  Source
+	}{
+		{name: "default", want: 365, source: SourceDefault},
+		{name: "environment", environ: map[string]string{"VERVE_AUDIT_RETENTION_DAYS": "30"}, want: 30, source: SourceEnv},
+		{name: "file", file: "audit:\n  retention_days: 90\n", want: 90, source: SourceFile},
+		{name: "100 years", environ: map[string]string{"VERVE_AUDIT_RETENTION_DAYS": "36500"}, want: 36_500, source: SourceEnv},
+		{
+			name:    "environment over file",
+			file:    "audit:\n  retention_days: 90\n",
+			environ: map[string]string{"VERVE_AUDIT_RETENTION_DAYS": "30"},
+			want:    30,
+			source:  SourceEnv,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			opts := LoadOptions{Env: tt.environ}
+			if tt.file != "" {
+				opts.File = writeFile(t, tt.file)
+			}
+
+			cfg, err := Load(opts)
+
+			require.NoError(t, err)
+			require.Equal(t, tt.want, cfg.Audit.RetentionDays)
+			require.Equal(t, tt.source, cfg.Sources["audit.retention_days"])
+		})
+	}
+}
+
+// Given an audit retention below 1 day, in the environment or the file, then configuration
+// validation fails, naming the setting and the value.
+func TestLoad_AuditRetentionDaysBelowOneIsInvalid(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		file    string
+		environ map[string]string
+		value   string
+	}{
+		{name: "zero in the environment", environ: map[string]string{"VERVE_AUDIT_RETENTION_DAYS": "0"}, value: "0"},
+		{name: "negative in the environment", environ: map[string]string{"VERVE_AUDIT_RETENTION_DAYS": "-1"}, value: "-1"},
+		{name: "zero in the file", file: "audit:\n  retention_days: 0\n", value: "0"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			opts := LoadOptions{Env: tt.environ}
+			if tt.file != "" {
+				opts.File = writeFile(t, tt.file)
+			}
+
+			_, err := Load(opts)
+
+			require.EqualError(t, err,
+				`audit.retention_days (VERVE_AUDIT_RETENTION_DAYS): invalid value "`+tt.value+`": must be at least 1`)
+		})
+	}
+}
+
+// Given an audit retention over 100 years, such as a huge value meant to keep events forever, then
+// configuration validation fails: the purge would overflow its cutoff and remove every event. The
+// environment parser reads 32 bits, so only the file can hold the huge value.
+func TestLoad_AuditRetentionDaysOver100YearsIsInvalid(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		file    string
+		environ map[string]string
+		value   string
+	}{
+		{name: "one day over in the environment", environ: map[string]string{"VERVE_AUDIT_RETENTION_DAYS": "36501"}, value: "36501"},
+		{name: "huge in the file", file: "audit:\n  retention_days: 1000000000000000\n", value: "1000000000000000"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			opts := LoadOptions{Env: tt.environ}
+			if tt.file != "" {
+				opts.File = writeFile(t, tt.file)
+			}
+
+			_, err := Load(opts)
+
+			require.EqualError(t, err,
+				`audit.retention_days (VERVE_AUDIT_RETENTION_DAYS): invalid value "`+tt.value+`": must be at most 36500`)
+		})
+	}
+}
+
+// Given an audit retention that is not a whole number, then loading fails, naming the setting.
+func TestLoad_AuditRetentionDaysMustBeAWholeNumber(t *testing.T) {
+	t.Parallel()
+
+	_, err := Load(LoadOptions{Env: map[string]string{"VERVE_AUDIT_RETENTION_DAYS": "a year"}})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "audit.retention_days (VERVE_AUDIT_RETENTION_DAYS)")
 }
 
 // Given a size `10XB` or `-1` in the environment, then loading fails.

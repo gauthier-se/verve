@@ -98,6 +98,25 @@ func requireEachAddedARow(t *testing.T, appended []store.AuditEvent) {
 	}
 }
 
+// requireEventsRemoved checks that none of the appended events exists any more.
+func requireEventsRemoved(ctx context.Context, t *testing.T, events store.AuditEventsRepository, appended ...store.AuditEvent) {
+	t.Helper()
+
+	for _, event := range appended {
+		_, err := events.Get(ctx, event.ID)
+		require.ErrorIs(t, err, store.ErrNotFound, "event %d", event.ID)
+	}
+}
+
+// requireEventsKept checks that each of the appended events still exists.
+func requireEventsKept(ctx context.Context, t *testing.T, events store.AuditEventsRepository, appended ...store.AuditEvent) {
+	t.Helper()
+
+	for _, event := range appended {
+		mustGetEvent(ctx, t, events, event.ID)
+	}
+}
+
 // RunAuditEvents runs the AuditEventsRepository contract against the stores returned by newStore.
 func RunAuditEvents(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
@@ -376,7 +395,8 @@ func RunAuditEvents(t *testing.T, newStore NewStoreFunc) {
 	})
 
 	// Given the repository, then it has no method that edits or deletes an event by id. A new method
-	// is added to this list on purpose, after checking that it keeps events append-only.
+	// is added to this list on purpose, after checking that it keeps events append-only: PurgeBefore
+	// removes events by age only.
 	t.Run("RepositoryHasNoMethodThatEditsOrDeletesAnEvent", func(t *testing.T) {
 		t.Parallel()
 
@@ -387,6 +407,99 @@ func RunAuditEvents(t *testing.T, newStore NewStoreFunc) {
 			methods = append(methods, repo.Method(i).Name)
 		}
 
-		require.ElementsMatch(t, []string{"Append", "Get"}, methods)
+		require.ElementsMatch(t, []string{"Append", "Get", "PurgeBefore"}, methods)
+	})
+
+	runAuditEventsPurge(t, newStore)
+}
+
+func runAuditEventsPurge(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+
+	// Given events before, at and after a cutoff, then PurgeBefore removes only the event before the
+	// cutoff, and returns how many it removed.
+	t.Run("PurgeBeforeRemovesOnlyTheEventsBeforeTheCutoff", func(t *testing.T) {
+		t.Parallel()
+
+		clk := clock.NewFake(auditTime)
+		events := newStore(t, clk).AuditEvents()
+		ctx := t.Context()
+
+		appended := appendEvery(ctx, t, events, clk, time.Millisecond, 3, auditEvent())
+		before, at, after := appended[0], appended[1], appended[2]
+
+		purged, err := events.PurgeBefore(ctx, at.OccurredAt, 10)
+		require.NoError(t, err)
+		require.Equal(t, int64(1), purged)
+
+		requireEventsRemoved(ctx, t, events, before)
+		requireEventsKept(ctx, t, events, at, after)
+	})
+
+	// Given more events before the cutoff than the batch size, then PurgeBefore removes the oldest
+	// batch only, and the next calls remove the rest, until none is left.
+	t.Run("PurgeBeforeRemovesAtMostTheBatchSizeOldestFirst", func(t *testing.T) {
+		t.Parallel()
+
+		clk := clock.NewFake(auditTime)
+		events := newStore(t, clk).AuditEvents()
+		ctx := t.Context()
+
+		appended := appendEvery(ctx, t, events, clk, time.Second, 3, auditEvent())
+		cutoff := clk.Now().Add(time.Second)
+
+		for i, want := range []int64{2, 1, 0} {
+			purged, err := events.PurgeBefore(ctx, cutoff, 2)
+			require.NoError(t, err)
+			require.Equal(t, want, purged, "call %d", i)
+
+			if i == 0 {
+				requireEventsRemoved(ctx, t, events, appended[:2]...)
+				requireEventsKept(ctx, t, events, appended[2])
+			}
+		}
+
+		requireEventsRemoved(ctx, t, events, appended...)
+	})
+
+	// Given an aggregated row whose first event is before the cutoff and whose last event is not, then
+	// PurgeBefore keeps it, since it holds a recent event. Once its last event is before the cutoff,
+	// the row is removed.
+	t.Run("PurgeBeforeKeepsAnAggregatedRowUntilItsLastEventIsBeforeTheCutoff", func(t *testing.T) {
+		t.Parallel()
+
+		clk := clock.NewFake(auditTime)
+		events := newStore(t, clk).AuditEvents()
+		ctx := t.Context()
+
+		burst := appendEvery(ctx, t, events, clk, 10*time.Second, 21, failedLogin("203.0.113.7"))
+		latest := burst[len(burst)-1]
+		require.Equal(t, int64(2), latest.Count)
+		require.True(t, latest.OccurredAt.Before(latest.LastAt))
+
+		purged, err := events.PurgeBefore(ctx, latest.LastAt, 100)
+		require.NoError(t, err)
+		require.Equal(t, int64(19), purged)
+		requireEventsKept(ctx, t, events, latest)
+
+		purged, err = events.PurgeBefore(ctx, latest.LastAt.Add(time.Millisecond), 100)
+		require.NoError(t, err)
+		require.Equal(t, int64(1), purged)
+		requireEventsRemoved(ctx, t, events, latest)
+	})
+
+	// Given no event before the cutoff, then PurgeBefore removes nothing.
+	t.Run("PurgeBeforeWithoutOldEventsRemovesNothing", func(t *testing.T) {
+		t.Parallel()
+
+		events := newStore(t, clock.NewFake(auditTime)).AuditEvents()
+		ctx := t.Context()
+
+		event := mustAppendEvent(ctx, t, events, auditEvent())
+
+		purged, err := events.PurgeBefore(ctx, event.OccurredAt, 10)
+		require.NoError(t, err)
+		require.Zero(t, purged)
+		requireEventsKept(ctx, t, events, event)
 	})
 }

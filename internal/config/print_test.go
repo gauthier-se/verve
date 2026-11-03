@@ -91,4 +91,5 @@ func TestConfig_WriteYAML(t *testing.T) {
 	require.Contains(t, out, "max_upload_size: 10GB # default\n")
 	require.Contains(t, out, "max_ingest_body: 1GB # default\n")
 	require.Contains(t, out, `metrics_addr: "" # default`+"\n")
+	require.Contains(t, out, "audit:\n  retention_days: 365 # default\n")
 }
