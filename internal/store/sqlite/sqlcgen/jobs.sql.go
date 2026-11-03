@@ -471,14 +471,20 @@ const serialKeyHeld = `-- name: SerialKeyHeld :one
 SELECT EXISTS (
     SELECT 1
     FROM jobs
-    WHERE status = 'running'
-      AND serial_key = ?
+    WHERE serial_key = ?1
+      AND (status = 'running' OR (status = 'queued' AND run_at <= ?2))
 )
 `
 
-// Like ClaimJob for a queued job: a running job holds its serial key even once its lease has expired.
-func (q *Queries) SerialKeyHeld(ctx context.Context, serialKey sql.NullString) (bool, error) {
-	row := q.db.QueryRowContext(ctx, serialKeyHeld, serialKey)
+type SerialKeyHeldParams struct {
+	SerialKey sql.NullString
+	Now       int64
+}
+
+// As in ClaimJob, a running job holds its serial key even once its lease has expired, and a due
+// queued job holds it because ClaimJob would take it before a newer job of the key.
+func (q *Queries) SerialKeyHeld(ctx context.Context, arg SerialKeyHeldParams) (bool, error) {
+	row := q.db.QueryRowContext(ctx, serialKeyHeld, arg.SerialKey, arg.Now)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err

@@ -117,7 +117,9 @@ func (r jobs) EnqueueClaimed(ctx context.Context, job store.NewJob, lease time.D
 	serialKey := sql.NullString{String: job.SerialKey, Valid: job.SerialKey != ""}
 
 	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
-		held, err := q.SerialKeyHeld(ctx, serialKey)
+		now := r.clk.Now()
+
+		held, err := q.SerialKeyHeld(ctx, sqlcgen.SerialKeyHeldParams{SerialKey: serialKey, Now: toMillis(now)})
 		if err != nil {
 			return err
 		}
@@ -125,8 +127,6 @@ func (r jobs) EnqueueClaimed(ctx context.Context, job store.NewJob, lease time.D
 		if held {
 			return store.ErrConflict
 		}
-
-		now := r.clk.Now()
 
 		row, err = q.EnqueueClaimedJob(ctx, sqlcgen.EnqueueClaimedJobParams{
 			Kind:        job.Kind,
