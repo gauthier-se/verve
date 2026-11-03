@@ -170,7 +170,7 @@ func (w *Worker) Run(ctx context.Context) {
 // once the handlers have stopped. The write lock of another process cannot stall the shutdown: a
 // job that misses the deadline stays running, and its lease recovers it.
 func (w *Worker) finishStopped(ctx context.Context) {
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), w.opts.FinishTimeout)
+	ctx, cancel := w.finishContext(ctx)
 	defer cancel()
 
 	w.mu.Lock()
@@ -181,6 +181,12 @@ func (w *Worker) finishStopped(ctx context.Context) {
 	for _, end := range ends {
 		w.logEnd(ctx, end, end.record(ctx))
 	}
+}
+
+// finishContext returns the context of the writes that end the jobs stopped by a shutdown: it
+// outlives ctx, up to the finish timeout.
+func (w *Worker) finishContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), w.opts.FinishTimeout)
 }
 
 // loop claims jobs until ctx is cancelled. After a job it asks for the next one at once, otherwise
@@ -216,9 +222,10 @@ func (w *Worker) Tick(ctx context.Context) (claimed bool, err error) {
 		return false, err
 	}
 
-	end, err := w.run(ctx, job)
+	end := w.run(ctx, job, false)
 
 	// A shutdown cuts the write short, and Run writes the end again under its deadline.
+	err = end.record(ctx)
 	if err != nil && ctx.Err() != nil {
 		w.mu.Lock()
 		w.stopped = append(w.stopped, end)
@@ -232,9 +239,9 @@ func (w *Worker) Tick(ctx context.Context) (claimed bool, err error) {
 	return true, nil
 }
 
-// run runs the handler of a claimed job under its heartbeat, and records how the run ended. It
-// returns the end and the error of its record.
-func (w *Worker) run(ctx context.Context, job store.Job) (jobEnd, error) {
+// run runs the handler of a claimed job under its heartbeat, and returns how the run ended, for the
+// caller to record. A final run ends its job for good, see endOf.
+func (w *Worker) run(ctx context.Context, job store.Job, final bool) jobEnd {
 	start := w.clk.Now()
 
 	handlerCtx, cancel := context.WithCancelCause(ctx)
@@ -245,10 +252,10 @@ func (w *Worker) run(ctx context.Context, job store.Job) (jobEnd, error) {
 
 	stopHeartbeat()
 
-	end := w.endOf(ctx, job, handlerErr, context.Cause(handlerCtx))
+	end := w.endOf(ctx, job, handlerErr, context.Cause(handlerCtx), final)
 	end.duration = w.clk.Now().Sub(start)
 
-	return end, end.record(ctx)
+	return end
 }
 
 // startHeartbeat renews the lease of job until the returned function is called, which waits for it
@@ -329,21 +336,26 @@ func (w *Worker) invoke(ctx context.Context, job store.Job) (err error) {
 	return w.registry.run(ctx, job)
 }
 
-// endOf decides how a run of job ended. cause is the cancellation cause of its handler.
-func (w *Worker) endOf(ctx context.Context, job store.Job, handlerErr, cause error) jobEnd {
+// endOf decides how a run of job ended. cause is the cancellation cause of its handler. A final run
+// is one whose command reports its end, such as a run in process: instead of leaving its job to a
+// worker, it fails the job on a failed attempt, and cancels it when the process stops.
+func (w *Worker) endOf(ctx context.Context, job store.Job, handlerErr, cause error, final bool) jobEnd {
 	jobs := w.store.Jobs()
+	cancelled := jobEnd{job: job, status: string(store.JobCancelled), write: func(ctx context.Context) error {
+		return jobs.ConfirmCancel(ctx, job.ID, job.Claims)
+	}}
 
 	switch {
 	case errors.Is(cause, errLeaseLost):
 		return jobEnd{job: job, status: statusLeaseLost, err: cause}
 	case errors.Is(cause, errCancelled):
-		return jobEnd{job: job, status: string(store.JobCancelled), write: func(ctx context.Context) error {
-			return jobs.ConfirmCancel(ctx, job.ID, job.Claims)
-		}}
+		return cancelled
 	case handlerErr == nil:
 		return jobEnd{job: job, status: string(store.JobCompleted), write: func(ctx context.Context) error {
 			return jobs.Complete(ctx, job.ID, job.Claims)
 		}}
+	case !isPermanent(handlerErr) && ctx.Err() != nil && final:
+		return cancelled
 	case !isPermanent(handlerErr) && ctx.Err() != nil:
 		return jobEnd{job: job, status: statusInterrupted, write: func(ctx context.Context) error {
 			return jobs.Release(ctx, job.ID, job.Claims)
@@ -353,7 +365,7 @@ func (w *Worker) endOf(ctx context.Context, job store.Job, handlerErr, cause err
 	attempts := job.Attempts + 1
 	message := lastError(handlerErr)
 
-	if isPermanent(handlerErr) || attempts >= w.registry.maxAttempts(job.Kind) {
+	if final || isPermanent(handlerErr) || attempts >= w.registry.maxAttempts(job.Kind) {
 		return jobEnd{job: job, status: string(store.JobFailed), err: handlerErr, write: func(ctx context.Context) error {
 			return jobs.Fail(ctx, job.ID, job.Claims, message)
 		}}

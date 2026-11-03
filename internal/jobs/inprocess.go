@@ -9,26 +9,27 @@ import (
 )
 
 // RunInProcess runs job in this process, for a command such as verve import xml that runs its job
-// itself instead of leaving it to the server. While another job holds the serial key of job, it
-// waits and tries again at every wait interval, and calls onWait once, when the wait starts. It then
-// creates and claims the job in one write, and runs it as a worker does: under a lease that the
-// heartbeat renews, ending and logging the run the same way. If the process dies, the lease
-// expires and the server resumes the job.
+// itself instead of leaving it to the server. While the serial key of job is held, it waits and
+// tries again at every wait interval, and calls onWait once, when the wait starts. It then creates
+// and claims the job in one write, and runs it under a lease that the heartbeat renews, as a worker
+// does. If the process dies, the lease expires and the server resumes the job.
 //
-// It returns nil once the job completed. Otherwise the job ended as on a worker, and RunInProcess
-// returns why: the error of the handler, whether the job failed or waits for a retry that the
-// server runs, the context error when ctx was cancelled, after which the job is queued again for
-// the server, or the error of a lost lease or of a write that failed.
+// The run is final, because the command reports its end: a failed attempt fails the job without a
+// retry, and a cancelled ctx cancels the job. RunInProcess returns nil once the job completed, and
+// otherwise why it did not: the error of the handler, the context error, errCancelled when the
+// cancellation of the job was requested, or the error of a lost lease or of a write that failed.
 func (w *Worker) RunInProcess(ctx context.Context, job store.NewJob, onWait func()) error {
 	claimed, err := w.claimInProcess(ctx, job, onWait)
 	if err != nil {
 		return err
 	}
 
-	end, err := w.run(ctx, claimed)
+	end := w.run(ctx, claimed, true)
+
+	err = end.record(ctx)
 	if err != nil && ctx.Err() != nil {
 		// No Run writes the end again after a shutdown: it is written here, under the same deadline.
-		finishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), w.opts.FinishTimeout)
+		finishCtx, cancel := w.finishContext(ctx)
 		defer cancel()
 
 		err = end.record(finishCtx)
@@ -39,19 +40,18 @@ func (w *Worker) RunInProcess(ctx context.Context, job store.NewJob, onWait func
 	switch {
 	case err != nil:
 		return err
-	case end.status == string(store.JobCompleted):
-		return nil
+	case end.status == string(store.JobCancelled) && ctx.Err() != nil:
+		return ctx.Err()
 	case end.status == string(store.JobCancelled):
 		return errCancelled
-	case end.status == statusInterrupted:
-		return ctx.Err()
 	}
 
+	// Nil once completed, and the error of the handler or of the lost lease otherwise.
 	return end.err
 }
 
-// claimInProcess creates and claims job, waiting while another job holds its serial key. It calls
-// onWait once, when the wait starts.
+// claimInProcess creates and claims job, waiting while its serial key is held. It calls onWait
+// once, when the wait starts.
 func (w *Worker) claimInProcess(ctx context.Context, job store.NewJob, onWait func()) (store.Job, error) {
 	waiting := false
 
