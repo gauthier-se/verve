@@ -319,6 +319,7 @@ func TestLoad_AuditRetentionDays(t *testing.T) {
 		{name: "default", want: 365, source: SourceDefault},
 		{name: "environment", environ: map[string]string{"VERVE_AUDIT_RETENTION_DAYS": "30"}, want: 30, source: SourceEnv},
 		{name: "file", file: "audit:\n  retention_days: 90\n", want: 90, source: SourceFile},
+		{name: "100 years", environ: map[string]string{"VERVE_AUDIT_RETENTION_DAYS": "36500"}, want: 36_500, source: SourceEnv},
 		{
 			name:    "environment over file",
 			file:    "audit:\n  retention_days: 90\n",
@@ -375,6 +376,39 @@ func TestLoad_AuditRetentionDaysBelowOneIsInvalid(t *testing.T) {
 
 			require.EqualError(t, err,
 				`audit.retention_days (VERVE_AUDIT_RETENTION_DAYS): invalid value "`+tt.value+`": must be at least 1`)
+		})
+	}
+}
+
+// Given an audit retention over 100 years, such as a huge value meant to keep events forever, then
+// configuration validation fails: the purge would overflow its cutoff and remove every event. The
+// environment parser reads 32 bits, so only the file can hold the huge value.
+func TestLoad_AuditRetentionDaysOver100YearsIsInvalid(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		file    string
+		environ map[string]string
+		value   string
+	}{
+		{name: "one day over in the environment", environ: map[string]string{"VERVE_AUDIT_RETENTION_DAYS": "36501"}, value: "36501"},
+		{name: "huge in the file", file: "audit:\n  retention_days: 1000000000000000\n", value: "1000000000000000"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			opts := LoadOptions{Env: tt.environ}
+			if tt.file != "" {
+				opts.File = writeFile(t, tt.file)
+			}
+
+			_, err := Load(opts)
+
+			require.EqualError(t, err,
+				`audit.retention_days (VERVE_AUDIT_RETENTION_DAYS): invalid value "`+tt.value+`": must be at most 36500`)
 		})
 	}
 }
