@@ -73,6 +73,31 @@ func appendEvery(ctx context.Context, t *testing.T, events store.AuditEventsRepo
 	return appended
 }
 
+// appendLongBurst appends failed logins from ip, 10 seconds apart, until the latest row of their
+// burst holds 20 events, and returns that row.
+func appendLongBurst(ctx context.Context, t *testing.T, events store.AuditEventsRepository, clk *clock.Fake, ip string) store.AuditEvent {
+	t.Helper()
+
+	burst := appendEvery(ctx, t, events, clk, 10*time.Second, 39, failedLogin(ip))
+	latest := burst[len(burst)-1]
+	require.Equal(t, int64(20), latest.Count)
+
+	return latest
+}
+
+// requireEachAddedARow checks that each of the appended events is a row of its own.
+func requireEachAddedARow(t *testing.T, appended []store.AuditEvent) {
+	t.Helper()
+
+	for i, event := range appended {
+		require.Equal(t, int64(1), event.Count, "event %d", i)
+
+		if i > 0 {
+			require.Greater(t, event.ID, appended[i-1].ID, "event %d", i)
+		}
+	}
+}
+
 // RunAuditEvents runs the AuditEventsRepository contract against the stores returned by newStore.
 func RunAuditEvents(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
@@ -222,15 +247,26 @@ func RunAuditEvents(t *testing.T, newStore NewStoreFunc) {
 		events := newStore(t, clk).AuditEvents()
 		ctx := t.Context()
 
-		appended := appendEvery(ctx, t, events, clk, 10*time.Second, 20, failedLogin("203.0.113.7"))
+		requireEachAddedARow(t, appendEvery(ctx, t, events, clk, 10*time.Second, 20, failedLogin("203.0.113.7")))
+	})
 
-		for i, event := range appended {
-			require.Equal(t, int64(1), event.Count, "event %d", i)
+	// Given 20 aggregatable events of the same type and key, when the first one is 10 minutes old,
+	// then fewer than 20 happened in the last 10 minutes and the next event adds a row, without a
+	// quiet period.
+	t.Run("EventsOlderThan10MinutesLeaveTheWindow", func(t *testing.T) {
+		t.Parallel()
 
-			if i > 0 {
-				require.Greater(t, event.ID, appended[i-1].ID, "event %d", i)
-			}
-		}
+		clk := clock.NewFake(auditTime)
+		events := newStore(t, clk).AuditEvents()
+		ctx := t.Context()
+
+		burst := appendEvery(ctx, t, events, clk, 10*time.Second, 20, failedLogin("203.0.113.7"))
+
+		clk.Set(burst[0].OccurredAt.Add(10 * time.Minute))
+		next := mustAppendEvent(ctx, t, events, failedLogin("203.0.113.7"))
+
+		require.Greater(t, next.ID, burst[len(burst)-1].ID)
+		require.Equal(t, int64(1), next.Count)
 	})
 
 	// Given 20 or more aggregatable events of the same type and key in the last 10 minutes, then the
@@ -270,9 +306,7 @@ func RunAuditEvents(t *testing.T, newStore NewStoreFunc) {
 		events := newStore(t, clk).AuditEvents()
 		ctx := t.Context()
 
-		burst := appendEvery(ctx, t, events, clk, 10*time.Second, 39, failedLogin("203.0.113.7"))
-		latest := burst[len(burst)-1]
-		require.Equal(t, int64(20), latest.Count)
+		latest := appendLongBurst(ctx, t, events, clk, "203.0.113.7")
 
 		after := appendEvery(ctx, t, events, clk, 10*time.Minute, 1, failedLogin("203.0.113.7"))[0]
 		require.Greater(t, after.ID, latest.ID)
@@ -289,9 +323,7 @@ func RunAuditEvents(t *testing.T, newStore NewStoreFunc) {
 		events := newStore(t, clk).AuditEvents()
 		ctx := t.Context()
 
-		burst := appendEvery(ctx, t, events, clk, 10*time.Second, 39, failedLogin("203.0.113.7"))
-		latest := burst[len(burst)-1]
-		require.Equal(t, int64(20), latest.Count)
+		latest := appendLongBurst(ctx, t, events, clk, "203.0.113.7")
 
 		aggregated := appendEvery(ctx, t, events, clk, 10*time.Minute-time.Millisecond, 6, failedLogin("203.0.113.7"))
 
@@ -340,15 +372,7 @@ func RunAuditEvents(t *testing.T, newStore NewStoreFunc) {
 		event := failedLogin("203.0.113.7")
 		event.AggregationKey = ""
 
-		appended := appendEvery(ctx, t, events, clk, time.Second, 25, event)
-
-		for i, event := range appended {
-			require.Equal(t, int64(1), event.Count, "event %d", i)
-
-			if i > 0 {
-				require.Greater(t, event.ID, appended[i-1].ID, "event %d", i)
-			}
-		}
+		requireEachAddedARow(t, appendEvery(ctx, t, events, clk, time.Second, 25, event))
 	})
 
 	// Given the repository, then it has no method that edits or deletes an event by id. A new method
