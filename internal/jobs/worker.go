@@ -20,6 +20,7 @@ const (
 	defaultLease             = 60 * time.Second
 	defaultHeartbeatInterval = 20 * time.Second
 	defaultPollInterval      = 5 * time.Second
+	defaultWaitInterval      = time.Second
 	defaultShutdownTimeout   = 10 * time.Second
 	defaultFinishTimeout     = time.Second
 )
@@ -48,6 +49,8 @@ type Options struct {
 	Lease             time.Duration
 	HeartbeatInterval time.Duration
 	PollInterval      time.Duration
+	// WaitInterval is how often RunInProcess tries again to claim a job whose serial key is held.
+	WaitInterval time.Duration
 	// ShutdownTimeout bounds the wait for the handlers during a shutdown. The lease recovers the job
 	// of a handler that ignores its context for longer.
 	ShutdownTimeout time.Duration
@@ -60,7 +63,8 @@ type Options struct {
 	Location *time.Location
 }
 
-// Worker is a pool that runs the jobs of a store with the handlers of a registry.
+// Worker is a pool that runs the jobs of a store with the handlers of a registry. A command that
+// runs its own job calls RunInProcess, and never Run.
 type Worker struct {
 	store     store.Store
 	registry  *Registry
@@ -93,6 +97,7 @@ func NewWorker(s store.Store, registry *Registry, clk clock.Clock, logger *slog.
 	opts.Lease = cmp.Or(opts.Lease, defaultLease)
 	opts.HeartbeatInterval = cmp.Or(opts.HeartbeatInterval, defaultHeartbeatInterval)
 	opts.PollInterval = cmp.Or(opts.PollInterval, defaultPollInterval)
+	opts.WaitInterval = cmp.Or(opts.WaitInterval, defaultWaitInterval)
 	opts.ShutdownTimeout = cmp.Or(opts.ShutdownTimeout, defaultShutdownTimeout)
 	opts.FinishTimeout = cmp.Or(opts.FinishTimeout, defaultFinishTimeout)
 
@@ -211,6 +216,25 @@ func (w *Worker) Tick(ctx context.Context) (claimed bool, err error) {
 		return false, err
 	}
 
+	end, err := w.run(ctx, job)
+
+	// A shutdown cuts the write short, and Run writes the end again under its deadline.
+	if err != nil && ctx.Err() != nil {
+		w.mu.Lock()
+		w.stopped = append(w.stopped, end)
+		w.mu.Unlock()
+
+		return true, nil
+	}
+
+	w.logEnd(ctx, end, err)
+
+	return true, nil
+}
+
+// run runs the handler of a claimed job under its heartbeat, and records how the run ended. It
+// returns the end and the error of its record.
+func (w *Worker) run(ctx context.Context, job store.Job) (jobEnd, error) {
 	start := w.clk.Now()
 
 	handlerCtx, cancel := context.WithCancelCause(ctx)
@@ -224,19 +248,7 @@ func (w *Worker) Tick(ctx context.Context) (claimed bool, err error) {
 	end := w.endOf(ctx, job, handlerErr, context.Cause(handlerCtx))
 	end.duration = w.clk.Now().Sub(start)
 
-	// A shutdown cuts the write short, and Run writes the end again under its deadline.
-	err = end.record(ctx)
-	if err != nil && ctx.Err() != nil {
-		w.mu.Lock()
-		w.stopped = append(w.stopped, end)
-		w.mu.Unlock()
-
-		return true, nil
-	}
-
-	w.logEnd(ctx, end, err)
-
-	return true, nil
+	return end, end.record(ctx)
 }
 
 // startHeartbeat renews the lease of job until the returned function is called, which waits for it
