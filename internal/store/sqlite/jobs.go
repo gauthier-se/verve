@@ -111,6 +111,42 @@ func (r jobs) Claim(ctx context.Context, lease time.Duration) (store.Job, error)
 	return jobOf(row), nil
 }
 
+func (r jobs) EnqueueClaimed(ctx context.Context, job store.NewJob, lease time.Duration) (store.Job, error) {
+	var row sqlcgen.Job
+
+	serialKey := sql.NullString{String: job.SerialKey, Valid: job.SerialKey != ""}
+
+	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
+		held, err := q.SerialKeyHeld(ctx, serialKey)
+		if err != nil {
+			return err
+		}
+
+		if held {
+			return store.ErrConflict
+		}
+
+		now := r.clk.Now()
+
+		row, err = q.EnqueueClaimedJob(ctx, sqlcgen.EnqueueClaimedJobParams{
+			Kind:        job.Kind,
+			Payload:     string(job.Payload),
+			RunAt:       toMillis(now),
+			LockedUntil: nullMillis(now.Add(lease)),
+			UserID:      sql.NullInt64{Int64: job.UserID, Valid: job.UserID != 0},
+			SerialKey:   serialKey,
+			CreatedAt:   toMillis(now),
+		})
+
+		return err
+	})
+	if err != nil {
+		return store.Job{}, fmt.Errorf("enqueue claimed job of kind %q: %w", job.Kind, err)
+	}
+
+	return jobOf(row), nil
+}
+
 func (r jobs) Heartbeat(ctx context.Context, id, claims int64, lease time.Duration) (bool, error) {
 	var cancelRequested bool
 

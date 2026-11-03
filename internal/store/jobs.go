@@ -79,6 +79,12 @@ type JobsRepository interface {
 	// instead of being claimed. Claim returns ErrNotFound when no job is due. The claim is atomic
 	// across processes.
 	Claim(ctx context.Context, lease time.Duration) (Job, error)
+	// EnqueueClaimed stores job and claims it in one atomic write, for a process that runs the job
+	// itself: it returns the job running with a lease from now, and with now as its RunAt and
+	// CreatedAt, whatever the RunAt of job. It returns ErrConflict and stores nothing while a running
+	// job holds the serial key of job, even with an expired lease, as Claim does for a queued job.
+	// Queued jobs of the key, due or not, do not hold it.
+	EnqueueClaimed(ctx context.Context, job NewJob, lease time.Duration) (Job, error)
 	// Heartbeat renews the lease of a running job, from now, and reports whether a cancellation of
 	// the job was requested.
 	Heartbeat(ctx context.Context, id, claims int64, lease time.Duration) (cancelRequested bool, err error)

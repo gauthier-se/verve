@@ -58,6 +58,20 @@ WHERE id = (
 )
 RETURNING *;
 
+-- name: SerialKeyHeld :one
+-- Like ClaimJob for a queued job: a running job holds its serial key even once its lease has expired.
+SELECT EXISTS (
+    SELECT 1
+    FROM jobs
+    WHERE status = 'running'
+      AND serial_key = ?
+);
+
+-- name: EnqueueClaimedJob :one
+INSERT INTO jobs (kind, payload, status, claims, run_at, locked_until, user_id, serial_key, created_at)
+VALUES (?, ?, 'running', 1, ?, ?, ?, ?, ?)
+RETURNING *;
+
 -- name: HeartbeatJob :one
 UPDATE jobs
 SET locked_until = ?
