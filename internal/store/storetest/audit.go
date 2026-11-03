@@ -48,6 +48,31 @@ func mustGetEvent(ctx context.Context, t *testing.T, events store.AuditEventsRep
 	return got
 }
 
+// failedLogin returns an aggregatable failed login from ip, keyed on ip.
+func failedLogin(ip string) store.NewAuditEvent {
+	return store.NewAuditEvent{
+		Type:           "auth.login_failed",
+		ClientIP:       ip,
+		Payload:        json.RawMessage(`{"attempted":"alice"}`),
+		AggregationKey: ip,
+	}
+}
+
+// appendEvery appends event count times, advancing clk by interval before each one, and returns the
+// appended events.
+func appendEvery(ctx context.Context, t *testing.T, events store.AuditEventsRepository, clk *clock.Fake, interval time.Duration, count int, event store.NewAuditEvent) []store.AuditEvent {
+	t.Helper()
+
+	appended := make([]store.AuditEvent, 0, count)
+
+	for range count {
+		clk.Advance(interval)
+		appended = append(appended, mustAppendEvent(ctx, t, events, event))
+	}
+
+	return appended
+}
+
 // RunAuditEvents runs the AuditEventsRepository contract against the stores returned by newStore.
 func RunAuditEvents(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
@@ -186,6 +211,144 @@ func RunAuditEvents(t *testing.T, newStore NewStoreFunc) {
 		got := mustGetEvent(ctx, t, events, appended.ID)
 		require.Equal(t, int64(7), got.ActorID)
 		require.Equal(t, int64(9), got.SubjectID)
+	})
+
+	// Given an aggregatable event, when fewer than 20 events of the same type and key happened in the
+	// last 10 minutes, then a row is added.
+	t.Run("AggregatableEventBelowTheThresholdAddsARow", func(t *testing.T) {
+		t.Parallel()
+
+		clk := clock.NewFake(auditTime)
+		events := newStore(t, clk).AuditEvents()
+		ctx := t.Context()
+
+		appended := appendEvery(ctx, t, events, clk, 10*time.Second, 20, failedLogin("203.0.113.7"))
+
+		for i, event := range appended {
+			require.Equal(t, int64(1), event.Count, "event %d", i)
+
+			if i > 0 {
+				require.Greater(t, event.ID, appended[i-1].ID, "event %d", i)
+			}
+		}
+	})
+
+	// Given 20 or more aggregatable events of the same type and key in the last 10 minutes, then the
+	// latest row has its count incremented and its last_at updated, and no row is added.
+	t.Run("AggregatableEventFromTheThresholdIncrementsTheLatestRow", func(t *testing.T) {
+		t.Parallel()
+
+		clk := clock.NewFake(auditTime)
+		events := newStore(t, clk).AuditEvents()
+		ctx := t.Context()
+
+		burst := appendEvery(ctx, t, events, clk, 10*time.Second, 20, failedLogin("203.0.113.7"))
+		latest := burst[len(burst)-1]
+
+		aggregated := appendEvery(ctx, t, events, clk, 10*time.Second, 2, failedLogin("203.0.113.7"))
+		lastAt := latest.OccurredAt.Add(20 * time.Second)
+
+		for _, event := range aggregated {
+			require.Equal(t, latest.ID, event.ID)
+		}
+
+		require.Equal(t, int64(3), aggregated[1].Count)
+		require.Equal(t, lastAt, aggregated[1].LastAt)
+
+		got := mustGetEvent(ctx, t, events, latest.ID)
+		require.Equal(t, latest.OccurredAt, got.OccurredAt)
+		require.Equal(t, int64(3), got.Count)
+		require.Equal(t, lastAt, got.LastAt)
+	})
+
+	// Given a burst whose latest row holds 20 events, when the next event comes after a quiet period
+	// of 10 minutes, then it adds a row.
+	t.Run("QuietPeriodOf10MinutesEndsTheBurst", func(t *testing.T) {
+		t.Parallel()
+
+		clk := clock.NewFake(auditTime)
+		events := newStore(t, clk).AuditEvents()
+		ctx := t.Context()
+
+		burst := appendEvery(ctx, t, events, clk, 10*time.Second, 39, failedLogin("203.0.113.7"))
+		latest := burst[len(burst)-1]
+		require.Equal(t, int64(20), latest.Count)
+
+		after := appendEvery(ctx, t, events, clk, 10*time.Minute, 1, failedLogin("203.0.113.7"))[0]
+		require.Greater(t, after.ID, latest.ID)
+		require.Equal(t, int64(1), after.Count)
+	})
+
+	// Given a burst whose latest row holds 20 events, when the next events come just under 10 minutes
+	// apart, then they go into that row, although the other rows of the burst are older than 10
+	// minutes: the events of a row count as recent while its last_at is.
+	t.Run("BurstGoesOnWhileItsLatestRowIsRecent", func(t *testing.T) {
+		t.Parallel()
+
+		clk := clock.NewFake(auditTime)
+		events := newStore(t, clk).AuditEvents()
+		ctx := t.Context()
+
+		burst := appendEvery(ctx, t, events, clk, 10*time.Second, 39, failedLogin("203.0.113.7"))
+		latest := burst[len(burst)-1]
+		require.Equal(t, int64(20), latest.Count)
+
+		aggregated := appendEvery(ctx, t, events, clk, 10*time.Minute-time.Millisecond, 6, failedLogin("203.0.113.7"))
+
+		for i, event := range aggregated {
+			require.Equal(t, latest.ID, event.ID, "event %d", i)
+		}
+
+		require.Equal(t, int64(26), aggregated[len(aggregated)-1].Count)
+	})
+
+	// Given a burst from one client IP, then an event of another IP or of another type is not
+	// aggregated with it, and the next event of the burst still goes into the burst's latest row.
+	t.Run("BurstIsKeyedOnTypeAndKey", func(t *testing.T) {
+		t.Parallel()
+
+		clk := clock.NewFake(auditTime)
+		events := newStore(t, clk).AuditEvents()
+		ctx := t.Context()
+
+		burst := appendEvery(ctx, t, events, clk, 10*time.Second, 20, failedLogin("203.0.113.7"))
+		latest := burst[len(burst)-1]
+
+		otherType := failedLogin("203.0.113.7")
+		otherType.Type = "auth.token_rejected"
+
+		for name, event := range map[string]store.NewAuditEvent{
+			"another IP":   failedLogin("198.51.100.4"),
+			"another type": otherType,
+		} {
+			appended := mustAppendEvent(ctx, t, events, event)
+			require.Greater(t, appended.ID, latest.ID, name)
+			require.Equal(t, int64(1), appended.Count, name)
+		}
+
+		require.Equal(t, latest.ID, mustAppendEvent(ctx, t, events, failedLogin("203.0.113.7")).ID)
+	})
+
+	// Given events without an aggregation key, then each adds a row, however many there are.
+	t.Run("EventsWithoutAKeyAreNeverAggregated", func(t *testing.T) {
+		t.Parallel()
+
+		clk := clock.NewFake(auditTime)
+		events := newStore(t, clk).AuditEvents()
+		ctx := t.Context()
+
+		event := failedLogin("203.0.113.7")
+		event.AggregationKey = ""
+
+		appended := appendEvery(ctx, t, events, clk, time.Second, 25, event)
+
+		for i, event := range appended {
+			require.Equal(t, int64(1), event.Count, "event %d", i)
+
+			if i > 0 {
+				require.Greater(t, event.ID, appended[i-1].ID, "event %d", i)
+			}
+		}
 	})
 
 	// Given the repository, then it has no method that edits or deletes an event by id. A new method
