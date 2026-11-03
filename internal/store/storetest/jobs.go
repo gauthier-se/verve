@@ -784,11 +784,13 @@ func runJobsEnqueueClaimed(t *testing.T, newStore NewStoreFunc) {
 			held: true,
 		},
 		{
-			name: "QueuedJob",
+			// Claim would take it before a newer job of the key, in arrival order.
+			name: "DueQueuedJob",
 			prepare: func(ctx context.Context, t *testing.T, _ *clock.Fake, jobs store.JobsRepository) {
 				t.Helper()
 				mustEnqueue(ctx, t, jobs, dueJob(jobsTime, key))
 			},
+			held: true,
 		},
 		{
 			name: "JobWaitingForItsRetry",
@@ -819,7 +821,7 @@ func runJobsEnqueueClaimed(t *testing.T, newStore NewStoreFunc) {
 
 	for _, tt := range tests {
 		// Given jobs in a given state, then EnqueueClaimed returns store.ErrConflict when a running job
-		// holds the serial key, and otherwise the job running.
+		// or a due queued job holds the serial key, and otherwise the job running.
 		t.Run("EnqueueClaimedWith"+tt.name, func(t *testing.T) {
 			t.Parallel()
 
