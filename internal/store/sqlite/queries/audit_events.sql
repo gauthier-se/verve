@@ -28,14 +28,14 @@ FROM audit_events
 WHERE id = ?;
 
 -- name: PurgeAuditEvents :execrows
--- The oldest events whose last occurrence is before a time, at most a limit. An event never
+-- The oldest events whose last occurrence is before a cutoff, at most a batch size. An event never
 -- occurred after its last occurrence, so that the condition on occurred_at, which is indexed, finds
 -- them without reading the rest of the table.
 DELETE
 FROM audit_events
 WHERE id IN (SELECT old.id
              FROM audit_events AS old
-             WHERE old.occurred_at < sqlc.arg(before)
-               AND old.last_at < sqlc.arg(before)
+             WHERE old.occurred_at < sqlc.arg(cutoff)
+               AND old.last_at < sqlc.arg(cutoff)
              ORDER BY old.occurred_at
              LIMIT sqlc.arg(batch_size));

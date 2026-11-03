@@ -2,7 +2,6 @@ package audit
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/gauthier-se/verve/internal/store"
@@ -18,12 +17,12 @@ const purgeBatchSize = 5000
 func Purge(ctx context.Context, events store.AuditEventsRepository, now time.Time, retentionDays int) error {
 	// Days of the calendar rather than a Duration, which a long retention would overflow. UTC days
 	// all last 24 hours.
-	before := now.UTC().AddDate(0, 0, -retentionDays)
+	cutoff := now.UTC().AddDate(0, 0, -retentionDays)
 
 	for {
-		purged, err := events.PurgeBefore(ctx, before, purgeBatchSize)
+		purged, err := events.PurgeBefore(ctx, cutoff, purgeBatchSize)
 		if err != nil {
-			return fmt.Errorf("purge audit events older than %d days: %w", retentionDays, err)
+			return err
 		}
 
 		if purged < purgeBatchSize {

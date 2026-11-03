@@ -45,34 +45,34 @@ func testEvent() store.NewAuditEvent {
 	return store.NewAuditEvent{Type: "system.backup_created", Payload: json.RawMessage(`{}`)}
 }
 
-// oldEvents holds count events older than any limit, and removes them as PurgeBefore asks, or fails
-// with err. It records the limit and the result of each call, each of which stands for a
-// transaction. Any other method of the repository panics.
-type oldEvents struct {
+// fakePurgeEvents holds count events older than any cutoff, and removes them as PurgeBefore asks, or
+// fails with err. It records the batch size and the result of each call, each of which stands for
+// a transaction. Any other method of the repository panics.
+type fakePurgeEvents struct {
 	store.AuditEventsRepository
 
-	count  int64
-	limits []int64
-	purged []int64
-	err    error
+	count      int64
+	batchSizes []int64
+	purged     []int64
+	err        error
 }
 
-func (f *oldEvents) PurgeBefore(_ context.Context, _ time.Time, limit int64) (int64, error) {
-	f.limits = append(f.limits, limit)
+func (f *fakePurgeEvents) PurgeBefore(_ context.Context, _ time.Time, batchSize int64) (int64, error) {
+	f.batchSizes = append(f.batchSizes, batchSize)
 
 	if f.err != nil {
 		return 0, f.err
 	}
 
-	purged := min(f.count, limit)
+	purged := min(f.count, batchSize)
 	f.count -= purged
 	f.purged = append(f.purged, purged)
 
 	return purged, nil
 }
 
-// Given the daily audit.purge job, then only the events older than the retention period are
-// removed: an event is kept on the last day of its retention.
+// Given the purge that the daily audit.purge job runs, then only the events older than the
+// retention period are removed: an event exactly as old as the retention period is kept.
 func TestPurge_RemovesOnlyTheEventsOlderThanTheRetention(t *testing.T) {
 	t.Parallel()
 
@@ -132,15 +132,15 @@ func TestPurge_RemovesManyOldEventsInBatchesOf5000(t *testing.T) {
 		t.Run(strconv.FormatInt(tt.count, 10), func(t *testing.T) {
 			t.Parallel()
 
-			events := &oldEvents{count: tt.count}
+			events := &fakePurgeEvents{count: tt.count}
 
 			require.NoError(t, Purge(t.Context(), events, purgeTestNow, 365))
 
 			require.Zero(t, events.count)
 			require.Equal(t, tt.purged, events.purged)
 
-			for i, limit := range events.limits {
-				require.Equal(t, int64(5000), limit, "call %d", i)
+			for i, batchSize := range events.batchSizes {
+				require.Equal(t, int64(5000), batchSize, "call %d", i)
 			}
 		})
 	}
@@ -151,10 +151,10 @@ func TestPurge_ReturnsTheErrorOfTheRepository(t *testing.T) {
 	t.Parallel()
 
 	errPurge := errors.New("disk I/O error")
-	events := &oldEvents{count: 10_000, err: errPurge}
+	events := &fakePurgeEvents{count: 10_000, err: errPurge}
 
 	err := Purge(t.Context(), events, purgeTestNow, 365)
 
 	require.ErrorIs(t, err, errPurge)
-	require.Len(t, events.limits, 1)
+	require.Len(t, events.batchSizes, 1)
 }

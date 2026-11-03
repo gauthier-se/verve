@@ -155,15 +155,15 @@ WHERE id IN (SELECT old.id
 `
 
 type PurgeAuditEventsParams struct {
-	Before    int64
+	Cutoff    int64
 	BatchSize int64
 }
 
-// The oldest events whose last occurrence is before a time, at most a limit. An event never
+// The oldest events whose last occurrence is before a cutoff, at most a batch size. An event never
 // occurred after its last occurrence, so that the condition on occurred_at, which is indexed, finds
 // them without reading the rest of the table.
 func (q *Queries) PurgeAuditEvents(ctx context.Context, arg PurgeAuditEventsParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, purgeAuditEvents, arg.Before, arg.BatchSize)
+	result, err := q.db.ExecContext(ctx, purgeAuditEvents, arg.Cutoff, arg.BatchSize)
 	if err != nil {
 		return 0, err
 	}

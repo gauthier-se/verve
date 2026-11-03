@@ -87,13 +87,13 @@ func (r auditEvents) Get(ctx context.Context, id int64) (store.AuditEvent, error
 	return auditEventOf(row), nil
 }
 
-func (r auditEvents) PurgeBefore(ctx context.Context, before time.Time, limit int64) (int64, error) {
+func (r auditEvents) PurgeBefore(ctx context.Context, cutoff time.Time, batchSize int64) (int64, error) {
 	var purged int64
 
 	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
 		var err error
 
-		purged, err = q.PurgeAuditEvents(ctx, sqlcgen.PurgeAuditEventsParams{Before: toMillis(before), BatchSize: limit})
+		purged, err = q.PurgeAuditEvents(ctx, sqlcgen.PurgeAuditEventsParams{Cutoff: toMillis(cutoff), BatchSize: batchSize})
 
 		return err
 	})

@@ -42,7 +42,7 @@ An append-only record of security-relevant and data management events: logins, t
   |---|---|---|---|
   | `VERVE_AUDIT_RETENTION_DAYS` | `audit.retention_days` | `365` | Days an event is kept, a whole number of at least 1 |
 
-  The recurring job `audit.purge` runs daily and removes the events older than the retention period, in batches of at most 5,000 per transaction so that it never holds the writer for long. An aggregated row is older than the retention period once its last event (`last_at`) is: it is kept while it holds a recent event. An event is kept on the last day of its retention.
+  The recurring job `audit.purge` runs daily and removes the events older than the retention period, in batches of at most 5,000 per transaction so that it never holds the writer for long. An event exactly as old as the retention period is kept, and the next purge removes it. An aggregated row is older than the retention period once its last event (`last_at`) is: it is kept while it holds a recent event, so a burst that never goes quiet keeps its row, older events included, for as long as it lasts.
 - **FR-7**: Events are append-only through the application. There is no endpoint to edit or delete individual events.
 - **FR-8**: Failed login events for unknown usernames are recorded with the attempted username truncated to 64 characters and without linking to a user.
 

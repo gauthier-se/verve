@@ -31,7 +31,7 @@ type Config struct {
 	MaxUploadSize  ByteSize    `yaml:"max_upload_size" env:"MAX_UPLOAD_SIZE"`
 	MaxIngestBody  ByteSize    `yaml:"max_ingest_body" env:"MAX_INGEST_BODY"`
 	MetricsAddr    string      `yaml:"metrics_addr"    env:"METRICS_ADDR"`
-	Audit          AuditConfig `yaml:"audit"         envPrefix:"AUDIT_"`
+	Audit          AuditConfig `yaml:"audit"           envPrefix:"AUDIT_"`
 
 	// Sources tells where each setting comes from, keyed by YAML path. Set by Load.
 	Sources Sources `yaml:"-" env:"-"`
