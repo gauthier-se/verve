@@ -54,20 +54,6 @@ func runInProcessInBackground(ctx context.Context, w *Worker, job store.NewJob, 
 	return done
 }
 
-// waitResult waits for the error of a RunInProcess started by runInProcessInBackground.
-func waitResult(t *testing.T, done <-chan error) error {
-	t.Helper()
-
-	select {
-	case err := <-done:
-		return err
-	case <-time.After(waitFor):
-		t.Fatal("RunInProcess did not return")
-
-		return nil
-	}
-}
-
 // receive waits for a value on ch.
 func receive[T any](t *testing.T, ch <-chan T, what string) T {
 	t.Helper()
@@ -129,7 +115,7 @@ func TestRunInProcess_FreeSerialKey_RunsTheJobUnderItsLease(t *testing.T) {
 	}, waitFor, time.Millisecond, "a heartbeat must renew the lease from now")
 
 	close(release)
-	require.NoError(t, waitResult(t, done))
+	require.NoError(t, receive(t, done, "RunInProcess did not return"))
 
 	job := getJob(ctx, t, s, handled.ID)
 	require.Equal(t, store.JobCompleted, job.Status)
@@ -169,7 +155,7 @@ func TestRunInProcess_HeldSerialKey_WaitsAndRunsOnceTheKeyIsFree(t *testing.T) {
 		"the job must wait for the key, and the callback must run once over several polls")
 
 	require.NoError(t, s.Jobs().Complete(ctx, holder.ID, holder.Claims))
-	require.NoError(t, waitResult(t, done))
+	require.NoError(t, receive(t, done, "RunInProcess did not return"))
 
 	require.True(t, ran.Load())
 	require.Equal(t, int64(1), waits.Load())
@@ -202,7 +188,9 @@ func TestRunInProcess_ContextCancelledWhileWaiting_ReturnsTheContextErrorAndLeav
 	require.ErrorIs(t, err, context.Canceled)
 	require.False(t, ran.Load())
 
+	// A job left queued would be due at once, and one left running once its lease has expired.
 	require.NoError(t, s.Jobs().Complete(t.Context(), holder.ID, holder.Claims))
+	clk.Advance(w.opts.Lease)
 	requireNoTick(t.Context(), t, w)
 }
 
@@ -247,10 +235,44 @@ func TestRunInProcess_ValidLease_KeepsTheJobAndItsKeyFromTheServer(t *testing.T)
 	requireNoTick(ctx, t, serverWorker)
 
 	close(release)
-	require.NoError(t, waitResult(t, done))
+	require.NoError(t, receive(t, done, "RunInProcess did not return"))
 
 	requireTick(ctx, t, serverWorker)
 	require.Equal(t, store.JobCompleted, getJob(ctx, t, server, queued.ID).Status)
+}
+
+// stoppableHeartbeats is a store whose heartbeats stop once stop is closed, as when its process
+// dies: each heartbeat then hangs until its context ends.
+type stoppableHeartbeats struct {
+	store.Store
+
+	stop <-chan struct{}
+	// hung is closed once a heartbeat hangs. The heartbeats of a job run one at a time, so no other
+	// one can renew the lease after it.
+	hung     chan struct{}
+	hungOnce *sync.Once
+}
+
+func (s stoppableHeartbeats) Jobs() store.JobsRepository {
+	return stoppableHeartbeatsJobs{JobsRepository: s.Store.Jobs(), store: s}
+}
+
+type stoppableHeartbeatsJobs struct {
+	store.JobsRepository
+
+	store stoppableHeartbeats
+}
+
+func (j stoppableHeartbeatsJobs) Heartbeat(ctx context.Context, id, claims int64, lease time.Duration) (bool, error) {
+	select {
+	case <-j.store.stop:
+		j.store.hungOnce.Do(func() { close(j.store.hung) })
+		<-ctx.Done()
+
+		return false, ctx.Err()
+	default:
+		return j.JobsRepository.Heartbeat(ctx, id, claims, lease)
+	}
 }
 
 // Given an in-process job whose process died, then the lease expires and the worker of the server
@@ -278,11 +300,27 @@ func TestRunInProcess_ProcessDied_TheServerFinishesTheJobOnceTheLeaseExpires(t *
 		return nil
 	})
 
-	// A process that died renews nothing: its heartbeat never beats, and its handler is stuck.
-	w, _ := newTestWorker(s, cliReg, clk, Options{Lease: lease, HeartbeatInterval: noPoll})
+	stop := make(chan struct{})
+	dying := stoppableHeartbeats{Store: s, stop: stop, hung: make(chan struct{}), hungOnce: &sync.Once{}}
+	w, _ := newTestWorker(dying, cliReg, clk, Options{Lease: lease, HeartbeatInterval: shortInterval})
 	done := runInProcessInBackground(ctx, w, newKeyedJob(t, kind, "first"), func() {})
 
 	id := receive(t, started, "the handler did not start")
+
+	clk.Advance(20 * time.Second)
+
+	renewed := clk.Now().Add(lease)
+
+	require.Eventually(t, func() bool {
+		job, err := s.Jobs().Get(ctx, id)
+
+		return err == nil && job.LockedUntil.Equal(renewed)
+	}, waitFor, time.Millisecond, "a heartbeat must renew the lease before the process dies")
+
+	// The process dies: its heartbeat stops, and its handler, stuck, writes nothing.
+	close(stop)
+	waitClosed(t, dying.hung, "the heartbeat did not stop")
+
 	server, _ := newTestWorker(s, serverReg, clk, Options{})
 
 	clk.Advance(lease - time.Millisecond)
@@ -297,7 +335,7 @@ func TestRunInProcess_ProcessDied_TheServerFinishesTheJobOnceTheLeaseExpires(t *
 	require.Equal(t, int64(1), job.LostLeases)
 
 	close(release)
-	require.ErrorIs(t, waitResult(t, done), store.ErrConflict)
+	require.ErrorIs(t, receive(t, done, "RunInProcess did not return"), store.ErrConflict)
 	require.Equal(t, job, getJob(ctx, t, s, id))
 }
 
@@ -311,24 +349,33 @@ func TestRunInProcess_WorkerOnAnotherStoreOfTheSameFile_JobsOfOneKeyNeverOverlap
 	cli, cliClk := newTestStoreAt(t, path)
 	ctx := t.Context()
 
-	var running, overlaps, ran atomic.Int64
+	const inProcess = "in-process"
 
-	handler := func(context.Context, Job[testPayload]) error {
-		if running.Add(1) > 1 {
-			overlaps.Add(1)
+	var running, overlaps, ran, misplaced atomic.Int64
+
+	// handler runs a job, and counts it as misplaced when the other process should have run it.
+	handler := func(inProcessJobs bool) func(context.Context, Job[testPayload]) error {
+		return func(_ context.Context, job Job[testPayload]) error {
+			if running.Add(1) > 1 {
+				overlaps.Add(1)
+			}
+
+			if (job.Payload.Name == inProcess) != inProcessJobs {
+				misplaced.Add(1)
+			}
+
+			time.Sleep(10 * time.Millisecond)
+			running.Add(-1)
+			ran.Add(1)
+
+			return nil
 		}
-
-		time.Sleep(10 * time.Millisecond)
-		running.Add(-1)
-		ran.Add(1)
-
-		return nil
 	}
 
 	serverReg := NewRegistry()
-	kind := Register(serverReg, "test.kind", KindOptions{}, handler)
+	kind := Register(serverReg, "test.kind", KindOptions{}, handler(false))
 	cliReg := NewRegistry()
-	Register(cliReg, "test.kind", KindOptions{}, handler)
+	Register(cliReg, "test.kind", KindOptions{}, handler(true))
 
 	for _, name := range []string{"first", "second", "third", "fourth"} {
 		_, err := server.Jobs().Enqueue(ctx, newKeyedJob(t, kind, name))
@@ -344,7 +391,7 @@ func TestRunInProcess_WorkerOnAnotherStoreOfTheSameFile_JobsOfOneKeyNeverOverlap
 	var wg sync.WaitGroup
 
 	errs := make(chan error, 3)
-	job := newKeyedJob(t, kind, "in-process")
+	job := newKeyedJob(t, kind, inProcess)
 
 	for range 3 {
 		wg.Go(func() { errs <- w.RunInProcess(ctx, job, func() {}) })
@@ -359,12 +406,13 @@ func TestRunInProcess_WorkerOnAnotherStoreOfTheSameFile_JobsOfOneKeyNeverOverlap
 
 	require.Eventually(t, func() bool { return ran.Load() == 7 }, waitFor, time.Millisecond)
 	require.Zero(t, overlaps.Load(), "two jobs of one serial key ran at the same time")
+	require.Zero(t, misplaced.Load(), "the server must not run an in-process job, created claimed")
 }
 
 // Given an in-process run that does not complete its job, then RunInProcess returns why, and the
-// job ends as on a worker: a server worker retries a failed attempt, and resumes a job whose
-// process stopped.
-func TestRunInProcess_RunThatDoesNotComplete_ReturnsWhyAndEndsTheJobLikeAWorker(t *testing.T) {
+// job ends for good, because the command reports its end: a failed attempt fails it, and a stopped
+// process cancels it. The server never runs it again.
+func TestRunInProcess_RunThatDoesNotComplete_EndsTheJobForGoodAndReturnsWhy(t *testing.T) {
 	t.Parallel()
 
 	errFailed := errors.New("handler failed")
@@ -383,7 +431,7 @@ func TestRunInProcess_RunThatDoesNotComplete_ReturnsWhyAndEndsTheJobLikeAWorker(
 				return errFailed
 			},
 			wantErr:      errFailed,
-			wantStatus:   store.JobQueued,
+			wantStatus:   store.JobFailed,
 			wantAttempts: 1,
 		},
 		{
@@ -418,7 +466,7 @@ func TestRunInProcess_RunThatDoesNotComplete_ReturnsWhyAndEndsTheJobLikeAWorker(
 				return ctx.Err()
 			},
 			wantErr:    context.Canceled,
-			wantStatus: store.JobQueued,
+			wantStatus: store.JobCancelled,
 		},
 	}
 
@@ -446,6 +494,9 @@ func TestRunInProcess_RunThatDoesNotComplete_ReturnsWhyAndEndsTheJobLikeAWorker(
 			job := getJob(t.Context(), t, s, receive(t, ids, "the handler did not start"))
 			require.Equal(t, tt.wantStatus, job.Status)
 			require.Equal(t, tt.wantAttempts, job.Attempts)
+
+			clk.Advance(maxBackoff)
+			requireNoTick(t.Context(), t, w)
 		})
 	}
 }
