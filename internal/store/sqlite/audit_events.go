@@ -13,8 +13,8 @@ import (
 	"github.com/gauthier-se/verve/internal/store/sqlite/sqlcgen"
 )
 
-// A burst of aggregatable events goes into the count of its latest row from the burstThreshold-th
-// event within burstWindow on.
+// Once burstThreshold aggregatable events of a type and key happened within burstWindow, the next
+// ones go into the count of their latest row.
 const (
 	burstThreshold = 20
 	burstWindow    = 10 * time.Minute

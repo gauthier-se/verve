@@ -23,8 +23,8 @@ type Event struct {
 	actorID int64
 	// subjectID is the user the event is about, or 0 for none.
 	subjectID int64
-	// onClientIP aggregates the bursts of the event on the client IP of the request.
-	onClientIP bool
+	// aggregateOnClientIP aggregates the bursts of the event on the client IP of the request.
+	aggregateOnClientIP bool
 	// payload is a struct of the constructor, never a free map.
 	payload any
 }
@@ -41,9 +41,9 @@ type loginFailedPayload struct {
 // aggregation.
 func LoginFailed(attempted string) Event {
 	return Event{
-		eventType:  TypeLoginFailed,
-		onClientIP: true,
-		payload:    loginFailedPayload{Attempted: truncate(attempted, maxAttemptedLogin)},
+		eventType:           TypeLoginFailed,
+		aggregateOnClientIP: true,
+		payload:             loginFailedPayload{Attempted: truncate(attempted, maxAttemptedLogin)},
 	}
 }
 
@@ -67,7 +67,7 @@ func Record(ctx context.Context, repo store.AuditEventsRepository, event Event) 
 	}
 
 	var aggregationKey string
-	if event.onClientIP {
+	if event.aggregateOnClientIP {
 		aggregationKey = clientIP
 	}
 
