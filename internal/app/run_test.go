@@ -407,21 +407,69 @@ func storedSchedules(t *testing.T, cfg config.Config) map[string]time.Time {
 	return schedules
 }
 
-// Given serve on a new database, then the purge of jobs is scheduled in a day, and no job is
-// enqueued for it yet.
-func TestRun_SchedulesThePurgeOfJobs(t *testing.T) {
+// Given serve on a new database, then the purges of jobs and of audit events are scheduled daily,
+// in a day, and no job is enqueued for them yet.
+func TestRun_SchedulesTheDailyPurges(t *testing.T) {
 	t.Parallel()
 
 	cfg := testConfig(t.TempDir())
 	_, _, stop := startRun(t, cfg)
 
 	require.Eventually(t, func() bool {
-		return len(storedSchedules(t, cfg)) == 1
-	}, 5*time.Second, 10*time.Millisecond, "the server must schedule the purge of jobs")
+		return len(storedSchedules(t, cfg)) == 2
+	}, 5*time.Second, 10*time.Millisecond, "the server must schedule the purges")
 
 	stop()
 
-	require.WithinDuration(t, time.Now().Add(24*time.Hour), storedSchedules(t, cfg)["jobs.purge"], time.Minute)
+	schedules := storedSchedules(t, cfg)
+	for _, name := range []string{"jobs.purge", "audit.purge"} {
+		require.WithinDuration(t, time.Now().Add(24*time.Hour), schedules[name], time.Minute, name)
+	}
+}
+
+// Given an audit retention of 30 days and the purge of audit events missed during downtime, then it
+// runs after startup and removes only the events older than 30 days.
+func TestRun_PurgesTheAuditEventsOlderThanTheConfiguredRetention(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	cfg := testConfig(t.TempDir())
+	cfg.Audit.RetentionDays = 30
+
+	_, err := Migrate(ctx, cfg, discardLogger())
+	require.NoError(t, err)
+
+	db, err := sqlite.Open(ctx, filepath.Join(cfg.DataDir, dbFile))
+	require.NoError(t, err)
+
+	now := time.Now().UTC()
+	event := store.NewAuditEvent{Type: "system.backup_created", Payload: json.RawMessage(`{}`)}
+
+	old, err := sqlite.New(db, clock.NewFake(now.Add(-31*24*time.Hour))).AuditEvents().Append(ctx, event)
+	require.NoError(t, err)
+
+	recent, err := sqlite.New(db, clock.NewFake(now.Add(-29*24*time.Hour))).AuditEvents().Append(ctx, event)
+	require.NoError(t, err)
+
+	require.NoError(t, sqlite.New(db, clock.NewFake(now)).Jobs().SetSchedule(ctx, "audit.purge", now.Add(-time.Hour)))
+	require.NoError(t, db.CloseShared())
+
+	_, _, stop := startRun(t, cfg)
+
+	require.Eventually(t, func() bool {
+		_, err := withSharedDB(ctx, cfg, func(s store.Store) (store.AuditEvent, error) {
+			return s.AuditEvents().Get(ctx, old.ID)
+		})
+
+		return errors.Is(err, store.ErrNotFound)
+	}, 5*time.Second, 10*time.Millisecond, "the purge must remove the old event")
+
+	stop()
+
+	_, err = withSharedDB(ctx, cfg, func(s store.Store) (store.AuditEvent, error) {
+		return s.AuditEvents().Get(ctx, recent.ID)
+	})
+	require.NoError(t, err)
 }
 
 // Given the purge of jobs missed during downtime, then it runs after startup and removes a job
