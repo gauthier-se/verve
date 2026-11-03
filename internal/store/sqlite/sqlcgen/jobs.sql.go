@@ -186,6 +186,53 @@ func (q *Queries) DeleteJobSchedule(ctx context.Context, name string) (int64, er
 	return result.RowsAffected()
 }
 
+const enqueueClaimedJob = `-- name: EnqueueClaimedJob :one
+INSERT INTO jobs (kind, payload, status, claims, run_at, locked_until, user_id, serial_key, created_at)
+VALUES (?, ?, 'running', 1, ?, ?, ?, ?, ?)
+RETURNING id, kind, payload, status, attempts, claims, lost_leases, run_at, locked_until, user_id, serial_key, last_error, created_at, finished_at, cancel_requested
+`
+
+type EnqueueClaimedJobParams struct {
+	Kind        string
+	Payload     string
+	RunAt       int64
+	LockedUntil sql.NullInt64
+	UserID      sql.NullInt64
+	SerialKey   sql.NullString
+	CreatedAt   int64
+}
+
+func (q *Queries) EnqueueClaimedJob(ctx context.Context, arg EnqueueClaimedJobParams) (Job, error) {
+	row := q.db.QueryRowContext(ctx, enqueueClaimedJob,
+		arg.Kind,
+		arg.Payload,
+		arg.RunAt,
+		arg.LockedUntil,
+		arg.UserID,
+		arg.SerialKey,
+		arg.CreatedAt,
+	)
+	var i Job
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.Payload,
+		&i.Status,
+		&i.Attempts,
+		&i.Claims,
+		&i.LostLeases,
+		&i.RunAt,
+		&i.LockedUntil,
+		&i.UserID,
+		&i.SerialKey,
+		&i.LastError,
+		&i.CreatedAt,
+		&i.FinishedAt,
+		&i.CancelRequested,
+	)
+	return i, err
+}
+
 const enqueueJob = `-- name: EnqueueJob :one
 INSERT INTO jobs (kind, payload, status, run_at, user_id, serial_key, created_at)
 VALUES (?, ?, 'queued', ?, ?, ?, ?)
@@ -418,6 +465,29 @@ func (q *Queries) RetryJob(ctx context.Context, arg RetryJobParams) (int64, erro
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const serialKeyHeld = `-- name: SerialKeyHeld :one
+SELECT EXISTS (
+    SELECT 1
+    FROM jobs
+    WHERE serial_key = ?1
+      AND (status = 'running' OR (status = 'queued' AND run_at <= ?2))
+)
+`
+
+type SerialKeyHeldParams struct {
+	SerialKey sql.NullString
+	Now       int64
+}
+
+// As in ClaimJob, a running job holds its serial key even once its lease has expired, and a due
+// queued job holds it because ClaimJob would take it before a newer job of the key.
+func (q *Queries) SerialKeyHeld(ctx context.Context, arg SerialKeyHeldParams) (bool, error) {
+	row := q.db.QueryRowContext(ctx, serialKeyHeld, arg.SerialKey, arg.Now)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
 const setJobSchedule = `-- name: SetJobSchedule :exec

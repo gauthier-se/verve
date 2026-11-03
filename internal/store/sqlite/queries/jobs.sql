@@ -58,6 +58,21 @@ WHERE id = (
 )
 RETURNING *;
 
+-- name: SerialKeyHeld :one
+-- As in ClaimJob, a running job holds its serial key even once its lease has expired, and a due
+-- queued job holds it because ClaimJob would take it before a newer job of the key.
+SELECT EXISTS (
+    SELECT 1
+    FROM jobs
+    WHERE serial_key = sqlc.arg(serial_key)
+      AND (status = 'running' OR (status = 'queued' AND run_at <= sqlc.arg(now)))
+);
+
+-- name: EnqueueClaimedJob :one
+INSERT INTO jobs (kind, payload, status, claims, run_at, locked_until, user_id, serial_key, created_at)
+VALUES (?, ?, 'running', 1, ?, ?, ?, ?, ?)
+RETURNING *;
+
 -- name: HeartbeatJob :one
 UPDATE jobs
 SET locked_until = ?

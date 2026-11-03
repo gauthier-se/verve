@@ -253,6 +253,7 @@ func TestNewWorker_ZeroOptions_TakeTheDefaults(t *testing.T) {
 		Lease:             60 * time.Second,
 		HeartbeatInterval: 20 * time.Second,
 		PollInterval:      5 * time.Second,
+		WaitInterval:      time.Second,
 		ShutdownTimeout:   10 * time.Second,
 		FinishTimeout:     time.Second,
 	}, w.opts)
