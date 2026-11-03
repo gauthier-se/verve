@@ -23,17 +23,28 @@ type Event struct {
 	actorID int64
 	// subjectID is the user the event is about, or 0 for none.
 	subjectID int64
+	// aggregateOnClientIP aggregates the bursts of the event on the client IP of the request.
+	aggregateOnClientIP bool
 	// payload is a struct of the constructor, never a free map.
 	payload any
 }
+
+// maxAttemptedLogin is the number of characters kept of an attempted login, which the client chooses.
+const maxAttemptedLogin = 64
 
 type loginFailedPayload struct {
 	Attempted string `json:"attempted"`
 }
 
-// LoginFailed is a failed login, with the login that was attempted.
+// LoginFailed is a failed login, with the login that was attempted, truncated. Its bursts are
+// aggregated on the client IP rather than the login, so that trying many logins does not escape
+// aggregation.
 func LoginFailed(attempted string) Event {
-	return Event{eventType: TypeLoginFailed, payload: loginFailedPayload{Attempted: attempted}}
+	return Event{
+		eventType:           TypeLoginFailed,
+		aggregateOnClientIP: true,
+		payload:             loginFailedPayload{Attempted: truncate(attempted, maxAttemptedLogin)},
+	}
 }
 
 // Record appends event to repo, with the client of ctx. For the event to commit with the action it
@@ -55,13 +66,19 @@ func Record(ctx context.Context, repo store.AuditEventsRepository, event Event) 
 		clientIP = meta.IP.String()
 	}
 
+	var aggregationKey string
+	if event.aggregateOnClientIP {
+		aggregationKey = clientIP
+	}
+
 	_, err = repo.Append(ctx, store.NewAuditEvent{
-		ActorID:   event.actorID,
-		SubjectID: event.subjectID,
-		Type:      event.eventType,
-		ClientIP:  clientIP,
-		UserAgent: meta.UserAgent,
-		Payload:   payload,
+		ActorID:        event.actorID,
+		SubjectID:      event.subjectID,
+		Type:           event.eventType,
+		ClientIP:       clientIP,
+		UserAgent:      meta.UserAgent,
+		Payload:        payload,
+		AggregationKey: aggregationKey,
 	})
 	if err != nil {
 		return fmt.Errorf("record audit event: %w", err)

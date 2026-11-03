@@ -18,6 +18,9 @@ type NewAuditEvent struct {
 	ClientIP  string
 	UserAgent string
 	Payload   json.RawMessage
+	// AggregationKey makes the event aggregatable: bursts of the events of its type and key share a
+	// row. It is empty for an event that is never aggregated.
+	AggregationKey string
 }
 
 // AuditEvent is an entry of the audit log. Times are in UTC with millisecond precision. Events have
@@ -43,6 +46,12 @@ type AuditEvent struct {
 // event by id.
 type AuditEventsRepository interface {
 	// Append stores an event with the current time as OccurredAt, and returns it.
+	//
+	// An aggregatable event is aggregated during a burst: when 20 or more events of its type and
+	// aggregation key happened in the last 10 minutes, Append increments the Count of their latest
+	// row, sets its LastAt to the current time and returns that row, without adding one. The events
+	// of a row count as recent while its LastAt is, so a burst whose latest row holds 20 events goes
+	// on until a quiet period of 10 minutes.
 	Append(ctx context.Context, event NewAuditEvent) (AuditEvent, error)
 	// Get returns the event of id, or ErrNotFound.
 	Get(ctx context.Context, id int64) (AuditEvent, error)

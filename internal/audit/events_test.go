@@ -6,6 +6,7 @@ import (
 	"go/parser"
 	"go/token"
 	"maps"
+	"net/netip"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -160,4 +161,66 @@ func TestLoginFailed(t *testing.T) {
 	data, err := json.Marshal(event.payload)
 	require.NoError(t, err)
 	require.JSONEq(t, `{"attempted":"alice"}`, string(data))
+}
+
+// Given failed logins of several usernames from one client IP, then they are aggregated on the
+// client IP, so that trying many usernames does not escape aggregation. Without a request, they
+// are not aggregated.
+func TestLoginFailed_IsAggregatedOnTheClientIP(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		meta Meta
+		want string
+	}{
+		{name: "request", meta: Meta{IP: netip.MustParseAddr("203.0.113.7")}, want: "203.0.113.7"},
+		{name: "no request", meta: Meta{}, want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := WithMeta(t.Context(), tt.meta)
+			events := &fakeEvents{}
+
+			require.NoError(t, Record(ctx, events, LoginFailed("alice")))
+			require.NoError(t, Record(ctx, events, LoginFailed("bob")))
+
+			require.Len(t, events.appended, 2)
+
+			for _, event := range events.appended {
+				require.Equal(t, tt.want, event.AggregationKey)
+			}
+		})
+	}
+}
+
+// Given a failed login for an unknown username, then the attempted username is truncated to 64
+// characters, not bytes, and the event has no subject.
+func TestLoginFailed_TruncatesTheAttemptedLoginTo64Characters(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		attempted string
+		want      string
+	}{
+		{name: "short", attempted: "alice", want: "alice"},
+		{name: "exactly the limit", attempted: strings.Repeat("a", 64), want: strings.Repeat("a", 64)},
+		{name: "over the limit", attempted: strings.Repeat("a", 65), want: strings.Repeat("a", 64)},
+		{name: "multibyte over the limit", attempted: strings.Repeat("é", 100), want: strings.Repeat("é", 64)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			event := LoginFailed(tt.attempted)
+
+			require.Zero(t, event.subjectID)
+			require.Equal(t, loginFailedPayload{Attempted: tt.want}, event.payload)
+		})
+	}
 }

@@ -10,21 +10,55 @@ import (
 	"database/sql"
 )
 
+const aggregateAuditEvent = `-- name: AggregateAuditEvent :one
+UPDATE audit_events
+SET count = count + 1,
+    last_at = ?1
+WHERE id = ?2
+RETURNING id, occurred_at, actor_id, subject_id, type, client_ip, user_agent, payload, count, last_at, aggregation_key
+`
+
+type AggregateAuditEventParams struct {
+	LastAt int64
+	ID     int64
+}
+
+func (q *Queries) AggregateAuditEvent(ctx context.Context, arg AggregateAuditEventParams) (AuditEvent, error) {
+	row := q.db.QueryRowContext(ctx, aggregateAuditEvent, arg.LastAt, arg.ID)
+	var i AuditEvent
+	err := row.Scan(
+		&i.ID,
+		&i.OccurredAt,
+		&i.ActorID,
+		&i.SubjectID,
+		&i.Type,
+		&i.ClientIp,
+		&i.UserAgent,
+		&i.Payload,
+		&i.Count,
+		&i.LastAt,
+		&i.AggregationKey,
+	)
+	return i, err
+}
+
 const appendAuditEvent = `-- name: AppendAuditEvent :one
-INSERT INTO audit_events (occurred_at, actor_id, subject_id, type, client_ip, user_agent, payload, last_at)
+INSERT INTO audit_events (occurred_at, actor_id, subject_id, type, client_ip, user_agent, payload, last_at,
+                          aggregation_key)
 VALUES (?1, ?2, ?3, ?4, ?5,
-        ?6, ?7, ?1)
-RETURNING id, occurred_at, actor_id, subject_id, type, client_ip, user_agent, payload, count, last_at
+        ?6, ?7, ?1, ?8)
+RETURNING id, occurred_at, actor_id, subject_id, type, client_ip, user_agent, payload, count, last_at, aggregation_key
 `
 
 type AppendAuditEventParams struct {
-	OccurredAt int64
-	ActorID    sql.NullInt64
-	SubjectID  sql.NullInt64
-	Type       string
-	ClientIp   sql.NullString
-	UserAgent  sql.NullString
-	Payload    string
+	OccurredAt     int64
+	ActorID        sql.NullInt64
+	SubjectID      sql.NullInt64
+	Type           string
+	ClientIp       sql.NullString
+	UserAgent      sql.NullString
+	Payload        string
+	AggregationKey sql.NullString
 }
 
 func (q *Queries) AppendAuditEvent(ctx context.Context, arg AppendAuditEventParams) (AuditEvent, error) {
@@ -36,6 +70,7 @@ func (q *Queries) AppendAuditEvent(ctx context.Context, arg AppendAuditEventPara
 		arg.ClientIp,
 		arg.UserAgent,
 		arg.Payload,
+		arg.AggregationKey,
 	)
 	var i AuditEvent
 	err := row.Scan(
@@ -49,12 +84,42 @@ func (q *Queries) AppendAuditEvent(ctx context.Context, arg AppendAuditEventPara
 		&i.Payload,
 		&i.Count,
 		&i.LastAt,
+		&i.AggregationKey,
 	)
 	return i, err
 }
 
+const getAuditBurst = `-- name: GetAuditBurst :one
+SELECT CAST(coalesce(sum(count), 0) AS INTEGER) AS events,
+       CAST(coalesce(max(id), 0) AS INTEGER)    AS latest_id
+FROM audit_events
+WHERE type = ?1
+  AND aggregation_key = ?2
+  AND last_at > ?3
+`
+
+type GetAuditBurstParams struct {
+	Type           string
+	AggregationKey sql.NullString
+	Since          int64
+}
+
+type GetAuditBurstRow struct {
+	Events   int64
+	LatestID int64
+}
+
+// The events of a type and key since a time, and the latest row that holds them. A row counts all
+// of its events while its last one is recent, so that a long burst stays on one row.
+func (q *Queries) GetAuditBurst(ctx context.Context, arg GetAuditBurstParams) (GetAuditBurstRow, error) {
+	row := q.db.QueryRowContext(ctx, getAuditBurst, arg.Type, arg.AggregationKey, arg.Since)
+	var i GetAuditBurstRow
+	err := row.Scan(&i.Events, &i.LatestID)
+	return i, err
+}
+
 const getAuditEvent = `-- name: GetAuditEvent :one
-SELECT id, occurred_at, actor_id, subject_id, type, client_ip, user_agent, payload, count, last_at
+SELECT id, occurred_at, actor_id, subject_id, type, client_ip, user_agent, payload, count, last_at, aggregation_key
 FROM audit_events
 WHERE id = ?
 `
@@ -73,6 +138,7 @@ func (q *Queries) GetAuditEvent(ctx context.Context, id int64) (AuditEvent, erro
 		&i.Payload,
 		&i.Count,
 		&i.LastAt,
+		&i.AggregationKey,
 	)
 	return i, err
 }
