@@ -40,7 +40,7 @@ An append-only record of security-relevant and data management events: logins, t
 
   | Variable | YAML key | Default | Purpose |
   |---|---|---|---|
-  | `VERVE_AUDIT_RETENTION_DAYS` | `audit.retention_days` | `365` | Days an event is kept, a whole number of at least 1 |
+  | `VERVE_AUDIT_RETENTION_DAYS` | `audit.retention_days` | `365` | Days an event is kept, a whole number from 1 to 36500 (100 years) |
 
   The recurring job `audit.purge` runs daily and removes the events older than the retention period, in batches of at most 5,000 per transaction so that it never holds the writer for long. An event exactly as old as the retention period is kept, and the next purge removes it. An aggregated row is older than the retention period once its last event (`last_at`) is: it is kept while it holds a recent event, so a burst that never goes quiet keeps its row, older events included, for as long as it lasts.
 - **FR-7**: Events are append-only through the application. There is no endpoint to edit or delete individual events.

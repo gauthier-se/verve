@@ -18,6 +18,10 @@ const envPrefix = "VERVE_"
 // minSecretKeyLength is the shortest accepted secret key, in characters.
 const minSecretKeyLength = 32
 
+// maxAuditRetentionDays is the longest accepted audit retention, 100 years. A much longer one would
+// overflow the cutoff of the purge, which would then remove every event.
+const maxAuditRetentionDays = 36_500
+
 // Config is the effective configuration. The yaml tags give the YAML keys, the env tags
 // the environment variables without envPrefix. A setting with `yaml:"-"` and an env tag
 // is set by the environment only.
@@ -97,9 +101,12 @@ func (c Config) validate(settings map[string]setting) []error {
 		}
 	}
 
-	atLeastOne := func(path string, n int) {
-		if n < 1 {
-			invalid(path, strconv.Itoa(n), "must be at least 1")
+	between := func(path string, n, lowest, highest int) {
+		switch {
+		case n < lowest:
+			invalid(path, strconv.Itoa(n), "must be at least "+strconv.Itoa(lowest))
+		case n > highest:
+			invalid(path, strconv.Itoa(n), "must be at most "+strconv.Itoa(highest))
 		}
 	}
 
@@ -107,7 +114,7 @@ func (c Config) validate(settings map[string]setting) []error {
 	oneOf("log.format", c.Log.Format, logFormats)
 	positive("max_upload_size", c.MaxUploadSize)
 	positive("max_ingest_body", c.MaxIngestBody)
-	atLeastOne("audit.retention_days", c.Audit.RetentionDays)
+	between("audit.retention_days", c.Audit.RetentionDays, 1, maxAuditRetentionDays)
 
 	// Not through invalid, which would print the key.
 	if c.SecretKey != "" {
