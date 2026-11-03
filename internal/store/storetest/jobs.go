@@ -159,6 +159,7 @@ func RunJobs(t *testing.T, newStore NewStoreFunc) {
 	runJobsEnqueue(t, newStore)
 	runJobsClaim(t, newStore)
 	runJobsSerialKeys(t, newStore)
+	runJobsEnqueueClaimed(t, newStore)
 	runJobsLostLeases(t, newStore)
 	runJobsFencing(t, newStore)
 	runJobsCancel(t, newStore)
@@ -703,6 +704,172 @@ func runJobsSerialKeys(t *testing.T, newStore NewStoreFunc) {
 
 		require.Equal(t, holder.ID, mustClaim(ctx, t, jobs).ID)
 		requireNoClaim(ctx, t, jobs)
+	})
+}
+
+func runJobsEnqueueClaimed(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+
+	const key = "import:7"
+
+	// Given EnqueueClaimed on a free serial key, then the job is stored running, claimed once, with a
+	// lease from now, and due from now whatever its run_at.
+	t.Run("EnqueueClaimedStoresTheJobRunningWithALease", func(t *testing.T) {
+		t.Parallel()
+
+		jobs := newStore(t, clock.NewFake(jobsTime)).Jobs()
+		ctx := t.Context()
+
+		job := store.NewJob{
+			Kind:      "import.xml",
+			Payload:   json.RawMessage(`{"file":"export.zip"}`),
+			RunAt:     jobsTime.Add(time.Hour),
+			UserID:    7,
+			SerialKey: key,
+		}
+
+		got, err := jobs.EnqueueClaimed(ctx, job, jobLease)
+		require.NoError(t, err)
+		require.NotZero(t, got.ID)
+		require.Equal(t, store.Job{
+			ID:          got.ID,
+			Kind:        job.Kind,
+			Payload:     job.Payload,
+			Status:      store.JobRunning,
+			Claims:      1,
+			RunAt:       jobsTime,
+			LockedUntil: jobsTime.Add(jobLease),
+			UserID:      7,
+			SerialKey:   key,
+			CreatedAt:   jobsTime,
+		}, got)
+
+		require.Equal(t, got, mustGet(ctx, t, jobs, got.ID))
+	})
+
+	// claimed enqueues a job of serialKey, and returns it claimed.
+	claimed := func(ctx context.Context, t *testing.T, jobs store.JobsRepository, serialKey string) store.Job {
+		t.Helper()
+
+		mustEnqueue(ctx, t, jobs, dueJob(jobsTime, serialKey))
+
+		return mustClaim(ctx, t, jobs)
+	}
+
+	tests := []struct {
+		name    string
+		prepare func(ctx context.Context, t *testing.T, clk *clock.Fake, jobs store.JobsRepository)
+		held    bool
+	}{
+		{
+			name:    "NoJob",
+			prepare: func(context.Context, *testing.T, *clock.Fake, store.JobsRepository) {},
+		},
+		{
+			name: "RunningJob",
+			prepare: func(ctx context.Context, t *testing.T, _ *clock.Fake, jobs store.JobsRepository) {
+				t.Helper()
+				claimed(ctx, t, jobs, key)
+			},
+			held: true,
+		},
+		{
+			// Its process can still renew the lease, until another claim changes its claims value.
+			name: "RunningJobWhoseLeaseHasExpired",
+			prepare: func(ctx context.Context, t *testing.T, clk *clock.Fake, jobs store.JobsRepository) {
+				t.Helper()
+				claimed(ctx, t, jobs, key)
+				clk.Advance(jobLease)
+			},
+			held: true,
+		},
+		{
+			name: "QueuedJob",
+			prepare: func(ctx context.Context, t *testing.T, _ *clock.Fake, jobs store.JobsRepository) {
+				t.Helper()
+				mustEnqueue(ctx, t, jobs, dueJob(jobsTime, key))
+			},
+		},
+		{
+			name: "JobWaitingForItsRetry",
+			prepare: func(ctx context.Context, t *testing.T, _ *clock.Fake, jobs store.JobsRepository) {
+				t.Helper()
+
+				job := claimed(ctx, t, jobs, key)
+				require.NoError(t, jobs.Retry(ctx, job.ID, job.Claims, "handler failed", jobsTime.Add(time.Hour)))
+			},
+		},
+		{
+			name: "CompletedJob",
+			prepare: func(ctx context.Context, t *testing.T, _ *clock.Fake, jobs store.JobsRepository) {
+				t.Helper()
+
+				job := claimed(ctx, t, jobs, key)
+				require.NoError(t, jobs.Complete(ctx, job.ID, job.Claims))
+			},
+		},
+		{
+			name: "RunningJobOfAnotherKey",
+			prepare: func(ctx context.Context, t *testing.T, _ *clock.Fake, jobs store.JobsRepository) {
+				t.Helper()
+				claimed(ctx, t, jobs, "import:8")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		// Given jobs in a given state, then EnqueueClaimed returns store.ErrConflict when a running job
+		// holds the serial key, and otherwise the job running.
+		t.Run("EnqueueClaimedWith"+tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			clk := clock.NewFake(jobsTime)
+			jobs := newStore(t, clk).Jobs()
+			ctx := t.Context()
+
+			tt.prepare(ctx, t, clk, jobs)
+
+			got, err := jobs.EnqueueClaimed(ctx, dueJob(jobsTime, key), jobLease)
+			if tt.held {
+				require.ErrorIs(t, err, store.ErrConflict)
+
+				return
+			}
+
+			require.NoError(t, err)
+			require.Equal(t, store.JobRunning, got.Status)
+		})
+	}
+
+	// Given a held serial key, then EnqueueClaimed leaves no job behind: once the key is free, there
+	// is nothing to claim.
+	t.Run("EnqueueClaimedOnAHeldKeyLeavesNoJob", func(t *testing.T) {
+		t.Parallel()
+
+		jobs := newStore(t, clock.NewFake(jobsTime)).Jobs()
+		ctx := t.Context()
+
+		holder := claimed(ctx, t, jobs, key)
+
+		_, err := jobs.EnqueueClaimed(ctx, dueJob(jobsTime, key), jobLease)
+		require.ErrorIs(t, err, store.ErrConflict)
+
+		require.NoError(t, jobs.Complete(ctx, holder.ID, holder.Claims))
+		requireNoClaim(ctx, t, jobs)
+	})
+
+	// Given a job without a serial key, then the running jobs without one do not hold it back.
+	t.Run("EnqueueClaimedWithoutASerialKeyClaimsTheJob", func(t *testing.T) {
+		t.Parallel()
+
+		jobs := newStore(t, clock.NewFake(jobsTime)).Jobs()
+		ctx := t.Context()
+
+		claimed(ctx, t, jobs, "")
+
+		got, err := jobs.EnqueueClaimed(ctx, dueJob(jobsTime, ""), jobLease)
+		require.NoError(t, err)
+		require.Equal(t, store.JobRunning, got.Status)
 	})
 }
 
