@@ -37,6 +37,12 @@ An append-only record of security-relevant and data management events: logins, t
 - **FR-4**: Users see events where they are the actor or the subject, in their security page.
 - **FR-5**: Admins see all events with filters (type, actor, subject, date range).
 - **FR-6**: Retention: 365 days by default, configurable. Purge runs as a periodic job.
+
+  | Variable | YAML key | Default | Purpose |
+  |---|---|---|---|
+  | `VERVE_AUDIT_RETENTION_DAYS` | `audit.retention_days` | `365` | Days an event is kept, a whole number of at least 1 |
+
+  The recurring job `audit.purge` runs daily and removes the events older than the retention period, in batches of at most 5,000 per transaction so that it never holds the writer for long. An aggregated row is older than the retention period once its last event (`last_at`) is: it is kept while it holds a recent event. An event is kept on the last day of its retention.
 - **FR-7**: Events are append-only through the application. There is no endpoint to edit or delete individual events.
 - **FR-8**: Failed login events for unknown usernames are recorded with the attempted username truncated to 64 characters and without linking to a user.
 

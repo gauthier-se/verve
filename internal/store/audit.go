@@ -43,7 +43,7 @@ type AuditEvent struct {
 }
 
 // AuditEventsRepository stores the audit log. It is append-only: no method edits or deletes an
-// event by id.
+// event by id, and only PurgeBefore removes events, by age.
 type AuditEventsRepository interface {
 	// Append stores an event with the current time as OccurredAt, and returns it.
 	//
@@ -55,4 +55,8 @@ type AuditEventsRepository interface {
 	Append(ctx context.Context, event NewAuditEvent) (AuditEvent, error)
 	// Get returns the event of id, or ErrNotFound.
 	Get(ctx context.Context, id int64) (AuditEvent, error)
+	// PurgeBefore removes, in one transaction, at most limit events whose LastAt is before before,
+	// oldest first, and returns how many it removed. An aggregated row is kept while its last event
+	// is not before before. Removing more events takes more calls.
+	PurgeBefore(ctx context.Context, before time.Time, limit int64) (int64, error)
 }

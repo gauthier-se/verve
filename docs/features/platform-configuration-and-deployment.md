@@ -63,7 +63,7 @@ Verve is configured through `VERVE_*` environment variables, an optional YAML fi
 
   `verve config check` validates the configuration and prints the effective values as YAML, each annotated with its source (`# default`, `# file`, `# env`) and secrets masked. On invalid configuration it prints every error and exits 1.
 
-  Feature-specific settings (OIDC, SMTP, map, backups, proxy header) are documented in their feature files.
+  Feature-specific settings (OIDC, SMTP, map, backups, proxy header, audit log retention) are documented in their feature files.
 
 - **FR-4**: Data directory layout:
 

@@ -142,3 +142,30 @@ func (q *Queries) GetAuditEvent(ctx context.Context, id int64) (AuditEvent, erro
 	)
 	return i, err
 }
+
+const purgeAuditEvents = `-- name: PurgeAuditEvents :execrows
+DELETE
+FROM audit_events
+WHERE id IN (SELECT old.id
+             FROM audit_events AS old
+             WHERE old.occurred_at < ?1
+               AND old.last_at < ?1
+             ORDER BY old.occurred_at
+             LIMIT ?2)
+`
+
+type PurgeAuditEventsParams struct {
+	Before    int64
+	BatchSize int64
+}
+
+// The oldest events whose last occurrence is before a time, at most a limit. An event never
+// occurred after its last occurrence, so that the condition on occurred_at, which is indexed, finds
+// them without reading the rest of the table.
+func (q *Queries) PurgeAuditEvents(ctx context.Context, arg PurgeAuditEventsParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, purgeAuditEvents, arg.Before, arg.BatchSize)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}

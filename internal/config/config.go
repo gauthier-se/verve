@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 )
@@ -21,15 +22,16 @@ const minSecretKeyLength = 32
 // the environment variables without envPrefix. A setting with `yaml:"-"` and an env tag
 // is set by the environment only.
 type Config struct {
-	DataDir        string    `yaml:"data_dir"        env:"DATA_DIR"`
-	ListenAddr     string    `yaml:"listen_addr"     env:"LISTEN_ADDR"`
-	PublicURL      PublicURL `yaml:"public_url"      env:"PUBLIC_URL"`
-	TrustedProxies Prefixes  `yaml:"trusted_proxies" env:"TRUSTED_PROXIES"`
-	SecretKey      string    `yaml:"-"               env:"SECRET_KEY" secret:"true"`
-	Log            LogConfig `yaml:"log"             envPrefix:"LOG_"`
-	MaxUploadSize  ByteSize  `yaml:"max_upload_size" env:"MAX_UPLOAD_SIZE"`
-	MaxIngestBody  ByteSize  `yaml:"max_ingest_body" env:"MAX_INGEST_BODY"`
-	MetricsAddr    string    `yaml:"metrics_addr"    env:"METRICS_ADDR"`
+	DataDir        string      `yaml:"data_dir"        env:"DATA_DIR"`
+	ListenAddr     string      `yaml:"listen_addr"     env:"LISTEN_ADDR"`
+	PublicURL      PublicURL   `yaml:"public_url"      env:"PUBLIC_URL"`
+	TrustedProxies Prefixes    `yaml:"trusted_proxies" env:"TRUSTED_PROXIES"`
+	SecretKey      string      `yaml:"-"               env:"SECRET_KEY" secret:"true"`
+	Log            LogConfig   `yaml:"log"             envPrefix:"LOG_"`
+	MaxUploadSize  ByteSize    `yaml:"max_upload_size" env:"MAX_UPLOAD_SIZE"`
+	MaxIngestBody  ByteSize    `yaml:"max_ingest_body" env:"MAX_INGEST_BODY"`
+	MetricsAddr    string      `yaml:"metrics_addr"    env:"METRICS_ADDR"`
+	Audit          AuditConfig `yaml:"audit"         envPrefix:"AUDIT_"`
 
 	// Sources tells where each setting comes from, keyed by YAML path. Set by Load.
 	Sources Sources `yaml:"-" env:"-"`
@@ -39,6 +41,12 @@ type Config struct {
 type LogConfig struct {
 	Level  string `yaml:"level"  env:"LEVEL"`
 	Format string `yaml:"format" env:"FORMAT"`
+}
+
+// AuditConfig configures the audit log.
+type AuditConfig struct {
+	// RetentionDays is the number of days an audit event is kept after its last occurrence.
+	RetentionDays int `yaml:"retention_days" env:"RETENTION_DAYS"`
 }
 
 // Log formats.
@@ -61,6 +69,7 @@ func Default() Config {
 		Log:           LogConfig{Level: "info", Format: LogFormatText},
 		MaxUploadSize: 10_000_000_000,
 		MaxIngestBody: 1_000_000_000,
+		Audit:         AuditConfig{RetentionDays: 365},
 	}
 }
 
@@ -88,10 +97,17 @@ func (c Config) validate(settings map[string]setting) []error {
 		}
 	}
 
+	atLeastOne := func(path string, n int) {
+		if n < 1 {
+			invalid(path, strconv.Itoa(n), "must be at least 1")
+		}
+	}
+
 	oneOf("log.level", c.Log.Level, logLevels)
 	oneOf("log.format", c.Log.Format, logFormats)
 	positive("max_upload_size", c.MaxUploadSize)
 	positive("max_ingest_body", c.MaxIngestBody)
+	atLeastOne("audit.retention_days", c.Audit.RetentionDays)
 
 	// Not through invalid, which would print the key.
 	if c.SecretKey != "" {
