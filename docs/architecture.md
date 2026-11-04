@@ -246,6 +246,12 @@ API errors use RFC 9457 problem details with a stable machine-readable `code`. T
 
 The errors raised by Huma, such as validation errors, have the same shape: `huma.NewError` is replaced once, when the API is built, by a constructor of `Problem`. Their `code` defaults from the status: 400 `bad_request`, 401 `unauthorized`, 403 `forbidden`, 404 `not_found`, 409 `conflict`, 422 `validation_failed`, 429 `rate_limited`, 503 `unavailable`, any other client error `bad_request` and any other server error `internal`. Validation errors list one entry per invalid field in `errors`, with `message`, `location` (for example `body.name` or `query.limit`) and `value`. Server errors never have `errors`: an operation that fails with an error that is not a problem answers 500 `internal` with the detail `unexpected error occurred`, because the message of an internal error may hold file paths or queries.
 
+### Pagination
+
+List endpoints share one shape, defined in `internal/httpapi/pagination.go`. They take the query parameters `cursor` and `limit` (`PageParams`, embedded in the input of the operation) and answer `{"items": [...], "nextCursor": "..."}` (`Page[T]`), newest first. `limit` defaults to 50, and a larger limit than 200 counts as 200. `nextCursor` is left out on the last page, and `items` is an empty array, never null, when nothing matches.
+
+The cursor is opaque to clients: it encodes the time and the id of the last item of the page. The store lists the items after that position (`store.PageRequest` and `store.Cursor`), sorted by time then id, with the time column indexed (keyset pagination). Following the cursors therefore returns each item once, even while new items arrive: they are newer than the first page. `listPage` asks the store for one item more than the limit to know whether a next page exists. A cursor that the API did not produce answers 422 `validation_failed`, with `query.cursor` as the invalid field, next to the other invalid fields: `PageParams` decodes it in its Huma resolver, which an input with its own resolver calls.
+
 ## Testing strategy (proposed)
 
 - Unit tests for pure computations: unit conversion, source selection, sleep assembly, zones, splits, best efforts, energy estimation, plan targets.

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/gauthier-se/verve/internal/clock"
@@ -85,6 +86,50 @@ func (r auditEvents) Get(ctx context.Context, id int64) (store.AuditEvent, error
 	}
 
 	return auditEventOf(row), nil
+}
+
+func (r auditEvents) List(ctx context.Context, filter store.AuditEventsFilter, page store.PageRequest) ([]store.AuditEvent, error) {
+	if page.Limit < 1 {
+		return nil, fmt.Errorf("list audit events: limit %d below 1: %w", page.Limit, store.ErrInvalid)
+	}
+
+	// The bounds that select every event, so that the query always has them.
+	params := sqlcgen.ListAuditEventsParams{
+		AfterAt:   math.MaxInt64,
+		AfterID:   math.MaxInt64,
+		ToAt:      math.MaxInt64,
+		FromAt:    math.MinInt64,
+		UserID:    sql.NullInt64{Int64: filter.UserID, Valid: filter.UserID != 0},
+		ActorID:   sql.NullInt64{Int64: filter.ActorID, Valid: filter.ActorID != 0},
+		SubjectID: sql.NullInt64{Int64: filter.SubjectID, Valid: filter.SubjectID != 0},
+		Type:      sql.NullString{String: filter.Type, Valid: filter.Type != ""},
+		MaxEvents: int64(page.Limit),
+	}
+
+	if page.After != (store.Cursor{}) {
+		params.AfterAt = toMillis(page.After.At)
+		params.AfterID = page.After.ID
+	}
+
+	if !filter.From.IsZero() {
+		params.FromAt = toMillis(filter.From)
+	}
+
+	if !filter.To.IsZero() {
+		params.ToAt = toMillis(filter.To)
+	}
+
+	rows, err := r.q.read().ListAuditEvents(ctx, params)
+	if err != nil {
+		return nil, fmt.Errorf("list audit events: %w", err)
+	}
+
+	events := make([]store.AuditEvent, 0, len(rows))
+	for _, row := range rows {
+		events = append(events, auditEventOf(row))
+	}
+
+	return events, nil
 }
 
 func (r auditEvents) PurgeBefore(ctx context.Context, cutoff time.Time, batchSize int64) (int64, error) {

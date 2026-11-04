@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetMetaData, GetMetaErrors, GetMetaResponses } from './types.gen';
+import type { GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetMetaData, GetMetaErrors, GetMetaResponses, ListAccountAuditEventsData, ListAccountAuditEventsErrors, ListAccountAuditEventsResponses, ListAdminAuditEventsData, ListAdminAuditEventsErrors, ListAdminAuditEventsResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -17,6 +17,36 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
      */
     meta?: keyof ClientMeta extends never ? Record<string, unknown> : ClientMeta;
 };
+
+/**
+ * List the audit events of the current user
+ *
+ * Returns the audit events whose actor or subject is the user of the session, newest first.
+ */
+export const listAccountAuditEvents = <ThrowOnError extends boolean = false>(options?: Options<ListAccountAuditEventsData, ThrowOnError>): RequestResult<ListAccountAuditEventsResponses, ListAccountAuditEventsErrors, ThrowOnError> => (options?.client ?? client).get<ListAccountAuditEventsResponses, ListAccountAuditEventsErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'verve_session',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/account/audit',
+    ...options
+});
+
+/**
+ * List the audit events
+ *
+ * Returns every audit event, newest first, for an admin. The filters combine.
+ */
+export const listAdminAuditEvents = <ThrowOnError extends boolean = false>(options?: Options<ListAdminAuditEventsData, ThrowOnError>): RequestResult<ListAdminAuditEventsResponses, ListAdminAuditEventsErrors, ThrowOnError> => (options?.client ?? client).get<ListAdminAuditEventsResponses, ListAdminAuditEventsErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'verve_session',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/admin/audit',
+    ...options
+});
 
 /**
  * Get the current user

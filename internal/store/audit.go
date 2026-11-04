@@ -42,6 +42,29 @@ type AuditEvent struct {
 	LastAt time.Time
 }
 
+// Cursor returns the position of the event in the lists of AuditEventsRepository.List.
+func (e AuditEvent) Cursor() Cursor {
+	return Cursor{At: e.OccurredAt, ID: e.ID}
+}
+
+// AuditEventsFilter selects the events that List returns. Its zero value selects every event.
+type AuditEventsFilter struct {
+	// UserID, when not 0, keeps the events whose actor or subject is that user.
+	UserID int64
+	// ActorID, when not 0, keeps the events of that actor.
+	ActorID int64
+	// SubjectID, when not 0, keeps the events about that user.
+	SubjectID int64
+	// Type, when not empty, keeps the events of that type.
+	Type string
+	// From, when not zero, keeps the events that occurred at or after it: an aggregated row is kept
+	// while its last event (LastAt) is.
+	From time.Time
+	// To, when not zero, keeps the events that occurred before it: an aggregated row is kept when its
+	// first event (OccurredAt) is.
+	To time.Time
+}
+
 // AuditEventsRepository stores the audit log. It is append-only: no method edits or deletes an
 // event by id, and only PurgeBefore removes events, by age.
 type AuditEventsRepository interface {
@@ -55,6 +78,11 @@ type AuditEventsRepository interface {
 	Append(ctx context.Context, event NewAuditEvent) (AuditEvent, error)
 	// Get returns the event of id, or ErrNotFound.
 	Get(ctx context.Context, id int64) (AuditEvent, error)
+	// List returns the events that filter selects, newest first by OccurredAt then ID: at most
+	// page.Limit of them, after page.After. An aggregated row keeps its place as it grows, so that
+	// following the position of the last event of each page lists every event once, even while
+	// events are appended. It returns ErrInvalid when page.Limit is below 1.
+	List(ctx context.Context, filter AuditEventsFilter, page PageRequest) ([]AuditEvent, error)
 	// PurgeBefore removes, in one transaction, at most batchSize of the events whose LastAt is before
 	// cutoff, oldest first, and returns how many it removed. An aggregated row is kept while its last
 	// event is not before cutoff. Removing more events takes more calls.

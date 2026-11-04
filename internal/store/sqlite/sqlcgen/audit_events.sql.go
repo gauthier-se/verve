@@ -143,6 +143,83 @@ func (q *Queries) GetAuditEvent(ctx context.Context, id int64) (AuditEvent, erro
 	return i, err
 }
 
+const listAuditEvents = `-- name: ListAuditEvents :many
+SELECT id, occurred_at, actor_id, subject_id, type, client_ip, user_agent, payload, count, last_at, aggregation_key
+FROM audit_events
+WHERE occurred_at <= ?1
+  AND (occurred_at < ?1 OR id < ?2)
+  AND occurred_at < ?3
+  AND last_at >= ?4
+  AND (actor_id = ?5 OR subject_id = ?5 OR ?5 IS NULL)
+  AND (actor_id = ?6 OR ?6 IS NULL)
+  AND (subject_id = ?7 OR ?7 IS NULL)
+  AND (type = ?8 OR ?8 IS NULL)
+ORDER BY occurred_at DESC, id DESC
+LIMIT ?9
+`
+
+type ListAuditEventsParams struct {
+	AfterAt   int64
+	AfterID   int64
+	ToAt      int64
+	FromAt    int64
+	UserID    sql.NullInt64
+	ActorID   sql.NullInt64
+	SubjectID sql.NullInt64
+	Type      sql.NullString
+	MaxEvents int64
+}
+
+// The events that match the filters, newest first, after a position: those that occurred before
+// it, or at the same time with a smaller id. The position and the time range are always set, the
+// first page starting after the largest time and id, so that the index on occurred_at bounds the
+// scan. A row is in the time range while one of its events is: its first one before to_at, and
+// its last one at or after from_at.
+func (q *Queries) ListAuditEvents(ctx context.Context, arg ListAuditEventsParams) ([]AuditEvent, error) {
+	rows, err := q.db.QueryContext(ctx, listAuditEvents,
+		arg.AfterAt,
+		arg.AfterID,
+		arg.ToAt,
+		arg.FromAt,
+		arg.UserID,
+		arg.ActorID,
+		arg.SubjectID,
+		arg.Type,
+		arg.MaxEvents,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AuditEvent
+	for rows.Next() {
+		var i AuditEvent
+		if err := rows.Scan(
+			&i.ID,
+			&i.OccurredAt,
+			&i.ActorID,
+			&i.SubjectID,
+			&i.Type,
+			&i.ClientIp,
+			&i.UserAgent,
+			&i.Payload,
+			&i.Count,
+			&i.LastAt,
+			&i.AggregationKey,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const purgeAuditEvents = `-- name: PurgeAuditEvents :execrows
 DELETE
 FROM audit_events
