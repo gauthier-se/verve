@@ -17,7 +17,7 @@ import (
 // Origin differs from the public URL, or from the scheme and host of the request without a public
 // URL, answers 403 csrf_failed, authenticated or not. A request with Authorization: Bearer and the
 // other methods are not checked.
-func TestCSRF_Checks(t *testing.T) {
+func TestCSRF_ChecksStateChangingAPIRequests(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -102,6 +102,12 @@ func TestCSRF_Checks(t *testing.T) {
 			want:    http.StatusForbidden,
 		},
 		{
+			name:    "POST from an origin with a path",
+			method:  http.MethodPost,
+			headers: map[string]string{"Verve-Csrf": "1", "Origin": "https://verve.example.com/"},
+			want:    http.StatusForbidden,
+		},
+		{
 			name:      "POST to a public URL with capitals",
 			publicURL: "https://Verve.Example.com",
 			method:    http.MethodPost,
@@ -129,6 +135,22 @@ func TestCSRF_Checks(t *testing.T) {
 			method:      http.MethodPost,
 			target:      "http://192.168.1.10:8080/api/v1/things",
 			headers:     map[string]string{"Verve-Csrf": "1", "Origin": "http://192.168.1.10:8080"},
+			want:        http.StatusOK,
+		},
+		{
+			name:        "no public URL, POST to the default port of the requested host",
+			noPublicURL: true,
+			method:      http.MethodPost,
+			target:      "http://verve.lan:80/api/v1/things",
+			headers:     map[string]string{"Verve-Csrf": "1", "Origin": "http://verve.lan"},
+			want:        http.StatusOK,
+		},
+		{
+			name:        "no public URL, POST from the requested IPv6 host",
+			noPublicURL: true,
+			method:      http.MethodPost,
+			target:      "http://[fd00::10]:8080/api/v1/things",
+			headers:     map[string]string{"Verve-Csrf": "1", "Origin": "http://[fd00::10]:8080"},
 			want:        http.StatusOK,
 		},
 		{

@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -23,8 +24,9 @@ type currentUserOutput struct {
 	Body CurrentUser
 }
 
-// registerMe registers GET /api/v1/auth/me, which reports the user of the session, read in repos.
-func registerMe(api huma.API, repos store.Repositories) {
+// registerCurrentUser registers GET /api/v1/auth/me, which reports the user of the session, read
+// in repos.
+func registerCurrentUser(api huma.API, repos store.Repositories) {
 	huma.Register(api, huma.Operation{
 		OperationID: "get-current-user",
 		Method:      http.MethodGet,
@@ -47,7 +49,7 @@ func registerMe(api huma.API, repos store.Repositories) {
 		}
 
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("get current user: %w", err)
 		}
 
 		return &currentUserOutput{Body: CurrentUser{

@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -23,7 +22,7 @@ const csrfHeader = "Verve-Csrf"
 //
 // It must run after ClientInfoMiddleware.
 func CSRFMiddleware(publicURL config.PublicURL) func(http.Handler) http.Handler {
-	public := publicURL.URL()
+	publicOrigin := publicURL.Origin()
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -39,14 +38,13 @@ func CSRFMiddleware(publicURL config.PublicURL) func(http.Handler) http.Handler 
 				return
 			}
 
-			info := ClientInfoFrom(r.Context())
-
-			scheme, host := info.Scheme, info.Host
-			if public != nil {
-				scheme, host = public.Scheme, public.Host
+			expected := publicOrigin
+			if expected == "" {
+				info := ClientInfoFrom(r.Context())
+				expected = info.Scheme + "://" + info.Host
 			}
 
-			if !isOrigin(r.Header.Get("Origin"), scheme, host) {
+			if !sameOrigin(r.Header.Get("Origin"), expected) {
 				writeCSRFFailed(w, "the Origin of the request must be the origin of Verve")
 
 				return
@@ -71,34 +69,37 @@ func writeCSRFFailed(w http.ResponseWriter, detail string) {
 	WriteProblem(w, Problem{Status: http.StatusForbidden, Code: "csrf_failed", Detail: detail})
 }
 
-// isOrigin reports whether the Origin header origin names scheme and host, a host with an optional
-// port. Schemes and hosts compare ignoring case, and a default port matches its absence, since
-// browsers send the origin in lowercase and without a default port.
-func isOrigin(origin, scheme, host string) bool {
-	u, err := url.Parse(origin)
-	if err != nil || u.Scheme == "" || u.Host == "" || u.Path != "" || u.RawQuery != "" || u.User != nil {
+// sameOrigin reports whether the Origin header origin names the origin expected, such as
+// https://verve.example.com. They compare ignoring case, and a default port matches its absence,
+// since browsers send the origin in lowercase and without a default port.
+func sameOrigin(origin, expected string) bool {
+	got, ok := normalizeOrigin(origin)
+	if !ok {
 		return false
 	}
 
-	return strings.EqualFold(u.Scheme, scheme) &&
-		strings.EqualFold(withoutDefaultPort(u.Host, u.Scheme), withoutDefaultPort(host, scheme))
+	want, ok := normalizeOrigin(expected)
+
+	return ok && got == want
 }
 
-// withoutDefaultPort returns host without its port when the port is the default one of scheme.
-func withoutDefaultPort(host, scheme string) string {
-	name, port, err := net.SplitHostPort(host)
-	if err != nil {
-		return host
+// normalizeOrigin returns the origin s, a scheme and a host with an optional port, in lowercase and
+// without the default port of its scheme. It returns false when s is not an origin.
+func normalizeOrigin(s string) (string, bool) {
+	u, err := url.Parse(s)
+	if err != nil || u.Scheme == "" || u.Host == "" || u.User != nil || u.Path != "" ||
+		u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+		return "", false
 	}
 
-	if (strings.EqualFold(scheme, "http") && port == "80") || (strings.EqualFold(scheme, "https") && port == "443") {
-		// SplitHostPort removes the brackets of an IPv6 address.
-		if strings.Contains(name, ":") {
-			return "[" + name + "]"
-		}
+	scheme, host := strings.ToLower(u.Scheme), strings.ToLower(u.Host)
 
-		return name
+	switch scheme {
+	case "http":
+		host = strings.TrimSuffix(host, ":80")
+	case "https":
+		host = strings.TrimSuffix(host, ":443")
 	}
 
-	return host
+	return scheme + "://" + host, true
 }

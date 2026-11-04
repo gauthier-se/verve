@@ -52,7 +52,7 @@ func NewAPI(mux *http.ServeMux, deps APIDeps) huma.API {
 	api := humago.New(mux, config)
 
 	registerMeta(api, deps.Version)
-	registerMe(api, deps.Store)
+	registerCurrentUser(api, deps.Store)
 
 	return api
 }
