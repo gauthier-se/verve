@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite" // registers the "sqlite" driver
@@ -45,17 +46,24 @@ func Open(ctx context.Context, path string) (*DB, error) {
 		return nil, err
 	}
 
-	write, err := openPool(ctx, "file:"+path+"?"+pragmas+"&_txlock=immediate", 1)
+	write, err := openPool(ctx, fileURI(path, pragmas+"&_txlock=immediate"), 1)
 	if err != nil {
 		return nil, fmt.Errorf("open database writer: %w", err)
 	}
 
-	read, err := openPool(ctx, "file:"+path+"?"+pragmas+"&_pragma=query_only(ON)", max(4, runtime.NumCPU()))
+	read, err := openPool(ctx, fileURI(path, pragmas+"&_pragma=query_only(ON)"), max(4, runtime.NumCPU()))
 	if err != nil {
 		return nil, errors.Join(fmt.Errorf("open database reader: %w", err), write.Close())
 	}
 
 	return &DB{write: write, read: read}, nil
+}
+
+// fileURI returns the DSN of the database at path with the query params. The driver opens it as a
+// URI, which ends the path at ? or # and decodes %HH escapes, so these characters of path are
+// escaped.
+func fileURI(path, params string) string {
+	return "file:" + strings.NewReplacer("%", "%25", "?", "%3F", "#", "%23").Replace(path) + "?" + params
 }
 
 // createFile creates the database file with its permission before SQLite does, because SQLite
