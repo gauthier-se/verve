@@ -551,7 +551,7 @@ func TestRun_RunsAPurgeMissedDuringDowntime(t *testing.T) {
 	old, err := lastWeek.Enqueue(ctx, store.NewJob{Kind: "test.old", Payload: json.RawMessage(`{}`)})
 	require.NoError(t, err)
 
-	claimed, err := lastWeek.Claim(ctx, time.Minute)
+	claimed, _, err := lastWeek.Claim(ctx, time.Minute)
 	require.NoError(t, err)
 	require.NoError(t, lastWeek.Complete(ctx, claimed.ID, claimed.Claims))
 	require.NoError(t, lastWeek.SetSchedule(ctx, "jobs.purge", now.Add(-time.Hour)))

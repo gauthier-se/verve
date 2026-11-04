@@ -53,7 +53,7 @@ func TestPurge_RemovesFinishedJobsOlderThanTheirRetention(t *testing.T) {
 			_, err := jobs.Enqueue(ctx, store.NewJob{Kind: "test.kind", Payload: json.RawMessage(`{}`)})
 			require.NoError(t, err)
 
-			job, err := jobs.Claim(ctx, time.Minute)
+			job, _, err := jobs.Claim(ctx, time.Minute)
 			require.NoError(t, err)
 			require.NoError(t, tt.end(ctx, jobs, job))
 
@@ -83,7 +83,7 @@ func TestPurge_KeepsQueuedAndRunningJobs(t *testing.T) {
 	_, err := jobs.Enqueue(ctx, store.NewJob{Kind: "test.kind", Payload: json.RawMessage(`{}`)})
 	require.NoError(t, err)
 
-	running, err := jobs.Claim(ctx, time.Minute)
+	running, _, err := jobs.Claim(ctx, time.Minute)
 	require.NoError(t, err)
 
 	queued, err := jobs.Enqueue(ctx, store.NewJob{Kind: "test.kind", Payload: json.RawMessage(`{}`)})

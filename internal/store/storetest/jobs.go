@@ -36,7 +36,7 @@ func mustEnqueue(ctx context.Context, t *testing.T, jobs store.JobsRepository, j
 func mustClaim(ctx context.Context, t *testing.T, jobs store.JobsRepository) store.Job {
 	t.Helper()
 
-	got, err := jobs.Claim(ctx, jobLease)
+	got, _, err := jobs.Claim(ctx, jobLease)
 	require.NoError(t, err)
 
 	return got
@@ -54,7 +54,7 @@ func mustGet(ctx context.Context, t *testing.T, jobs store.JobsRepository, id in
 func requireNoClaim(ctx context.Context, t *testing.T, jobs store.JobsRepository) {
 	t.Helper()
 
-	_, err := jobs.Claim(ctx, jobLease)
+	_, _, err := jobs.Claim(ctx, jobLease)
 	require.ErrorIs(t, err, store.ErrNotFound)
 }
 
@@ -895,8 +895,21 @@ func runJobsLostLeases(t *testing.T, newStore NewStoreFunc) {
 		return claimed
 	}
 
+	// abandoned returns the job that lost its lease for the fifth time, as Claim abandons it at now.
+	abandoned := func(claimed store.Job, now time.Time) store.Job {
+		want := claimed
+		want.Status = store.JobFailed
+		want.LostLeases = 5
+		want.LastError = "abandoned after 5 lost leases"
+		want.LockedUntil = time.Time{}
+		want.FinishedAt = now
+
+		return want
+	}
+
 	// Given a job that lost its lease 5 times, when it would be claimed again, then it is marked
-	// failed with the error "abandoned after 5 lost leases".
+	// failed with the error "abandoned after 5 lost leases", and Claim returns it as abandoned
+	// along with ErrNotFound, once.
 	t.Run("ClaimAbandonsAJobThatLostItsLeaseFiveTimes", func(t *testing.T) {
 		t.Parallel()
 
@@ -907,19 +920,20 @@ func runJobsLostLeases(t *testing.T, newStore NewStoreFunc) {
 		mustEnqueue(ctx, t, jobs, dueJob(jobsTime, ""))
 		claimed := loseFiveLeases(ctx, t, clk, jobs)
 
-		requireNoClaim(ctx, t, jobs)
+		_, gotAbandoned, err := jobs.Claim(ctx, jobLease)
+		require.ErrorIs(t, err, store.ErrNotFound)
 
-		want := claimed
-		want.Status = store.JobFailed
-		want.LostLeases = 5
-		want.LastError = "abandoned after 5 lost leases"
-		want.LockedUntil = time.Time{}
-		want.FinishedAt = clk.Now()
+		want := abandoned(claimed, clk.Now())
+		require.Equal(t, []store.Job{want}, gotAbandoned)
 		require.Equal(t, want, mustGet(ctx, t, jobs, claimed.ID))
+
+		_, gotAbandoned, err = jobs.Claim(ctx, jobLease)
+		require.ErrorIs(t, err, store.ErrNotFound)
+		require.Empty(t, gotAbandoned)
 	})
 
-	// Given an abandoned job, then Claim goes on with the next job, and the serial key of the
-	// abandoned job is free.
+	// Given an abandoned job, then Claim goes on with the next job, returns the abandoned job with
+	// it, and the serial key of the abandoned job is free.
 	t.Run("ClaimReturnsTheNextJobAfterAbandoningOne", func(t *testing.T) {
 		t.Parallel()
 
@@ -931,7 +945,10 @@ func runJobsLostLeases(t *testing.T, newStore NewStoreFunc) {
 		claimed := loseFiveLeases(ctx, t, clk, jobs)
 		next := mustEnqueue(ctx, t, jobs, dueJob(jobsTime, "import:7"))
 
-		require.Equal(t, next.ID, mustClaim(ctx, t, jobs).ID)
+		got, gotAbandoned, err := jobs.Claim(ctx, jobLease)
+		require.NoError(t, err)
+		require.Equal(t, next.ID, got.ID)
+		require.Equal(t, []store.Job{abandoned(claimed, clk.Now())}, gotAbandoned)
 		require.Equal(t, store.JobFailed, mustGet(ctx, t, jobs, claimed.ID).Status)
 	})
 

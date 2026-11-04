@@ -38,7 +38,7 @@ func holdSerialKey(ctx context.Context, t *testing.T, s store.Store, kind Kind[t
 	_, err := s.Jobs().Enqueue(ctx, newKeyedJob(t, kind, "holder"))
 	require.NoError(t, err)
 
-	holder, err := s.Jobs().Claim(ctx, time.Minute)
+	holder, _, err := s.Jobs().Claim(ctx, time.Minute)
 	require.NoError(t, err)
 
 	return holder

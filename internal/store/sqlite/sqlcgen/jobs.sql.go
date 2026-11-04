@@ -10,7 +10,7 @@ import (
 	"database/sql"
 )
 
-const abandonJobs = `-- name: AbandonJobs :exec
+const abandonJobs = `-- name: AbandonJobs :many
 UPDATE jobs
 SET status = 'failed',
     lost_leases = lost_leases + 1,
@@ -20,6 +20,7 @@ SET status = 'failed',
 WHERE status = 'running'
   AND locked_until <= ?2
   AND lost_leases + 1 >= ?3
+RETURNING id, kind, payload, status, attempts, claims, lost_leases, run_at, locked_until, user_id, serial_key, last_error, created_at, finished_at, cancel_requested
 `
 
 type AbandonJobsParams struct {
@@ -29,9 +30,43 @@ type AbandonJobsParams struct {
 }
 
 // lost_leases does not count the lease that has just expired yet, as ClaimJob would.
-func (q *Queries) AbandonJobs(ctx context.Context, arg AbandonJobsParams) error {
-	_, err := q.db.ExecContext(ctx, abandonJobs, arg.LastError, arg.Now, arg.MaxLostLeases)
-	return err
+func (q *Queries) AbandonJobs(ctx context.Context, arg AbandonJobsParams) ([]Job, error) {
+	rows, err := q.db.QueryContext(ctx, abandonJobs, arg.LastError, arg.Now, arg.MaxLostLeases)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Job
+	for rows.Next() {
+		var i Job
+		if err := rows.Scan(
+			&i.ID,
+			&i.Kind,
+			&i.Payload,
+			&i.Status,
+			&i.Attempts,
+			&i.Claims,
+			&i.LostLeases,
+			&i.RunAt,
+			&i.LockedUntil,
+			&i.UserID,
+			&i.SerialKey,
+			&i.LastError,
+			&i.CreatedAt,
+			&i.FinishedAt,
+			&i.CancelRequested,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const cancelJob = `-- name: CancelJob :execrows
