@@ -20,6 +20,11 @@
     "ms": "{{m}} min {{s}} s",
     "s": "{{s}} s"
   },
+  "errors": {
+    "csrf_failed": "La requête a été bloquée par mesure de sécurité. Rechargez la page et réessayez.",
+    "forbidden": "Vous n'avez pas l'autorisation d'effectuer cette action.",
+    "unauthorized": "Connectez-vous pour continuer."
+  },
   "home": {
     "tagline": "Vos données de santé, sur votre serveur."
   },

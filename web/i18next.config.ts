@@ -21,7 +21,8 @@ export default defineConfig({
     primaryLanguage: "en",
     defaultNS: "common",
     // Keys not used in code yet, kept for the components that will need them.
-    preservePatterns: ["common:days_*"],
+    // errors.<code> translates the code of an API problem.
+    preservePatterns: ["common:days_*", "common:errors.*"],
   },
   types: {
     input: ["src/locales/en/*.json"],

@@ -7,6 +7,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
+	"github.com/gauthier-se/verve/internal/store"
 	"github.com/gauthier-se/verve/internal/version"
 )
 
@@ -20,6 +21,8 @@ const apiVersion = "1"
 type APIDeps struct {
 	// Version is the build metadata of the running binary.
 	Version version.Info
+	// Store holds the data of the operations.
+	Store store.Store
 }
 
 // useProblemErrors makes Huma build its errors as problems. huma.NewError is Huma's documented
@@ -42,10 +45,14 @@ func NewAPI(mux *http.ServeMux, deps APIDeps) huma.API {
 	// Nothing links to the schemas once the transformer is gone, and Huma would answer an unknown
 	// schema with 200 null instead of the 404 problem: they are only served in the spec.
 	config.SchemasPath = ""
+	config.Components.SecuritySchemes = map[string]*huma.SecurityScheme{
+		sessionCookieSchemeName: sessionCookieScheme(),
+	}
 
 	api := humago.New(mux, config)
 
 	registerMeta(api, deps.Version)
+	registerMe(api, deps.Store)
 
 	return api
 }
