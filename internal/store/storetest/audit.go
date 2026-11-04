@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -407,10 +408,275 @@ func RunAuditEvents(t *testing.T, newStore NewStoreFunc) {
 			methods = append(methods, repo.Method(i).Name)
 		}
 
-		require.ElementsMatch(t, []string{"Append", "Get", "PurgeBefore"}, methods)
+		require.ElementsMatch(t, []string{"Append", "Get", "List", "PurgeBefore"}, methods)
 	})
 
+	runAuditEventsList(t, newStore)
 	runAuditEventsPurge(t, newStore)
+}
+
+// listEvents returns the events that List returns for filter and page.
+func listEvents(ctx context.Context, t *testing.T, events store.AuditEventsRepository, filter store.AuditEventsFilter, page store.Page) []store.AuditEvent {
+	t.Helper()
+
+	got, err := events.List(ctx, filter, page)
+	require.NoError(t, err)
+
+	return got
+}
+
+// eventIDs returns the ids of events, in order.
+func eventIDs(events ...store.AuditEvent) []int64 {
+	ids := make([]int64, 0, len(events))
+	for _, event := range events {
+		ids = append(ids, event.ID)
+	}
+
+	return ids
+}
+
+// cursorOf returns the position of event in the audit log.
+func cursorOf(event store.AuditEvent) store.Cursor {
+	return store.Cursor{At: event.OccurredAt, ID: event.ID}
+}
+
+// eventBy returns an event of actorID about subjectID, of eventType.
+func eventBy(actorID, subjectID int64, eventType string) store.NewAuditEvent {
+	return store.NewAuditEvent{
+		ActorID:   actorID,
+		SubjectID: subjectID,
+		Type:      eventType,
+		Payload:   json.RawMessage(`{}`),
+	}
+}
+
+func runAuditEventsList(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+
+	// Given events at different times, two of them at the same time and one appended after the clock
+	// moved back, then List returns them newest first by OccurredAt, then by ID, with every field.
+	t.Run("ListReturnsEveryEventNewestFirst", func(t *testing.T) {
+		t.Parallel()
+
+		clk := clock.NewFake(auditTime)
+		events := newStore(t, clk).AuditEvents()
+		ctx := t.Context()
+
+		clk.Set(auditTime.Add(time.Second))
+		first := mustAppendEvent(ctx, t, events, auditEvent())
+
+		clk.Set(auditTime.Add(2 * time.Second))
+		second := mustAppendEvent(ctx, t, events, auditEvent())
+		sameTime := mustAppendEvent(ctx, t, events, auditEvent())
+
+		clk.Set(auditTime.Add(500 * time.Millisecond))
+		older := mustAppendEvent(ctx, t, events, auditEvent())
+
+		got := listEvents(ctx, t, events, store.AuditEventsFilter{}, store.Page{Limit: 10})
+
+		require.Equal(t, eventIDs(sameTime, second, first, older), eventIDs(got...))
+		require.Equal(t, mustGetEvent(ctx, t, events, sameTime.ID), got[0])
+	})
+
+	// Given an empty audit log, then List returns no event.
+	t.Run("ListOnAnEmptyLogReturnsNoEvent", func(t *testing.T) {
+		t.Parallel()
+
+		events := newStore(t, clock.NewFake(auditTime)).AuditEvents()
+
+		require.Empty(t, listEvents(t.Context(), t, events, store.AuditEventsFilter{}, store.Page{Limit: 10}))
+	})
+
+	// Given events of several actors, subjects and types, then each filter keeps the matching events,
+	// newest first, and filters combine.
+	t.Run("ListKeepsTheEventsThatMatchTheFilter", func(t *testing.T) {
+		t.Parallel()
+
+		clk := clock.NewFake(auditTime)
+		events := newStore(t, clk).AuditEvents()
+		ctx := t.Context()
+
+		appended := make([]store.AuditEvent, 0, 5)
+		for _, event := range []store.NewAuditEvent{
+			eventBy(7, 9, "admin.user_disabled"),
+			eventBy(9, 0, "auth.logout"),
+			eventBy(0, 7, "auth.session_revoked"),
+			eventBy(8, 8, "admin.user_disabled"),
+			eventBy(0, 0, "system.backup_created"),
+		} {
+			clk.Advance(time.Second)
+			appended = append(appended, mustAppendEvent(ctx, t, events, event))
+		}
+
+		byAlice, byBob, aboutAlice, byCarolAboutCarol, bySystem := appended[0], appended[1], appended[2], appended[3], appended[4]
+
+		tests := []struct {
+			name   string
+			filter store.AuditEventsFilter
+			want   []store.AuditEvent
+		}{
+			{name: "none", filter: store.AuditEventsFilter{}, want: []store.AuditEvent{bySystem, byCarolAboutCarol, aboutAlice, byBob, byAlice}},
+			{name: "user as actor or subject", filter: store.AuditEventsFilter{UserID: 7}, want: []store.AuditEvent{aboutAlice, byAlice}},
+			{name: "user as subject of another actor", filter: store.AuditEventsFilter{UserID: 9}, want: []store.AuditEvent{byBob, byAlice}},
+			{name: "user as actor and subject at once", filter: store.AuditEventsFilter{UserID: 8}, want: []store.AuditEvent{byCarolAboutCarol}},
+			{name: "user without events", filter: store.AuditEventsFilter{UserID: 42}, want: []store.AuditEvent{}},
+			{name: "actor", filter: store.AuditEventsFilter{ActorID: 7}, want: []store.AuditEvent{byAlice}},
+			{name: "subject", filter: store.AuditEventsFilter{SubjectID: 7}, want: []store.AuditEvent{aboutAlice}},
+			{name: "type", filter: store.AuditEventsFilter{Type: "admin.user_disabled"}, want: []store.AuditEvent{byCarolAboutCarol, byAlice}},
+			{name: "type and actor", filter: store.AuditEventsFilter{Type: "admin.user_disabled", ActorID: 8}, want: []store.AuditEvent{byCarolAboutCarol}},
+			{name: "actor and subject", filter: store.AuditEventsFilter{ActorID: 7, SubjectID: 7}, want: []store.AuditEvent{}},
+		}
+
+		for _, tt := range tests {
+			got := listEvents(ctx, t, events, tt.filter, store.Page{Limit: 10})
+			require.Equal(t, eventIDs(tt.want...), eventIDs(got...), tt.name)
+		}
+	})
+
+	// Given events one second apart, then From keeps the events at or after it and To the events
+	// before it.
+	t.Run("ListKeepsTheEventsOfTheTimeRange", func(t *testing.T) {
+		t.Parallel()
+
+		clk := clock.NewFake(auditTime)
+		events := newStore(t, clk).AuditEvents()
+		ctx := t.Context()
+
+		appended := appendEvery(ctx, t, events, clk, time.Second, 3, auditEvent())
+		first, second, third := appended[0], appended[1], appended[2]
+
+		tests := []struct {
+			name   string
+			filter store.AuditEventsFilter
+			want   []store.AuditEvent
+		}{
+			{name: "from", filter: store.AuditEventsFilter{From: second.OccurredAt}, want: []store.AuditEvent{third, second}},
+			{name: "to", filter: store.AuditEventsFilter{To: second.OccurredAt}, want: []store.AuditEvent{first}},
+			{name: "from and to", filter: store.AuditEventsFilter{From: second.OccurredAt, To: third.OccurredAt}, want: []store.AuditEvent{second}},
+			{name: "empty range", filter: store.AuditEventsFilter{From: second.OccurredAt, To: second.OccurredAt}, want: []store.AuditEvent{}},
+		}
+
+		for _, tt := range tests {
+			got := listEvents(ctx, t, events, tt.filter, store.Page{Limit: 10})
+			require.Equal(t, eventIDs(tt.want...), eventIDs(got...), tt.name)
+		}
+	})
+
+	// Given an aggregated row whose first event is before From, then List keeps it while its last
+	// event is at or after From. Given To, then List keeps it while its first event is before To.
+	t.Run("ListKeepsAnAggregatedRowWithAnEventInTheTimeRange", func(t *testing.T) {
+		t.Parallel()
+
+		clk := clock.NewFake(auditTime)
+		events := newStore(t, clk).AuditEvents()
+		ctx := t.Context()
+
+		burst := appendEvery(ctx, t, events, clk, 10*time.Second, 21, failedLogin("203.0.113.7"))
+		latest := burst[len(burst)-1]
+		require.Equal(t, int64(2), latest.Count)
+
+		tests := []struct {
+			name   string
+			filter store.AuditEventsFilter
+			want   []store.AuditEvent
+		}{
+			{name: "from its last event", filter: store.AuditEventsFilter{From: latest.LastAt}, want: []store.AuditEvent{latest}},
+			{name: "from after its last event", filter: store.AuditEventsFilter{From: latest.LastAt.Add(time.Millisecond)}, want: []store.AuditEvent{}},
+			{name: "to after its first event", filter: store.AuditEventsFilter{From: latest.LastAt, To: latest.OccurredAt.Add(time.Millisecond)}, want: []store.AuditEvent{latest}},
+			{name: "to at its first event", filter: store.AuditEventsFilter{From: latest.LastAt, To: latest.OccurredAt}, want: []store.AuditEvent{}},
+		}
+
+		for _, tt := range tests {
+			got := listEvents(ctx, t, events, tt.filter, store.Page{Limit: 10})
+			require.Equal(t, eventIDs(tt.want...), eventIDs(got...), tt.name)
+		}
+	})
+
+	// Given more events than the limit, some of them at the same time, then List returns at most the
+	// limit, and following the position of the last event of each page lists every event once, in
+	// order.
+	t.Run("ListReturnsAtMostTheLimitAfterTheCursor", func(t *testing.T) {
+		t.Parallel()
+
+		clk := clock.NewFake(auditTime)
+		events := newStore(t, clk).AuditEvents()
+		ctx := t.Context()
+
+		appended := slices.Concat(
+			appendEvery(ctx, t, events, clk, 0, 4, auditEvent()),
+			appendEvery(ctx, t, events, clk, time.Second, 3, auditEvent()),
+		)
+
+		var listed []store.AuditEvent
+
+		page := store.Page{Limit: 2}
+
+		for range len(appended) {
+			got := listEvents(ctx, t, events, store.AuditEventsFilter{}, page)
+			require.LessOrEqual(t, len(got), 2)
+
+			if len(got) == 0 {
+				break
+			}
+
+			listed = append(listed, got...)
+			page.After = cursorOf(got[len(got)-1])
+		}
+
+		want := eventIDs(appended...)
+		slices.Reverse(want)
+		require.Equal(t, want, eventIDs(listed...))
+	})
+
+	// Given a page listed, when new events arrive and an event of a later page is aggregated, then
+	// following the cursor lists each event of the log once: the new events are newer than the
+	// cursor, and an aggregated row keeps its place.
+	t.Run("FollowingTheCursorListsEachEventOnceWhileEventsArrive", func(t *testing.T) {
+		t.Parallel()
+
+		clk := clock.NewFake(auditTime)
+		events := newStore(t, clk).AuditEvents()
+		ctx := t.Context()
+
+		burst := appendEvery(ctx, t, events, clk, time.Second, 20, failedLogin("203.0.113.7"))
+		appended := slices.Concat(burst, appendEvery(ctx, t, events, clk, time.Second, 5, auditEvent()))
+		want := eventIDs(appended...)
+		slices.Reverse(want)
+
+		filter := store.AuditEventsFilter{}
+		listed := listEvents(ctx, t, events, filter, store.Page{Limit: 3})
+		require.Equal(t, want[:3], eventIDs(listed...))
+
+		mustAppendEvent(ctx, t, events, auditEvent())
+		aggregated := mustAppendEvent(ctx, t, events, failedLogin("203.0.113.7"))
+		require.Equal(t, burst[len(burst)-1].ID, aggregated.ID)
+
+		for range len(appended) {
+			got := listEvents(ctx, t, events, filter, store.Page{After: cursorOf(listed[len(listed)-1]), Limit: 3})
+			if len(got) == 0 {
+				break
+			}
+
+			listed = append(listed, got...)
+		}
+
+		require.Equal(t, want, eventIDs(listed...))
+	})
+
+	// Given a limit below 1, then List returns store.ErrInvalid.
+	t.Run("ListWithALimitBelowOneReturnsErrInvalid", func(t *testing.T) {
+		t.Parallel()
+
+		events := newStore(t, clock.NewFake(auditTime)).AuditEvents()
+		ctx := t.Context()
+
+		mustAppendEvent(ctx, t, events, auditEvent())
+
+		for _, limit := range []int{0, -1} {
+			_, err := events.List(ctx, store.AuditEventsFilter{}, store.Page{Limit: limit})
+			require.ErrorIs(t, err, store.ErrInvalid, "limit %d", limit)
+		}
+	})
 }
 
 func runAuditEventsPurge(t *testing.T, newStore NewStoreFunc) {
