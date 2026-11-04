@@ -213,7 +213,11 @@ func (w *Worker) loop(ctx context.Context) {
 // Tick claims the oldest due job and runs it until it ends. It reports whether it claimed a job,
 // and returns an error when the claim fails.
 func (w *Worker) Tick(ctx context.Context) (claimed bool, err error) {
-	job, err := w.store.Jobs().Claim(ctx, w.opts.Lease)
+	job, abandoned, err := w.store.Jobs().Claim(ctx, w.opts.Lease)
+	for _, a := range abandoned {
+		w.logAbandoned(ctx, a)
+	}
+
 	if errors.Is(err, store.ErrNotFound) {
 		return false, nil
 	}
@@ -412,4 +416,16 @@ func (w *Worker) logEnd(ctx context.Context, end jobEnd, writeErr error) {
 	}
 
 	w.logger.LogAttrs(ctx, level, "job finished", attrs...)
+}
+
+// logAbandoned writes the one log line of a job that a claim abandoned after its lost leases, as
+// failed. It has no duration: none of its runs ended in a process that could time it. It never
+// carries the payload.
+func (w *Worker) logAbandoned(ctx context.Context, job store.Job) {
+	w.logger.LogAttrs(ctx, slog.LevelWarn, "job finished",
+		slog.String("kind", job.Kind),
+		slog.Int64("id", job.ID),
+		slog.String("status", string(job.Status)),
+		slog.String("error", job.LastError),
+	)
 }

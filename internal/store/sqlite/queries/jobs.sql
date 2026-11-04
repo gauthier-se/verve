@@ -18,7 +18,7 @@ SET status = 'cancelled',
 WHERE cancel_requested = 1
   AND (status = 'queued' OR (status = 'running' AND locked_until <= sqlc.arg(now)));
 
--- name: AbandonJobs :exec
+-- name: AbandonJobs :many
 -- lost_leases does not count the lease that has just expired yet, as ClaimJob would.
 UPDATE jobs
 SET status = 'failed',
@@ -28,7 +28,8 @@ SET status = 'failed',
     finished_at = sqlc.arg(now)
 WHERE status = 'running'
   AND locked_until <= sqlc.arg(now)
-  AND lost_leases + 1 >= sqlc.arg(max_lost_leases);
+  AND lost_leases + 1 >= sqlc.arg(max_lost_leases)
+RETURNING *;
 
 -- name: ClaimJob :one
 -- A queued job waits for any running job of its serial key, even one whose lease has expired: that

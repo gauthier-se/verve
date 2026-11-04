@@ -64,10 +64,11 @@ func (r jobs) Get(ctx context.Context, id int64) (store.Job, error) {
 	return jobOf(row), nil
 }
 
-func (r jobs) Claim(ctx context.Context, lease time.Duration) (store.Job, error) {
+func (r jobs) Claim(ctx context.Context, lease time.Duration) (store.Job, []store.Job, error) {
 	var (
-		row     sqlcgen.Job
-		claimed bool
+		row       sqlcgen.Job
+		abandoned []sqlcgen.Job
+		claimed   bool
 	)
 
 	// No claimed job is not an error of the write: it would roll back the abandoned jobs.
@@ -78,7 +79,9 @@ func (r jobs) Claim(ctx context.Context, lease time.Duration) (store.Job, error)
 			return err
 		}
 
-		err := q.AbandonJobs(ctx, sqlcgen.AbandonJobsParams{
+		var err error
+
+		abandoned, err = q.AbandonJobs(ctx, sqlcgen.AbandonJobsParams{
 			LastError:     sql.NullString{String: fmt.Sprintf("abandoned after %d lost leases", maxLostLeases), Valid: true},
 			Now:           nullMillis(now),
 			MaxLostLeases: maxLostLeases,
@@ -101,14 +104,19 @@ func (r jobs) Claim(ctx context.Context, lease time.Duration) (store.Job, error)
 		return nil
 	})
 	if err != nil {
-		return store.Job{}, fmt.Errorf("claim job: %w", err)
+		return store.Job{}, nil, fmt.Errorf("claim job: %w", err)
+	}
+
+	var abandonedJobs []store.Job
+	for _, a := range abandoned {
+		abandonedJobs = append(abandonedJobs, jobOf(a))
 	}
 
 	if !claimed {
-		return store.Job{}, fmt.Errorf("claim job: %w", store.ErrNotFound)
+		return store.Job{}, abandonedJobs, fmt.Errorf("claim job: %w", store.ErrNotFound)
 	}
 
-	return jobOf(row), nil
+	return jobOf(row), abandonedJobs, nil
 }
 
 func (r jobs) EnqueueClaimed(ctx context.Context, job store.NewJob, lease time.Duration) (store.Job, error) {
