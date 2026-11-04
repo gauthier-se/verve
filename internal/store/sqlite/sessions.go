@@ -70,28 +70,28 @@ func (r sessions) Get(ctx context.Context, idHash []byte) (store.Session, store.
 	return sessionOf(row.Session), userOf(row.User), nil
 }
 
-func (r sessions) Touch(ctx context.Context, idHash []byte, expiresAt time.Time) error {
+func (r sessions) Touch(ctx context.Context, idHash []byte, expiresAt time.Time) (store.Session, error) {
+	var row sqlcgen.Session
+
 	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
-		touched, err := q.TouchSession(ctx, sqlcgen.TouchSessionParams{
+		var err error
+
+		row, err = q.TouchSession(ctx, sqlcgen.TouchSessionParams{
 			LastSeenAt: toMillis(r.clk.Now()),
 			ExpiresAt:  toMillis(expiresAt),
 			IDHash:     idHash,
 		})
-		if err != nil {
-			return err
-		}
-
-		if touched == 0 {
+		if errors.Is(err, sql.ErrNoRows) {
 			return store.ErrNotFound
 		}
 
-		return nil
+		return err
 	})
 	if err != nil {
-		return fmt.Errorf("touch session: %w", err)
+		return store.Session{}, fmt.Errorf("touch session: %w", err)
 	}
 
-	return nil
+	return sessionOf(row), nil
 }
 
 func (r sessions) Delete(ctx context.Context, idHash []byte) error {

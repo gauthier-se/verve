@@ -50,8 +50,8 @@ type SessionsRepository interface {
 	// Get returns the session of idHash and its user, or ErrNotFound.
 	Get(ctx context.Context, idHash []byte) (Session, User, error)
 	// Touch sets the LastSeenAt of the session of idHash to the current time and its ExpiresAt to
-	// expiresAt, or returns ErrNotFound.
-	Touch(ctx context.Context, idHash []byte, expiresAt time.Time) error
+	// expiresAt, and returns the session, or returns ErrNotFound.
+	Touch(ctx context.Context, idHash []byte, expiresAt time.Time) (Session, error)
 	// Delete removes the session of idHash, or returns ErrNotFound.
 	Delete(ctx context.Context, idHash []byte) error
 	// DeleteOthers removes the sessions of userID, except the one of keepIDHash.

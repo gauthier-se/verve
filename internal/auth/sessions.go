@@ -88,9 +88,9 @@ func (s Sessions) Create(ctx context.Context, repos store.Repositories, session 
 // returns store.ErrNotFound alone for an unknown, expired or revoked session, and for a user who is
 // not active, so that callers cannot tell them apart.
 //
-// A lookup renews the session at most once per minute: it writes the last seen time and an expiry
-// from the current instance settings. A renewal whose expiry has already passed, after
-// session.max_days was lowered, fails the lookup.
+// A lookup renews the session at most once per minute, and returns it renewed: it writes the last
+// seen time and an expiry from the current instance settings. A renewal fails the lookup when the
+// session ended under those settings, after they were lowered.
 func (s Sessions) Lookup(ctx context.Context, repos store.Repositories, id string) (store.Session, store.User, error) {
 	idHash := hashSessionID(id)
 
@@ -117,13 +117,12 @@ func (s Sessions) Lookup(ctx context.Context, repos store.Repositories, id strin
 		return store.Session{}, store.User{}, err
 	}
 
-	expiresAt := lifetimes.expiry(now, session.CreatedAt)
-	if now.After(expiresAt) {
+	if lifetimes.ended(session, now) {
 		return store.Session{}, store.User{}, store.ErrNotFound
 	}
 
 	// The session may have been revoked since it was read.
-	err = repos.Sessions().Touch(ctx, idHash, expiresAt)
+	renewed, err := repos.Sessions().Touch(ctx, idHash, lifetimes.expiry(now, session.CreatedAt))
 	if errors.Is(err, store.ErrNotFound) {
 		return store.Session{}, store.User{}, store.ErrNotFound
 	}
@@ -132,7 +131,7 @@ func (s Sessions) Lookup(ctx context.Context, repos store.Repositories, id strin
 		return store.Session{}, store.User{}, err
 	}
 
-	return session, user, nil
+	return renewed, user, nil
 }
 
 // Revoke deletes the session of the identifier id, or returns store.ErrNotFound. The next lookup of
@@ -150,12 +149,12 @@ type lifetimes struct {
 // lifetimesOf returns the lifetimes of the instance settings, each replaced by its default when it
 // is missing or invalid.
 func lifetimesOf(ctx context.Context, settings store.InstanceSettingsRepository) (lifetimes, error) {
-	idle, err := settingDays(ctx, settings, settingIdleDays, defaultIdleDays)
+	idle, err := settingLifetime(ctx, settings, settingIdleDays, defaultIdleDays)
 	if err != nil {
 		return lifetimes{}, err
 	}
 
-	maximum, err := settingDays(ctx, settings, settingMaxDays, defaultMaxDays)
+	maximum, err := settingLifetime(ctx, settings, settingMaxDays, defaultMaxDays)
 	if err != nil {
 		return lifetimes{}, err
 	}
@@ -163,9 +162,10 @@ func lifetimesOf(ctx context.Context, settings store.InstanceSettingsRepository)
 	return lifetimes{idle: idle, maximum: maximum}, nil
 }
 
-// settingDays returns the days of the instance setting key, or fallback when the setting is missing
-// or is not a whole number from 1 to maxLifetimeDays. An invalid value must not lock every user out.
-func settingDays(ctx context.Context, settings store.InstanceSettingsRepository, key string, fallback int) (time.Duration, error) {
+// settingLifetime returns the lifetime of the instance setting key, a number of days, or fallback
+// days when the setting is missing or is not a whole number from 1 to maxLifetimeDays. An invalid
+// value must not lock every user out.
+func settingLifetime(ctx context.Context, settings store.InstanceSettingsRepository, key string, fallback int) (time.Duration, error) {
 	days := fallback
 
 	setting, err := settings.Get(ctx, key)
@@ -181,6 +181,12 @@ func settingDays(ctx context.Context, settings store.InstanceSettingsRepository,
 	}
 
 	return time.Duration(days) * 24 * time.Hour, nil
+}
+
+// ended reports whether session has ended at now under these lifetimes: it was idle for longer than
+// the idle lifetime, or was created longer ago than the maximum lifetime.
+func (l lifetimes) ended(session store.Session, now time.Time) bool {
+	return now.After(session.LastSeenAt.Add(l.idle)) || now.After(session.CreatedAt.Add(l.maximum))
 }
 
 // expiry returns the expiry of a session created at createdAt and active at now: the idle lifetime

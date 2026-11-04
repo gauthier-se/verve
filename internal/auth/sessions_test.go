@@ -237,12 +237,13 @@ func TestSessions_LookupRenewsTheSessionAtMostOncePerMinute(t *testing.T) {
 	for i, step := range steps {
 		clk.Advance(step.advance)
 
-		_, _, err := sessions.Lookup(ctx, s, id)
+		session, _, err := sessions.Lookup(ctx, s, id)
 		require.NoError(t, err, "step %d", i)
 
 		stored := storedSession(ctx, t, s, id)
 		require.Equal(t, step.lastSeen, stored.LastSeenAt, "step %d", i)
 		require.Equal(t, step.lastSeen.Add(30*day), stored.ExpiresAt, "step %d", i)
+		require.Equal(t, stored, session, "step %d", i)
 	}
 }
 
@@ -439,27 +440,42 @@ func TestSessions_InvalidInstanceSettingsFallBackToTheDefaults(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			value := tt.value
-
 			s, sessions, _ := newTestSessions(t)
 			ctx := t.Context()
 			user := mustCreateUser(ctx, t, s, "alice")
 
 			// A valid max_days of 36500 lets an invalid idle_days show through the expiry, and a valid
 			// idle_days of 36500 lets an invalid max_days show through it.
-			setLifetimes(ctx, t, s, value, "36500")
+			setLifetimes(ctx, t, s, tt.value, "36500")
 
 			_, idle, err := sessions.Create(ctx, s, phoneLogin(user.ID))
 			require.NoError(t, err)
 			require.Equal(t, sessionsTestNow.Add(30*day), idle.ExpiresAt)
 
-			setLifetimes(ctx, t, s, "36500", value)
+			setLifetimes(ctx, t, s, "36500", tt.value)
 
 			_, maximum, err := sessions.Create(ctx, s, phoneLogin(user.ID))
 			require.NoError(t, err)
 			require.Equal(t, sessionsTestNow.Add(180*day), maximum.ExpiresAt)
 		})
 	}
+}
+
+// Given a session idle for longer than a newly lowered session.idle_days, then its next lookup
+// fails, although its stored expiry, from the former setting, has not passed.
+func TestSessions_LoweredIdleDaysEndsAnIdleSessionAtItsNextLookup(t *testing.T) {
+	t.Parallel()
+
+	s, sessions, clk := newTestSessions(t)
+	ctx := t.Context()
+	id := mustCreateSession(ctx, t, sessions, s, mustCreateUser(ctx, t, s, "alice").ID)
+
+	setLifetimes(ctx, t, s, "7", "180")
+	clk.Advance(10 * day)
+
+	_, _, err := sessions.Lookup(ctx, s, id)
+	requireNoSession(t, err)
+	require.Equal(t, sessionsTestNow.Add(30*day), storedSession(ctx, t, s, id).ExpiresAt)
 }
 
 // Given a session older than a newly lowered session.max_days, then its next renewal fails the

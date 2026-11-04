@@ -138,11 +138,12 @@ func (q *Queries) PurgeExpiredSessions(ctx context.Context, now int64) error {
 	return err
 }
 
-const touchSession = `-- name: TouchSession :execrows
+const touchSession = `-- name: TouchSession :one
 UPDATE sessions
 SET last_seen_at = ?,
     expires_at = ?
 WHERE id_hash = ?
+RETURNING id_hash, public_id, user_id, method, created_at, last_seen_at, expires_at, client_ip, user_agent
 `
 
 type TouchSessionParams struct {
@@ -151,10 +152,19 @@ type TouchSessionParams struct {
 	IDHash     []byte
 }
 
-func (q *Queries) TouchSession(ctx context.Context, arg TouchSessionParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, touchSession, arg.LastSeenAt, arg.ExpiresAt, arg.IDHash)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
+func (q *Queries) TouchSession(ctx context.Context, arg TouchSessionParams) (Session, error) {
+	row := q.db.QueryRowContext(ctx, touchSession, arg.LastSeenAt, arg.ExpiresAt, arg.IDHash)
+	var i Session
+	err := row.Scan(
+		&i.IDHash,
+		&i.PublicID,
+		&i.UserID,
+		&i.Method,
+		&i.CreatedAt,
+		&i.LastSeenAt,
+		&i.ExpiresAt,
+		&i.ClientIp,
+		&i.UserAgent,
+	)
+	return i, err
 }

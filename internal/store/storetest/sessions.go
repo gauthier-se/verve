@@ -167,7 +167,8 @@ func RunSessions(t *testing.T, newStore NewStoreFunc) {
 	})
 
 	// Given a session, when the clock moves and Touch runs, then LastSeenAt is the clock's now and
-	// ExpiresAt the given time, and the rest is unchanged.
+	// ExpiresAt the given time (millisecond precision, UTC), the rest is unchanged, and Touch
+	// returns the session as stored.
 	t.Run("TouchSetsLastSeenAtAndExpiresAt", func(t *testing.T) {
 		t.Parallel()
 
@@ -178,11 +179,13 @@ func RunSessions(t *testing.T, newStore NewStoreFunc) {
 		created := mustCreateSession(ctx, t, s.Sessions(), newSession(user.ID, "secret"))
 
 		clk.Advance(time.Hour)
-		require.NoError(t, s.Sessions().Touch(ctx, idHash("secret"), sessionsTime.Add(90*24*time.Hour)))
+		touched, err := s.Sessions().Touch(ctx, idHash("secret"), sessionsTime.Add(90*24*time.Hour))
+		require.NoError(t, err)
 
 		want := created
 		want.LastSeenAt = sessionsUTC.Add(time.Hour)
 		want.ExpiresAt = sessionsUTC.Add(90 * 24 * time.Hour)
+		require.Equal(t, want, touched)
 
 		got, _, err := s.Sessions().Get(ctx, idHash("secret"))
 		require.NoError(t, err)
@@ -195,7 +198,7 @@ func RunSessions(t *testing.T, newStore NewStoreFunc) {
 
 		s := newStore(t, clock.NewFake(sessionsTime))
 
-		err := s.Sessions().Touch(t.Context(), idHash("secret"), sessionsTime)
+		_, err := s.Sessions().Touch(t.Context(), idHash("secret"), sessionsTime)
 		require.ErrorIs(t, err, store.ErrNotFound)
 	})
 

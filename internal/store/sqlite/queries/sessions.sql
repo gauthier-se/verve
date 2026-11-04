@@ -9,11 +9,12 @@ FROM sessions
 JOIN users ON users.id = sessions.user_id
 WHERE sessions.id_hash = ?;
 
--- name: TouchSession :execrows
+-- name: TouchSession :one
 UPDATE sessions
 SET last_seen_at = ?,
     expires_at = ?
-WHERE id_hash = ?;
+WHERE id_hash = ?
+RETURNING *;
 
 -- name: DeleteSession :execrows
 DELETE
