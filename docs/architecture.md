@@ -175,7 +175,7 @@ Every user-owned row carries a `user_id`. All queries are scoped by user, and th
 | `users` | Account, role (`admin`, `member`), status |
 | `invitations` | Single-use invitation and password reset links (hashed) |
 | `user_preferences`, `user_profile` | Units, timezone, language, theme, week start, sleep window, date of birth, sex, height, heart rate settings |
-| `sessions` | Server-side sessions (hashed id, method, expiry, last seen, IP, user agent) |
+| `sessions` | Server-side sessions (hashed id, public id, method, expiry, last seen, IP, user agent) |
 | `api_tokens` | Hashed tokens with scopes and usage metadata |
 | `oidc_identities`, `totp_secrets`, `recovery_codes` | Advanced authentication |
 | `metric_types` | Catalog: key, HealthKit identifier, kind (quantity or category), canonical unit, aggregation style (cumulative or discrete) |

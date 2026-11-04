@@ -73,6 +73,10 @@ func (r repositories) Users() store.UsersRepository {
 	return users(r)
 }
 
+func (r repositories) Sessions() store.SessionsRepository {
+	return sessions(r)
+}
+
 func (r repositories) AfterCommit(fn func()) {
 	r.q.afterCommit(fn)
 }

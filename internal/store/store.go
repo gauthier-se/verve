@@ -24,6 +24,7 @@ type Repositories interface {
 	Jobs() JobsRepository
 	AuditEvents() AuditEventsRepository
 	Users() UsersRepository
+	Sessions() SessionsRepository
 
 	// AfterCommit calls fn once the writes made through these repositories are committed: at once
 	// outside WithTx, where each write is committed when it returns, and after the commit inside

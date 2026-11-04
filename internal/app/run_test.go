@@ -407,8 +407,8 @@ func storedSchedules(t *testing.T, cfg config.Config) map[string]time.Time {
 	return schedules
 }
 
-// Given serve on a new database, then the purges of jobs and of audit events are scheduled daily,
-// in a day, and no job is enqueued for them yet.
+// Given serve on a new database, then the purges of jobs, of audit events and of expired sessions
+// are scheduled daily, in a day, and no job is enqueued for them yet.
 func TestRun_SchedulesTheDailyPurges(t *testing.T) {
 	t.Parallel()
 
@@ -416,13 +416,13 @@ func TestRun_SchedulesTheDailyPurges(t *testing.T) {
 	_, _, stop := startRun(t, cfg)
 
 	require.Eventually(t, func() bool {
-		return len(storedSchedules(t, cfg)) == 2
+		return len(storedSchedules(t, cfg)) == 3
 	}, 5*time.Second, 10*time.Millisecond, "the server must schedule the purges")
 
 	stop()
 
 	schedules := storedSchedules(t, cfg)
-	for _, name := range []string{"jobs.purge", "audit.purge"} {
+	for _, name := range []string{"jobs.purge", "audit.purge", "cleanup.sessions"} {
 		require.WithinDuration(t, time.Now().Add(24*time.Hour), schedules[name], time.Minute, name)
 	}
 }
@@ -470,6 +470,64 @@ func TestRun_PurgesTheAuditEventsOlderThanTheConfiguredRetention(t *testing.T) {
 		return s.AuditEvents().Get(ctx, recent.ID)
 	})
 	require.NoError(t, err)
+}
+
+// Given the purge of expired sessions missed during downtime, then it runs after startup and
+// removes the sessions that have expired, and only them.
+func TestRun_PurgesTheExpiredSessions(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	cfg := testConfig(t.TempDir())
+
+	_, err := Migrate(ctx, cfg, discardLogger())
+	require.NoError(t, err)
+
+	db, err := sqlite.Open(ctx, filepath.Join(cfg.DataDir, dbFile))
+	require.NoError(t, err)
+
+	now := time.Now().UTC()
+	s := sqlite.New(db, clock.NewFake(now.Add(-60*24*time.Hour)))
+
+	user, err := s.Users().Create(ctx, store.NewUser{Username: "alice", Role: store.RoleMember})
+	require.NoError(t, err)
+
+	for id, expiresAt := range map[string]time.Time{
+		"expired": now.Add(-time.Hour),
+		"valid":   now.Add(24 * time.Hour),
+	} {
+		_, err := s.Sessions().Create(ctx, store.NewSession{
+			IDHash:    []byte(id),
+			PublicID:  id,
+			UserID:    user.ID,
+			Method:    store.LoginPassword,
+			ExpiresAt: expiresAt,
+		})
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, s.Jobs().SetSchedule(ctx, "cleanup.sessions", now.Add(-time.Hour)))
+	require.NoError(t, db.CloseShared())
+
+	_, _, stop := startRun(t, cfg)
+
+	getSession := func(id string) error {
+		_, err := withSharedDB(ctx, cfg, func(s store.Store) (store.Session, error) {
+			session, _, err := s.Sessions().Get(ctx, []byte(id))
+
+			return session, err
+		})
+
+		return err
+	}
+
+	require.Eventually(t, func() bool {
+		return errors.Is(getSession("expired"), store.ErrNotFound)
+	}, 5*time.Second, 10*time.Millisecond, "the purge must remove the expired session")
+
+	stop()
+
+	require.NoError(t, getSession("valid"))
 }
 
 // Given the purge of jobs missed during downtime, then it runs after startup and removes a job
