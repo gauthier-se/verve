@@ -57,7 +57,7 @@ func TestNewHandler_UnknownAPIPathReturnsProblem(t *testing.T) {
 		{method: http.MethodGet, target: "/api%2fv1/unknown"},
 		{method: http.MethodPost, target: "/api%2Fv1/unknown"},
 	} {
-		rec := serve(t, h, tt.method, tt.target)
+		rec := serveFromApp(t, h, tt.method, tt.target)
 
 		require.Equal(t, http.StatusNotFound, rec.Code, tt.target)
 		require.Equal(t, "application/problem+json", rec.Header().Get("Content-Type"), tt.target)

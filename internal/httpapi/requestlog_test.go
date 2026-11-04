@@ -130,7 +130,7 @@ func TestRequestLog_UnmatchedRoute(t *testing.T) {
 	})
 
 	srv.do(t, http.MethodGet, "/nope", untrustedPeer, nil)
-	srv.do(t, http.MethodPost, "/api/v1/meta", untrustedPeer, nil)
+	srv.do(t, http.MethodPost, "/api/v1/meta", untrustedPeer, appHeaders("example.com"))
 
 	lines := srv.logs.requestLines(t)
 	require.Len(t, lines, 2)

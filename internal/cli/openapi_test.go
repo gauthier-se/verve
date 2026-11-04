@@ -38,6 +38,39 @@ func TestOpenAPICommand_PrintsSpec(t *testing.T) {
 	require.Equal(t, res.stdout, run(t, testDeps(), "openapi").stdout)
 }
 
+// Given `verve openapi`, which builds the API with the zero value of its dependencies, then the spec
+// describes the session cookie scheme, and GET /api/v1/auth/me requires it while GET /api/v1/meta
+// requires nothing.
+func TestOpenAPICommand_DescribesSecuritySchemes(t *testing.T) {
+	t.Parallel()
+
+	res := run(t, testDeps(), "openapi")
+	require.Equal(t, 0, res.code)
+	require.Empty(t, res.stderr)
+
+	type securityScheme struct {
+		Type string `json:"type"`
+		In   string `json:"in"`
+		Name string `json:"name"`
+	}
+
+	var spec struct {
+		Components struct {
+			SecuritySchemes map[string]securityScheme `json:"securitySchemes"`
+		} `json:"components"`
+		Paths map[string]map[string]struct {
+			Security []map[string][]string `json:"security"`
+		} `json:"paths"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(res.stdout), &spec))
+
+	require.Equal(t, map[string]securityScheme{
+		"sessionCookie": {Type: "apiKey", In: "cookie", Name: "verve_session"},
+	}, spec.Components.SecuritySchemes)
+	require.Equal(t, []map[string][]string{{"sessionCookie": {}}}, spec.Paths["/api/v1/auth/me"]["get"].Security)
+	require.Empty(t, spec.Paths["/api/v1/meta"]["get"].Security)
+}
+
 // Given an invalid environment, when I run `verve openapi`, then it still prints the spec: it
 // loads no configuration and opens neither the data directory nor the database.
 func TestOpenAPICommand_IgnoresConfiguration(t *testing.T) {
