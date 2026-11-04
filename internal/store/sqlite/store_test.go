@@ -194,7 +194,7 @@ func TestJobs_ConcurrentClaimsOnTwoStoresClaimEachJobOnce(t *testing.T) {
 		for range claimersPerStore {
 			wg.Go(func() {
 				for {
-					job, err := s.Jobs().Claim(ctx, time.Minute)
+					job, _, err := s.Jobs().Claim(ctx, time.Minute)
 					if errors.Is(err, store.ErrNotFound) {
 						return
 					}

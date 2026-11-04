@@ -48,7 +48,7 @@ func drainJobs(ctx context.Context, t *testing.T, s store.Store) []store.Job {
 	var drained []store.Job
 
 	for {
-		job, err := s.Jobs().Claim(ctx, time.Minute)
+		job, _, err := s.Jobs().Claim(ctx, time.Minute)
 		if errors.Is(err, store.ErrNotFound) {
 			return drained
 		}
@@ -194,7 +194,7 @@ func TestScheduler_TickSkipsARunWhileTheLastJobIsActive(t *testing.T) {
 			prepare: func(ctx context.Context, t *testing.T, s store.Store) func() []store.Job {
 				t.Helper()
 
-				job, err := s.Jobs().Claim(ctx, 24*time.Hour)
+				job, _, err := s.Jobs().Claim(ctx, 24*time.Hour)
 				require.NoError(t, err)
 
 				return func() []store.Job {

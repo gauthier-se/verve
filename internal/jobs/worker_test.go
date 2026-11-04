@@ -972,7 +972,7 @@ func TestRun_Shutdown_HandlerThatIgnoresItsContext_LeavesTheJobToTheLease(t *tes
 
 	clk.Advance(lease)
 
-	recovered, err := s.Jobs().Claim(ctx, lease)
+	recovered, _, err := s.Jobs().Claim(ctx, lease)
 	require.NoError(t, err)
 	require.Equal(t, queued.ID, recovered.ID)
 	require.Equal(t, int64(1), recovered.LostLeases)
@@ -1039,9 +1039,54 @@ func TestRun_Shutdown_WriteLockHeld_GivesUpAfterOneSecondInTotal(t *testing.T) {
 
 	clk.Advance(lease)
 
-	recovered, err := s.Jobs().Claim(ctx, lease)
+	recovered, _, err := s.Jobs().Claim(ctx, lease)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), recovered.LostLeases)
+}
+
+// Given a job that lost its lease 5 times, when the claim of a worker abandons it, then the worker
+// writes its one log line: kind, id, the status failed and the error, as a warning, without a
+// duration, since no run of it ended here, and never its payload.
+func TestTick_AbandonedJob_IsLogged(t *testing.T) {
+	t.Parallel()
+
+	const lease = time.Minute
+
+	s, clk := newTestStore(t)
+	ctx := t.Context()
+	reg := NewRegistry()
+	kind := Register(reg, "test.kind", KindOptions{}, func(context.Context, Job[testPayload]) error {
+		return nil
+	})
+	queued := enqueue(ctx, t, s, kind, "payload-name")
+
+	// The process that claims it dies 5 times.
+	for range 5 {
+		_, _, err := s.Jobs().Claim(ctx, lease)
+		require.NoError(t, err)
+
+		clk.Advance(lease)
+	}
+
+	w, logs := newTestWorker(s, reg, clk, Options{})
+
+	claimed, err := w.Tick(ctx)
+	require.NoError(t, err)
+	require.False(t, claimed)
+	require.Equal(t, store.JobFailed, getJob(ctx, t, s, queued.ID).Status)
+
+	lines := messageLines(t, logs, "job finished")
+	require.Len(t, lines, 1)
+	require.Equal(t, "WARN", lines[0]["level"])
+	require.Equal(t, "test.kind", lines[0]["kind"])
+	require.InDelta(t, queued.ID, lines[0]["id"], 0)
+	require.Equal(t, "failed", lines[0]["status"])
+	require.Equal(t, "abandoned after 5 lost leases", lines[0]["error"])
+	require.NotContains(t, lines[0], "duration")
+
+	for _, line := range logs.Lines(t) {
+		require.NotContains(t, fmt.Sprint(line), "payload-name")
+	}
 }
 
 // lockedResults is a store that cannot write the end of a job, as when another process holds the
@@ -1246,9 +1291,9 @@ type flakyJobs struct {
 	store *flakyStore
 }
 
-func (j flakyJobs) Claim(ctx context.Context, lease time.Duration) (store.Job, error) {
+func (j flakyJobs) Claim(ctx context.Context, lease time.Duration) (store.Job, []store.Job, error) {
 	if j.store.failed.CompareAndSwap(false, true) {
-		return store.Job{}, errors.New("database is locked")
+		return store.Job{}, nil, errors.New("database is locked")
 	}
 
 	return j.JobsRepository.Claim(ctx, lease)
