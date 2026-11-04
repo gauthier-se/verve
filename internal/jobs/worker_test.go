@@ -912,7 +912,7 @@ func TestRun_Shutdown_HandlerThatStopsLate_StillReturnsItsJobToQueued(t *testing
 		<-ctx.Done()
 
 		if job.Payload.Name == "slow" {
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(500 * time.Millisecond)
 		}
 
 		return ctx.Err()
@@ -920,7 +920,9 @@ func TestRun_Shutdown_HandlerThatStopsLate_StillReturnsItsJobToQueued(t *testing
 	fast := enqueue(ctx, t, s, kind, "fast")
 	slow := enqueue(ctx, t, s, kind, "slow")
 
-	w, _ := newTestWorker(s, reg, clk, Options{Workers: 2, PollInterval: shortInterval, FinishTimeout: 20 * time.Millisecond})
+	// The deadline is shorter than the extra time of the slow handler, so that a deadline started
+	// before it stopped would run out first, and long enough for two writes on a loaded machine.
+	w, _ := newTestWorker(s, reg, clk, Options{Workers: 2, PollInterval: shortInterval, FinishTimeout: 200 * time.Millisecond})
 	stop := startWorker(t, w)
 
 	require.Eventually(t, func() bool { return running.Load() == 2 }, waitFor, time.Millisecond)
