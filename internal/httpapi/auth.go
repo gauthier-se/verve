@@ -155,7 +155,7 @@ func requireUser(ctx context.Context) (auth.Principal, error) {
 
 // requireAdmin returns the principal of the request of ctx when it is an admin, a 401 problem when
 // the request is not authenticated, and a 403 problem otherwise.
-func requireAdmin(ctx context.Context) (auth.Principal, error) {
+func requireAdmin(ctx context.Context) (auth.Principal, error) { //nolint:unparam // the admin actions to come record the principal as the actor of their audit event
 	principal, err := requireUser(ctx)
 	if err != nil {
 		return auth.Principal{}, err

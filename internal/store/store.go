@@ -48,6 +48,21 @@ type Store interface {
 	Close(ctx context.Context) error
 }
 
+// Cursor is the position of an item in a list sorted newest first, by time then id. The zero
+// Cursor is the start of the list.
+type Cursor struct {
+	At time.Time
+	ID int64
+}
+
+// Page asks a list sorted newest first, by time then id, for the items after a position.
+type Page struct {
+	// After is the position of the last item of the previous page, or zero for the first page.
+	After Cursor
+	// Limit is the maximum number of items, at least 1.
+	Limit int
+}
+
 // Setting is an admin-managed instance setting.
 type Setting struct {
 	Key   string

@@ -53,6 +53,7 @@ func NewAPI(mux *http.ServeMux, deps APIDeps) huma.API {
 
 	registerMeta(api, deps.Version)
 	registerCurrentUser(api, deps.Store)
+	registerAudit(api, deps.Store)
 
 	return api
 }

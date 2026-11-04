@@ -27,6 +27,25 @@ SELECT *
 FROM audit_events
 WHERE id = ?;
 
+-- name: ListAuditEvents :many
+-- The events that match the filters, newest first, after a position: those that occurred before
+-- it, or at the same time with a smaller id. The position and the time range are always set, the
+-- first page starting after the largest time and id, so that the index on occurred_at bounds the
+-- scan. A row is in the time range while one of its events is: its first one before to_at, and
+-- its last one at or after from_at.
+SELECT *
+FROM audit_events
+WHERE occurred_at <= sqlc.arg(after_at)
+  AND (occurred_at < sqlc.arg(after_at) OR id < sqlc.arg(after_id))
+  AND occurred_at < sqlc.arg(to_at)
+  AND last_at >= sqlc.arg(from_at)
+  AND (actor_id = sqlc.narg(user_id) OR subject_id = sqlc.narg(user_id) OR sqlc.narg(user_id) IS NULL)
+  AND (actor_id = sqlc.narg(actor_id) OR sqlc.narg(actor_id) IS NULL)
+  AND (subject_id = sqlc.narg(subject_id) OR sqlc.narg(subject_id) IS NULL)
+  AND (type = sqlc.narg(type) OR sqlc.narg(type) IS NULL)
+ORDER BY occurred_at DESC, id DESC
+LIMIT sqlc.arg(max_events);
+
 -- name: PurgeAuditEvents :execrows
 -- The oldest events whose last occurrence is before a cutoff, at most a batch size. An event never
 -- occurred after its last occurrence, so that the condition on occurred_at, which is indexed, finds

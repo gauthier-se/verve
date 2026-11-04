@@ -4,6 +4,64 @@ export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };
 
+export type AuditEvent = {
+    /**
+     * The user who acted, left out for the system.
+     */
+    actor?: AuditUser;
+    /**
+     * The IP address of the client, left out outside requests.
+     */
+    clientIp?: string;
+    /**
+     * The number of occurrences of the event, more than 1 for a burst aggregated into one event.
+     */
+    count: number;
+    /**
+     * The id of the event.
+     */
+    id: number;
+    /**
+     * When the last occurrence of the event happened, occurredAt unless the event is aggregated.
+     */
+    lastAt: string;
+    /**
+     * When the event occurred, the first of its occurrences for an aggregated event.
+     */
+    occurredAt: string;
+    /**
+     * The details of the event, an object whose fields depend on its type.
+     */
+    payload: unknown;
+    /**
+     * The user the event is about, left out when there is none.
+     */
+    subject?: AuditUser;
+    /**
+     * The type of the event.
+     */
+    type: string;
+    /**
+     * The user agent of the client, left out outside requests.
+     */
+    userAgent?: string;
+};
+
+export type AuditUser = {
+    /**
+     * Whether the user was deleted since the event.
+     */
+    deleted: boolean;
+    /**
+     * The id of the user.
+     */
+    id: number;
+    /**
+     * The username, left out when the user was deleted.
+     */
+    username?: string;
+};
+
 export type CurrentUser = {
     /**
      * The email address, left out when the user has none.
@@ -57,6 +115,17 @@ export type Meta = {
     version: string;
 };
 
+export type PageAuditEvent = {
+    /**
+     * The items of the page, newest first.
+     */
+    items: Array<AuditEvent>;
+    /**
+     * The cursor of the next page, left out on the last page.
+     */
+    nextCursor?: string;
+};
+
 export type Problem = {
     /**
      * A stable machine-readable error code.
@@ -87,6 +156,114 @@ export type Problem = {
      */
     type: string;
 };
+
+export type ListAccountAuditEventsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * The nextCursor of the previous page, left out for the first page.
+         */
+        cursor?: string;
+        /**
+         * The maximum number of items of the page, at most 200: a larger limit counts as 200.
+         */
+        limit?: number;
+    };
+    url: '/api/v1/account/audit';
+};
+
+export type ListAccountAuditEventsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Unprocessable Entity
+     */
+    422: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type ListAccountAuditEventsError = ListAccountAuditEventsErrors[keyof ListAccountAuditEventsErrors];
+
+export type ListAccountAuditEventsResponses = {
+    /**
+     * OK
+     */
+    200: PageAuditEvent;
+};
+
+export type ListAccountAuditEventsResponse = ListAccountAuditEventsResponses[keyof ListAccountAuditEventsResponses];
+
+export type ListAdminAuditEventsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * The nextCursor of the previous page, left out for the first page.
+         */
+        cursor?: string;
+        /**
+         * The maximum number of items of the page, at most 200: a larger limit counts as 200.
+         */
+        limit?: number;
+        /**
+         * Keeps the events of this type.
+         */
+        type?: string;
+        /**
+         * Keeps the events of the user of this id as actor.
+         */
+        actor?: number;
+        /**
+         * Keeps the events about the user of this id.
+         */
+        subject?: number;
+        /**
+         * Keeps the events that occurred at or after this time. An aggregated event is kept while its last occurrence is.
+         */
+        from?: string;
+        /**
+         * Keeps the events that occurred before this time, which must be after from. An aggregated event is kept when its first occurrence is.
+         */
+        to?: string;
+    };
+    url: '/api/v1/admin/audit';
+};
+
+export type ListAdminAuditEventsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Forbidden
+     */
+    403: Problem;
+    /**
+     * Unprocessable Entity
+     */
+    422: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type ListAdminAuditEventsError = ListAdminAuditEventsErrors[keyof ListAdminAuditEventsErrors];
+
+export type ListAdminAuditEventsResponses = {
+    /**
+     * OK
+     */
+    200: PageAuditEvent;
+};
+
+export type ListAdminAuditEventsResponse = ListAdminAuditEventsResponses[keyof ListAdminAuditEventsResponses];
 
 export type GetCurrentUserData = {
     body?: never;
