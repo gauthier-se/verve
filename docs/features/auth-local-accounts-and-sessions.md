@@ -65,7 +65,7 @@ Username and password login with argon2id hashing and server-side sessions store
 - The password policy answers with the codes `password_too_short`, `password_too_long` and `password_too_common`. Length counts characters, not bytes.
 - Endpoints: `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, `GET /api/v1/auth/me`, `GET /api/v1/account/sessions`, `DELETE /api/v1/account/sessions/{id}`, `POST /api/v1/account/password`.
 - `GET /api/v1/auth/me` answers the id, username, email (left out when the user has none) and role of the user of the session.
-- An operation that needs a session answers 401 `unauthorized` to a request with a missing, unknown, expired or revoked session, and an operation reserved for admins answers 403 `forbidden` to a member. A session lookup that fails for another reason, such as a database error, answers 500 `internal`. The OpenAPI document declares the cookie as the `sessionCookie` security scheme.
+- An operation that needs a session answers 401 `unauthorized` to a request with a missing, unknown, expired or revoked session, and an operation reserved for admins answers 403 `forbidden` to a member. When the session lookup fails for another reason, such as a database error, an operation that needs a session answers 500 `internal`, and the operations without authentication, such as `GET /api/v1/meta`, answer as usual. The OpenAPI document declares the cookie as the `sessionCookie` security scheme.
 
 ## Edge cases
 

@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -69,7 +70,10 @@ func newSessionCookie(publicURL config.PublicURL, id string, expiresAt time.Time
 	}
 }
 
-type principalKey struct{}
+type (
+	principalKey   struct{}
+	lookupErrorKey struct{}
+)
 
 // PrincipalFrom returns the principal stored by AuthenticationMiddleware, and false when the
 // request is not authenticated.
@@ -83,8 +87,11 @@ func PrincipalFrom(ctx context.Context) (auth.Principal, bool) {
 // instance at publicURL, looked up with sessions in repos, and stores their principal in their
 // context. A request without a valid session goes on without a principal: the operations that need
 // one answer 401. A request with Authorization: Bearer is never authenticated by its cookie, since
-// the CSRF checks do not apply to it. A lookup that fails with another error than an invalid
-// session answers 500.
+// the CSRF checks do not apply to it.
+//
+// A lookup that fails with another error than an invalid session is logged, and the request goes
+// on without a principal: the operations that need one answer 500, and the others, such as GET
+// /api/v1/meta, answer as usual.
 //
 // It must run behind the gate, since the lookup needs a migrated database, and behind
 // CSRFMiddleware.
@@ -106,18 +113,20 @@ func AuthenticationMiddleware(repos store.Repositories, sessions auth.Sessions, 
 				return
 			}
 
-			session, user, err := sessions.Lookup(r.Context(), repos, cookie.Value)
+			ctx := r.Context()
+			session, user, err := sessions.Lookup(ctx, repos, cookie.Value)
 
 			switch {
 			case errors.Is(err, store.ErrNotFound):
-				next.ServeHTTP(w, r)
 			case err != nil:
-				logging.FromContext(r.Context()).ErrorContext(r.Context(), "look up session", slog.Any("error", err))
-				WriteProblem(w, Problem{Status: http.StatusInternalServerError, Code: "internal"})
+				logging.FromContext(ctx).ErrorContext(ctx, "look up session", slog.Any("error", err))
+				ctx = context.WithValue(ctx, lookupErrorKey{}, fmt.Errorf("look up session: %w", err))
 			default:
 				principal := auth.Principal{UserID: session.UserID, Role: user.Role, Method: auth.MethodSession}
-				next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), principalKey{}, principal)))
+				ctx = context.WithValue(ctx, principalKey{}, principal)
 			}
+
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }
@@ -129,9 +138,13 @@ func hasBearer(r *http.Request) bool {
 	return found && strings.EqualFold(scheme, "Bearer")
 }
 
-// requireUser returns the principal of the request of ctx, or a 401 problem when it is not
-// authenticated.
+// requireUser returns the principal of the request of ctx, a 401 problem when it is not
+// authenticated, or the error of its session lookup, which Huma answers with 500.
 func requireUser(ctx context.Context) (auth.Principal, error) {
+	if err, ok := ctx.Value(lookupErrorKey{}).(error); ok {
+		return auth.Principal{}, err
+	}
+
 	principal, ok := PrincipalFrom(ctx)
 	if !ok {
 		return auth.Principal{}, huma.NewError(http.StatusUnauthorized, "")

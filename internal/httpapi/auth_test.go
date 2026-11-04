@@ -411,27 +411,47 @@ func (failingSessions) Get(context.Context, []byte) (store.Session, store.User, 
 	return store.Session{}, store.User{}, errors.New("disk I/O error")
 }
 
-// Given a session lookup that fails with a database error, then 500 internal, not 401: the session
-// may well be valid. Given a session cookie outside /api/, then no lookup runs: the web app and the
-// health probes answer as usual.
-func TestAuth_LookupErrorReturnsInternal(t *testing.T) {
-	t.Parallel()
+// failingStoreHandler returns the handler of a server on failingStore, with the web app.
+func failingStoreHandler(t *testing.T) http.Handler {
+	t.Helper()
 
-	h := NewHandler(Deps{
+	return NewHandler(Deps{
 		Logger: slog.New(slog.DiscardHandler),
 		Clock:  clock.NewFake(authTestNow),
 		Store:  failingStore{},
 		SPA:    newTestSPA(t, testDist()),
 	})
+}
+
+// Given a session lookup that fails with a database error, then a protected operation answers 500
+// internal, not 401: the session may well be valid. The operations without authentication, such as
+// GET /api/v1/meta and the OpenAPI document, answer as usual.
+func TestAuth_LookupErrorFailsOnlyProtectedOperations(t *testing.T) {
+	t.Parallel()
+
+	h := failingStoreHandler(t)
 	cookie := "verve_session=c2Vzc2lvbg"
 
 	rec := getWith(t, h, "/api/v1/auth/me", cookie)
 	require.Equal(t, http.StatusInternalServerError, rec.Code)
-	require.JSONEq(t, `{"type":"about:blank","title":"Internal Server Error","status":500,"code":"internal"}`,
-		rec.Body.String())
+	require.JSONEq(t, `{"type":"about:blank","title":"Internal Server Error","status":500,`+
+		`"detail":"unexpected error occurred","code":"internal"}`, rec.Body.String())
+
+	for _, target := range []string{"/api/v1/meta", "/api/openapi.json"} {
+		rec := getWith(t, h, target, cookie)
+		require.Equal(t, http.StatusOK, rec.Code, target)
+	}
+}
+
+// Given a session cookie outside /api/, then no session lookup runs: the web app and the health
+// probes answer as usual, even when the lookup would fail.
+func TestAuth_NoLookupOutsideTheAPI(t *testing.T) {
+	t.Parallel()
+
+	h := failingStoreHandler(t)
 
 	for _, target := range []string{"/healthz", "/readyz", "/", "/workouts/123"} {
-		rec := getWith(t, h, target, cookie)
+		rec := getWith(t, h, target, "verve_session=c2Vzc2lvbg")
 		require.Equal(t, http.StatusOK, rec.Code, target)
 	}
 }
