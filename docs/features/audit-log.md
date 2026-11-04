@@ -58,7 +58,11 @@ An append-only record of security-relevant and data management events: logins, t
 - `audit.Record` runs on `tx.AuditEvents()` inside the `WithTx` of the action, so that an event commits or rolls back with it.
 - The client IP and the user agent, truncated to 256 characters, come from the request context. They are empty for jobs and CLI commands.
 - A constructor can make its event aggregatable by giving it an aggregation key: the client IP for failed logins, so that trying many usernames does not escape aggregation. `Append` counts and writes in one writer transaction.
-- Endpoints: `GET /api/v1/account/audit`, `GET /api/v1/admin/audit`.
+- Endpoints, paginated as described in [Architecture](../architecture.md#pagination), newest first by first occurrence, then by id:
+  - `GET /api/v1/account/audit`: the events whose actor or subject is the user of the session (FR-4). An admin also gets only their own events here.
+  - `GET /api/v1/admin/audit`: every event, for admins only (403 `forbidden` for a member), with the filters `type`, `actor` and `subject` (user ids), `from` and `to` (RFC 3339 times), which combine (FR-5). An aggregated event is in the time range while one of its occurrences is: its first one before `to`, and its last one at or after `from`. A `to` that is not after `from` answers 422 `validation_failed`.
+- An event has `id`, `occurredAt`, `type`, `actor` (left out for the system), `subject` (left out when there is none), `clientIp` and `userAgent` (left out outside requests), `payload`, `count` and `lastAt`. `count` is above 1 for an aggregated event, whose `lastAt` is the time of its last occurrence. Otherwise `lastAt` is `occurredAt`.
+- `actor` and `subject` have the `id` and the `username` of the user, and `deleted`: the event of a user who no longer exists stays listed with `deleted: true` and without a username.
 
 ## Edge cases
 
