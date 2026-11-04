@@ -64,6 +64,37 @@ func TestOpen_CreatesDatabaseFileOwnerOnly(t *testing.T) {
 	require.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 }
 
+// Given a path whose directory name holds a character with a meaning in a URI (# starts a
+// fragment, ? a query, % an escape), then Open stores the database in the file at that path, and
+// creates no other file.
+func TestOpen_PathWithURICharactersUsesThatFile(t *testing.T) {
+	t.Parallel()
+
+	for _, name := range []string{"data#1", "data?1", "data%41"} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			parent := t.TempDir()
+			require.NoError(t, os.Mkdir(filepath.Join(parent, name), 0o750))
+			path := filepath.Join(parent, name, "verve.db")
+
+			db, err := Open(t.Context(), path)
+			require.NoError(t, err)
+
+			createCounter(t, db)
+			require.NoError(t, db.Close(t.Context()))
+
+			info, err := os.Stat(path)
+			require.NoError(t, err)
+			require.Positive(t, info.Size(), "the database must be written to %s", path)
+
+			entries, err := os.ReadDir(parent)
+			require.NoError(t, err)
+			require.Len(t, entries, 1, "Open must create no file next to %s", name)
+		})
+	}
+}
+
 // Given an opened database, then every connection of both pools reports journal_mode=wal,
 // foreign_keys=1, busy_timeout=5000 and synchronous=1 (NORMAL).
 func TestOpen_EveryConnectionOfBothPoolsHasThePragmas(t *testing.T) {
