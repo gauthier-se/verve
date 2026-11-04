@@ -165,7 +165,10 @@ func TestServer_GracefulShutdownWaitsForInFlight(t *testing.T) {
 	srv.cancel()
 
 	require.Eventually(t, func() bool {
-		var d net.Dialer
+		// A SYN that reaches the listener while it closes can be dropped without a reset, and the
+		// dial would then wait for the retransmission, past the wait below. On loopback, a dial
+		// that the listener accepts completes at once, so a timed out dial was not accepted either.
+		d := net.Dialer{Timeout: 100 * time.Millisecond}
 
 		conn, err := d.DialContext(t.Context(), "tcp", srv.addr)
 		if err != nil {
