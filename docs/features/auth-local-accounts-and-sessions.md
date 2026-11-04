@@ -34,15 +34,24 @@ Username and password login with argon2id hashing and server-side sessions store
 - **FR-3**: Login accepts username or email.
 - **FR-4**: Failed logins are rate limited per client IP and per account with increasing delays. There is no permanent lockout. Responses do not reveal whether the account exists.
 - **FR-5**: On success, the server creates a session: a random 256-bit identifier, stored hashed, with user id, login method, creation time, last seen time, expiry, client IP and user agent.
+
+  The identifier is 32 random bytes in unpadded base64url, returned once to the client: the database holds only the SHA-256 hash of that text. Each session also has a random public id of its own, which names it on the sessions page, so that nothing derived from the identifier reaches a URL. A lookup rejects an unknown, expired or revoked session, and a session whose user is not `active`, with the same error: callers cannot tell them apart.
 - **FR-6**: The session cookie is `HttpOnly`, `SameSite=Lax`, `Path=/`, `Secure` and named with the `__Host-` prefix when `VERVE_PUBLIC_URL` uses HTTPS.
 - **FR-7**: Session lifetime: 30 days sliding expiration, renewed on activity, with an absolute maximum of 180 days. Both values are configurable by the admin.
-- **FR-8**: `last_seen_at` is updated at most once per minute per session.
+
+  | Instance setting | Default | Purpose |
+  |---|---|---|
+  | `session.idle_days` | `30` | Days a session stays valid without activity |
+  | `session.max_days` | `180` | Days a session stays valid at most after its creation |
+
+  Each is a whole number from 1 to 36500 (100 years). A missing or invalid value is replaced by its default, so that a wrong value cannot lock every user out. The expiry of a session is set at login and at each renewal to the earlier of the current time plus `session.idle_days` and the creation time plus `session.max_days`, with the settings of that moment. A session is valid up to its expiry included: a session idle for exactly 30 days is still valid. A change of the settings applies to new sessions, and to an existing session at its next renewal. A renewal whose expiry has already passed, after `session.max_days` was lowered, ends the session.
+- **FR-8**: `last_seen_at` is updated at most once per minute per session, together with the expiry. A lookup reads on the reader pool: only this renewal writes.
 - **FR-9**: The session identifier is regenerated at login and when the user's privileges change.
 - **FR-10**: Logout deletes the session server-side and clears the cookie.
 - **FR-11**: Changing the password requires the current password and revokes all other sessions.
 - **FR-12**: The active sessions page lists sessions (device and browser from the user agent, approximate location is not computed, IP, login method, last seen) and allows revoking any of them or all others.
 - **FR-13**: State-changing requests (`POST`, `PUT`, `PATCH`, `DELETE`) authenticated by cookie must carry the custom header `Verve-Csrf: 1` and an `Origin` matching `VERVE_PUBLIC_URL`. Requests authenticated by API token are exempt.
-- **FR-14**: Expired sessions are purged by a periodic job.
+- **FR-14**: Expired sessions are purged by a periodic job. The recurring job `cleanup.sessions` runs daily and removes the sessions whose stored expiry has passed. A session ended by a lowered `session.max_days` keeps its stored expiry, so it stays in the table until then, but is never valid again.
 - **FR-15** (M5): Admins can disable local password login once OIDC or proxy header authentication is configured. The CLI `verve user reset-password` stays available as a break-glass path.
 
 ## UX notes

@@ -97,7 +97,7 @@ func constraintError(err error) error {
 	}
 
 	switch sqliteErr.Code() {
-	case sqlite3.SQLITE_CONSTRAINT_UNIQUE:
+	case sqlite3.SQLITE_CONSTRAINT_UNIQUE, sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY:
 		return store.ErrConflict
 	case sqlite3.SQLITE_CONSTRAINT_CHECK:
 		return store.ErrInvalid

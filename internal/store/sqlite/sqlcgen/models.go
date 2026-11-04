@@ -51,6 +51,18 @@ type JobSchedule struct {
 	NextRun int64
 }
 
+type Session struct {
+	IDHash     []byte
+	PublicID   string
+	UserID     int64
+	Method     string
+	CreatedAt  int64
+	LastSeenAt int64
+	ExpiresAt  int64
+	ClientIp   sql.NullString
+	UserAgent  sql.NullString
+}
+
 type User struct {
 	ID           int64
 	Username     string
