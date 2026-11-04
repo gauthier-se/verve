@@ -43,6 +43,20 @@ func newAuditTest(t *testing.T) auditTest {
 	return a
 }
 
+// auditEndpoint is an audit operation and the session cookie of a user who may call it.
+type auditEndpoint struct {
+	path, cookie string
+}
+
+// endpoints returns both audit operations: the account one with the cookie of alice, the admin one
+// with the cookie of root.
+func (a auditTest) endpoints() []auditEndpoint {
+	return []auditEndpoint{
+		{path: accountAuditPath, cookie: a.aliceCookie},
+		{path: adminAuditPath, cookie: a.rootCookie},
+	}
+}
+
 // mustAppend appends event to the audit log a minute after the previous one, and returns it.
 func (a auditTest) mustAppend(t *testing.T, event store.NewAuditEvent) store.AuditEvent {
 	t.Helper()
@@ -288,8 +302,12 @@ func TestAudit_AdminListsEveryEventWithFilters(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		page := a.getAuditPage(t, adminAuditPath+"?"+tt.query.Encode(), a.rootCookie)
-		require.Equal(t, idsOf(tt.want...), page.ids(), tt.name)
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			page := a.getAuditPage(t, adminAuditPath+"?"+tt.query.Encode(), a.rootCookie)
+			require.Equal(t, idsOf(tt.want...), page.ids())
+		})
 	}
 }
 
@@ -315,6 +333,30 @@ func TestAudit_AdminRejectsATimeRangeEndingBeforeItStarts(t *testing.T) {
 			"errors": [{"message": "expected a time after from", "location": "query.to", "value": %q}]
 		}`, to), rec.Body.String(), to)
 	}
+}
+
+// Given a malformed cursor and a time range ending before it starts, then the 422 lists both
+// invalid fields.
+func TestAudit_AdminReportsEveryInvalidField(t *testing.T) {
+	t.Parallel()
+
+	a := newAuditTest(t)
+	query := url.Values{"cursor": {"nope"}, "from": {"2026-11-04T08:00:00Z"}, "to": {"2026-11-04T07:00:00Z"}}
+
+	rec := getWith(t, a.handler, adminAuditPath+"?"+query.Encode(), a.rootCookie)
+
+	require.Equal(t, http.StatusUnprocessableEntity, rec.Code)
+	require.JSONEq(t, `{
+		"type": "about:blank",
+		"title": "Unprocessable Entity",
+		"status": 422,
+		"detail": "validation failed",
+		"code": "validation_failed",
+		"errors": [
+			{"message": "invalid cursor", "location": "query.cursor", "value": "nope"},
+			{"message": "expected a time after from", "location": "query.to", "value": "2026-11-04T07:00:00Z"}
+		]
+	}`, rec.Body.String())
 }
 
 // Given a member on the admin endpoint, then 403 forbidden. Given no session, then both endpoints
@@ -349,21 +391,22 @@ func TestAudit_PagesHave50EventsByDefaultAndAtMost200(t *testing.T) {
 		Payload:   json.RawMessage(`{}`),
 	})
 
-	for _, tt := range []struct{ path, cookie string }{
-		{path: accountAuditPath, cookie: a.aliceCookie},
-		{path: adminAuditPath, cookie: a.rootCookie},
-	} {
-		page := a.getAuditPage(t, tt.path, tt.cookie)
-		require.Len(t, page.Items, 50, tt.path)
-		require.NotNil(t, page.NextCursor, tt.path)
+	for _, e := range a.endpoints() {
+		t.Run(e.path, func(t *testing.T) {
+			t.Parallel()
 
-		page = a.getAuditPage(t, tt.path+"?limit=500", tt.cookie)
-		require.Len(t, page.Items, 200, tt.path)
-		require.NotNil(t, page.NextCursor, tt.path)
+			page := a.getAuditPage(t, e.path, e.cookie)
+			require.Len(t, page.Items, 50)
+			require.NotNil(t, page.NextCursor)
 
-		page = a.getAuditPage(t, tt.path+"?limit=500&cursor="+url.QueryEscape(*page.NextCursor), tt.cookie)
-		require.Len(t, page.Items, 1, tt.path)
-		require.Nil(t, page.NextCursor, tt.path)
+			page = a.getAuditPage(t, e.path+"?limit=500", e.cookie)
+			require.Len(t, page.Items, 200)
+			require.NotNil(t, page.NextCursor)
+
+			page = a.getAuditPage(t, e.path+"?limit=500&cursor="+url.QueryEscape(*page.NextCursor), e.cookie)
+			require.Len(t, page.Items, 1)
+			require.Nil(t, page.NextCursor)
+		})
 	}
 }
 
@@ -409,21 +452,22 @@ func TestAudit_MalformedCursorReturnsValidationFailed(t *testing.T) {
 
 	a := newAuditTest(t)
 
-	for _, tt := range []struct{ path, cookie string }{
-		{path: accountAuditPath, cookie: a.aliceCookie},
-		{path: adminAuditPath, cookie: a.rootCookie},
-	} {
-		rec := getWith(t, a.handler, tt.path+"?cursor=nope", tt.cookie)
+	for _, e := range a.endpoints() {
+		t.Run(e.path, func(t *testing.T) {
+			t.Parallel()
 
-		require.Equal(t, http.StatusUnprocessableEntity, rec.Code, tt.path)
-		require.JSONEq(t, `{
-			"type": "about:blank",
-			"title": "Unprocessable Entity",
-			"status": 422,
-			"detail": "validation failed",
-			"code": "validation_failed",
-			"errors": [{"message": "invalid cursor", "location": "query.cursor", "value": "nope"}]
-		}`, rec.Body.String(), tt.path)
+			rec := getWith(t, a.handler, e.path+"?cursor=nope", e.cookie)
+
+			require.Equal(t, http.StatusUnprocessableEntity, rec.Code)
+			require.JSONEq(t, `{
+				"type": "about:blank",
+				"title": "Unprocessable Entity",
+				"status": 422,
+				"detail": "validation failed",
+				"code": "validation_failed",
+				"errors": [{"message": "invalid cursor", "location": "query.cursor", "value": "nope"}]
+			}`, rec.Body.String())
+		})
 	}
 }
 
@@ -505,16 +549,17 @@ func TestAudit_AggregatedEventHasCountAndLastAt(t *testing.T) {
 
 	require.Equal(t, int64(3), latest.Count)
 
-	for _, tt := range []struct{ path, cookie string }{
-		{path: accountAuditPath, cookie: a.aliceCookie},
-		{path: adminAuditPath, cookie: a.rootCookie},
-	} {
-		page := a.getAuditPage(t, tt.path+"?limit=1", tt.cookie)
+	for _, e := range a.endpoints() {
+		t.Run(e.path, func(t *testing.T) {
+			t.Parallel()
 
-		require.Len(t, page.Items, 1, tt.path)
-		require.Equal(t, latest.ID, page.Items[0].ID, tt.path)
-		require.Equal(t, int64(3), page.Items[0].Count, tt.path)
-		require.Equal(t, time.Date(2026, 11, 4, 8, 3, 20, 0, time.UTC), page.Items[0].OccurredAt, tt.path)
-		require.Equal(t, time.Date(2026, 11, 4, 8, 3, 40, 0, time.UTC), page.Items[0].LastAt, tt.path)
+			page := a.getAuditPage(t, e.path+"?limit=1", e.cookie)
+
+			require.Len(t, page.Items, 1)
+			require.Equal(t, latest.ID, page.Items[0].ID)
+			require.Equal(t, int64(3), page.Items[0].Count)
+			require.Equal(t, time.Date(2026, 11, 4, 8, 3, 20, 0, time.UTC), page.Items[0].OccurredAt)
+			require.Equal(t, time.Date(2026, 11, 4, 8, 3, 40, 0, time.UTC), page.Items[0].LastAt)
+		})
 	}
 }

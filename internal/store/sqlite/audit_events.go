@@ -88,7 +88,7 @@ func (r auditEvents) Get(ctx context.Context, id int64) (store.AuditEvent, error
 	return auditEventOf(row), nil
 }
 
-func (r auditEvents) List(ctx context.Context, filter store.AuditEventsFilter, page store.Page) ([]store.AuditEvent, error) {
+func (r auditEvents) List(ctx context.Context, filter store.AuditEventsFilter, page store.PageRequest) ([]store.AuditEvent, error) {
 	if page.Limit < 1 {
 		return nil, fmt.Errorf("list audit events: limit %d below 1: %w", page.Limit, store.ErrInvalid)
 	}

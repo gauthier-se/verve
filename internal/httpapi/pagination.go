@@ -3,7 +3,6 @@ package httpapi
 import (
 	"encoding/base64"
 	"errors"
-	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -23,6 +22,26 @@ const maxLimit = 200
 type PageParams struct {
 	Cursor string `query:"cursor" doc:"The nextCursor of the previous page, left out for the first page."`
 	Limit  int    `query:"limit" default:"50" minimum:"1" doc:"The maximum number of items of the page, at most 200: a larger limit counts as 200."`
+
+	// after is the position that Cursor encodes, set by Resolve.
+	after store.Cursor
+}
+
+// Resolve decodes the cursor, so that Huma reports a malformed one with the other invalid fields.
+// An input that embeds PageParams and has its own Resolve must call this one.
+func (p *PageParams) Resolve(huma.Context) []error {
+	if p.Cursor == "" {
+		return nil
+	}
+
+	after, err := decodeCursor(p.Cursor)
+	if err != nil {
+		return []error{&huma.ErrorDetail{Message: "invalid cursor", Location: "query.cursor", Value: p.Cursor}}
+	}
+
+	p.after = after
+
+	return nil
 }
 
 // Page is a page of a list, the body of the response of a list operation.
@@ -32,42 +51,25 @@ type Page[T any] struct {
 	NextCursor string `json:"nextCursor,omitempty" doc:"The cursor of the next page, left out on the last page."`
 }
 
-// limit returns the number of items of the page that p asks for.
-func (p PageParams) limit() int {
-	return min(p.Limit, maxLimit)
-}
+// listPage returns the rows of the page that p asks for, and the cursor of the next page, or ""
+// when there is none. list returns the rows of the store for a page request, and cursorOf the
+// position of a row.
+func listPage[T any](p PageParams, list func(store.PageRequest) ([]T, error), cursorOf func(T) store.Cursor) ([]T, string, error) {
+	limit := min(p.Limit, maxLimit)
 
-// storePage returns the page of the store that p asks for, or a 422 problem when its cursor is
-// malformed. The page has one item more than the limit, which tells cutPage whether a next page
-// exists.
-func (p PageParams) storePage() (store.Page, error) {
-	page := store.Page{Limit: p.limit() + 1}
-
-	if p.Cursor != "" {
-		after, err := decodeCursor(p.Cursor)
-		if err != nil {
-			return store.Page{}, huma.NewError(http.StatusUnprocessableEntity, "validation failed",
-				&huma.ErrorDetail{Message: "invalid cursor", Location: "query.cursor", Value: p.Cursor})
-		}
-
-		page.After = after
+	// One row more than the limit tells whether a next page exists.
+	rows, err := list(store.PageRequest{After: p.after, Limit: limit + 1})
+	if err != nil {
+		return nil, "", err
 	}
 
-	return page, nil
-}
-
-// cutPage returns the rows of the page that p asks for, out of the rows that the store returned for
-// p.storePage(), and the cursor of the next page, or "" when there is none. cursorOf returns the
-// position of a row.
-func cutPage[T any](p PageParams, rows []T, cursorOf func(T) store.Cursor) ([]T, string) {
-	limit := p.limit()
 	if len(rows) <= limit {
-		return rows, ""
+		return rows, "", nil
 	}
 
 	rows = rows[:limit]
 
-	return rows, encodeCursor(cursorOf(rows[limit-1]))
+	return rows, encodeCursor(cursorOf(rows[limit-1])), nil
 }
 
 // cursorSeparator separates the time and the id of a cursor.

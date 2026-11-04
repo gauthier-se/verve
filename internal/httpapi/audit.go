@@ -51,6 +51,18 @@ type adminAuditInput struct {
 	To      time.Time `query:"to" doc:"Keeps the events that occurred before this time, which must be after from. An aggregated event is kept when its first occurrence is."`
 }
 
+// Resolve checks the cursor and the time range, so that Huma reports them with the other invalid
+// fields.
+func (in *adminAuditInput) Resolve(ctx huma.Context) []error {
+	errs := in.PageParams.Resolve(ctx)
+
+	if !in.From.IsZero() && !in.To.IsZero() && !in.To.After(in.From) {
+		errs = append(errs, &huma.ErrorDetail{Message: "expected a time after from", Location: "query.to", Value: in.To})
+	}
+
+	return errs
+}
+
 // registerAudit registers GET /api/v1/account/audit, the events of the user of the session, and GET
 // /api/v1/admin/audit, every event for an admin, both read in repos.
 func registerAudit(api huma.API, repos store.Repositories) {
@@ -86,37 +98,25 @@ func registerAudit(api huma.API, repos store.Repositories) {
 			return nil, err
 		}
 
-		if !in.From.IsZero() && !in.To.IsZero() && !in.To.After(in.From) {
-			return nil, huma.NewError(http.StatusUnprocessableEntity, "validation failed",
-				&huma.ErrorDetail{Message: "expected a time after from", Location: "query.to", Value: in.To})
-		}
-
 		return listAuditEvents(ctx, repos, store.AuditEventsFilter{
 			ActorID:   in.Actor,
 			SubjectID: in.Subject,
 			Type:      in.Type,
-			From:      in.From,
-			To:        in.To,
+			From:      in.From.UTC(),
+			To:        in.To.UTC(),
 		}, in.PageParams)
 	})
 }
 
-// listAuditEvents returns the page of the events that filter selects that params asks for, read in
+// listAuditEvents returns the page that params asks for of the events that filter selects, read in
 // repos.
 func listAuditEvents(ctx context.Context, repos store.Repositories, filter store.AuditEventsFilter, params PageParams) (*auditEventsOutput, error) {
-	page, err := params.storePage()
-	if err != nil {
-		return nil, err
-	}
-
-	events, err := repos.AuditEvents().List(ctx, filter, page)
+	events, next, err := listPage(params, func(page store.PageRequest) ([]store.AuditEvent, error) {
+		return repos.AuditEvents().List(ctx, filter, page)
+	}, store.AuditEvent.Cursor)
 	if err != nil {
 		return nil, fmt.Errorf("list audit events: %w", err)
 	}
-
-	events, next := cutPage(params, events, func(event store.AuditEvent) store.Cursor {
-		return store.Cursor{At: event.OccurredAt, ID: event.ID}
-	})
 
 	users, err := auditUsers(ctx, repos.Users(), events)
 	if err != nil {

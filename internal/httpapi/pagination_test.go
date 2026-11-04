@@ -91,23 +91,23 @@ func testListAPI(t *testing.T, count int64) humatest.TestAPI {
 		Method:      http.MethodGet,
 		Path:        "/api/v1/test/items",
 	}, func(_ context.Context, in *PageParams) (*testListOutput, error) {
-		page, err := in.storePage()
+		// A fake of the store: the items after the cursor, at most the limit.
+		list := func(page store.PageRequest) ([]store.Cursor, error) {
+			var rows []store.Cursor
+
+			for id := count; id >= 1 && len(rows) < page.Limit; id-- {
+				if page.After == (store.Cursor{}) || id < page.After.ID {
+					rows = append(rows, store.Cursor{At: testListAt, ID: id})
+				}
+			}
+
+			return rows, nil
+		}
+
+		rows, next, err := listPage(*in, list, func(c store.Cursor) store.Cursor { return c })
 		if err != nil {
 			return nil, err
 		}
-
-		// A fake of the store: the items after the cursor, at most the limit.
-		var rows []store.Cursor
-
-		for id := count; id >= 1 && len(rows) < page.Limit; id-- {
-			if page.After != (store.Cursor{}) && id >= page.After.ID {
-				continue
-			}
-
-			rows = append(rows, store.Cursor{At: testListAt, ID: id})
-		}
-
-		rows, next := cutPage(*in, rows, func(c store.Cursor) store.Cursor { return c })
 
 		items := make([]testListItem, 0, len(rows))
 		for _, row := range rows {
@@ -144,8 +144,6 @@ func getTestPage(t *testing.T, api humatest.TestAPI, target string) testPage {
 func TestPagination_LimitDefaultsTo50AndIsCappedAt200(t *testing.T) {
 	t.Parallel()
 
-	api := testListAPI(t, 300)
-
 	for _, tt := range []struct {
 		query string
 		want  int
@@ -157,11 +155,15 @@ func TestPagination_LimitDefaultsTo50AndIsCappedAt200(t *testing.T) {
 		{query: "?limit=201", want: 200},
 		{query: "?limit=5000", want: 200},
 	} {
-		page := getTestPage(t, api, "/api/v1/test/items"+tt.query)
+		t.Run(tt.query, func(t *testing.T) {
+			t.Parallel()
 
-		require.Len(t, page.Items, tt.want, tt.query)
-		require.Equal(t, int64(300), page.Items[0].ID, tt.query)
-		require.NotNil(t, page.NextCursor, tt.query)
+			page := getTestPage(t, testListAPI(t, 300), "/api/v1/test/items"+tt.query)
+
+			require.Len(t, page.Items, tt.want)
+			require.Equal(t, int64(300), page.Items[0].ID)
+			require.NotNil(t, page.NextCursor)
+		})
 	}
 }
 
@@ -241,5 +243,25 @@ func TestPagination_LimitBelowOneReturnsValidationFailed(t *testing.T) {
 		"detail": "validation failed",
 		"code": "validation_failed",
 		"errors": [{"message": "expected number >= 1", "location": "query.limit", "value": 0}]
+	}`, rec.Body.String())
+}
+
+// Given a malformed cursor and a limit below 1, then the 422 lists both invalid fields.
+func TestPagination_MalformedCursorIsReportedWithTheOtherInvalidFields(t *testing.T) {
+	t.Parallel()
+
+	rec := testListAPI(t, 3).Get("/api/v1/test/items?limit=0&cursor=nope")
+
+	require.Equal(t, http.StatusUnprocessableEntity, rec.Code)
+	require.JSONEq(t, `{
+		"type": "about:blank",
+		"title": "Unprocessable Entity",
+		"status": 422,
+		"detail": "validation failed",
+		"code": "validation_failed",
+		"errors": [
+			{"message": "expected number >= 1", "location": "query.limit", "value": 0},
+			{"message": "invalid cursor", "location": "query.cursor", "value": "nope"}
+		]
 	}`, rec.Body.String())
 }

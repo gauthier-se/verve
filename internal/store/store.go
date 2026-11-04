@@ -13,7 +13,7 @@ var (
 	ErrNotFound = errors.New("store: not found")
 	// ErrConflict is returned when a write conflicts with an existing record.
 	ErrConflict = errors.New("store: conflict")
-	// ErrInvalid is returned when a write holds a value that the store refuses.
+	// ErrInvalid is returned when a write or a request holds a value that the store refuses.
 	ErrInvalid = errors.New("store: invalid")
 )
 
@@ -55,8 +55,8 @@ type Cursor struct {
 	ID int64
 }
 
-// Page asks a list sorted newest first, by time then id, for the items after a position.
-type Page struct {
+// PageRequest asks a list sorted newest first, by time then id, for the items after a position.
+type PageRequest struct {
 	// After is the position of the last item of the previous page, or zero for the first page.
 	After Cursor
 	// Limit is the maximum number of items, at least 1.
