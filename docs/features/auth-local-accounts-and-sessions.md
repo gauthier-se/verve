@@ -36,7 +36,7 @@ Username and password login with argon2id hashing and server-side sessions store
 - **FR-5**: On success, the server creates a session: a random 256-bit identifier, stored hashed, with user id, login method, creation time, last seen time, expiry, client IP and user agent.
 
   The identifier is 32 random bytes in unpadded base64url, returned once to the client: the database holds only the SHA-256 hash of that text. Each session also has a random public id of its own, which names it on the sessions page, so that nothing derived from the identifier reaches a URL. A lookup rejects an unknown, expired or revoked session, and a session whose user is not `active`, with the same error: callers cannot tell them apart.
-- **FR-6**: The session cookie is `HttpOnly`, `SameSite=Lax`, `Path=/`, `Secure` and named with the `__Host-` prefix when `VERVE_PUBLIC_URL` uses HTTPS.
+- **FR-6**: The session cookie is `HttpOnly`, `SameSite=Lax` and `Path=/`. When `VERVE_PUBLIC_URL` uses HTTPS, it is `Secure` and named `__Host-verve_session`, and a cookie named `verve_session` is ignored, since another host of the domain may have set it. Otherwise, including without a public URL, it is `verve_session`, without `Secure`. Only requests under `/api/` are authenticated by the cookie: the web app and the health probes never look up a session.
 - **FR-7**: Session lifetime: 30 days sliding expiration, renewed on activity, with an absolute maximum of 180 days. Both values are configurable by the admin.
 
   | Instance setting | Default | Purpose |
@@ -50,7 +50,7 @@ Username and password login with argon2id hashing and server-side sessions store
 - **FR-10**: Logout deletes the session server-side and clears the cookie.
 - **FR-11**: Changing the password requires the current password and revokes all other sessions.
 - **FR-12**: The active sessions page lists sessions (device and browser from the user agent, approximate location is not computed, IP, login method, last seen) and allows revoking any of them or all others.
-- **FR-13**: State-changing requests (`POST`, `PUT`, `PATCH`, `DELETE`) authenticated by cookie must carry the custom header `Verve-Csrf: 1` and an `Origin` matching `VERVE_PUBLIC_URL`. Requests authenticated by API token are exempt.
+- **FR-13**: State-changing requests (`POST`, `PUT`, `PATCH`, `DELETE`) under `/api/` must carry the custom header `Verve-Csrf: 1` and an `Origin` matching `VERVE_PUBLIC_URL`, or they answer 403 `csrf_failed`. The checks also cover unauthenticated requests, such as a login. Without a public URL, `Origin` must match the scheme and host of the request, as resolved from the `X-Forwarded-*` headers of a trusted proxy. A request without `Origin` fails. Requests that carry an API token (`Authorization: Bearer`) are exempt, and are never authenticated by their session cookie. Other methods are not checked.
 - **FR-14**: Expired sessions are purged by a periodic job. The recurring job `cleanup.sessions` runs daily and removes the sessions whose stored expiry has passed. A session ended by lowered settings keeps its stored expiry, so it stays in the table until then, and lookups reject it while the lowered settings hold.
 - **FR-15** (M5): Admins can disable local password login once OIDC or proxy header authentication is configured. The CLI `verve user reset-password` stays available as a break-glass path.
 
@@ -64,12 +64,15 @@ Username and password login with argon2id hashing and server-side sessions store
 - `sessions` table with hashed id.
 - The password policy answers with the codes `password_too_short`, `password_too_long` and `password_too_common`. Length counts characters, not bytes.
 - Endpoints: `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, `GET /api/v1/auth/me`, `GET /api/v1/account/sessions`, `DELETE /api/v1/account/sessions/{id}`, `POST /api/v1/account/password`.
+- `GET /api/v1/auth/me` answers the id, username, email (left out when the user has none) and role of the user of the session.
+- An operation that needs a session answers 401 `unauthorized` to a request with a missing, unknown, expired or revoked session, and an operation reserved for admins answers 403 `forbidden` to a member. A session lookup that fails for another reason, such as a database error, answers 500 `internal`. The OpenAPI document declares the cookie as the `sessionCookie` security scheme.
 
 ## Edge cases
 
 - Clock skew between server restarts does not matter because expiry is computed server-side.
 - Behind a reverse proxy without `VERVE_TRUSTED_PROXIES`, all requests appear to come from the proxy IP, which degrades IP rate limiting: the admin status page warns about it.
 - Running over plain HTTP on a LAN: cookies are not `Secure`, and the admin status page shows a warning.
+- Behind a reverse proxy that rewrites the `Host` header, without `VERVE_PUBLIC_URL` and without `VERVE_TRUSTED_PROXIES`: the `Origin` of the browser no longer matches the request, so every state-changing request fails with `csrf_failed`. Setting `VERVE_PUBLIC_URL` fixes it.
 
 ## Acceptance criteria
 
