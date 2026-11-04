@@ -104,7 +104,7 @@ func TestAPI_UnknownPathsReturnProblem(t *testing.T) {
 		{method: http.MethodGet, target: "/api/v1/meta/unknown"},
 		{method: http.MethodPost, target: "/api/v1/unknown"},
 	} {
-		rec := serve(t, h, tt.method, tt.target)
+		rec := serveFromApp(t, h, tt.method, tt.target)
 
 		require.Equal(t, http.StatusNotFound, rec.Code, tt.target)
 		require.Equal(t, "application/problem+json", rec.Header().Get("Content-Type"), tt.target)

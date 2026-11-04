@@ -4,6 +4,25 @@ export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };
 
+export type CurrentUser = {
+    /**
+     * The email address, left out when the user has none.
+     */
+    email?: string;
+    /**
+     * The id of the user.
+     */
+    id: number;
+    /**
+     * The role of the user.
+     */
+    role: 'admin' | 'member';
+    /**
+     * The username, in the case it was created with.
+     */
+    username: string;
+};
+
 export type ErrorDetail = {
     /**
      * Where the error occurred, e.g. 'body.items[3].tags' or 'path.thing-id'
@@ -68,6 +87,35 @@ export type Problem = {
      */
     type: string;
 };
+
+export type GetCurrentUserData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/auth/me';
+};
+
+export type GetCurrentUserErrors = {
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type GetCurrentUserError = GetCurrentUserErrors[keyof GetCurrentUserErrors];
+
+export type GetCurrentUserResponses = {
+    /**
+     * OK
+     */
+    200: CurrentUser;
+};
+
+export type GetCurrentUserResponse = GetCurrentUserResponses[keyof GetCurrentUserResponses];
 
 export type GetMetaData = {
     body?: never;

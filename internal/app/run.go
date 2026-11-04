@@ -78,6 +78,7 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger, hook befor
 		Gate:           startup.gate,
 		SPA:            spa,
 		HSTS:           cfg.PublicURL.HTTPS(),
+		PublicURL:      cfg.PublicURL,
 	})
 	srv := NewServer(ServerConfig{Addr: cfg.ListenAddr}, handler, logger)
 

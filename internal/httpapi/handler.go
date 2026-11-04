@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/gauthier-se/verve/internal/auth"
 	"github.com/gauthier-se/verve/internal/clock"
 	"github.com/gauthier-se/verve/internal/config"
 	"github.com/gauthier-se/verve/internal/store"
@@ -21,7 +22,8 @@ type Deps struct {
 	Logger         *slog.Logger
 	Clock          clock.Clock
 	TrustedProxies config.Prefixes
-	Store          store.Store
+	// Store holds the sessions and the data of the API. Nil means no request is authenticated.
+	Store store.Store
 	// Version is the build metadata of the running binary, reported by /readyz and /api/v1/meta.
 	Version version.Info
 	// Checkers returns the readiness checks of /readyz, called on each request. Nil means none.
@@ -33,6 +35,9 @@ type Deps struct {
 	SPA http.Handler
 	// HSTS adds Strict-Transport-Security to every response, for a public URL in https.
 	HSTS bool
+	// PublicURL names the session cookie and is the origin that the CSRF checks expect. The zero
+	// value means unset.
+	PublicURL config.PublicURL
 }
 
 // NewHandler returns the root handler of the server: the health probes, the API, a JSON 404
@@ -42,7 +47,7 @@ func NewHandler(d Deps) http.Handler {
 	mux.HandleFunc("GET /healthz", healthz)
 	mux.HandleFunc("GET /readyz", readyz(d.Version.Version, d.Checkers))
 	mux.HandleFunc(apiPrefix, apiNotFound)
-	NewAPI(mux, APIDeps{Version: d.Version})
+	NewAPI(mux, APIDeps{Version: d.Version, Store: d.Store})
 
 	if d.SPA != nil {
 		mux.Handle("/", outsideAPI(d.SPA))
@@ -71,8 +76,9 @@ func outsideAPI(next http.Handler) http.Handler {
 }
 
 // newHandler wraps routes with the middleware chain. Order, outermost first: recovery, client
-// info, audit metadata, request logging, security headers, gate, router. Middlewares added later
-// keep this order.
+// info, audit metadata, request logging, security headers, gate, CSRF, authentication, router.
+// The gate comes before the CSRF checks and the authentication, whose session lookup needs a
+// migrated database. Middlewares added later keep this order.
 func newHandler(d Deps, routes http.Handler) http.Handler {
 	middlewares := []middleware{
 		RecoverMiddleware(d.Logger),
@@ -84,6 +90,12 @@ func newHandler(d Deps, routes http.Handler) http.Handler {
 
 	if d.Gate != nil {
 		middlewares = append(middlewares, d.Gate)
+	}
+
+	middlewares = append(middlewares, CSRFMiddleware(d.PublicURL))
+
+	if d.Store != nil {
+		middlewares = append(middlewares, AuthenticationMiddleware(d.Store, auth.NewSessions(d.Clock), d.PublicURL))
 	}
 
 	return chain(routes, middlewares...)

@@ -15,6 +15,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/gauthier-se/verve/internal/auth"
 	"github.com/gauthier-se/verve/internal/clock"
 	"github.com/gauthier-se/verve/internal/config"
 	"github.com/gauthier-se/verve/internal/jobs"
@@ -741,6 +742,65 @@ func TestRun_ReadyzReportsFailingChecks(t *testing.T) {
 	require.Equal(t, http.StatusServiceUnavailable, res.status)
 	require.JSONEq(t, `{"status":"not_ready","version":"`+version.Get().Version+`",`+
 		`"reasons":["data_dir: not writable: permission denied"]}`, res.body)
+
+	stop()
+}
+
+// Given VERVE_PUBLIC_URL with https, then the session cookie with the __Host- prefix authenticates
+// GET /api/v1/auth/me and the cookie without it does not, and a POST under /api/ must come from the
+// public URL, even when its Origin is the host it was sent to.
+func TestRun_AuthenticatesAndChecksCSRFAgainstThePublicURL(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	cfg := testConfig(t.TempDir())
+	require.NoError(t, cfg.PublicURL.UnmarshalText([]byte("https://verve.example.com")))
+
+	_, err := Migrate(ctx, cfg, discardLogger())
+	require.NoError(t, err)
+
+	db, err := sqlite.Open(ctx, filepath.Join(cfg.DataDir, dbFile))
+	require.NoError(t, err)
+
+	s := sqlite.New(db, clock.Real())
+
+	user, err := s.Users().Create(ctx, store.NewUser{Username: "alice", Role: store.RoleMember})
+	require.NoError(t, err)
+
+	id, _, err := auth.NewSessions(clock.Real()).Create(ctx, s, auth.NewSession{UserID: user.ID, Method: store.LoginPassword})
+	require.NoError(t, err)
+	require.NoError(t, db.CloseShared())
+
+	addr, _, stop := startRun(t, cfg)
+	base := "http://" + addr
+
+	send := func(method, path string, header http.Header) int {
+		t.Helper()
+
+		req, err := http.NewRequestWithContext(ctx, method, base+path, nil)
+		require.NoError(t, err)
+
+		req.Header = header
+
+		res, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+
+		// Read to the end like fetch: closing the body unread made stop time out under load.
+		_, err = io.Copy(io.Discard, res.Body)
+		require.NoError(t, err)
+		require.NoError(t, res.Body.Close())
+
+		return res.StatusCode
+	}
+
+	require.Equal(t, http.StatusOK,
+		send(http.MethodGet, "/api/v1/auth/me", http.Header{"Cookie": {"__Host-verve_session=" + id}}))
+	require.Equal(t, http.StatusUnauthorized,
+		send(http.MethodGet, "/api/v1/auth/me", http.Header{"Cookie": {"verve_session=" + id}}))
+	require.Equal(t, http.StatusForbidden,
+		send(http.MethodPost, "/api/v1/anything", http.Header{"Verve-Csrf": {"1"}, "Origin": {base}}))
+	require.Equal(t, http.StatusNotFound,
+		send(http.MethodPost, "/api/v1/anything", http.Header{"Verve-Csrf": {"1"}, "Origin": {"https://verve.example.com"}}))
 
 	stop()
 }

@@ -21,6 +21,11 @@ export default interface Resources {
       "ms": "{{m}}m {{s}}s",
       "s": "{{s}}s"
     },
+    "errors": {
+      "csrf_failed": "The request was blocked as a security measure. Reload the page and try again.",
+      "forbidden": "You do not have permission to do this.",
+      "unauthorized": "Log in to continue."
+    },
     "home": {
       "tagline": "Your health data, on your server."
     },

@@ -13,6 +13,24 @@ describe("translations", () => {
   });
 
   it.each([
+    { lng: "en", code: "unauthorized" },
+    { lng: "en", code: "forbidden" },
+    { lng: "en", code: "csrf_failed" },
+    { lng: "fr", code: "unauthorized" },
+    { lng: "fr", code: "forbidden" },
+    { lng: "fr", code: "csrf_failed" },
+  ])(
+    "given the API error code $code, then $lng has a message for it",
+    async ({ lng, code }) => {
+      const i18n = await initI18n();
+
+      expect(i18n.getResource(lng, "common", `errors.${code}`)).toEqual(
+        expect.stringMatching(/\S/),
+      );
+    },
+  );
+
+  it.each([
     { lng: "en", count: 0, expected: "0 days" },
     { lng: "en", count: 1, expected: "1 day" },
     { lng: "en", count: 2, expected: "2 days" },

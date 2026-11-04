@@ -312,6 +312,7 @@ The `client_ip` of each request must be your real address, not the one of the pr
 | The log has `ignoring X-Forwarded-* headers from an untrusted peer`, with the address of the proxy as `peer` | The proxy is missing from the trusted list | Add this address to `VERVE_TRUSTED_PROXIES` |
 | `client_ip` is the address of the proxy, without that warning | The proxy sends no `X-Forwarded-For` | Check the configuration of the proxy |
 | The startup log has `VERVE_PUBLIC_URL is not set` | The public URL is missing | Set `VERVE_PUBLIC_URL` |
+| Logging in or saving fails with a 403 whose code is `csrf_failed` | The address in the browser is not `VERVE_PUBLIC_URL`, or, without a public URL, the proxy rewrites the `Host` header | Set `VERVE_PUBLIC_URL` to the address in the browser, scheme and port included |
 | Uploads fail with a 413 | The proxy limits the body size | Remove the limit: see the section of your proxy |
 | Uploads fail with a 502 after 60 seconds on Traefik | The `readTimeout` of the entry point is too low | Raise it as in the [example](#traefik) |
 | Requests fail with a 504 after 90 seconds on Nginx Proxy Manager | The default timeouts are too low | Raise them as in the [example](#nginx-proxy-manager) |
