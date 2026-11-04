@@ -382,11 +382,18 @@ func TestRunInProcess_WorkerOnAnotherStoreOfTheSameFile_JobsOfOneKeyNeverOverlap
 		require.NoError(t, err)
 	}
 
-	// Two workers, which would run two jobs of the server at once without the key.
-	serverWorker, _ := newTestWorker(server, serverReg, serverClk, Options{Workers: 2, PollInterval: shortInterval})
+	// Two workers, which would run two jobs of the server at once without the key. Each poll is a
+	// write: every shortInterval, two workers keep the write lock of the file held on a slow machine,
+	// and the writes of the other store fail with SQLITE_BUSY once their busy timeout runs out.
+	serverWorker, _ := newTestWorker(server, serverReg, serverClk, Options{Workers: 2, PollInterval: 50 * time.Millisecond})
 	startWorker(t, serverWorker)
 
 	w, _ := newTestWorker(cli, cliReg, cliClk, Options{WaitInterval: shortInterval})
+
+	// A run that fails once its job is claimed keeps the key until the lease expires, which never
+	// happens on the fake clock: the deadline turns the wait of the other runs into an error.
+	runCtx, cancel := context.WithTimeout(ctx, waitFor)
+	defer cancel()
 
 	var wg sync.WaitGroup
 
@@ -394,7 +401,7 @@ func TestRunInProcess_WorkerOnAnotherStoreOfTheSameFile_JobsOfOneKeyNeverOverlap
 	job := newKeyedJob(t, kind, inProcess)
 
 	for range 3 {
-		wg.Go(func() { errs <- w.RunInProcess(ctx, job, func() {}) })
+		wg.Go(func() { errs <- w.RunInProcess(runCtx, job, func() {}) })
 	}
 
 	wg.Wait()
