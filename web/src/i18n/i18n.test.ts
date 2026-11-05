@@ -1,8 +1,32 @@
 import { describe, expect, it } from "vitest";
 
 import { initI18n } from "@/i18n";
+import enCommon from "@/locales/en/common.json";
+import frCommon from "@/locales/fr/common.json";
+
+/** The entries of a locale file by their full key, such as "notFound.title". */
+function entries(messages: object, prefix = ""): [string, unknown][] {
+  return Object.entries(messages).flatMap(([key, value]: [string, unknown]) =>
+    typeof value === "object" && value !== null
+      ? entries(value, `${prefix}${key}.`)
+      : [[`${prefix}${key}`, value]],
+  );
+}
 
 describe("translations", () => {
+  it("given any English text, then French has a text for the same key", () => {
+    const french = new Map(entries(frCommon));
+
+    const missing = entries(enCommon)
+      .map(([key]) => key)
+      .filter((key) => {
+        const text = french.get(key);
+        return typeof text !== "string" || text.trim() === "";
+      });
+
+    expect(missing).toEqual([]);
+  });
+
   it("given a key missing from the French file, when French is used, then the English text is displayed", async () => {
     const i18n = await initI18n();
     i18n.addResource("en", "common", "testOnly.englishOnly", "English only");
