@@ -144,10 +144,10 @@ func TestLoginLimiter_LoginsDifferingOnlyByCaseShareACounter(t *testing.T) {
 	require.Zero(t, l.Wait("élodie", laptopIP))
 }
 
-// Given failures followed by 15 quiet minutes after the end of their delay, then they are
-// forgotten: the next failure counts from zero. Below the limit, the quiet minutes count from the
-// last failure.
-func TestLoginLimiter_FailuresAreForgotten15MinutesAfterTheirDelay(t *testing.T) {
+// Given failures followed by an hour without failure after the end of their delay, then they are
+// forgotten: the next failure counts from zero. Below the limit, the hour counts from the last
+// failure.
+func TestLoginLimiter_FailuresAreForgottenAnHourAfterTheirDelay(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -158,10 +158,10 @@ func TestLoginLimiter_FailuresAreForgotten15MinutesAfterTheirDelay(t *testing.T)
 		// want is the wait after one more failure.
 		want time.Duration
 	}{
-		{name: "BelowTheLimitAfter15Minutes", failures: 4, quiet: 15 * time.Minute, want: time.Second},
-		{name: "BelowTheLimitAfterMore", failures: 4, quiet: 15*time.Minute + time.Millisecond},
-		{name: "DelayedAfter15MinutesPastTheDelay", failures: 6, quiet: 2*time.Second + 15*time.Minute, want: 4 * time.Second},
-		{name: "DelayedAfterMore", failures: 6, quiet: 2*time.Second + 15*time.Minute + time.Millisecond},
+		{name: "BelowTheLimitAfterAnHour", failures: 4, quiet: time.Hour, want: time.Second},
+		{name: "BelowTheLimitAfterMore", failures: 4, quiet: time.Hour + time.Millisecond},
+		{name: "DelayedAfterAnHourPastTheDelay", failures: 6, quiet: 2*time.Second + time.Hour, want: 4 * time.Second},
+		{name: "DelayedAfterMore", failures: 6, quiet: 2*time.Second + time.Hour + time.Millisecond},
 	}
 
 	for _, tt := range tests {
@@ -190,7 +190,7 @@ func TestLoginLimiter_ForgottenCountersAreRemovedFromMemory(t *testing.T) {
 		l.Fail(fmt.Sprintf("user%d", i), netip.AddrFrom4([4]byte{192, 0, 2, byte(i)}))
 	}
 
-	clk.Advance(15 * time.Minute)
+	clk.Advance(time.Hour)
 	l.Fail("alice", phoneIP)
 
 	clk.Advance(time.Minute)

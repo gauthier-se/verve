@@ -21,8 +21,10 @@ const (
 	maxLoginDelay   = 15 * time.Minute
 
 	// forgetFailuresAfter is how long the failures of a login or a client IP are kept after their
-	// delay ends, or after the last of them below the limit, without a new failure.
-	forgetFailuresAfter = 15 * time.Minute
+	// delay ends, or after the last of them below the limit, without a new failure. Waiting for it
+	// costs an attacker more than the longest delay, and the counters it keeps stay few: each
+	// failure takes a hashing slot.
+	forgetFailuresAfter = time.Hour
 
 	// sweepInterval is the shortest time between two removals of the forgotten failures.
 	sweepInterval = time.Minute
