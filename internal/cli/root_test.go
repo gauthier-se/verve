@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -21,8 +22,15 @@ type result struct {
 func run(t *testing.T, deps Deps, args ...string) result {
 	t.Helper()
 
+	return runWithStdin(t, deps, "", args...)
+}
+
+// runWithStdin runs the command line with args, reading stdin.
+func runWithStdin(t *testing.T, deps Deps, stdin string, args ...string) result {
+	t.Helper()
+
 	var stdout, stderr bytes.Buffer
-	code := execute(context.Background(), deps, args, &stdout, &stderr)
+	code := execute(context.Background(), deps, args, strings.NewReader(stdin), &stdout, &stderr)
 
 	return result{code: code, stdout: stdout.String(), stderr: stderr.String()}
 }

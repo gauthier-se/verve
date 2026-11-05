@@ -2,7 +2,9 @@ package cli
 
 import (
 	"context"
+	"io"
 	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -17,7 +19,7 @@ type fakeServer struct {
 	cfg   config.Config
 }
 
-func (f *fakeServer) serve(_ context.Context, cfg config.Config, _ *slog.Logger) error {
+func (f *fakeServer) serve(_ context.Context, cfg config.Config, _ *slog.Logger, _ io.Writer) error {
 	f.calls++
 	f.cfg = cfg
 
@@ -85,7 +87,7 @@ func TestServe_LoggerFollowsLogConfig(t *testing.T) {
 	t.Parallel()
 
 	deps := depsWithEnv(map[string]string{"VERVE_LOG_FORMAT": "json", "VERVE_LOG_LEVEL": "warn"})
-	deps.Serve = func(_ context.Context, _ config.Config, logger *slog.Logger) error {
+	deps.Serve = func(_ context.Context, _ config.Config, logger *slog.Logger, _ io.Writer) error {
 		logger.Info("hidden")
 		logger.Warn("shown", slog.String("password", "hunter2"))
 
@@ -101,4 +103,28 @@ func TestServe_LoggerFollowsLogConfig(t *testing.T) {
 	require.Equal(t, "WARN", lines[0]["level"])
 	require.Equal(t, "shown", lines[0]["msg"])
 	require.Equal(t, "[REDACTED]", lines[0]["password"])
+}
+
+// Given serve, then the server gets the stderr of the command for the setup line, which bypasses
+// the logger: it is written as is, next to the logs.
+func TestServe_SetupLineGoesToStderr(t *testing.T) {
+	t.Parallel()
+
+	deps := depsWithEnv(map[string]string{"VERVE_LOG_FORMAT": "json"})
+	deps.Serve = func(_ context.Context, _ config.Config, logger *slog.Logger, stderr io.Writer) error {
+		logger.Warn("before")
+		_, _ = io.WriteString(stderr, "Create the first admin at /setup#token\n")
+
+		return nil
+	}
+
+	res := run(t, deps, "serve")
+
+	require.Equal(t, 0, res.code, res.stderr)
+
+	before, setup, found := strings.Cut(res.stderr, "\n")
+	require.True(t, found)
+	require.Equal(t, "before", loggingtest.DecodeLines(t, before+"\n")[0]["msg"])
+	require.Equal(t, "Create the first admin at /setup#token\n", setup)
+	require.Empty(t, res.stdout)
 }
