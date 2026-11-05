@@ -42,12 +42,12 @@ func newAdminJobsTest(t *testing.T) adminJobsTest {
 }
 
 // at sets the clock to minutes after authTestNow.
-func (j adminJobsTest) at(minutes float64) {
-	j.clock.Set(authTestNow.Add(time.Duration(minutes * float64(time.Minute))))
+func (j adminJobsTest) at(minutes int) {
+	j.clock.Set(authTestNow.Add(time.Duration(minutes) * time.Minute))
 }
 
-// mustRun stores job running from now, and returns it.
-func (j adminJobsTest) mustRun(t *testing.T, job store.NewJob) store.Job {
+// mustEnqueueClaimed stores job running from now, and returns it.
+func (j adminJobsTest) mustEnqueueClaimed(t *testing.T, job store.NewJob) store.Job {
 	t.Helper()
 
 	got, err := j.store.Jobs().EnqueueClaimed(t.Context(), job, adminJobsLease)
@@ -89,6 +89,7 @@ func (j adminJobsTest) getJobsPage(t *testing.T, target string) jobsPage {
 
 	rec := getWith(t, j.handler, target, j.rootCookie)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "application/json", rec.Header().Get("Content-Type"))
 
 	var page jobsPage
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &page))
@@ -138,7 +139,7 @@ func TestAdminJobs_ListsTheFailedJobsNewestFirst(t *testing.T) {
 	j := newAdminJobsTest(t)
 	ctx := t.Context()
 
-	backup := j.mustRun(t, testJob("backup.run"))
+	backup := j.mustEnqueueClaimed(t, testJob("backup.run"))
 
 	j.at(1)
 	require.NoError(t, j.store.Jobs().Retry(ctx, backup.ID, backup.Claims, "disk full", j.clock.Now()))
@@ -147,7 +148,7 @@ func TestAdminJobs_ListsTheFailedJobsNewestFirst(t *testing.T) {
 	require.NoError(t, err)
 
 	j.at(2)
-	imported := j.mustRun(t, store.NewJob{Kind: "import.xml", Payload: json.RawMessage(`{}`), UserID: 1, SerialKey: "import:1"})
+	imported := j.mustEnqueueClaimed(t, store.NewJob{Kind: "import.xml", Payload: json.RawMessage(`{}`), UserID: 1, SerialKey: "import:1"})
 	_, err = j.store.Jobs().Enqueue(ctx, store.NewJob{Kind: "backup.run", Payload: json.RawMessage(`{}`), RunAt: authTestNow.Add(time.Hour)})
 	require.NoError(t, err)
 
@@ -155,9 +156,9 @@ func TestAdminJobs_ListsTheFailedJobsNewestFirst(t *testing.T) {
 	j.mustFail(t, imported, "malformed job payload")
 
 	j.at(4)
-	completed := j.mustRun(t, testJob("audit.purge"))
+	completed := j.mustEnqueueClaimed(t, testJob("audit.purge"))
 	require.NoError(t, j.store.Jobs().Complete(ctx, completed.ID, completed.Claims))
-	j.mustRun(t, testJob("jobs.purge"))
+	j.mustEnqueueClaimed(t, testJob("jobs.purge"))
 
 	j.at(5)
 	j.mustFail(t, backup, "disk full")
@@ -196,10 +197,10 @@ func TestAdminJobs_NeverReturnsThePayload(t *testing.T) {
 	j := newAdminJobsTest(t)
 	ctx := t.Context()
 
-	completed := j.mustRun(t, testJob("audit.purge"))
+	completed := j.mustEnqueueClaimed(t, testJob("audit.purge"))
 	require.NoError(t, j.store.Jobs().Complete(ctx, completed.ID, completed.Claims))
 
-	j.mustFail(t, j.mustRun(t, testJob("backup.run")), "disk full")
+	j.mustFail(t, j.mustEnqueueClaimed(t, testJob("backup.run")), "disk full")
 
 	cancelled, err := j.store.Jobs().Enqueue(ctx, testJob("import.xml"))
 	require.NoError(t, err)
@@ -227,7 +228,7 @@ func TestAdminJobs_MemberIsForbiddenAndNoSessionIsUnauthorized(t *testing.T) {
 	t.Parallel()
 
 	j := newAdminJobsTest(t)
-	j.mustFail(t, j.mustRun(t, testJob("backup.run")), "disk full")
+	j.mustFail(t, j.mustEnqueueClaimed(t, testJob("backup.run")), "disk full")
 
 	rec := getWith(t, j.handler, adminJobsPath+"?status=failed", j.aliceCookie)
 	require.Equal(t, http.StatusForbidden, rec.Code)
@@ -267,22 +268,23 @@ func TestAdminJobs_FollowingTheCursorReturnsEachJobOnceWhileJobsFail(t *testing.
 	t.Parallel()
 
 	j := newAdminJobsTest(t)
-	late := j.mustRun(t, testJob("import.xml"))
+	late := j.mustEnqueueClaimed(t, testJob("import.xml"))
 
 	j.at(1)
 	failed := j.mustFailMany(t, 3)
 
-	for minutes := range 2 {
-		j.at(float64(2 + minutes))
-		j.mustFail(t, j.mustRun(t, testJob("backup.run")), "disk full")
-	}
+	j.at(2)
+	j.mustFail(t, j.mustEnqueueClaimed(t, testJob("backup.run")), "disk full")
+
+	j.at(3)
+	j.mustFail(t, j.mustEnqueueClaimed(t, testJob("backup.run")), "disk full")
 
 	page := j.getJobsPage(t, adminJobsPath+"?status=failed&limit=2")
 	ids := page.ids()
 
 	j.at(4)
 	j.mustFail(t, late, "handler panicked")
-	j.mustFail(t, j.mustRun(t, testJob("backup.run")), "disk full")
+	j.mustFail(t, j.mustEnqueueClaimed(t, testJob("backup.run")), "disk full")
 
 	for page.NextCursor != nil {
 		page = j.getJobsPage(t, adminJobsPath+"?status=failed&limit=2&cursor="+url.QueryEscape(*page.NextCursor))
@@ -294,9 +296,9 @@ func TestAdminJobs_FollowingTheCursorReturnsEachJobOnceWhileJobsFail(t *testing.
 	require.NotContains(t, ids, late.ID)
 }
 
-// Given no status, or a status that is not finished, then 422 validation_failed, with status as the
-// invalid field.
-func TestAdminJobs_RejectsAMissingOrUnfinishedStatus(t *testing.T) {
+// Given no status, a status that is not finished or a malformed cursor, then 422 validation_failed,
+// with the invalid field.
+func TestAdminJobs_RejectsAnInvalidQuery(t *testing.T) {
 	t.Parallel()
 
 	j := newAdminJobsTest(t)
@@ -319,6 +321,11 @@ func TestAdminJobs_RejectsAMissingOrUnfinishedStatus(t *testing.T) {
 			query:     "?status=running",
 			wantError: `{"message": "expected value to be one of \"completed, failed, cancelled\"", "location": "query.status", "value": "running"}`,
 		},
+		{
+			name:      "malformed cursor",
+			query:     "?status=failed&cursor=nope",
+			wantError: `{"message": "invalid cursor", "location": "query.cursor", "value": "nope"}`,
+		},
 	}
 
 	for _, tt := range tests {
@@ -338,23 +345,4 @@ func TestAdminJobs_RejectsAMissingOrUnfinishedStatus(t *testing.T) {
 			}`, rec.Body.String())
 		})
 	}
-}
-
-// Given a malformed cursor, then 422 validation_failed, with cursor as the invalid field.
-func TestAdminJobs_MalformedCursorReturnsValidationFailed(t *testing.T) {
-	t.Parallel()
-
-	j := newAdminJobsTest(t)
-
-	rec := getWith(t, j.handler, adminJobsPath+"?status=failed&cursor=nope", j.rootCookie)
-
-	require.Equal(t, http.StatusUnprocessableEntity, rec.Code)
-	require.JSONEq(t, `{
-		"type": "about:blank",
-		"title": "Unprocessable Entity",
-		"status": 422,
-		"detail": "validation failed",
-		"code": "validation_failed",
-		"errors": [{"message": "invalid cursor", "location": "query.cursor", "value": "nope"}]
-	}`, rec.Body.String())
 }

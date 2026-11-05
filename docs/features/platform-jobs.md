@@ -54,7 +54,7 @@ Background work runs inside the single binary, on a persistent `jobs` table: imp
 ## Data and API notes
 
 - Tables: `jobs`, `job_schedules`.
-- Endpoint: `GET /api/v1/admin/jobs`, for admins only (403 `forbidden` for a member), paginated as described in [Architecture](../architecture.md#pagination) (FR-12). Its required `status` is `failed`, `completed` or `cancelled`: queued and running jobs have no end to sort them by, and answer 422 `validation_failed`. Jobs come newest first by the time they ended, then by id, so that a job that fails while an admin follows the pages is newer than the first page instead of being missed.
+- Endpoint: `GET /api/v1/admin/jobs`, for admins only (403 `forbidden` for a member, 401 `unauthorized` without a session), paginated as described in [Architecture](../architecture.md#pagination) (FR-12). Its required `status` is `failed`, `completed` or `cancelled`: queued and running jobs have no end to sort them by, and answer 422 `validation_failed`. Jobs come newest first by the time they ended, then by id, so that a job that fails while an admin follows the pages is newer than the first page instead of being missed.
 - A job has `id`, `kind`, `status`, `attempts`, `lastError` (left out when it never failed), `createdAt` and `finishedAt`, and never its payload.
 - Handlers are registered per kind in `internal/app`. Tests drive the worker with the fake clock.
 - A CLI command runs its job with `Worker.RunInProcess`, on a worker that it never starts with `Run`, so that it schedules nothing.

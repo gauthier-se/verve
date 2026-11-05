@@ -337,9 +337,7 @@ func (r jobs) ListByStatus(ctx context.Context, status store.JobStatus, page sto
 		return nil, fmt.Errorf("list %s jobs: limit %d below 1: %w", status, page.Limit, store.ErrInvalid)
 	}
 
-	switch status {
-	case store.JobCompleted, store.JobFailed, store.JobCancelled:
-	default:
+	if !status.Finished() {
 		return nil, fmt.Errorf("list %s jobs: not a finished status: %w", status, store.ErrInvalid)
 	}
 
