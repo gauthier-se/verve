@@ -159,10 +159,9 @@ func TestSessions_LookupReturnsTheSessionAndItsUser(t *testing.T) {
 	id, created, err := sessions.Create(ctx, s, phoneLogin(user.ID))
 	require.NoError(t, err)
 
-	session, gotUser, err := sessions.Lookup(ctx, s, id)
+	found, err := sessions.Lookup(ctx, s, id)
 	require.NoError(t, err)
-	require.Equal(t, created, session)
-	require.Equal(t, user, gotUser)
+	require.Equal(t, ValidSession{Session: created, User: user}, found)
 }
 
 // Given an identifier that no session has, then Lookup returns store.ErrNotFound.
@@ -174,7 +173,7 @@ func TestSessions_LookupOfAnUnknownIdentifierFails(t *testing.T) {
 	mustCreateSession(ctx, t, sessions, s, mustCreateUser(ctx, t, s, "alice").ID)
 
 	for _, id := range []string{"unknown", ""} {
-		_, _, err := sessions.Lookup(ctx, s, id)
+		_, err := sessions.Lookup(ctx, s, id)
 		requireNoSession(t, err)
 	}
 }
@@ -203,7 +202,7 @@ func TestSessions_LookupFailsAfter30IdleDays(t *testing.T) {
 
 			clk.Advance(tt.idle)
 
-			_, _, err := sessions.Lookup(ctx, s, id)
+			_, err := sessions.Lookup(ctx, s, id)
 			if !tt.found {
 				requireNoSession(t, err)
 
@@ -216,7 +215,8 @@ func TestSessions_LookupFailsAfter30IdleDays(t *testing.T) {
 }
 
 // Given activity on a session, then Lookup writes its last seen time and its expiry, 30 days from
-// then, at most once per minute.
+// then, at most once per minute, and reports the lookups that renewed it, so that the cookie
+// follows the expiry.
 func TestSessions_LookupRenewsTheSessionAtMostOncePerMinute(t *testing.T) {
 	t.Parallel()
 
@@ -227,23 +227,25 @@ func TestSessions_LookupRenewsTheSessionAtMostOncePerMinute(t *testing.T) {
 	steps := []struct {
 		advance  time.Duration
 		lastSeen time.Time
+		renewed  bool
 	}{
 		{advance: time.Minute - time.Millisecond, lastSeen: sessionsTestNow},
-		{advance: time.Millisecond, lastSeen: sessionsTestNow.Add(time.Minute)},
+		{advance: time.Millisecond, lastSeen: sessionsTestNow.Add(time.Minute), renewed: true},
 		{advance: 30 * time.Second, lastSeen: sessionsTestNow.Add(time.Minute)},
-		{advance: 30 * time.Second, lastSeen: sessionsTestNow.Add(2 * time.Minute)},
+		{advance: 30 * time.Second, lastSeen: sessionsTestNow.Add(2 * time.Minute), renewed: true},
 	}
 
 	for i, step := range steps {
 		clk.Advance(step.advance)
 
-		session, _, err := sessions.Lookup(ctx, s, id)
+		found, err := sessions.Lookup(ctx, s, id)
 		require.NoError(t, err, "step %d", i)
 
 		stored := storedSession(ctx, t, s, id)
 		require.Equal(t, step.lastSeen, stored.LastSeenAt, "step %d", i)
 		require.Equal(t, step.lastSeen.Add(30*day), stored.ExpiresAt, "step %d", i)
-		require.Equal(t, stored, session, "step %d", i)
+		require.Equal(t, stored, found.Session, "step %d", i)
+		require.Equal(t, step.renewed, found.Renewed, "step %d", i)
 	}
 }
 
@@ -268,7 +270,7 @@ func TestSessions_LookupFailsOnceAnActiveSessionIsOlderThan180Days(t *testing.T)
 	for age := 1; age <= 180; age++ {
 		clk.Advance(day)
 
-		_, _, err := sessions.Lookup(ctx, s, id)
+		_, err := sessions.Lookup(ctx, s, id)
 		require.NoError(t, err, "day %d", age)
 
 		if expiry, ok := expiries[age]; ok {
@@ -278,7 +280,7 @@ func TestSessions_LookupFailsOnceAnActiveSessionIsOlderThan180Days(t *testing.T)
 
 	clk.Advance(time.Millisecond)
 
-	_, _, err := sessions.Lookup(ctx, s, id)
+	_, err := sessions.Lookup(ctx, s, id)
 	requireNoSession(t, err)
 }
 
@@ -295,10 +297,10 @@ func TestSessions_LookupOfARevokedSessionFails(t *testing.T) {
 
 	require.NoError(t, sessions.Revoke(ctx, s, phone))
 
-	_, _, err := sessions.Lookup(ctx, s, phone)
+	_, err := sessions.Lookup(ctx, s, phone)
 	requireNoSession(t, err)
 
-	_, _, err = sessions.Lookup(ctx, s, laptop)
+	_, err = sessions.Lookup(ctx, s, laptop)
 	require.NoError(t, err)
 }
 
@@ -348,7 +350,7 @@ func TestSessions_LookupFailsForAUserWhoIsNotActive(t *testing.T) {
 			ctx := t.Context()
 			id := mustCreateSession(ctx, t, sessions, s, mustCreateUser(ctx, t, s, "alice").ID)
 
-			_, user, err := sessions.Lookup(ctx, withUserStatus{Repositories: s, status: tt.status}, id)
+			found, err := sessions.Lookup(ctx, withUserStatus{Repositories: s, status: tt.status}, id)
 			if !tt.found {
 				requireNoSession(t, err)
 
@@ -356,7 +358,7 @@ func TestSessions_LookupFailsForAUserWhoIsNotActive(t *testing.T) {
 			}
 
 			require.NoError(t, err)
-			require.Equal(t, store.UserActive, user.Status)
+			require.Equal(t, store.UserActive, found.User.Status)
 		})
 	}
 }
@@ -388,7 +390,7 @@ func TestSessions_InstanceSettingsReplaceTheDefaultLifetimes(t *testing.T) {
 
 		clk.Advance(7*day + time.Millisecond)
 
-		_, _, err = sessions.Lookup(ctx, s, id)
+		_, err = sessions.Lookup(ctx, s, id)
 		requireNoSession(t, err)
 	})
 
@@ -402,18 +404,18 @@ func TestSessions_InstanceSettingsReplaceTheDefaultLifetimes(t *testing.T) {
 
 		clk.Advance(4 * day)
 
-		_, _, err := sessions.Lookup(ctx, s, id)
+		_, err := sessions.Lookup(ctx, s, id)
 		require.NoError(t, err)
 		require.Equal(t, sessionsTestNow.Add(10*day), storedSession(ctx, t, s, id).ExpiresAt)
 
 		clk.Advance(6 * day)
 
-		_, _, err = sessions.Lookup(ctx, s, id)
+		_, err = sessions.Lookup(ctx, s, id)
 		require.NoError(t, err)
 
 		clk.Advance(time.Millisecond)
 
-		_, _, err = sessions.Lookup(ctx, s, id)
+		_, err = sessions.Lookup(ctx, s, id)
 		requireNoSession(t, err)
 	})
 }
@@ -473,7 +475,7 @@ func TestSessions_LoweredIdleDaysEndsAnIdleSessionAtItsNextLookup(t *testing.T) 
 	setLifetimes(ctx, t, s, "7", "180")
 	clk.Advance(10 * day)
 
-	_, _, err := sessions.Lookup(ctx, s, id)
+	_, err := sessions.Lookup(ctx, s, id)
 	requireNoSession(t, err)
 	require.Equal(t, sessionsTestNow.Add(30*day), storedSession(ctx, t, s, id).ExpiresAt)
 }
@@ -489,13 +491,13 @@ func TestSessions_LoweredMaxDaysEndsAnOlderSessionAtItsNextRenewal(t *testing.T)
 
 	clk.Advance(20 * day)
 
-	_, _, err := sessions.Lookup(ctx, s, id)
+	_, err := sessions.Lookup(ctx, s, id)
 	require.NoError(t, err)
 
 	setLifetimes(ctx, t, s, "30", "10")
 	clk.Advance(time.Minute)
 
-	_, _, err = sessions.Lookup(ctx, s, id)
+	_, err = sessions.Lookup(ctx, s, id)
 	requireNoSession(t, err)
 	require.Equal(t, sessionsTestNow.Add(50*day), storedSession(ctx, t, s, id).ExpiresAt)
 }

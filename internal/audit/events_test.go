@@ -16,12 +16,15 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/gauthier-se/verve/internal/logging"
+	"github.com/gauthier-se/verve/internal/store"
 )
 
 // eventsByConstructor holds an event of each constructor of the package, by the constructor's name.
 func eventsByConstructor() map[string]Event {
 	return map[string]Event{
-		"LoginFailed": LoginFailed("alice"),
+		"LoginFailed":    LoginFailed("alice"),
+		"LoginSucceeded": LoginSucceeded(7, store.LoginPassword),
+		"Logout":         Logout(7),
 	}
 }
 
@@ -223,4 +226,38 @@ func TestLoginFailed_TruncatesTheAttemptedLoginTo64Characters(t *testing.T) {
 			require.Equal(t, loginFailedPayload{Attempted: tt.want}, event.payload)
 		})
 	}
+}
+
+// Given a successful login, then the event has the login type, the user as actor, no subject, and
+// the login method. It is never aggregated.
+func TestLoginSucceeded(t *testing.T) {
+	t.Parallel()
+
+	event := LoginSucceeded(7, store.LoginPassword)
+
+	require.Equal(t, TypeLoginSucceeded, event.eventType)
+	require.Equal(t, int64(7), event.actorID)
+	require.Zero(t, event.subjectID)
+	require.False(t, event.aggregateOnClientIP)
+
+	data, err := json.Marshal(event.payload)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"method":"password"}`, string(data))
+}
+
+// Given a logout, then the event has the logout type, the user as actor, no subject and an empty
+// payload. It is never aggregated.
+func TestLogout(t *testing.T) {
+	t.Parallel()
+
+	event := Logout(7)
+
+	require.Equal(t, TypeLogout, event.eventType)
+	require.Equal(t, int64(7), event.actorID)
+	require.Zero(t, event.subjectID)
+	require.False(t, event.aggregateOnClientIP)
+
+	data, err := json.Marshal(event.payload)
+	require.NoError(t, err)
+	require.JSONEq(t, `{}`, string(data))
 }

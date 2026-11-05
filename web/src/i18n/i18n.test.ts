@@ -16,9 +16,13 @@ describe("translations", () => {
     { lng: "en", code: "unauthorized" },
     { lng: "en", code: "forbidden" },
     { lng: "en", code: "csrf_failed" },
+    { lng: "en", code: "invalid_credentials" },
+    { lng: "en", code: "rate_limited" },
     { lng: "fr", code: "unauthorized" },
     { lng: "fr", code: "forbidden" },
     { lng: "fr", code: "csrf_failed" },
+    { lng: "fr", code: "invalid_credentials" },
+    { lng: "fr", code: "rate_limited" },
   ])(
     "given the API error code $code, then $lng has a message for it",
     async ({ lng, code }) => {
