@@ -2,11 +2,11 @@ package auth
 
 import (
 	"net/netip"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/gauthier-se/verve/internal/clock"
+	"github.com/gauthier-se/verve/internal/store"
 )
 
 const (
@@ -57,9 +57,9 @@ func (l *LoginLimiter) Wait(login string, ip netip.Addr) time.Duration {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	now := l.now()
+	now := l.sweep()
 
-	return max(l.logins.wait(foldLogin(login), now), l.ips.wait(ip, now))
+	return max(l.logins.wait(store.FoldCase(login), now), l.ips.wait(ip, now))
 }
 
 // Fail records a failed login as login from ip. It counts whether or not a user has login, so that
@@ -68,8 +68,8 @@ func (l *LoginLimiter) Fail(login string, ip netip.Addr) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	now := l.now()
-	l.logins.fail(foldLogin(login), now)
+	now := l.sweep()
+	l.logins.fail(store.FoldCase(login), now)
 	l.ips.fail(ip, now)
 }
 
@@ -79,12 +79,12 @@ func (l *LoginLimiter) Reset(login string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	delete(l.logins.byKey, foldLogin(login))
+	delete(l.logins.byKey, store.FoldCase(login))
 }
 
-// now returns the current time, after removing the forgotten failures at most once per
-// sweepInterval. The caller holds mu.
-func (l *LoginLimiter) now() time.Time {
+// sweep removes the forgotten failures, at most once per sweepInterval, and returns the current
+// time. The caller holds mu.
+func (l *LoginLimiter) sweep() time.Time {
 	now := l.clk.Now()
 
 	if !now.Before(l.nextSweep) {
@@ -168,10 +168,4 @@ func delayAfter(count, limit int) time.Duration {
 	}
 
 	return min(firstLoginDelay<<doublings, maxLoginDelay)
-}
-
-// foldLogin returns the form that the logins of one user share: logins are looked up ignoring
-// case, in every alphabet, as the store folds them (ADR 0013).
-func foldLogin(login string) string {
-	return strings.ToLower(strings.ToUpper(login))
 }

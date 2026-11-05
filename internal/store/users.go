@@ -2,8 +2,17 @@ package store
 
 import (
 	"context"
+	"strings"
 	"time"
 )
+
+// FoldCase returns the form that the usernames and emails differing only by case share, in every
+// alphabet: logins are unique and looked up by it (ADR 0013). Going through the upper case first
+// also merges letters with two lower case forms, such as the final sigma. A change of it needs a
+// migration of the stored forms.
+func FoldCase(s string) string {
+	return strings.ToLower(strings.ToUpper(s))
+}
 
 // UserRole is the role of a user.
 type UserRole string

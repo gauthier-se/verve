@@ -39,10 +39,10 @@ type logoutOutput struct {
 	SetCookie http.Cookie `header:"Set-Cookie" doc:"The session cookie, cleared."`
 }
 
-// registerLogin registers POST /api/v1/auth/login, which logs in with logins through st and sets
-// the session cookie of an instance at publicURL, and POST /api/v1/auth/logout, which deletes the
-// session of the request with sessions and clears the cookie.
-func registerLogin(api huma.API, deps APIDeps) {
+// registerLoginAndLogout registers POST /api/v1/auth/login, which logs in with deps.Logins through
+// deps.Store and sets the session cookie of deps.PublicURL, and POST /api/v1/auth/logout, which
+// deletes the session of the request with deps.Sessions and clears the cookie.
+func registerLoginAndLogout(api huma.API, deps APIDeps) {
 	huma.Register(api, huma.Operation{
 		OperationID: "login",
 		Method:      http.MethodPost,
