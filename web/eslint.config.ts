@@ -26,6 +26,19 @@ export default defineConfig(
     },
     rules: {
       "@typescript-eslint/no-explicit-any": "error",
+      // Routes throw redirect() and notFound() to the router.
+      "@typescript-eslint/only-throw-error": [
+        "error",
+        {
+          allow: [
+            {
+              from: "package",
+              package: "@tanstack/router-core",
+              name: ["Redirect", "NotFoundError"],
+            },
+          ],
+        },
+      ],
     },
   },
   reactHooks.configs.flat.recommended,

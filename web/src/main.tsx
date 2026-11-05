@@ -1,4 +1,3 @@
-import { QueryClient } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
@@ -10,7 +9,7 @@ import "@/styles.css";
 
 await initI18n();
 
-const router = createAppRouter({ queryClient: new QueryClient() });
+const router = createAppRouter();
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {

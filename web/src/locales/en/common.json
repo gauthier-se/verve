@@ -1,4 +1,8 @@
 {
+  "admin": {
+    "description": "The tools to manage this instance will appear here.",
+    "title": "Administration"
+  },
   "connection": {
     "starting": {
       "description": "The server is getting ready, for example after an update. Verve opens as soon as it is ready.",
@@ -24,14 +28,36 @@
     "forbidden": "You do not have permission to do this.",
     "invalid_credentials": "The username, email or password is incorrect.",
     "rate_limited": "Too many attempts. Wait a moment, then try again.",
+    "rate_limited_wait": "Too many attempts. Try again in {{wait}}.",
     "unauthorized": "Log in to continue."
   },
   "home": {
     "tagline": "Your health data, on your server."
   },
+  "login": {
+    "login": "Username or email",
+    "loginRequired": "Enter your username or email.",
+    "password": "Password",
+    "passwordRequired": "Enter your password.",
+    "submit": "Log in",
+    "title": "Log in"
+  },
+  "nav": {
+    "admin": "Administration",
+    "home": "Home",
+    "main": "Main"
+  },
   "notFound": {
     "description": "The page you are looking for does not exist.",
     "home": "Back to home",
     "title": "Page not found"
+  },
+  "setup": {
+    "description": "Open the setup link that the server writes to its log while no account exists, or create the first admin with the command verve user create.",
+    "title": "Set up Verve"
+  },
+  "unexpectedError": "Something went wrong. Try again.",
+  "userMenu": {
+    "logout": "Log out"
   }
 }

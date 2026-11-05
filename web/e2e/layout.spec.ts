@@ -62,6 +62,12 @@ test("given a phone screen and a session, when a protected page loads, then the 
   await expectTouchTarget(userMenu);
 
   await userMenu.click();
+  // The menu zooms in as it opens, which scales its items until it ends.
+  await page
+    .getByRole("menu")
+    .evaluate((menu) =>
+      Promise.all(menu.getAnimations().map((animation) => animation.finished)),
+    );
   await expectTouchTarget(page.getByRole("menuitem", { name: "Log out" }));
   await expectNoHorizontalScroll(page);
 });

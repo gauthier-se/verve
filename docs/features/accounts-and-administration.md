@@ -61,7 +61,7 @@ Verve is multi-user for a household. Each user's health data is isolated. An adm
 ## UX notes
 
 - Setup wizard: setup token, admin account, timezone, then a short guide to importing data. Default language and units join it in M2, with [User preferences and profile](user-preferences-and-profile.md).
-- Admin area is a separate section in navigation, visible only to admins.
+- Admin area is a separate section in navigation, visible only to admins. Its pages are under `/admin`, and a member who opens one gets the not-found page.
 - Deleting data is always behind a confirmation dialog describing exactly what will be removed.
 
 ## Data and API notes

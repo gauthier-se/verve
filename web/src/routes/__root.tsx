@@ -3,6 +3,7 @@ import {
   createRootRouteWithContext,
   Link,
   Outlet,
+  useMatch,
 } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
@@ -24,10 +25,16 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 function Root() {
   const { data: meta } = useQuery(metaQueryOptions());
   useVersionWatch(meta?.version);
+  // The user of the session, while a page that needs one is shown.
+  const user = useMatch({
+    from: "/_authenticated",
+    shouldThrow: false,
+    select: (match) => match.context.user,
+  });
 
   return (
     <ConnectionGate>
-      <AppLayout>
+      <AppLayout user={user}>
         <Outlet />
       </AppLayout>
     </ConnectionGate>

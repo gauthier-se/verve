@@ -1,4 +1,8 @@
 {
+  "admin": {
+    "description": "Les outils de gestion de cette instance apparaîtront ici.",
+    "title": "Administration"
+  },
   "connection": {
     "starting": {
       "description": "Le serveur se prépare, par exemple après une mise à jour. Verve s'ouvrira dès qu'il sera prêt.",
@@ -25,14 +29,36 @@
     "forbidden": "Vous n'avez pas l'autorisation d'effectuer cette action.",
     "invalid_credentials": "Le nom d'utilisateur, l'e-mail ou le mot de passe est incorrect.",
     "rate_limited": "Trop de tentatives. Patientez un instant, puis réessayez.",
+    "rate_limited_wait": "Trop de tentatives. Réessayez dans {{wait}}.",
     "unauthorized": "Connectez-vous pour continuer."
   },
   "home": {
     "tagline": "Vos données de santé, sur votre serveur."
   },
+  "login": {
+    "login": "Nom d'utilisateur ou e-mail",
+    "loginRequired": "Saisissez votre nom d'utilisateur ou votre e-mail.",
+    "password": "Mot de passe",
+    "passwordRequired": "Saisissez votre mot de passe.",
+    "submit": "Se connecter",
+    "title": "Connexion"
+  },
+  "nav": {
+    "admin": "Administration",
+    "home": "Accueil",
+    "main": "Principale"
+  },
   "notFound": {
     "description": "La page que vous cherchez n'existe pas.",
     "home": "Retour à l'accueil",
     "title": "Page introuvable"
+  },
+  "setup": {
+    "description": "Ouvrez le lien de configuration que le serveur écrit dans son journal tant qu'aucun compte n'existe, ou créez le premier administrateur avec la commande verve user create.",
+    "title": "Configurer Verve"
+  },
+  "unexpectedError": "Une erreur s'est produite. Réessayez.",
+  "userMenu": {
+    "logout": "Se déconnecter"
   }
 }

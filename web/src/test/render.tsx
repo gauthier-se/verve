@@ -1,4 +1,3 @@
-import { QueryClient } from "@tanstack/react-query";
 import { createMemoryHistory, RouterProvider } from "@tanstack/react-router";
 import { render } from "@testing-library/react";
 
@@ -9,13 +8,11 @@ import { createAppRouter } from "@/router";
  * that does not retry failed queries.
  */
 export function renderRoute(path: string) {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
   const router = createAppRouter({
-    queryClient,
     history: createMemoryHistory({ initialEntries: [path] }),
+    queryDefaults: { queries: { retry: false } },
   });
+  const { queryClient } = router.options.context;
 
   const result = render(<RouterProvider router={router} />);
 
