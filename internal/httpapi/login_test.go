@@ -528,9 +528,10 @@ func (a authTest) recordedEvents(t *testing.T) []recordedEvent {
 	return recorded
 }
 
-// Given a failed login, a successful one and a logout, then each records its audit event with the
-// client of the request: the failure with the attempted login and without a user, the success and
-// the logout with the user as actor. A logout without a session records nothing.
+// Given failed logins, a successful one and a logout, then each records its audit event with the
+// client of the request: a failure with the attempted login, and the user of that login as subject
+// unless no user has it, the success and the logout with the user as actor. A logout without a
+// session records nothing.
 func TestLogin_RecordsAuditEvents(t *testing.T) {
 	t.Parallel()
 
@@ -539,6 +540,7 @@ func TestLogin_RecordsAuditEvents(t *testing.T) {
 	h := a.handler(t, "")
 
 	requireInvalidCredentials(t, loginAt(t, h, phoneAddr, "Alice", wrongPassword))
+	requireInvalidCredentials(t, loginAt(t, h, phoneAddr, "nobody", wrongPassword))
 
 	rec := loginAt(t, h, phoneAddr, "alice", alicePassword)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
@@ -548,8 +550,43 @@ func TestLogin_RecordsAuditEvents(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, logoutAt(t, h, "http://example.com").Code)
 
 	require.Equal(t, []recordedEvent{
-		{Type: "auth.login_failed", ClientIP: "203.0.113.7", UserAgent: userAgent, Payload: `{"attempted":"Alice"}`},
+		{Type: "auth.login_failed", SubjectID: alice.ID, ClientIP: "203.0.113.7", UserAgent: userAgent, Payload: `{"attempted":"Alice"}`},
+		{Type: "auth.login_failed", ClientIP: "203.0.113.7", UserAgent: userAgent, Payload: `{"attempted":"nobody"}`},
 		{Type: "auth.login_succeeded", ActorID: alice.ID, ClientIP: "203.0.113.7", UserAgent: userAgent, Payload: `{"method":"password"}`},
 		{Type: "auth.logout", ActorID: alice.ID, ClientIP: "203.0.113.7", UserAgent: userAgent, Payload: `{}`},
 	}, a.recordedEvents(t))
+}
+
+// Given a burst of failed logins from one client IP on logins that no user has, then a failure on
+// the account of alice from that IP is not aggregated into the burst: alice sees it in her audit
+// events, in a row of its own, and no row of hers counts the attempts on other logins.
+func TestLogin_FailedLoginOfAnAccountStaysOutOfTheBurstsOfOtherLogins(t *testing.T) {
+	t.Parallel()
+
+	a := newAuthTest(t)
+	alice := a.mustCreateAlice(t)
+	aliceCookie := "verve_session=" + a.mustCreateSession(t, alice)
+	h := a.handler(t, "")
+
+	for i := range 20 {
+		requireInvalidCredentials(t, loginAt(t, h, phoneAddr, fmt.Sprintf("nobody%d", i), wrongPassword))
+	}
+
+	// The 20 failures delayed the client IP for a second, and filled the burst of its row.
+	a.clock.Advance(time.Second)
+	requireInvalidCredentials(t, loginAt(t, h, phoneAddr, "alice", wrongPassword))
+
+	rec := getWith(t, h, accountAuditPath, aliceCookie)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.JSONEq(t, fmt.Sprintf(`{"items": [{
+		"id": 21,
+		"occurredAt": "2026-11-04T08:00:01Z",
+		"type": "auth.login_failed",
+		"subject": {"id": %d, "username": "alice", "deleted": false},
+		"clientIp": "203.0.113.7",
+		"userAgent": %q,
+		"payload": {"attempted": "alice"},
+		"count": 1,
+		"lastAt": "2026-11-04T08:00:01Z"
+	}]}`, alice.ID, userAgent), rec.Body.String())
 }

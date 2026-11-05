@@ -104,11 +104,11 @@ func (l *Logins) Login(ctx context.Context, st store.Store, creds Credentials) (
 		return LoggedIn{}, err
 	}
 
-	loggedIn, err := l.attempt(ctx, st, creds, client)
+	loggedIn, userID, err := l.attempt(ctx, st, creds, client)
 	if errors.Is(err, errUserChanged) {
 		// Such as by the hash upgrade of a concurrent login of the user, or by a password change:
 		// the password is verified once more, against the user as they are now.
-		loggedIn, err = l.attempt(ctx, st, creds, client)
+		loggedIn, userID, err = l.attempt(ctx, st, creds, client)
 	}
 
 	if errors.Is(err, errUserChanged) {
@@ -118,7 +118,7 @@ func (l *Logins) Login(ctx context.Context, st store.Store, creds Credentials) (
 	}
 
 	if errors.Is(err, ErrInvalidCredentials) {
-		return LoggedIn{}, l.recordFailure(ctx, st, creds.Login)
+		return LoggedIn{}, l.recordFailure(ctx, st, creds.Login, userID)
 	}
 
 	if err != nil {
@@ -135,20 +135,23 @@ func (l *Logins) Login(ctx context.Context, st store.Store, creds Credentials) (
 var errUserChanged = errors.New("user changed since the password was verified")
 
 // attempt looks the user of creds up through st, verifies the password and opens the session of
-// the client. It returns ErrInvalidCredentials for a failure, which the limiter counted, and
-// errUserChanged when the user changed since they were read.
-func (l *Logins) attempt(ctx context.Context, st store.Store, creds Credentials, client audit.Meta) (LoggedIn, error) {
+// the client. It returns the id of the user of the login, or 0 when no user has it, and
+// ErrInvalidCredentials for a failure, which the limiter counted, or errUserChanged when the user
+// changed since they were read.
+func (l *Logins) attempt(ctx context.Context, st store.Store, creds Credentials, client audit.Meta) (LoggedIn, int64, error) {
 	user, err := st.Users().GetByLogin(ctx, creds.Login)
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
-		return LoggedIn{}, err
+		return LoggedIn{}, 0, err
 	}
 
 	rehash, err := l.checkPassword(ctx, creds, client.IP, user)
 	if err != nil {
-		return LoggedIn{}, err
+		return LoggedIn{}, user.ID, err
 	}
 
-	return l.openSession(ctx, st, user, rehash, creds.SessionID, client)
+	loggedIn, err := l.openSession(ctx, st, user, rehash, creds.SessionID, client)
+
+	return loggedIn, user.ID, err
 }
 
 // checkLimit returns a *RateLimitedError while the attempts of login or ip are delayed.
@@ -272,10 +275,10 @@ func (l *Logins) openSession(ctx context.Context, st store.Store, user store.Use
 	return loggedIn, err
 }
 
-// recordFailure records the failed login of login through st, and returns ErrInvalidCredentials,
-// or the error of the record.
-func (l *Logins) recordFailure(ctx context.Context, st store.Store, login string) error {
-	if err := audit.Record(ctx, st.AuditEvents(), audit.LoginFailed(login)); err != nil {
+// recordFailure records the failed login of login through st, about the user of userID who has
+// that login, or about no one for 0, and returns ErrInvalidCredentials, or the error of the record.
+func (l *Logins) recordFailure(ctx context.Context, st store.Store, login string, userID int64) error {
+	if err := audit.Record(ctx, st.AuditEvents(), audit.LoginFailed(login, userID)); err != nil {
 		return fmt.Errorf("log in: %w", err)
 	}
 
