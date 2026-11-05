@@ -142,26 +142,36 @@ func TestRun_NoUser_WritesTheSetupLinkOnStderr(t *testing.T) {
 	}
 }
 
-// Given a user exists, then serve writes no setup line.
+// logFormats are the log formats that the setup line is checked against.
+var logFormats = []string{config.LogFormatText, config.LogFormatJSON}
+
+// Given a user exists, then serve writes no setup line, in either log format.
 func TestRun_UserExists_WritesNoSetupLine(t *testing.T) {
 	t.Parallel()
 
-	ctx := t.Context()
-	cfg := testConfig(t.TempDir())
+	for _, format := range logFormats {
+		t.Run(format, func(t *testing.T) {
+			t.Parallel()
 
-	_, err := Migrate(ctx, cfg, discardLogger())
-	require.NoError(t, err)
+			ctx := t.Context()
+			cfg := testConfig(t.TempDir())
+			cfg.Log.Format = format
 
-	_, err = withSharedDB(ctx, cfg, func(s store.Store) (store.User, error) {
-		return s.Users().Create(ctx, store.NewUser{Username: "alice", Role: store.RoleMember})
-	})
-	require.NoError(t, err)
+			_, err := Migrate(ctx, cfg, discardLogger())
+			require.NoError(t, err)
 
-	_, stderr, stop := startServe(t, cfg)
-	stop()
+			_, err = withSharedDB(ctx, cfg, func(s store.Store) (store.User, error) {
+				return s.Users().Create(ctx, store.NewUser{Username: "alice", Role: store.RoleMember})
+			})
+			require.NoError(t, err)
 
-	require.NotContains(t, stderr.String(), "/setup#")
-	require.NotContains(t, stderr.String(), "first admin")
+			_, stderr, stop := startServe(t, cfg)
+			stop()
+
+			require.NotContains(t, stderr.String(), "/setup#")
+			require.NotContains(t, stderr.String(), "first admin")
+		})
+	}
 }
 
 // postSetup creates the first admin named username with token on the server at addr, as the web app
@@ -189,29 +199,37 @@ func postSetup(t *testing.T, addr, token, username string) fetched {
 	return fetched{status: res.StatusCode, header: res.Header, body: string(read)}
 }
 
-// Given a restart with no user, then serve writes a new token, and the old one fails.
+// Given a restart with no user, then serve writes a new token, and the old one fails, in either log
+// format.
 func TestRun_RestartWithNoUser_WritesANewTokenAndTheOldOneFails(t *testing.T) {
 	t.Parallel()
 
-	cfg := testConfig(t.TempDir())
+	for _, format := range logFormats {
+		t.Run(format, func(t *testing.T) {
+			t.Parallel()
 
-	_, stderr, stop := startServe(t, cfg)
-	stop()
+			cfg := testConfig(t.TempDir())
+			cfg.Log.Format = format
 
-	old := setupTokenOf(t, stderr)
+			_, stderr, stop := startServe(t, cfg)
+			stop()
 
-	addr, stderr, stop := startServe(t, cfg)
-	defer stop()
+			old := setupTokenOf(t, stderr)
 
-	current := setupTokenOf(t, stderr)
-	require.NotEqual(t, old, current)
+			addr, stderr, stop := startServe(t, cfg)
+			defer stop()
 
-	res := postSetup(t, addr, old, "alice")
-	require.Equal(t, http.StatusForbidden, res.status, res.body)
-	require.Contains(t, res.body, `"code":"setup_token_invalid"`)
+			current := setupTokenOf(t, stderr)
+			require.NotEqual(t, old, current)
 
-	res = postSetup(t, addr, current, "alice")
-	require.Equal(t, http.StatusCreated, res.status, res.body)
+			res := postSetup(t, addr, old, "alice")
+			require.Equal(t, http.StatusForbidden, res.status, res.body)
+			require.Contains(t, res.body, `"code":"setup_token_invalid"`)
+
+			res = postSetup(t, addr, current, "alice")
+			require.Equal(t, http.StatusCreated, res.status, res.body)
+		})
+	}
 }
 
 // Given verve user create next to a running serve, then the setup is no longer required, and the
@@ -247,7 +265,7 @@ func TestRun_UserCreatedByTheCLIWhileServing_CompletesTheSetup(t *testing.T) {
 func TestRun_SetupTokenAppearsInNoLog(t *testing.T) {
 	t.Parallel()
 
-	for _, format := range []string{config.LogFormatText, config.LogFormatJSON} {
+	for _, format := range logFormats {
 		t.Run(format, func(t *testing.T) {
 			t.Parallel()
 

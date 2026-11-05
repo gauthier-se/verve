@@ -36,6 +36,8 @@ type authTest struct {
 	store    store.Store
 	sessions auth.Sessions
 	clock    *clock.Fake
+	// dbPath is the file of the database, for the changes that no repository makes yet.
+	dbPath string
 }
 
 // newAuthTest returns an authTest on a fresh temporary directory, at authTestNow. The store is
@@ -43,7 +45,9 @@ type authTest struct {
 func newAuthTest(t *testing.T) authTest {
 	t.Helper()
 
-	db, err := sqlite.Open(t.Context(), filepath.Join(t.TempDir(), "verve.db"))
+	dbPath := filepath.Join(t.TempDir(), "verve.db")
+
+	db, err := sqlite.Open(t.Context(), dbPath)
 	require.NoError(t, err)
 
 	_, err = sqlite.Migrate(t.Context(), db, sqlite.MigrateOptions{})
@@ -54,7 +58,7 @@ func newAuthTest(t *testing.T) authTest {
 
 	t.Cleanup(func() { require.NoError(t, s.Close(context.Background())) })
 
-	return authTest{store: s, sessions: auth.NewSessions(clk), clock: clk}
+	return authTest{store: s, sessions: auth.NewSessions(clk), clock: clk, dbPath: dbPath}
 }
 
 // deps returns the dependencies of a server on the store of a, whose public URL is publicURL, or

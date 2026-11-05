@@ -14,6 +14,7 @@ import (
 
 	"github.com/gauthier-se/verve/internal/auth"
 	"github.com/gauthier-se/verve/internal/store"
+	"github.com/gauthier-se/verve/internal/store/sqlite"
 )
 
 // setupPath is the path of the setup operations.
@@ -223,6 +224,69 @@ func TestSetup_UserExistsAnswers409WhateverTheToken(t *testing.T) {
 
 		requireProblem(t, rec, http.StatusConflict, "setup_completed")
 		a.requireUserCount(t, 1)
+	}
+}
+
+// deleteEveryUser deletes the users of the database of a, and their sessions, as a deletion of
+// accounts would. No repository deletes a user yet.
+func (a authTest) deleteEveryUser(t *testing.T) {
+	t.Helper()
+
+	db, err := sqlite.Open(t.Context(), a.dbPath)
+	require.NoError(t, err)
+
+	defer func() { require.NoError(t, db.CloseShared()) }()
+
+	_, err = db.Write().ExecContext(t.Context(), "DELETE FROM users")
+	require.NoError(t, err)
+}
+
+// Given a setup that found a user, because it created the admin or because one already existed, then
+// the token stops being valid: once no user is left, it answers 403 setup_token_invalid and creates
+// no user, so that only a restart issues a token again.
+func TestSetup_TokenStopsBeingValidOnceAUserExisted(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// firstUser makes the first user exist, with the issued token at hand.
+		firstUser func(t *testing.T, a authTest, h http.Handler, issued string)
+	}{
+		{
+			name: "created by the setup",
+			firstUser: func(t *testing.T, _ authTest, h http.Handler, issued string) {
+				rec := postSetup(t, h, setupBody(t, issued, "alice", alicePassword))
+				require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+			},
+		},
+		{
+			name: "created by the command line, then seen by a setup",
+			firstUser: func(t *testing.T, a authTest, h http.Handler, issued string) {
+				a.mustCreateUser(t, "bob", store.RoleMember)
+				requireProblem(t, postSetup(t, h, setupBody(t, issued, "alice", alicePassword)),
+					http.StatusConflict, "setup_completed")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			a := newAuthTest(t)
+
+			var token auth.SetupToken
+
+			issued := token.Issue()
+			h := a.setupHandler(t, &token)
+
+			tt.firstUser(t, a, h, issued)
+			a.deleteEveryUser(t)
+
+			requireProblem(t, postSetup(t, h, setupBody(t, issued, "carol", alicePassword)),
+				http.StatusForbidden, "setup_token_invalid")
+			a.requireUserCount(t, 0)
+		})
 	}
 }
 
