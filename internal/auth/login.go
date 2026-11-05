@@ -104,24 +104,20 @@ func (l *Logins) Login(ctx context.Context, st store.Store, creds Credentials) (
 		return LoggedIn{}, err
 	}
 
-	user, err := st.Users().GetByLogin(ctx, creds.Login)
-	if err != nil && !errors.Is(err, store.ErrNotFound) {
-		return LoggedIn{}, fmt.Errorf("log in: %w", err)
+	loggedIn, err := l.attempt(ctx, st, creds, client)
+	if errors.Is(err, errUserChanged) {
+		// Such as by the hash upgrade of a concurrent login of the user, or by a password change:
+		// the password is verified once more, against the user as they are now.
+		loggedIn, err = l.attempt(ctx, st, creds, client)
 	}
 
-	rehash, err := l.checkPassword(ctx, creds, client.IP, user)
-	if errors.Is(err, ErrInvalidCredentials) {
-		return LoggedIn{}, l.recordFailure(ctx, st, creds.Login)
-	}
-
-	if err != nil {
-		return LoggedIn{}, err
-	}
-
-	loggedIn, err := l.open(ctx, st, user, rehash, creds.SessionID, client)
-	if errors.Is(err, ErrInvalidCredentials) {
+	if errors.Is(err, errUserChanged) {
 		l.limiter.Fail(creds.Login, client.IP)
 
+		err = ErrInvalidCredentials
+	}
+
+	if errors.Is(err, ErrInvalidCredentials) {
 		return LoggedIn{}, l.recordFailure(ctx, st, creds.Login)
 	}
 
@@ -132,6 +128,27 @@ func (l *Logins) Login(ctx context.Context, st store.Store, creds Credentials) (
 	l.limiter.Reset(creds.Login)
 
 	return loggedIn, nil
+}
+
+// errUserChanged is returned when the password hash or the status of the user changed between the
+// verification of the password and the opening of the session.
+var errUserChanged = errors.New("user changed since the password was verified")
+
+// attempt looks the user of creds up through st, verifies the password and opens the session of
+// the client. It returns ErrInvalidCredentials for a failure, which the limiter counted, and
+// errUserChanged when the user changed since they were read.
+func (l *Logins) attempt(ctx context.Context, st store.Store, creds Credentials, client audit.Meta) (LoggedIn, error) {
+	user, err := st.Users().GetByLogin(ctx, creds.Login)
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		return LoggedIn{}, err
+	}
+
+	rehash, err := l.checkPassword(ctx, creds, client.IP, user)
+	if err != nil {
+		return LoggedIn{}, err
+	}
+
+	return l.openSession(ctx, st, user, rehash, creds.SessionID, client)
 }
 
 // checkLimit returns a *RateLimitedError while the attempts of login or ip are delayed.
@@ -187,18 +204,18 @@ func (l *Logins) checkPassword(ctx context.Context, creds Credentials, ip netip.
 	return l.hasher.Hash(creds.Password), nil
 }
 
-// open opens the session of user from client, through st, in one transaction: it stores rehash as
-// the password hash unless empty, records the time of the login, revokes the session replaced
-// unless empty, creates the new session and records the audit event. It returns
-// ErrInvalidCredentials when the password hash or the status of user changed since they were read,
-// such as by a password change: the verified password is no longer the one of user.
-func (l *Logins) open(ctx context.Context, st store.Store, user store.User, rehash, replaced string, client audit.Meta) (LoggedIn, error) {
+// openSession opens the session of user from client, through st, in one transaction: it stores
+// rehash as the password hash unless empty, records the time of the login, revokes the session
+// replaced unless empty, creates the new session and records the audit event. It returns
+// errUserChanged when user was deleted, or their password hash or status changed, since they were
+// read: the verified password may no longer be the one of user.
+func (l *Logins) openSession(ctx context.Context, st store.Store, user store.User, rehash, replaced string, client audit.Meta) (LoggedIn, error) {
 	var loggedIn LoggedIn
 
 	err := st.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
 		current, err := tx.Users().Get(ctx, user.ID)
 		if errors.Is(err, store.ErrNotFound) {
-			return ErrInvalidCredentials
+			return errUserChanged
 		}
 
 		if err != nil {
@@ -206,7 +223,7 @@ func (l *Logins) open(ctx context.Context, st store.Store, user store.User, reha
 		}
 
 		if current.PasswordHash != user.PasswordHash || current.Status != store.UserActive {
-			return ErrInvalidCredentials
+			return errUserChanged
 		}
 
 		if rehash != "" {

@@ -3,8 +3,10 @@ package auth
 import (
 	"context"
 	"net/netip"
+	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -16,16 +18,17 @@ import (
 	"github.com/gauthier-se/verve/internal/store"
 )
 
-// The passwords of the login tests. The fake hasher hashes them as currentHash and outdatedHash do.
+// The passwords of the login tests.
 const (
 	alicePassword = "correct horse battery staple"
 	wrongPassword = "Tr0ub4dor&3" //nolint:gosec // G101: a fake password of the tests
 )
 
-// currentHash and outdatedHash return the hash of password that fakeHasher writes with its current
-// parameters, and one with former parameters.
-func currentHash(password string) string  { return "v2:" + password }
-func outdatedHash(password string) string { return "v1:" + password }
+// currentHash returns the hash of password that fakeHasher writes with its current parameters.
+func currentHash(password string) string { return "v2:" + password }
+
+// aliceOutdatedHash is the hash of alicePassword that fakeHasher wrote with its former parameters.
+const aliceOutdatedHash = "v1:" + alicePassword
 
 // fakeHasher stands for the argon2id hasher: its hashes hold the password after the version of their
 // parameters. It counts its calls, so that the tests prove the timing of a login by the hashes it
@@ -35,31 +38,36 @@ type fakeHasher struct {
 	// it is closed. It is set before the logins start.
 	block map[string]chan struct{}
 
-	mu sync.Mutex
-	// verified holds the hash of each verification, in order.
-	verified []string
-	// passwords holds the password of each verification, in order.
-	passwords []string
+	mu    sync.Mutex
+	calls hasherCalls
+}
+
+// hasherCalls records the calls of a fakeHasher.
+type hasherCalls struct {
+	// verifiedHashes and verifiedPasswords hold the hash and the password of each verification, in
+	// order.
+	verifiedHashes    []string
+	verifiedPasswords []string
 	// verifying is the number of verifications running.
 	verifying int
-	// hashes is the number of hashes computed.
-	hashes int
+	// hashedPasswords holds the password of each hash computed, in order.
+	hashedPasswords []string
 }
 
 func (f *fakeHasher) Hash(password string) string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	f.hashes++
+	f.calls.hashedPasswords = append(f.calls.hashedPasswords, password)
 
 	return currentHash(password)
 }
 
 func (f *fakeHasher) Verify(hash, password string) (bool, error) {
 	f.mu.Lock()
-	f.verified = append(f.verified, hash)
-	f.passwords = append(f.passwords, password)
-	f.verifying++
+	f.calls.verifiedHashes = append(f.calls.verifiedHashes, hash)
+	f.calls.verifiedPasswords = append(f.calls.verifiedPasswords, password)
+	f.calls.verifying++
 	f.mu.Unlock()
 
 	if gate, ok := f.block[password]; ok {
@@ -67,7 +75,7 @@ func (f *fakeHasher) Verify(hash, password string) (bool, error) {
 	}
 
 	f.mu.Lock()
-	f.verifying--
+	f.calls.verifying--
 	f.mu.Unlock()
 
 	_, stored, ok := strings.Cut(hash, ":")
@@ -79,13 +87,17 @@ func (f *fakeHasher) NeedsRehash(hash string) (bool, error) {
 	return !strings.HasPrefix(hash, "v2:"), nil
 }
 
-// calls returns the hashes verified, the passwords verified, the verifications running and the
-// hashes computed.
-func (f *fakeHasher) calls() (verified, passwords []string, verifying, hashes int) {
+// recorded returns a copy of the calls so far.
+func (f *fakeHasher) recorded() hasherCalls {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	return append([]string(nil), f.verified...), append([]string(nil), f.passwords...), f.verifying, f.hashes
+	return hasherCalls{
+		verifiedHashes:    slices.Clone(f.calls.verifiedHashes),
+		verifiedPasswords: slices.Clone(f.calls.verifiedPasswords),
+		verifying:         f.calls.verifying,
+		hashedPasswords:   slices.Clone(f.calls.hashedPasswords),
+	}
 }
 
 // loginTest holds a store on a migrated database, the fake clock, the fake hasher, the limiter and
@@ -146,28 +158,35 @@ func (lt loginTest) login(ctx context.Context, ip netip.Addr, login, password st
 	return lt.logins.Login(ctx, lt.store, Credentials{Login: login, Password: password})
 }
 
-// editedLogins wraps a real store, so that GetByLogin returns its user changed by edit. No
-// repository changes the status of a user yet.
+// editedLogins wraps a real store, so that its first lookup by login returns the user changed by
+// edit: as the store would hold it, since no repository changes the status of a user yet, or as it
+// was before another request changed it. The next lookups return the stored user.
 type editedLogins struct {
 	store.Store
 
-	edit func(*store.User)
+	edit   func(*store.User)
+	edited atomic.Bool
 }
 
-func (s editedLogins) Users() store.UsersRepository {
-	return editedUsers{UsersRepository: s.Store.Users(), edit: s.edit}
+// editFirstLogin returns s with its first lookup by login changed by edit.
+func editFirstLogin(s store.Store, edit func(*store.User)) *editedLogins {
+	return &editedLogins{Store: s, edit: edit}
+}
+
+func (s *editedLogins) Users() store.UsersRepository {
+	return editedUsers{UsersRepository: s.Store.Users(), logins: s}
 }
 
 type editedUsers struct {
 	store.UsersRepository
 
-	edit func(*store.User)
+	logins *editedLogins
 }
 
 func (u editedUsers) GetByLogin(ctx context.Context, login string) (store.User, error) {
 	user, err := u.UsersRepository.GetByLogin(ctx, login)
-	if err == nil {
-		u.edit(&user)
+	if err == nil && u.logins.edited.CompareAndSwap(false, true) {
+		u.logins.edit(&user)
 	}
 
 	return user, err
@@ -244,7 +263,7 @@ func TestLogins_FailuresReturnTheSameError(t *testing.T) {
 			alice := lt.mustCreateUser(t, "alice", currentHash(alicePassword))
 
 			if tt.edit != nil {
-				lt.store = editedLogins{Store: lt.store, edit: tt.edit}
+				lt.store = editFirstLogin(lt.store, tt.edit)
 			}
 
 			got, err := lt.login(t.Context(), phoneIP, tt.login, tt.password)
@@ -272,7 +291,7 @@ func TestLogins_UnknownLoginVerifiesADummyHash(t *testing.T) {
 	_, err := lt.login(t.Context(), phoneIP, "alice", wrongPassword)
 	require.ErrorIs(t, err, ErrInvalidCredentials)
 
-	verified, _, _, _ := lt.hasher.calls()
+	verified := lt.hasher.recorded().verifiedHashes
 	require.Equal(t, []string{currentHash(alicePassword)}, verified)
 
 	for _, login := range []string{"bob", "carol", "dave@example.com"} {
@@ -280,7 +299,7 @@ func TestLogins_UnknownLoginVerifiesADummyHash(t *testing.T) {
 		require.ErrorIs(t, err, ErrInvalidCredentials, login)
 	}
 
-	verified, _, _, _ = lt.hasher.calls()
+	verified = lt.hasher.recorded().verifiedHashes
 	require.Len(t, verified, 4)
 
 	dummy := verified[1]
@@ -302,12 +321,12 @@ func TestLogins_SuccessUpgradesAnOutdatedHash(t *testing.T) {
 		hash     string
 		password string
 		want     string
-		// hashes is the number of hashes that the login computes.
-		hashes int
+		// upgrades is the number of hashes of the password that the login computes.
+		upgrades int
 	}{
-		{name: "Outdated", hash: outdatedHash(alicePassword), password: alicePassword, want: currentHash(alicePassword), hashes: 1},
+		{name: "Outdated", hash: aliceOutdatedHash, password: alicePassword, want: currentHash(alicePassword), upgrades: 1},
 		{name: "Current", hash: currentHash(alicePassword), password: alicePassword, want: currentHash(alicePassword)},
-		{name: "OutdatedWrongPassword", hash: outdatedHash(alicePassword), password: wrongPassword, want: outdatedHash(alicePassword)},
+		{name: "OutdatedWrongPassword", hash: aliceOutdatedHash, password: wrongPassword, want: aliceOutdatedHash},
 	}
 
 	for _, tt := range tests {
@@ -323,22 +342,36 @@ func TestLogins_SuccessUpgradesAnOutdatedHash(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tt.want, stored.PasswordHash)
 
-			_, _, _, hashes := lt.hasher.calls()
-			require.Equal(t, tt.hashes, hashes)
+			hashed := lt.hasher.recorded().hashedPasswords
+			require.Equal(t, tt.upgrades, countOf(hashed, tt.password))
 		})
 	}
 }
 
+// countOf returns the number of occurrences of s in list.
+func countOf(list []string, s string) int {
+	count := 0
+
+	for _, item := range list {
+		if item == s {
+			count++
+		}
+	}
+
+	return count
+}
+
 // Given a password that changed between its verification and the opening of the session, then the
-// login fails and opens no session: the verified password is no longer the one of the user.
+// login verifies it again against the new hash, fails and opens no session: the verified password
+// is no longer the one of the user.
 func TestLogins_PasswordChangedSinceItsVerificationFails(t *testing.T) {
 	t.Parallel()
 
 	lt := newLoginTest(t)
 	alice := lt.mustCreateUser(t, "alice", currentHash("a new password, changed meanwhile"))
-	lt.store = editedLogins{Store: lt.store, edit: func(u *store.User) {
+	lt.store = editFirstLogin(lt.store, func(u *store.User) {
 		u.PasswordHash = currentHash(alicePassword)
-	}}
+	})
 
 	_, err := lt.login(t.Context(), phoneIP, "alice", alicePassword)
 	require.ErrorIs(t, err, ErrInvalidCredentials)
@@ -347,6 +380,34 @@ func TestLogins_PasswordChangedSinceItsVerificationFails(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, stored.LastLoginAt.IsZero())
 	require.Equal(t, currentHash("a new password, changed meanwhile"), stored.PasswordHash)
+
+	require.Equal(t, []string{currentHash(alicePassword), currentHash("a new password, changed meanwhile")},
+		lt.hasher.recorded().verifiedHashes)
+}
+
+// Given a hash that a concurrent login of the same user upgraded between the verification and the
+// opening of the session, such as with a double submit, then the login verifies the password again
+// against the upgraded hash and succeeds.
+func TestLogins_HashUpgradedByAConcurrentLoginIsVerifiedAgain(t *testing.T) {
+	t.Parallel()
+
+	lt := newLoginTest(t)
+	alice := lt.mustCreateUser(t, "alice", currentHash(alicePassword))
+	lt.store = editFirstLogin(lt.store, func(u *store.User) {
+		u.PasswordHash = aliceOutdatedHash
+	})
+
+	got, err := lt.login(t.Context(), phoneIP, "alice", alicePassword)
+	require.NoError(t, err)
+	require.Equal(t, alice.ID, got.User.ID)
+
+	stored, err := lt.store.Users().Get(t.Context(), alice.ID)
+	require.NoError(t, err)
+	require.Equal(t, currentHash(alicePassword), stored.PasswordHash)
+	require.Equal(t, sessionsTestNow, stored.LastLoginAt)
+
+	require.Equal(t, []string{aliceOutdatedHash, currentHash(alicePassword)},
+		lt.hasher.recorded().verifiedHashes)
 }
 
 // Given more concurrent logins than the hashing slots, then the others wait for a slot before
@@ -371,18 +432,18 @@ func TestLogins_ConcurrentLoginsBeyondTheSlotsWait(t *testing.T) {
 
 		synctest.Wait()
 
-		_, entered, verifying, _ := lt.hasher.calls()
-		require.Len(t, entered, hashingSlots)
-		require.Equal(t, hashingSlots, verifying)
+		calls := lt.hasher.recorded()
+		require.Len(t, calls.verifiedPasswords, hashingSlots)
+		require.Equal(t, hashingSlots, calls.verifying)
 
-		close(lt.hasher.block[entered[0]])
+		close(lt.hasher.block[calls.verifiedPasswords[0]])
 		synctest.Wait()
 
-		_, entered, verifying, _ = lt.hasher.calls()
-		require.ElementsMatch(t, passwords, entered)
-		require.Equal(t, hashingSlots, verifying)
+		calls = lt.hasher.recorded()
+		require.ElementsMatch(t, passwords, calls.verifiedPasswords)
+		require.Equal(t, hashingSlots, calls.verifying)
 
-		for _, password := range entered[1:] {
+		for _, password := range calls.verifiedPasswords[1:] {
 			close(lt.hasher.block[password])
 		}
 
@@ -436,7 +497,7 @@ func TestLogins_AttemptThatWaitedForASlotIsCheckedAgain(t *testing.T) {
 
 		wg.Wait()
 
-		_, passwords, _, _ := lt.hasher.calls()
+		passwords := lt.hasher.recorded().verifiedPasswords
 		require.Equal(t, []string{"fifth guess", "guess of another login"}, passwords)
 	})
 }
@@ -461,6 +522,6 @@ func TestLogins_DelayedAttemptIsRateLimited(t *testing.T) {
 	require.Equal(t, time.Second, limited.RetryAfter)
 	require.NotErrorIs(t, err, ErrInvalidCredentials)
 
-	verified, _, _, _ := lt.hasher.calls()
+	verified := lt.hasher.recorded().verifiedHashes
 	require.Len(t, verified, loginFailureLimit)
 }
