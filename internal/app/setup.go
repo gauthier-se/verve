@@ -16,12 +16,12 @@ import (
 func offerSetup(ctx context.Context, users store.UsersRepository, token *auth.SetupToken, publicURL config.PublicURL,
 	stderr io.Writer,
 ) error {
-	count, err := users.Count(ctx)
+	required, err := auth.SetupRequired(ctx, users)
 	if err != nil {
 		return fmt.Errorf("offer setup: %w", err)
 	}
 
-	if count > 0 {
+	if !required {
 		return nil
 	}
 

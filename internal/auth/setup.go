@@ -17,8 +17,19 @@ const setupTokenLength = 32
 // SetupToken holds the token that creates the first admin (FR-1 of accounts and administration), in
 // memory only and never stored. Its zero value holds none. It is safe for concurrent use.
 type SetupToken struct {
-	// hash is the SHA-256 hash of the token, nil until Issue.
+	// hash is the SHA-256 hash of the token, nil until Issue and after Revoke.
 	hash atomic.Pointer[[sha256.Size]byte]
+}
+
+// SetupRequired reports whether users holds no user yet, so that the first admin is still to be
+// created.
+func SetupRequired(ctx context.Context, users store.UsersRepository) (bool, error) {
+	count, err := users.Count(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	return count == 0, nil
 }
 
 // Issue replaces the token with a new random one and returns it, once: only its hash is kept.
@@ -46,6 +57,14 @@ func (t *SetupToken) Matches(token string) bool {
 	got := sha256.Sum256([]byte(token))
 
 	return subtle.ConstantTimeCompare(got[:], want[:]) == 1
+}
+
+// Revoke drops the token: it matches no token any more, until the next Issue. A nil SetupToken holds
+// none to drop.
+func (t *SetupToken) Revoke() {
+	if t != nil {
+		t.hash.Store(nil)
+	}
 }
 
 // The errors of a setup. Their messages are the stable codes that the API answers with.
@@ -86,13 +105,25 @@ func NewSetup(token *SetupToken, accounts Accounts, sessions Sessions) *Setup {
 // that fail them never take the writer nor hash a password. The count is read again in the
 // transaction that creates the admin, so that of concurrent setups, or of a setup and verve user
 // create, only one creates a user.
+//
+// A setup that finds a user, or creates one, revokes the token: it stops being valid as soon as a
+// user exists, and does not become valid again if no user is left, until a restart issues another.
 func (s *Setup) CreateAdmin(ctx context.Context, st store.Store, admin FirstAdmin) (LoggedIn, error) {
-	count, err := st.Users().Count(ctx)
+	loggedIn, err := s.createAdmin(ctx, st, admin)
+	if err == nil || errors.Is(err, ErrSetupCompleted) {
+		s.token.Revoke()
+	}
+
+	return loggedIn, err
+}
+
+func (s *Setup) createAdmin(ctx context.Context, st store.Store, admin FirstAdmin) (LoggedIn, error) {
+	required, err := SetupRequired(ctx, st.Users())
 	if err != nil {
 		return LoggedIn{}, err
 	}
 
-	if count > 0 {
+	if !required {
 		return LoggedIn{}, ErrSetupCompleted
 	}
 
@@ -100,7 +131,7 @@ func (s *Setup) CreateAdmin(ctx context.Context, st store.Store, admin FirstAdmi
 		return LoggedIn{}, ErrSetupTokenInvalid
 	}
 
-	user, err := s.accounts.prepare(NewAccount{Username: admin.Username, Password: admin.Password, Role: store.RoleAdmin})
+	user, err := s.accounts.checkAndHash(NewAccount{Username: admin.Username, Password: admin.Password, Role: store.RoleAdmin})
 	if err != nil {
 		return LoggedIn{}, err
 	}
@@ -110,12 +141,12 @@ func (s *Setup) CreateAdmin(ctx context.Context, st store.Store, admin FirstAdmi
 	var loggedIn LoggedIn
 
 	err = st.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
-		count, err := tx.Users().Count(ctx)
+		required, err := SetupRequired(ctx, tx.Users())
 		if err != nil {
 			return err
 		}
 
-		if count > 0 {
+		if !required {
 			return ErrSetupCompleted
 		}
 

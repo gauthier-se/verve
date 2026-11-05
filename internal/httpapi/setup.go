@@ -50,13 +50,13 @@ func registerSetup(api huma.API, deps APIDeps) {
 			"setup token. It needs no authentication.",
 		Tags: []string{"Setup"},
 	}, func(ctx context.Context, _ *struct{}) (*setupStatusOutput, error) {
-		count, err := deps.Store.Users().Count(ctx)
+		required, err := auth.SetupRequired(ctx, deps.Store.Users())
 		if err != nil {
 			return nil, fmt.Errorf("get setup status: %w", err)
 		}
 
 		out := &setupStatusOutput{}
-		out.Body.Required = count == 0
+		out.Body.Required = required
 
 		return out, nil
 	})

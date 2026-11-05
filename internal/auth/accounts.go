@@ -31,7 +31,7 @@ func NewAccounts(hasher PasswordHasher, policy PasswordPolicy) Accounts {
 // in one transaction. It returns ErrUsernameInvalid, the error of the password policy, or
 // store.ErrConflict when the username is taken.
 func (a Accounts) Create(ctx context.Context, st store.Store, account NewAccount, source audit.UserSource) (store.User, error) {
-	user, err := a.prepare(account)
+	user, err := a.checkAndHash(account)
 	if err != nil {
 		return store.User{}, err
 	}
@@ -47,10 +47,10 @@ func (a Accounts) Create(ctx context.Context, st store.Store, account NewAccount
 	return created, err
 }
 
-// prepare returns the user of account to store, with the hash of its password, or ErrUsernameInvalid
-// or the error of the password policy. It hashes outside any transaction, so that the writer is not
-// held while it runs.
-func (a Accounts) prepare(account NewAccount) (store.NewUser, error) {
+// checkAndHash checks account against the rules of a username and the password policy, and returns
+// the user to store, with the hash of its password, or ErrUsernameInvalid or the error of the
+// password policy. It runs outside any transaction, so that the writer is not held while it hashes.
+func (a Accounts) checkAndHash(account NewAccount) (store.NewUser, error) {
 	if err := ValidateUsername(account.Username); err != nil {
 		return store.NewUser{}, err
 	}
