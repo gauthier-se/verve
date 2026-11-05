@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -166,6 +167,216 @@ func RunJobs(t *testing.T, newStore NewStoreFunc) {
 	runJobsSchedules(t, newStore)
 	runJobsActive(t, newStore)
 	runJobsPurge(t, newStore)
+	runJobsListByStatus(t, newStore)
+}
+
+// mustEnqueueClaimed stores a job without a serial key, running from now, and returns it.
+func mustEnqueueClaimed(ctx context.Context, t *testing.T, jobs store.JobsRepository) store.Job {
+	t.Helper()
+
+	got, err := jobs.EnqueueClaimed(ctx, dueJob(jobsTime, ""), jobLease)
+	require.NoError(t, err)
+
+	return got
+}
+
+// listJobs returns the jobs that ListByStatus returns for status and page.
+func listJobs(ctx context.Context, t *testing.T, jobs store.JobsRepository, status store.JobStatus, page store.PageRequest) []store.Job {
+	t.Helper()
+
+	got, err := jobs.ListByStatus(ctx, status, page)
+	require.NoError(t, err)
+
+	return got
+}
+
+// jobIDs returns the ids of jobs, in order.
+func jobIDs(jobs ...store.Job) []int64 {
+	ids := make([]int64, 0, len(jobs))
+	for _, job := range jobs {
+		ids = append(ids, job.ID)
+	}
+
+	return ids
+}
+
+func runJobsListByStatus(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+
+	// Given jobs of every status, one of them created first and failed last and two failed at the
+	// same time, then ListByStatus returns the jobs of the status asked for, newest first by
+	// FinishedAt then ID, with every field.
+	t.Run("ListByStatusReturnsTheJobsOfTheStatusNewestFirstByTheirEnd", func(t *testing.T) {
+		t.Parallel()
+
+		clk := clock.NewFake(jobsTime)
+		jobs := newStore(t, clk).Jobs()
+		ctx := t.Context()
+
+		failedLast := mustEnqueueClaimed(ctx, t, jobs)
+
+		clk.Advance(time.Second)
+
+		failedFirst := mustEnqueueClaimed(ctx, t, jobs)
+		olderAtTheSameTime := mustEnqueueClaimed(ctx, t, jobs)
+		newerAtTheSameTime := mustEnqueueClaimed(ctx, t, jobs)
+		completed := mustEnqueueClaimed(ctx, t, jobs)
+		cancelled := mustEnqueue(ctx, t, jobs, dueJob(jobsTime.Add(time.Hour), ""))
+		mustEnqueue(ctx, t, jobs, dueJob(jobsTime.Add(time.Hour), ""))
+		mustEnqueueClaimed(ctx, t, jobs)
+
+		clk.Advance(time.Second)
+		require.NoError(t, jobs.Fail(ctx, failedFirst.ID, failedFirst.Claims, "handler failed"))
+		require.NoError(t, jobs.Complete(ctx, completed.ID, completed.Claims))
+		require.NoError(t, jobs.Cancel(ctx, cancelled.ID))
+
+		clk.Advance(time.Second)
+		require.NoError(t, jobs.Fail(ctx, newerAtTheSameTime.ID, newerAtTheSameTime.Claims, "handler failed"))
+		require.NoError(t, jobs.Fail(ctx, olderAtTheSameTime.ID, olderAtTheSameTime.Claims, "handler failed"))
+
+		clk.Advance(time.Second)
+		require.NoError(t, jobs.Fail(ctx, failedLast.ID, failedLast.Claims, "handler failed"))
+
+		got := listJobs(ctx, t, jobs, store.JobFailed, store.PageRequest{Limit: 10})
+		require.Equal(t, jobIDs(failedLast, newerAtTheSameTime, olderAtTheSameTime, failedFirst), jobIDs(got...))
+		require.Equal(t, mustGet(ctx, t, jobs, failedLast.ID), got[0])
+
+		require.Equal(t, jobIDs(completed), jobIDs(listJobs(ctx, t, jobs, store.JobCompleted, store.PageRequest{Limit: 10})...))
+		require.Equal(t, jobIDs(cancelled), jobIDs(listJobs(ctx, t, jobs, store.JobCancelled, store.PageRequest{Limit: 10})...))
+	})
+
+	// Given no job of a status, then ListByStatus returns none.
+	t.Run("ListByStatusWithoutJobsOfTheStatusReturnsNone", func(t *testing.T) {
+		t.Parallel()
+
+		jobs := newStore(t, clock.NewFake(jobsTime)).Jobs()
+		ctx := t.Context()
+
+		mustEnqueueClaimed(ctx, t, jobs)
+
+		require.Empty(t, listJobs(ctx, t, jobs, store.JobFailed, store.PageRequest{Limit: 10}))
+	})
+
+	// failEvery fails count running jobs, interval apart, and returns them as they were running.
+	failEvery := func(ctx context.Context, t *testing.T, jobs store.JobsRepository, clk *clock.Fake, interval time.Duration, count int) []store.Job {
+		t.Helper()
+
+		failed := make([]store.Job, 0, count)
+
+		for range count {
+			clk.Advance(interval)
+
+			job := mustEnqueueClaimed(ctx, t, jobs)
+			require.NoError(t, jobs.Fail(ctx, job.ID, job.Claims, "handler failed"))
+
+			failed = append(failed, job)
+		}
+
+		return failed
+	}
+
+	// Given more jobs than the limit, some of them ended at the same time, then ListByStatus returns
+	// at most the limit, and following the position of the last job of each page lists every job
+	// once, in order.
+	t.Run("ListByStatusReturnsAtMostTheLimitAfterTheCursor", func(t *testing.T) {
+		t.Parallel()
+
+		clk := clock.NewFake(jobsTime)
+		jobs := newStore(t, clk).Jobs()
+		ctx := t.Context()
+
+		failed := slices.Concat(
+			failEvery(ctx, t, jobs, clk, 0, 4),
+			failEvery(ctx, t, jobs, clk, time.Second, 3),
+		)
+
+		var listed []store.Job
+
+		page := store.PageRequest{Limit: 2}
+
+		for range len(failed) {
+			got := listJobs(ctx, t, jobs, store.JobFailed, page)
+			require.LessOrEqual(t, len(got), 2)
+
+			if len(got) == 0 {
+				break
+			}
+
+			listed = append(listed, got...)
+			page.After = got[len(got)-1].Cursor()
+		}
+
+		want := jobIDs(failed...)
+		slices.Reverse(want)
+		require.Equal(t, want, jobIDs(listed...))
+	})
+
+	// Given a page listed, when a job created before every listed job fails, then following the
+	// cursor lists each job of the first list once and not the new one: it ended after them, so it
+	// is newer than the cursor.
+	t.Run("FollowingTheCursorListsEachJobOnceWhileJobsFail", func(t *testing.T) {
+		t.Parallel()
+
+		clk := clock.NewFake(jobsTime)
+		jobs := newStore(t, clk).Jobs()
+		ctx := t.Context()
+
+		late := mustEnqueueClaimed(ctx, t, jobs)
+		failed := failEvery(ctx, t, jobs, clk, time.Second, 5)
+		want := jobIDs(failed...)
+		slices.Reverse(want)
+
+		listed := listJobs(ctx, t, jobs, store.JobFailed, store.PageRequest{Limit: 2})
+		require.Equal(t, want[:2], jobIDs(listed...))
+
+		clk.Advance(time.Second)
+		require.NoError(t, jobs.Fail(ctx, late.ID, late.Claims, "handler failed"))
+
+		for range len(failed) {
+			got := listJobs(ctx, t, jobs, store.JobFailed, store.PageRequest{After: listed[len(listed)-1].Cursor(), Limit: 2})
+			if len(got) == 0 {
+				break
+			}
+
+			listed = append(listed, got...)
+		}
+
+		require.Equal(t, want, jobIDs(listed...))
+		require.Equal(t, late.ID, listJobs(ctx, t, jobs, store.JobFailed, store.PageRequest{Limit: 1})[0].ID)
+	})
+
+	// Given a limit below 1, then ListByStatus returns store.ErrInvalid.
+	t.Run("ListByStatusWithALimitBelowOneReturnsErrInvalid", func(t *testing.T) {
+		t.Parallel()
+
+		clk := clock.NewFake(jobsTime)
+		jobs := newStore(t, clk).Jobs()
+		ctx := t.Context()
+
+		failEvery(ctx, t, jobs, clk, 0, 1)
+
+		for _, limit := range []int{0, -1} {
+			_, err := jobs.ListByStatus(ctx, store.JobFailed, store.PageRequest{Limit: limit})
+			require.ErrorIs(t, err, store.ErrInvalid, "limit %d", limit)
+		}
+	})
+
+	// Given a status that is not finished, queued, running or unknown, then ListByStatus returns
+	// store.ErrInvalid: such jobs have no end to sort them by.
+	t.Run("ListByStatusOfAnUnfinishedStatusReturnsErrInvalid", func(t *testing.T) {
+		t.Parallel()
+
+		jobs := newStore(t, clock.NewFake(jobsTime)).Jobs()
+		ctx := t.Context()
+
+		mustEnqueue(ctx, t, jobs, dueJob(jobsTime.Add(time.Hour), ""))
+		mustEnqueueClaimed(ctx, t, jobs)
+
+		for _, status := range []store.JobStatus{store.JobQueued, store.JobRunning, "paused"} {
+			_, err := jobs.ListByStatus(ctx, status, store.PageRequest{Limit: 10})
+			require.ErrorIs(t, err, store.ErrInvalid, "status %q", status)
+		}
+	})
 }
 
 func runJobsSchedules(t *testing.T, newStore NewStoreFunc) {
