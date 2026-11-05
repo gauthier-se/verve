@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetMetaData, GetMetaErrors, GetMetaResponses, ListAccountAuditEventsData, ListAccountAuditEventsErrors, ListAccountAuditEventsResponses, ListAdminAuditEventsData, ListAdminAuditEventsErrors, ListAdminAuditEventsResponses } from './types.gen';
+import type { GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetMetaData, GetMetaErrors, GetMetaResponses, ListAccountAuditEventsData, ListAccountAuditEventsErrors, ListAccountAuditEventsResponses, ListAdminAuditEventsData, ListAdminAuditEventsErrors, ListAdminAuditEventsResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutErrors, LogoutResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -47,6 +47,27 @@ export const listAdminAuditEvents = <ThrowOnError extends boolean = false>(optio
     url: '/api/v1/admin/audit',
     ...options
 });
+
+/**
+ * Log in
+ *
+ * Logs in with a username or an email and a password, and sets the session cookie. A session that the request already has is replaced. Every failure answers 401 `invalid_credentials`. After 5 failures for one login, or 20 for one client IP, attempts answer 429 `rate_limited` with `Retry-After` in seconds, the delay doubling from 1 second up to 15 minutes.
+ */
+export const login = <ThrowOnError extends boolean = false>(options: Options<LoginData, ThrowOnError>): RequestResult<LoginResponses, LoginErrors, ThrowOnError> => (options.client ?? client).post<LoginResponses, LoginErrors, ThrowOnError>({
+    url: '/api/v1/auth/login',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Log out
+ *
+ * Deletes the session of the request and clears the session cookie, even without a session.
+ */
+export const logout = <ThrowOnError extends boolean = false>(options?: Options<LogoutData, ThrowOnError>): RequestResult<LogoutResponses, LogoutErrors, ThrowOnError> => (options?.client ?? client).post<LogoutResponses, LogoutErrors, ThrowOnError>({ url: '/api/v1/auth/logout', ...options });
 
 /**
  * Get the current user

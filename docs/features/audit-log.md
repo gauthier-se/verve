@@ -58,6 +58,10 @@ An append-only record of security-relevant and data management events: logins, t
 - `audit.Record` runs on `tx.AuditEvents()` inside the `WithTx` of the action, so that an event commits or rolls back with it.
 - The client IP and the user agent, truncated to 256 characters, come from the request context. They are empty for jobs and CLI commands.
 - A constructor can make its event aggregatable by giving it an aggregation key: the client IP for failed logins, so that trying many usernames does not escape aggregation. `Append` counts and writes in one writer transaction.
+- The authentication events of the password login:
+  - `auth.login_succeeded`: the user as actor, and the login method in the payload, such as `{"method": "password"}`.
+  - `auth.login_failed`: neither actor nor subject, and the attempted login in the payload, `{"attempted": "..."}`. A failure is never linked to a user, even for a login that exists, because the bursts of failures from one client IP share a row whatever the login: a linked row would show the attempts on other accounts to the user it names.
+  - `auth.logout`: the user as actor and an empty payload. A logout without a valid session records nothing.
 - Endpoints, paginated as described in [Architecture](../architecture.md#pagination), newest first by first occurrence, then by id:
   - `GET /api/v1/account/audit`: the events whose actor or subject is the user of the session (FR-4). An admin also gets only their own events here.
   - `GET /api/v1/admin/audit`: every event, for admins only (403 `forbidden` for a member), with the filters `type`, `actor` and `subject` (user ids, so the events of the system are found by their type), `from` and `to` (RFC 3339 times), which combine (FR-5). An aggregated event is in the time range while one of its occurrences is: its first one before `to`, and its last one at or after `from`. A `to` that is not after `from` answers 422 `validation_failed`.

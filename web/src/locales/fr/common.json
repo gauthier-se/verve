@@ -23,6 +23,8 @@
   "errors": {
     "csrf_failed": "La requête a été bloquée par mesure de sécurité. Rechargez la page et réessayez.",
     "forbidden": "Vous n'avez pas l'autorisation d'effectuer cette action.",
+    "invalid_credentials": "Le nom d'utilisateur, l'e-mail ou le mot de passe est incorrect.",
+    "rate_limited": "Trop de tentatives. Patientez un instant, puis réessayez.",
     "unauthorized": "Connectez-vous pour continuer."
   },
   "home": {

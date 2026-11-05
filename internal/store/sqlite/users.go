@@ -74,6 +74,52 @@ func (r users) GetByLogin(ctx context.Context, login string) (store.User, error)
 	return userOf(row), nil
 }
 
+func (r users) SetPasswordHash(ctx context.Context, id int64, hash string) error {
+	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
+		updated, err := q.SetUserPasswordHash(ctx, sqlcgen.SetUserPasswordHashParams{
+			PasswordHash: sql.NullString{String: hash, Valid: hash != ""},
+			ID:           id,
+		})
+		if err != nil {
+			return err
+		}
+
+		if updated == 0 {
+			return store.ErrNotFound
+		}
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("set password hash of user %d: %w", id, err)
+	}
+
+	return nil
+}
+
+func (r users) RecordLogin(ctx context.Context, id int64) (store.User, error) {
+	var row sqlcgen.User
+
+	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
+		var err error
+
+		row, err = q.SetUserLastLoginAt(ctx, sqlcgen.SetUserLastLoginAtParams{
+			LastLoginAt: nullMillis(r.clk.Now()),
+			ID:          id,
+		})
+		if errors.Is(err, sql.ErrNoRows) {
+			return store.ErrNotFound
+		}
+
+		return err
+	})
+	if err != nil {
+		return store.User{}, fmt.Errorf("record login of user %d: %w", id, err)
+	}
+
+	return userOf(row), nil
+}
+
 func (r users) Count(ctx context.Context) (int64, error) {
 	count, err := r.q.read().CountUsers(ctx)
 	if err != nil {

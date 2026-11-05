@@ -84,6 +84,15 @@ func (s Sessions) Create(ctx context.Context, repos store.Repositories, session 
 	return id, created, nil
 }
 
+// ValidSession is a session that Lookup found valid, and its user.
+type ValidSession struct {
+	Session store.Session
+	User    store.User
+	// Renewed reports whether the lookup renewed the session, which moved its expiry: the cookie
+	// that holds the identifier must follow it.
+	Renewed bool
+}
+
 // Lookup returns the session of the identifier id and its user, read on the reader of the store. It
 // returns store.ErrNotFound alone for an unknown, expired or revoked session, and for a user who is
 // not active, so that callers cannot tell them apart.
@@ -91,47 +100,47 @@ func (s Sessions) Create(ctx context.Context, repos store.Repositories, session 
 // A lookup renews the session at most once per minute, and returns it renewed: it writes the last
 // seen time and an expiry from the current instance settings. A renewal fails the lookup when the
 // session ended under those settings, after they were lowered.
-func (s Sessions) Lookup(ctx context.Context, repos store.Repositories, id string) (store.Session, store.User, error) {
+func (s Sessions) Lookup(ctx context.Context, repos store.Repositories, id string) (ValidSession, error) {
 	idHash := hashSessionID(id)
 
 	session, user, err := repos.Sessions().Get(ctx, idHash)
 	if errors.Is(err, store.ErrNotFound) {
-		return store.Session{}, store.User{}, store.ErrNotFound
+		return ValidSession{}, store.ErrNotFound
 	}
 
 	if err != nil {
-		return store.Session{}, store.User{}, err
+		return ValidSession{}, err
 	}
 
 	now := s.clk.Now()
 	if now.After(session.ExpiresAt) || user.Status != store.UserActive {
-		return store.Session{}, store.User{}, store.ErrNotFound
+		return ValidSession{}, store.ErrNotFound
 	}
 
 	if now.Sub(session.LastSeenAt) < renewInterval {
-		return session, user, nil
+		return ValidSession{Session: session, User: user}, nil
 	}
 
 	lifetimes, err := lifetimesOf(ctx, repos.InstanceSettings())
 	if err != nil {
-		return store.Session{}, store.User{}, err
+		return ValidSession{}, err
 	}
 
 	if lifetimes.ended(session, now) {
-		return store.Session{}, store.User{}, store.ErrNotFound
+		return ValidSession{}, store.ErrNotFound
 	}
 
 	// The session may have been revoked since it was read.
 	renewed, err := repos.Sessions().Touch(ctx, idHash, lifetimes.expiry(now, session.CreatedAt))
 	if errors.Is(err, store.ErrNotFound) {
-		return store.Session{}, store.User{}, store.ErrNotFound
+		return ValidSession{}, store.ErrNotFound
 	}
 
 	if err != nil {
-		return store.Session{}, store.User{}, err
+		return ValidSession{}, err
 	}
 
-	return renewed, user, nil
+	return ValidSession{Session: renewed, User: user, Renewed: true}, nil
 }
 
 // Revoke deletes the session of the identifier id, or returns store.ErrNotFound. The next lookup of

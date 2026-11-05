@@ -62,6 +62,12 @@ type UsersRepository interface {
 	Get(ctx context.Context, id int64) (User, error)
 	// GetByLogin returns the user whose username or email is login, ignoring case, or ErrNotFound.
 	GetByLogin(ctx context.Context, login string) (User, error)
+	// SetPasswordHash replaces the password hash of the user of id, or returns ErrNotFound. An empty
+	// hash leaves the user without a password.
+	SetPasswordHash(ctx context.Context, id int64, hash string) error
+	// RecordLogin sets the LastLoginAt of the user of id to the current time and returns the user,
+	// or returns ErrNotFound.
+	RecordLogin(ctx context.Context, id int64) (User, error)
 	// Count returns the number of users, whatever their status.
 	Count(ctx context.Context) (int64, error)
 }

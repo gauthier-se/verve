@@ -114,3 +114,52 @@ func (q *Queries) GetUserByLogin(ctx context.Context, loginFold string) (User, e
 	)
 	return i, err
 }
+
+const setUserLastLoginAt = `-- name: SetUserLastLoginAt :one
+UPDATE users
+SET last_login_at = ?
+WHERE id = ?
+RETURNING id, username, username_fold, email, email_fold, password_hash, role, status, created_at, last_login_at
+`
+
+type SetUserLastLoginAtParams struct {
+	LastLoginAt sql.NullInt64
+	ID          int64
+}
+
+func (q *Queries) SetUserLastLoginAt(ctx context.Context, arg SetUserLastLoginAtParams) (User, error) {
+	row := q.db.QueryRowContext(ctx, setUserLastLoginAt, arg.LastLoginAt, arg.ID)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.UsernameFold,
+		&i.Email,
+		&i.EmailFold,
+		&i.PasswordHash,
+		&i.Role,
+		&i.Status,
+		&i.CreatedAt,
+		&i.LastLoginAt,
+	)
+	return i, err
+}
+
+const setUserPasswordHash = `-- name: SetUserPasswordHash :execrows
+UPDATE users
+SET password_hash = ?
+WHERE id = ?
+`
+
+type SetUserPasswordHashParams struct {
+	PasswordHash sql.NullString
+	ID           int64
+}
+
+func (q *Queries) SetUserPasswordHash(ctx context.Context, arg SetUserPasswordHashParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setUserPasswordHash, arg.PasswordHash, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}

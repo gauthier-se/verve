@@ -14,6 +14,17 @@ FROM users
 WHERE username_fold = sqlc.arg(login_fold)
    OR email_fold = sqlc.arg(login_fold);
 
+-- name: SetUserPasswordHash :execrows
+UPDATE users
+SET password_hash = ?
+WHERE id = ?;
+
+-- name: SetUserLastLoginAt :one
+UPDATE users
+SET last_login_at = ?
+WHERE id = ?
+RETURNING *;
+
 -- name: CountUsers :one
 SELECT count(*)
 FROM users;

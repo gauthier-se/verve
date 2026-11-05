@@ -24,6 +24,8 @@ export default interface Resources {
     "errors": {
       "csrf_failed": "The request was blocked as a security measure. Reload the page and try again.",
       "forbidden": "You do not have permission to do this.",
+      "invalid_credentials": "The username, email or password is incorrect.",
+      "rate_limited": "Too many attempts. Wait a moment, then try again.",
       "unauthorized": "Log in to continue."
     },
     "home": {

@@ -2,6 +2,7 @@
 package httpapi
 
 import (
+	"cmp"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -38,6 +39,9 @@ type Deps struct {
 	// PublicURL names the session cookie and is the origin that the CSRF checks expect. The zero
 	// value means unset.
 	PublicURL config.PublicURL
+	// Hasher has the parameters of the password hashes that logins write when they upgrade one. The
+	// zero value means auth.DefaultHasher.
+	Hasher auth.Hasher
 }
 
 // NewHandler returns the root handler of the server: the health probes, the API, a JSON 404
@@ -47,7 +51,15 @@ func NewHandler(d Deps) http.Handler {
 	mux.HandleFunc("GET /healthz", healthz)
 	mux.HandleFunc("GET /readyz", readyz(d.Version.Version, d.Checkers))
 	mux.HandleFunc(apiPrefix, apiNotFound)
-	NewAPI(mux, APIDeps{Version: d.Version, Store: d.Store})
+
+	sessions := auth.NewSessions(d.Clock)
+	NewAPI(mux, APIDeps{
+		Version:   d.Version,
+		Store:     d.Store,
+		Logins:    auth.NewLogins(sessions, cmp.Or(d.Hasher, auth.DefaultHasher()), auth.NewLoginLimiter(d.Clock)),
+		Sessions:  sessions,
+		PublicURL: d.PublicURL,
+	})
 
 	if d.SPA != nil {
 		mux.Handle("/", outsideAPI(d.SPA))

@@ -52,11 +52,16 @@ func registerCurrentUser(api huma.API, repos store.Repositories) {
 			return nil, fmt.Errorf("get current user: %w", err)
 		}
 
-		return &currentUserOutput{Body: CurrentUser{
-			ID:       user.ID,
-			Username: user.Username,
-			Email:    user.Email,
-			Role:     string(user.Role),
-		}}, nil
+		return &currentUserOutput{Body: currentUserOf(user)}, nil
 	})
+}
+
+// currentUserOf returns user as the API describes the current user.
+func currentUserOf(user store.User) CurrentUser {
+	return CurrentUser{
+		ID:       user.ID,
+		Username: user.Username,
+		Email:    user.Email,
+		Role:     string(user.Role),
+	}
 }

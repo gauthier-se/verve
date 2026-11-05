@@ -13,7 +13,9 @@ import (
 
 // The types of the audit events.
 const (
-	TypeLoginFailed = "auth.login_failed"
+	TypeLoginFailed    = "auth.login_failed"
+	TypeLoginSucceeded = "auth.login_succeeded"
+	TypeLogout         = "auth.logout"
 )
 
 // Event is an audit event to record, built by a constructor of this package.
@@ -44,6 +46,30 @@ func LoginFailed(attempted string) Event {
 		eventType:           TypeLoginFailed,
 		aggregateOnClientIP: true,
 		payload:             loginFailedPayload{Attempted: truncate(attempted, maxAttemptedLogin)},
+	}
+}
+
+type loginSucceededPayload struct {
+	Method store.LoginMethod `json:"method"`
+}
+
+// LoginSucceeded is the login of the user of userID, with method.
+func LoginSucceeded(userID int64, method store.LoginMethod) Event {
+	return Event{
+		eventType: TypeLoginSucceeded,
+		actorID:   userID,
+		payload:   loginSucceededPayload{Method: method},
+	}
+}
+
+type logoutPayload struct{}
+
+// Logout is the user of userID ending their session.
+func Logout(userID int64) Event {
+	return Event{
+		eventType: TypeLogout,
+		actorID:   userID,
+		payload:   logoutPayload{},
 	}
 }
 
