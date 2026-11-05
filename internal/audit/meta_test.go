@@ -61,7 +61,7 @@ func TestRecord_WithoutARequestLeavesTheClientEmpty(t *testing.T) {
 
 	events := &fakeEvents{}
 
-	require.NoError(t, Record(t.Context(), events, LoginFailed("alice")))
+	require.NoError(t, Record(t.Context(), events, LoginFailed("alice", 0)))
 
 	require.Len(t, events.appended, 1)
 	require.Empty(t, events.appended[0].ClientIP)
@@ -74,7 +74,7 @@ func TestRecord_ReturnsTheErrorOfTheRepository(t *testing.T) {
 
 	errAppend := errors.New("disk full")
 
-	err := Record(t.Context(), &fakeEvents{err: errAppend}, LoginFailed("alice"))
+	err := Record(t.Context(), &fakeEvents{err: errAppend}, LoginFailed("alice", 0))
 
 	require.ErrorIs(t, err, errAppend)
 }

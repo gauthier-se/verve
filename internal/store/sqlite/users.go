@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 
 	"modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
@@ -29,9 +28,9 @@ func (r users) Create(ctx context.Context, user store.NewUser) (store.User, erro
 
 		row, err = q.CreateUser(ctx, sqlcgen.CreateUserParams{
 			Username:     user.Username,
-			UsernameFold: foldCase(user.Username),
+			UsernameFold: store.FoldCase(user.Username),
 			Email:        sql.NullString{String: user.Email, Valid: user.Email != ""},
-			EmailFold:    sql.NullString{String: foldCase(user.Email), Valid: user.Email != ""},
+			EmailFold:    sql.NullString{String: store.FoldCase(user.Email), Valid: user.Email != ""},
 			PasswordHash: sql.NullString{String: user.PasswordHash, Valid: user.PasswordHash != ""},
 			Role:         string(user.Role),
 			Status:       string(store.UserActive),
@@ -62,13 +61,59 @@ func (r users) Get(ctx context.Context, id int64) (store.User, error) {
 
 // GetByLogin keeps login out of its errors: people do type their password in the wrong field.
 func (r users) GetByLogin(ctx context.Context, login string) (store.User, error) {
-	row, err := r.q.read().GetUserByLogin(ctx, foldCase(login))
+	row, err := r.q.read().GetUserByLogin(ctx, store.FoldCase(login))
 	if errors.Is(err, sql.ErrNoRows) {
 		err = store.ErrNotFound
 	}
 
 	if err != nil {
 		return store.User{}, fmt.Errorf("get user by login: %w", err)
+	}
+
+	return userOf(row), nil
+}
+
+func (r users) SetPasswordHash(ctx context.Context, id int64, hash string) error {
+	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
+		updated, err := q.SetUserPasswordHash(ctx, sqlcgen.SetUserPasswordHashParams{
+			PasswordHash: sql.NullString{String: hash, Valid: hash != ""},
+			ID:           id,
+		})
+		if err != nil {
+			return err
+		}
+
+		if updated == 0 {
+			return store.ErrNotFound
+		}
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("set password hash of user %d: %w", id, err)
+	}
+
+	return nil
+}
+
+func (r users) RecordLogin(ctx context.Context, id int64) (store.User, error) {
+	var row sqlcgen.User
+
+	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
+		var err error
+
+		row, err = q.SetUserLastLoginAt(ctx, sqlcgen.SetUserLastLoginAtParams{
+			LastLoginAt: nullMillis(r.clk.Now()),
+			ID:          id,
+		})
+		if errors.Is(err, sql.ErrNoRows) {
+			return store.ErrNotFound
+		}
+
+		return err
+	})
+	if err != nil {
+		return store.User{}, fmt.Errorf("record login of user %d: %w", id, err)
 	}
 
 	return userOf(row), nil
@@ -81,12 +126,6 @@ func (r users) Count(ctx context.Context) (int64, error) {
 	}
 
 	return count, nil
-}
-
-// foldCase returns the form that strings differing only by case share. Going through the upper case
-// first also merges letters with two lower case forms, such as the final sigma.
-func foldCase(s string) string {
-	return strings.ToLower(strings.ToUpper(s))
 }
 
 // constraintError returns the store error of a failed constraint, or err for any other error.

@@ -252,6 +252,70 @@ func RunUsers(t *testing.T, newStore NewStoreFunc) {
 		}
 	})
 
+	// Given SetPasswordHash, then Get returns the new hash, and the other users keep theirs. An empty
+	// hash leaves the user without a password. Given a missing id, then store.ErrNotFound.
+	t.Run("SetPasswordHashReplacesTheHashOfTheUser", func(t *testing.T) {
+		t.Parallel()
+
+		users := newStore(t, clock.NewFake(usersTime)).Users()
+		ctx := t.Context()
+
+		alice := mustCreateUser(ctx, t, users, newUser("alice", ""))
+		bob := mustCreateUser(ctx, t, users, newUser("bob", ""))
+
+		require.NoError(t, users.SetPasswordHash(ctx, alice.ID, "$argon2id$new-hash"))
+
+		got, err := users.Get(ctx, alice.ID)
+		require.NoError(t, err)
+		require.Equal(t, "$argon2id$new-hash", got.PasswordHash)
+
+		got, err = users.Get(ctx, bob.ID)
+		require.NoError(t, err)
+		require.Equal(t, bob.PasswordHash, got.PasswordHash)
+
+		require.NoError(t, users.SetPasswordHash(ctx, alice.ID, ""))
+
+		got, err = users.Get(ctx, alice.ID)
+		require.NoError(t, err)
+		require.Empty(t, got.PasswordHash)
+
+		require.ErrorIs(t, users.SetPasswordHash(ctx, 42, fakeHash), store.ErrNotFound)
+	})
+
+	// Given RecordLogin, then the user has the clock's now (millisecond precision, UTC) as
+	// LastLoginAt, returned and stored, and the other users keep none. Given a missing id, then
+	// store.ErrNotFound.
+	t.Run("RecordLoginSetsTheLastLoginTime", func(t *testing.T) {
+		t.Parallel()
+
+		clk := clock.NewFake(usersTime)
+		users := newStore(t, clk).Users()
+		ctx := t.Context()
+
+		alice := mustCreateUser(ctx, t, users, newUser("alice", ""))
+		bob := mustCreateUser(ctx, t, users, newUser("bob", ""))
+
+		clk.Advance(time.Hour)
+
+		recorded, err := users.RecordLogin(ctx, alice.ID)
+		require.NoError(t, err)
+
+		want := alice
+		want.LastLoginAt = time.Date(2026, 10, 28, 10, 30, 15, 123_000_000, time.UTC)
+		require.Equal(t, want, recorded)
+
+		got, err := users.Get(ctx, alice.ID)
+		require.NoError(t, err)
+		require.Equal(t, want, got)
+
+		got, err = users.Get(ctx, bob.ID)
+		require.NoError(t, err)
+		require.True(t, got.LastLoginAt.IsZero())
+
+		_, err = users.RecordLogin(ctx, 42)
+		require.ErrorIs(t, err, store.ErrNotFound)
+	})
+
 	// Given users, then Count returns their number, starting from 0 on a new store.
 	t.Run("CountReturnsTheNumberOfUsers", func(t *testing.T) {
 		t.Parallel()

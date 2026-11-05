@@ -16,12 +16,15 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/gauthier-se/verve/internal/logging"
+	"github.com/gauthier-se/verve/internal/store"
 )
 
 // eventsByConstructor holds an event of each constructor of the package, by the constructor's name.
 func eventsByConstructor() map[string]Event {
 	return map[string]Event{
-		"LoginFailed": LoginFailed("alice"),
+		"LoginFailed":    LoginFailed("alice", 7),
+		"LoginSucceeded": LoginSucceeded(7, store.LoginPassword),
+		"Logout":         Logout(7),
 	}
 }
 
@@ -148,34 +151,55 @@ func TestSensitiveKeys_FindsKeysAtAnyDepth(t *testing.T) {
 }
 
 // Given a failed login, then the event has the login failure type, carries the attempted login and
-// has neither actor nor subject.
+// has no actor. Its subject is the user of the login, or none for a login that no user has.
 func TestLoginFailed(t *testing.T) {
 	t.Parallel()
 
-	event := LoginFailed("alice")
+	tests := []struct {
+		name   string
+		userID int64
+	}{
+		{name: "known login", userID: 7},
+		{name: "unknown login", userID: 0},
+	}
 
-	require.Equal(t, TypeLoginFailed, event.eventType)
-	require.Zero(t, event.actorID)
-	require.Zero(t, event.subjectID)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	data, err := json.Marshal(event.payload)
-	require.NoError(t, err)
-	require.JSONEq(t, `{"attempted":"alice"}`, string(data))
+			event := LoginFailed("alice", tt.userID)
+
+			require.Equal(t, TypeLoginFailed, event.eventType)
+			require.Zero(t, event.actorID)
+			require.Equal(t, tt.userID, event.subjectID)
+
+			data, err := json.Marshal(event.payload)
+			require.NoError(t, err)
+			require.JSONEq(t, `{"attempted":"alice"}`, string(data))
+		})
+	}
 }
 
-// Given failed logins of several usernames from one client IP, then they are aggregated on the
-// client IP, so that trying many usernames does not escape aggregation. Without a request, they
-// are not aggregated.
-func TestLoginFailed_IsAggregatedOnTheClientIP(t *testing.T) {
+// Given failed logins from one client IP, then those of logins that no user has are aggregated on
+// the client IP, so that trying many logins does not escape aggregation, and those of a user on the
+// client IP and that user, so that a burst row never shows a user the attempts on another account.
+// Without a request, they are not aggregated.
+func TestLoginFailed_IsAggregatedOnTheClientIPAndTheUser(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name string
 		meta Meta
-		want string
+		// want holds the aggregation keys of the failures of unknown logins, of user 7 twice and of
+		// user 8.
+		want []string
 	}{
-		{name: "request", meta: Meta{IP: netip.MustParseAddr("203.0.113.7")}, want: "203.0.113.7"},
-		{name: "no request", meta: Meta{}, want: ""},
+		{
+			name: "request",
+			meta: Meta{IP: netip.MustParseAddr("203.0.113.7")},
+			want: []string{"203.0.113.7", "203.0.113.7", "203.0.113.7 user 7", "203.0.113.7 user 7", "203.0.113.7 user 8"},
+		},
+		{name: "no request", meta: Meta{}, want: []string{"", "", "", "", ""}},
 	}
 
 	for _, tt := range tests {
@@ -185,14 +209,20 @@ func TestLoginFailed_IsAggregatedOnTheClientIP(t *testing.T) {
 			ctx := WithMeta(t.Context(), tt.meta)
 			events := &fakeEvents{}
 
-			require.NoError(t, Record(ctx, events, LoginFailed("alice")))
-			require.NoError(t, Record(ctx, events, LoginFailed("bob")))
-
-			require.Len(t, events.appended, 2)
-
-			for _, event := range events.appended {
-				require.Equal(t, tt.want, event.AggregationKey)
+			for _, event := range []Event{
+				LoginFailed("bob", 0), LoginFailed("carol", 0),
+				LoginFailed("alice", 7), LoginFailed("ALICE@example.com", 7),
+				LoginFailed("dave", 8),
+			} {
+				require.NoError(t, Record(ctx, events, event))
 			}
+
+			keys := make([]string, 0, len(events.appended))
+			for _, event := range events.appended {
+				keys = append(keys, event.AggregationKey)
+			}
+
+			require.Equal(t, tt.want, keys)
 		})
 	}
 }
@@ -217,10 +247,44 @@ func TestLoginFailed_TruncatesTheAttemptedLoginTo64Characters(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			event := LoginFailed(tt.attempted)
+			event := LoginFailed(tt.attempted, 0)
 
 			require.Zero(t, event.subjectID)
 			require.Equal(t, loginFailedPayload{Attempted: tt.want}, event.payload)
 		})
 	}
+}
+
+// Given a successful login, then the event has the login type, the user as actor, no subject, and
+// the login method. It is never aggregated.
+func TestLoginSucceeded(t *testing.T) {
+	t.Parallel()
+
+	event := LoginSucceeded(7, store.LoginPassword)
+
+	require.Equal(t, TypeLoginSucceeded, event.eventType)
+	require.Equal(t, int64(7), event.actorID)
+	require.Zero(t, event.subjectID)
+	require.False(t, event.aggregateOnClientIP)
+
+	data, err := json.Marshal(event.payload)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"method":"password"}`, string(data))
+}
+
+// Given a logout, then the event has the logout type, the user as actor, no subject and an empty
+// payload. It is never aggregated.
+func TestLogout(t *testing.T) {
+	t.Parallel()
+
+	event := Logout(7)
+
+	require.Equal(t, TypeLogout, event.eventType)
+	require.Equal(t, int64(7), event.actorID)
+	require.Zero(t, event.subjectID)
+	require.False(t, event.aggregateOnClientIP)
+
+	data, err := json.Marshal(event.payload)
+	require.NoError(t, err)
+	require.JSONEq(t, `{}`, string(data))
 }

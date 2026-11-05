@@ -7,6 +7,8 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
+	"github.com/gauthier-se/verve/internal/auth"
+	"github.com/gauthier-se/verve/internal/config"
 	"github.com/gauthier-se/verve/internal/store"
 	"github.com/gauthier-se/verve/internal/version"
 )
@@ -23,6 +25,11 @@ type APIDeps struct {
 	Version version.Info
 	// Store holds the data of the operations.
 	Store store.Store
+	// Logins logs users in, and Sessions deletes the session of a logout.
+	Logins   *auth.Logins
+	Sessions auth.Sessions
+	// PublicURL names the session cookie that login sets and logout clears.
+	PublicURL config.PublicURL
 }
 
 // useProblemErrors makes Huma build its errors as problems. huma.NewError is Huma's documented
@@ -52,6 +59,7 @@ func NewAPI(mux *http.ServeMux, deps APIDeps) huma.API {
 	api := humago.New(mux, config)
 
 	registerMeta(api, deps.Version)
+	registerLoginAndLogout(api, deps)
 	registerCurrentUser(api, deps.Store)
 	registerAudit(api, deps.Store)
 

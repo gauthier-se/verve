@@ -96,6 +96,17 @@ export type ErrorDetail = {
     value?: unknown;
 };
 
+export type LoginInputBody = {
+    /**
+     * The username or the email address, in any case.
+     */
+    login: string;
+    /**
+     * The password, at most 128 characters.
+     */
+    password: string;
+};
+
 export type Meta = {
     /**
      * When the server was built in RFC 3339 format, unknown for a development build.
@@ -264,6 +275,72 @@ export type ListAdminAuditEventsResponses = {
 };
 
 export type ListAdminAuditEventsResponse = ListAdminAuditEventsResponses[keyof ListAdminAuditEventsResponses];
+
+export type LoginData = {
+    body: LoginInputBody;
+    path?: never;
+    query?: never;
+    url: '/api/v1/auth/login';
+};
+
+export type LoginErrors = {
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Request Entity Too Large
+     */
+    413: Problem;
+    /**
+     * Unprocessable Entity
+     */
+    422: Problem;
+    /**
+     * Too Many Requests
+     */
+    429: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type LoginError = LoginErrors[keyof LoginErrors];
+
+export type LoginResponses = {
+    /**
+     * OK
+     */
+    200: CurrentUser;
+};
+
+export type LoginResponse = LoginResponses[keyof LoginResponses];
+
+export type LogoutData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/auth/logout';
+};
+
+export type LogoutErrors = {
+    /**
+     * Error
+     */
+    default: Problem;
+};
+
+export type LogoutError = LogoutErrors[keyof LogoutErrors];
+
+export type LogoutResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type LogoutResponse = LogoutResponses[keyof LogoutResponses];
 
 export type GetCurrentUserData = {
     body?: never;

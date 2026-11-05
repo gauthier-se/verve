@@ -24,6 +24,10 @@ import (
 // authTestNow is when the sessions of the tests are created.
 var authTestNow = time.Date(2026, 11, 4, 8, 0, 0, 0, time.UTC)
 
+// testHasher hashes the passwords of the tests with the lowest argon2id parameters, so that the
+// tests that fail many logins stay fast.
+var testHasher = auth.Hasher{Memory: 8, Iterations: 1, Parallelism: 1}
+
 // unauthorizedBody is the problem of a request without a valid session.
 const unauthorizedBody = `{"type":"about:blank","title":"Unauthorized","status":401,"code":"unauthorized"}`
 
@@ -63,6 +67,7 @@ func (a authTest) deps(t *testing.T, publicURL string) Deps {
 		Clock:     a.clock,
 		Store:     a.store,
 		PublicURL: mustPublicURL(t, publicURL),
+		Hasher:    testHasher,
 	}
 }
 
@@ -481,5 +486,52 @@ func TestAuth_GateAnswersBeforeCSRFAndAuthentication(t *testing.T) {
 		require.Equal(t, http.StatusServiceUnavailable, rec.Code, method)
 		require.JSONEq(t, `{"type":"about:blank","title":"Service Unavailable","status":503,"code":"starting"}`,
 			rec.Body.String(), method)
+	}
+}
+
+// Given a lookup that renews the session, then the response sends the session cookie again with the
+// renewed expiry, so that the browser keeps it as long as the session lives (FR-7). A lookup that
+// does not renew the session sends no cookie.
+func TestAuth_RenewedSessionSendsTheCookieAgain(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		publicURL  string
+		cookieName string
+		// attributes follow the identifier in the cookie sent again.
+		attributes string
+	}{
+		{
+			publicURL:  "",
+			cookieName: "verve_session",
+			attributes: "; Path=/; Expires=Fri, 04 Dec 2026 08:01:00 GMT; HttpOnly; SameSite=Lax",
+		},
+		{
+			publicURL:  "https://verve.example.com",
+			cookieName: "__Host-verve_session",
+			attributes: "; Path=/; Expires=Fri, 04 Dec 2026 08:01:00 GMT; HttpOnly; Secure; SameSite=Lax",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.cookieName, func(t *testing.T) {
+			t.Parallel()
+
+			a := newAuthTest(t)
+			id := a.mustCreateSession(t, a.mustCreateUser(t, "alice", store.RoleMember))
+			h := a.handler(t, tt.publicURL)
+
+			a.clock.Advance(time.Minute)
+
+			rec := getWith(t, h, "/api/v1/auth/me", tt.cookieName+"="+id)
+			require.Equal(t, http.StatusOK, rec.Code)
+			require.Equal(t, []string{tt.cookieName + "=" + id + tt.attributes}, rec.Header().Values("Set-Cookie"))
+
+			a.clock.Advance(30 * time.Second)
+
+			rec = getWith(t, h, "/api/v1/auth/me", tt.cookieName+"="+id)
+			require.Equal(t, http.StatusOK, rec.Code)
+			require.Empty(t, rec.Header().Values("Set-Cookie"))
+		})
 	}
 }

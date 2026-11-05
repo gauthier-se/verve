@@ -44,7 +44,7 @@ An append-only record of security-relevant and data management events: logins, t
 
   The recurring job `audit.purge` runs daily and removes the events older than the retention period, in batches of at most 5,000 per transaction so that it never holds the writer for long. An event exactly as old as the retention period is kept, and the next purge removes it. An aggregated row is older than the retention period once its last event (`last_at`) is: it is kept while it holds a recent event, so a burst that never goes quiet keeps its row, older events included, for as long as it lasts.
 - **FR-7**: Events are append-only through the application. There is no endpoint to edit or delete individual events.
-- **FR-8**: Failed login events for unknown usernames are recorded with the attempted username truncated to 64 characters and without linking to a user.
+- **FR-8**: Failed login events for unknown usernames are recorded with the attempted username truncated to 64 characters and without linking to a user. A failed login for an existing username or email has its user as subject, so that the user sees the attempts on their account.
 
 ## UX notes
 
@@ -57,7 +57,11 @@ An append-only record of security-relevant and data management events: logins, t
 - Events are built only by the constructors of `internal/audit`, whose payloads are closed lists of fields. A table test checks every constructor against the sensitive keys of `internal/logging`, the one definition of that rule.
 - `audit.Record` runs on `tx.AuditEvents()` inside the `WithTx` of the action, so that an event commits or rolls back with it.
 - The client IP and the user agent, truncated to 256 characters, come from the request context. They are empty for jobs and CLI commands.
-- A constructor can make its event aggregatable by giving it an aggregation key: the client IP for failed logins, so that trying many usernames does not escape aggregation. `Append` counts and writes in one writer transaction.
+- A constructor can make its event aggregatable by giving it an aggregation key: the client IP for failed logins, so that trying many usernames does not escape aggregation, together with the user for a login that exists, so that a row never counts the attempts on another account than the one it names. `Append` counts and writes in one writer transaction.
+- The authentication events of the password login:
+  - `auth.login_succeeded`: the user as actor, and the login method in the payload, such as `{"method": "password"}`.
+  - `auth.login_failed`: no actor, the user of the login as subject, or none for a login that no user has (FR-8), and the attempted login in the payload, `{"attempted": "..."}`.
+  - `auth.logout`: the user as actor and an empty payload. A logout without a valid session records nothing.
 - Endpoints, paginated as described in [Architecture](../architecture.md#pagination), newest first by first occurrence, then by id:
   - `GET /api/v1/account/audit`: the events whose actor or subject is the user of the session (FR-4). An admin also gets only their own events here.
   - `GET /api/v1/admin/audit`: every event, for admins only (403 `forbidden` for a member), with the filters `type`, `actor` and `subject` (user ids, so the events of the system are found by their type), `from` and `to` (RFC 3339 times), which combine (FR-5). An aggregated event is in the time range while one of its occurrences is: its first one before `to`, and its last one at or after `from`. A `to` that is not after `from` answers 422 `validation_failed`.
@@ -66,7 +70,7 @@ An append-only record of security-relevant and data management events: logins, t
 
 ## Edge cases
 
-- Bursts of failed logins (brute force): events are recorded but aggregated after a threshold to avoid filling the table. Once 20 events of the same type and aggregation key happened in the last 10 minutes, the next one increments the `count` and updates the `last_at` of their latest row instead of adding one. The events of a row count as recent while its `last_at` is, so a burst whose latest row holds 20 events goes on until a quiet period of 10 minutes. Another client IP or another event type is never aggregated with it.
+- Bursts of failed logins (brute force): events are recorded but aggregated after a threshold to avoid filling the table. Once 20 events of the same type and aggregation key happened in the last 10 minutes, the next one increments the `count` and updates the `last_at` of their latest row instead of adding one. The events of a row count as recent while its `last_at` is, so a burst whose latest row holds 20 events goes on until a quiet period of 10 minutes. Another client IP, another event type or, for a failed login, another user is never aggregated with it.
 - Deleted user: their events are kept with the user id, displayed as "deleted user".
 
 ## Acceptance criteria

@@ -70,8 +70,18 @@ func newSessionCookie(publicURL config.PublicURL, id string, expiresAt time.Time
 	}
 }
 
+// clearedSessionCookie returns the cookie that removes the session cookie of an instance at
+// publicURL. It keeps the attributes of the session cookie, which the __Host- prefix requires.
+func clearedSessionCookie(publicURL config.PublicURL) *http.Cookie {
+	cookie := newSessionCookie(publicURL, "", time.Time{}) //nolint:gosec // G124: the attributes of the session cookie (FR-6)
+	cookie.MaxAge = -1
+
+	return cookie
+}
+
 type (
 	principalKey   struct{}
+	sessionIDKey   struct{}
 	lookupErrorKey struct{}
 )
 
@@ -83,11 +93,22 @@ func PrincipalFrom(ctx context.Context) (auth.Principal, bool) {
 	return principal, ok
 }
 
+// sessionIDFrom returns the session identifier that the cookie of the request carries, valid or
+// not, or empty when there is none. Login replaces that session, and logout deletes it.
+func sessionIDFrom(ctx context.Context) string {
+	id, _ := ctx.Value(sessionIDKey{}).(string)
+
+	return id
+}
+
 // AuthenticationMiddleware authenticates the requests under /api/ by the session cookie of an
 // instance at publicURL, looked up with sessions in repos, and stores their principal in their
 // context. A request without a valid session goes on without a principal: the operations that need
 // one answer 401. A request with Authorization: Bearer is never authenticated by its cookie, since
 // the CSRF checks do not apply to it.
+//
+// When the lookup renews the session, the response sends the cookie again with the new expiry, so
+// that the browser keeps it as long as the session lives.
 //
 // A lookup that fails with another error than an invalid session is logged, and the request goes
 // on without a principal: the operations that need one answer 500, and the others, such as GET
@@ -113,8 +134,8 @@ func AuthenticationMiddleware(repos store.Repositories, sessions auth.Sessions, 
 				return
 			}
 
-			ctx := r.Context()
-			session, user, err := sessions.Lookup(ctx, repos, cookie.Value)
+			ctx := context.WithValue(r.Context(), sessionIDKey{}, cookie.Value)
+			found, err := sessions.Lookup(ctx, repos, cookie.Value)
 
 			switch {
 			case errors.Is(err, store.ErrNotFound):
@@ -122,7 +143,11 @@ func AuthenticationMiddleware(repos store.Repositories, sessions auth.Sessions, 
 				logging.FromContext(ctx).ErrorContext(ctx, "look up session", slog.Any("error", err))
 				ctx = context.WithValue(ctx, lookupErrorKey{}, fmt.Errorf("look up session: %w", err))
 			default:
-				principal := auth.Principal{UserID: session.UserID, Role: user.Role, Method: auth.MethodSession}
+				if found.Renewed {
+					http.SetCookie(w, newSessionCookie(publicURL, cookie.Value, found.Session.ExpiresAt))
+				}
+
+				principal := auth.Principal{UserID: found.Session.UserID, Role: found.User.Role, Method: auth.MethodSession}
 				ctx = context.WithValue(ctx, principalKey{}, principal)
 			}
 
