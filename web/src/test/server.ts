@@ -33,7 +33,7 @@ export const member: CurrentUser = {
 export const admin: CurrentUser = { id: 1, username: "admin", role: "admin" };
 
 /** The password of the account of `fakeAuth`. */
-export const password = "correct horse battery staple";
+export const fakePassword = "correct horse battery staple";
 
 /** Answers GET `path` with 401, as the server does once the session ended. */
 export function unauthorized(path: string) {
@@ -57,8 +57,8 @@ interface FakeAuthOptions {
  * Handlers that fake the authentication endpoints for one browser, to
  * register with `server.use(...fakeAuth())`. GET /api/v1/auth/me answers the
  * account while the browser has a session and 401 otherwise. A login with the
- * username or email of the account and `password` opens the session, any other
- * login answers 401 invalid_credentials, and a logout ends it.
+ * username or email of the account and `fakePassword` opens the session, any
+ * other login answers 401 invalid_credentials, and a logout ends it.
  */
 export function fakeAuth({ user, signedIn = false }: FakeAuthOptions = {}) {
   let sessionUser = signedIn ? user : undefined;
@@ -83,7 +83,7 @@ export function fakeAuth({ user, signedIn = false }: FakeAuthOptions = {}) {
         const known =
           user !== undefined &&
           (body.login === user.username || body.login === user.email);
-        if (!known || body.password !== password) {
+        if (!known || body.password !== fakePassword) {
           return problemResponse({
             title: "Unauthorized",
             status: 401,

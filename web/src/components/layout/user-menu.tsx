@@ -1,8 +1,9 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { useMutation } from "@tanstack/react-query";
+import { useRouter } from "@tanstack/react-router";
 import { ChevronDownIcon, LogOutIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import { errorMessage } from "@/api/errors";
 import type { CurrentUser } from "@/api/generated";
 import { logoutMutation } from "@/api/generated/@tanstack/react-query.gen";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { leaveSession } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
 interface UserMenuProps {
@@ -23,20 +25,15 @@ interface UserMenuProps {
 
 /**
  * A menu named after the user of the session, with their account and an item
- * to log out. Logging out goes to the login page and clears the query cache,
- * so that no data of the account outlives its session.
+ * to log out. Logging out leaves the session. A logout that fails keeps the
+ * menu open with its error, since the session may still be valid.
  */
 export function UserMenu({ user, className }: UserMenuProps) {
-  const { t } = useTranslation();
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
+  const { t, i18n } = useTranslation();
+  const router = useRouter();
   const logout = useMutation({
     ...logoutMutation(),
-    onSuccess: async () => {
-      // Leaving the protected page first stops its queries from refetching.
-      await navigate({ to: "/login" });
-      queryClient.clear();
-    },
+    onSuccess: () => leaveSession(router),
   });
 
   return (
@@ -63,13 +60,20 @@ export function UserMenu({ user, className }: UserMenuProps) {
         <DropdownMenuItem
           className="min-h-11"
           disabled={logout.isPending}
-          onSelect={() => {
+          onSelect={(event) => {
+            // The menu stays open until the app leaves the page.
+            event.preventDefault();
             logout.mutate({});
           }}
         >
           <LogOutIcon aria-hidden />
           {t("userMenu.logout")}
         </DropdownMenuItem>
+        {logout.isError && (
+          <p role="alert" className="px-2 py-1.5 text-sm text-destructive">
+            {errorMessage(logout.error, i18n)}
+          </p>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

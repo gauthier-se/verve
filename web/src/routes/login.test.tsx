@@ -6,14 +6,14 @@ import { describe, expect, it } from "vitest";
 import { initI18n } from "@/i18n";
 import { problemResponse } from "@/test/problem";
 import { renderRoute } from "@/test/render";
-import { admin, fakeAuth, password, server } from "@/test/server";
+import { admin, fakeAuth, fakePassword, server } from "@/test/server";
 
 /** The login page, with `redirect` as the target after login. */
 function loginPath(redirect: string) {
   return `/login?${new URLSearchParams({ redirect }).toString()}`;
 }
 
-const english = {
+const englishLabels = {
   login: "Username or email",
   password: "Password",
   submit: "Log in",
@@ -23,7 +23,7 @@ const english = {
 async function logIn(
   user: UserEvent,
   credentials: { login: string; password: string },
-  labels = english,
+  labels = englishLabels,
 ) {
   await user.type(
     await screen.findByLabelText(labels.login),
@@ -71,7 +71,7 @@ describe("login page", () => {
       server.use(...fakeAuth({ user: admin }));
       const { router } = renderRoute(loginPath(target));
 
-      await logIn(user, { login: "admin", password });
+      await logIn(user, { login: "admin", password: fakePassword });
 
       expect(
         await screen.findByRole("heading", { level: 1, name: heading }),
@@ -85,7 +85,7 @@ describe("login page", () => {
     server.use(...fakeAuth({ user: admin }));
     const { router } = renderRoute("/login");
 
-    await logIn(user, { login: "admin", password });
+    await logIn(user, { login: "admin", password: fakePassword });
 
     expect(
       await screen.findByRole("heading", { level: 1, name: "Verve" }),
@@ -105,7 +105,7 @@ describe("login page", () => {
       server.use(...fakeAuth({ user: admin }));
       const { router } = renderRoute(loginPath(target));
 
-      await logIn(user, { login: "admin", password });
+      await logIn(user, { login: "admin", password: fakePassword });
 
       expect(
         await screen.findByRole("heading", { level: 1, name: "Verve" }),
@@ -121,7 +121,7 @@ describe("login page", () => {
     const leftOver = ["data of the previous account"];
     queryClient.setQueryData(leftOver, "health data");
 
-    await logIn(user, { login: "admin", password });
+    await logIn(user, { login: "admin", password: fakePassword });
 
     expect(
       await screen.findByRole("heading", { level: 1, name: "Verve" }),
@@ -142,7 +142,7 @@ describe("login page", () => {
     await user.keyboard("admin");
     await user.tab();
     expect(screen.getByLabelText("Password")).toHaveFocus();
-    await user.keyboard(`${password}{Enter}`);
+    await user.keyboard(`${fakePassword}{Enter}`);
 
     expect(
       await screen.findByRole("heading", { level: 1, name: "Verve" }),
@@ -189,7 +189,7 @@ describe("login page", () => {
   it.each([
     {
       lng: "en",
-      labels: english,
+      labels: englishLabels,
       message: "Too many attempts. Try again in 1m 30s.",
     },
     {
@@ -210,7 +210,7 @@ describe("login page", () => {
       server.use(rateLimited(90));
       renderRoute("/login");
 
-      await logIn(user, { login: "admin", password }, labels);
+      await logIn(user, { login: "admin", password: fakePassword }, labels);
 
       expect(await screen.findByRole("alert")).toHaveTextContent(message);
     },
@@ -250,7 +250,7 @@ describe("login page", () => {
       server.use(http.post("/api/v1/auth/login", response));
       renderRoute("/login");
 
-      await logIn(user, { login: "admin", password });
+      await logIn(user, { login: "admin", password: fakePassword });
 
       expect(await screen.findByRole("alert")).toHaveTextContent(message);
     },

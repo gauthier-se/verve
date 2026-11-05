@@ -84,12 +84,12 @@ function Login() {
           name="login"
           validators={{
             onChange: ({ value }) =>
-              value === "" ? t("login.loginRequired") : undefined,
+              value === "" ? t("login.usernameOrEmailRequired") : undefined,
           }}
         >
           {(field) => (
             <field.TextField
-              label={t("login.login")}
+              label={t("login.usernameOrEmail")}
               autoComplete="username"
               autoCapitalize="none"
               spellCheck={false}

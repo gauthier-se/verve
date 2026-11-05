@@ -127,6 +127,22 @@ describe("AppLayout", () => {
     expect(router.state.location.search).toEqual({ redirect: "/" });
   });
 
+  it("given the logout fails, when the user logs out from the user menu, then the menu says so and the app stays on the page", async () => {
+    const user = userEvent.setup();
+    server.use(...fakeAuth({ user: member, signedIn: true }));
+    server.use(http.post("/api/v1/auth/logout", () => HttpResponse.error()));
+    const { router } = renderRoute("/");
+
+    await user.click(await screen.findByRole("button", { name: "alice" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Log out" }));
+
+    const menu = screen.getByRole("menu");
+    expect(await within(menu).findByRole("alert")).toHaveTextContent(
+      "Something went wrong. Try again.",
+    );
+    expect(router.state.location.pathname).toBe("/");
+  });
+
   it("given an admin, then the navigation shows the admin section", async () => {
     server.use(...fakeAuth({ user: admin, signedIn: true }));
     renderRoute("/");

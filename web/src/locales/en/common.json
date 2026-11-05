@@ -35,12 +35,12 @@
     "tagline": "Your health data, on your server."
   },
   "login": {
-    "login": "Username or email",
-    "loginRequired": "Enter your username or email.",
     "password": "Password",
     "passwordRequired": "Enter your password.",
     "submit": "Log in",
-    "title": "Log in"
+    "title": "Log in",
+    "usernameOrEmail": "Username or email",
+    "usernameOrEmailRequired": "Enter your username or email."
   },
   "nav": {
     "admin": "Administration",

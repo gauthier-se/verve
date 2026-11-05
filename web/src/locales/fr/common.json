@@ -36,12 +36,12 @@
     "tagline": "Vos données de santé, sur votre serveur."
   },
   "login": {
-    "login": "Nom d'utilisateur ou e-mail",
-    "loginRequired": "Saisissez votre nom d'utilisateur ou votre e-mail.",
     "password": "Mot de passe",
     "passwordRequired": "Saisissez votre mot de passe.",
     "submit": "Se connecter",
-    "title": "Connexion"
+    "title": "Connexion",
+    "usernameOrEmail": "Nom d'utilisateur ou e-mail",
+    "usernameOrEmailRequired": "Saisissez votre nom d'utilisateur ou votre e-mail."
   },
   "nav": {
     "admin": "Administration",

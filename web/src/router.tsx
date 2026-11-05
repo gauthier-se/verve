@@ -10,6 +10,7 @@ import { createRouter, type RouterHistory } from "@tanstack/react-router";
 
 import { isUnauthorized } from "@/api/errors";
 import { getCurrentUserQueryKey } from "@/api/generated/@tanstack/react-query.gen";
+import { leaveSession } from "@/lib/session";
 import { routeTree } from "@/routeTree.gen";
 
 interface CreateAppRouterOptions {
@@ -23,9 +24,7 @@ interface CreateAppRouterOptions {
  * Creates the application router with its QueryClient, which is available
  * both in the route context (for loaders) and through QueryClientProvider (for
  * hooks). A query that answers 401 means that the session ended during use:
- * the app goes to the login page, with the current URL as the target after
- * login, and clears the query cache, so that no data of the account outlives
- * its session.
+ * the app leaves the session, with the current URL as the target after login.
  */
 export function createAppRouter({
   history,
@@ -43,8 +42,14 @@ export function createAppRouter({
     },
     queryCache: new QueryCache({
       onError: (error, query) => {
-        if (isUnauthorized(error) && !isSessionCheck(query)) {
-          void goToLogin();
+        const { href, pathname } = router.state.location;
+        // Other queries of the page can answer 401 too.
+        if (
+          isUnauthorized(error) &&
+          !isSessionCheck(query) &&
+          pathname !== "/login"
+        ) {
+          void leaveSession(router, href);
         }
       },
     }),
@@ -58,20 +63,6 @@ export function createAppRouter({
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     ),
   });
-
-  async function goToLogin() {
-    const { href, pathname } = router.state.location;
-    // Other queries of the page can answer 401 too.
-    if (pathname === "/login") {
-      return;
-    }
-    await router.navigate({
-      to: "/login",
-      search: { redirect: href },
-      replace: true,
-    });
-    queryClient.clear();
-  }
 
   return router;
 }

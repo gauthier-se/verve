@@ -67,7 +67,7 @@ Username and password login with argon2id hashing and server-side sessions store
 - Login page: username or email, password, link "Forgot password" only when SMTP is configured (M3). Errors are translated from their code, and `rate_limited` tells how long to wait, from `Retry-After`.
 - A page that needs a session, opened without one, goes to `/login?redirect=<URL of the page>`, or to `/setup` while setup is required, and the login goes back to that URL. Only a URL of the app given by its path is accepted as the target: anything else, such as another origin, goes to the home page after login.
 - When a request answers 401 during use, because the session expired or was revoked, the app goes to the login page with the current URL as the target, without retrying the request. Logging out goes to the login page. Both clear the data that the app cached for the account, and a login starts from an empty cache, so that no data of another account reaches it.
-- With a session, the header shows the navigation and a user menu with the account and logout.
+- With a session, the header shows the navigation and a user menu with the account and logout. A logout that fails keeps the menu open with its error, since the session may still be valid.
 - Sessions page in account settings, current session highlighted.
 
 ## Data and API notes
