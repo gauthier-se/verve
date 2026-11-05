@@ -147,6 +147,19 @@ SELECT EXISTS (
       AND status IN ('queued', 'running')
 );
 
+-- name: ListJobsByStatus :many
+-- The jobs of a finished status, newest first by the time they ended, after a position: those that
+-- ended before it, or at the same time with a smaller id. The position is always set, the first
+-- page starting after the largest time and id, so that the index on status and finished_at bounds
+-- the scan.
+SELECT *
+FROM jobs
+WHERE status = sqlc.arg(status)
+  AND finished_at <= sqlc.arg(after_at)
+  AND (finished_at < sqlc.arg(after_at) OR id < sqlc.arg(after_id))
+ORDER BY finished_at DESC, id DESC
+LIMIT sqlc.arg(max_jobs);
+
 -- name: PurgeFinishedJobs :exec
 DELETE FROM jobs
 WHERE (status IN ('completed', 'cancelled') AND finished_at < sqlc.arg(completed_before))

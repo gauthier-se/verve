@@ -96,6 +96,37 @@ export type ErrorDetail = {
     value?: unknown;
 };
 
+export type Job = {
+    /**
+     * The number of failed attempts of the job. A lost lease is not one.
+     */
+    attempts: number;
+    /**
+     * When the job was enqueued.
+     */
+    createdAt: string;
+    /**
+     * When the job ended.
+     */
+    finishedAt: string;
+    /**
+     * The id of the job.
+     */
+    id: number;
+    /**
+     * The kind of the job.
+     */
+    kind: string;
+    /**
+     * The error of the last failure of the job, left out when it never failed.
+     */
+    lastError?: string;
+    /**
+     * The status of the job.
+     */
+    status: 'completed' | 'failed' | 'cancelled';
+};
+
 export type LoginInputBody = {
     /**
      * The username or the email address, in any case.
@@ -131,6 +162,17 @@ export type PageAuditEvent = {
      * The items of the page, newest first.
      */
     items: Array<AuditEvent>;
+    /**
+     * The cursor of the next page, left out on the last page.
+     */
+    nextCursor?: string;
+};
+
+export type PageJob = {
+    /**
+     * The items of the page, newest first.
+     */
+    items: Array<Job>;
     /**
      * The cursor of the next page, left out on the last page.
      */
@@ -275,6 +317,56 @@ export type ListAdminAuditEventsResponses = {
 };
 
 export type ListAdminAuditEventsResponse = ListAdminAuditEventsResponses[keyof ListAdminAuditEventsResponses];
+
+export type ListAdminJobsData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * The nextCursor of the previous page, left out for the first page.
+         */
+        cursor?: string;
+        /**
+         * The maximum number of items of the page, at most 200: a larger limit counts as 200.
+         */
+        limit?: number;
+        /**
+         * Keeps the jobs of this status.
+         */
+        status: 'completed' | 'failed' | 'cancelled';
+    };
+    url: '/api/v1/admin/jobs';
+};
+
+export type ListAdminJobsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Forbidden
+     */
+    403: Problem;
+    /**
+     * Unprocessable Entity
+     */
+    422: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type ListAdminJobsError = ListAdminJobsErrors[keyof ListAdminJobsErrors];
+
+export type ListAdminJobsResponses = {
+    /**
+     * OK
+     */
+    200: PageJob;
+};
+
+export type ListAdminJobsResponse = ListAdminJobsResponses[keyof ListAdminJobsResponses];
 
 export type LoginData = {
     body: LoginInputBody;

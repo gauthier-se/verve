@@ -3,8 +3,8 @@
 import { type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { getCurrentUser, getMeta, listAccountAuditEvents, listAdminAuditEvents, login, logout, type Options } from '../sdk.gen';
-import type { GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetMetaData, GetMetaError, GetMetaResponse, ListAccountAuditEventsData, ListAccountAuditEventsError, ListAccountAuditEventsResponse, ListAdminAuditEventsData, ListAdminAuditEventsError, ListAdminAuditEventsResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutError, LogoutResponse } from '../types.gen';
+import { getCurrentUser, getMeta, listAccountAuditEvents, listAdminAuditEvents, listAdminJobs, login, logout, type Options } from '../sdk.gen';
+import type { GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetMetaData, GetMetaError, GetMetaResponse, ListAccountAuditEventsData, ListAccountAuditEventsError, ListAccountAuditEventsResponse, ListAdminAuditEventsData, ListAdminAuditEventsError, ListAdminAuditEventsResponse, ListAdminJobsData, ListAdminJobsError, ListAdminJobsResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutError, LogoutResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -168,6 +168,58 @@ export const listAdminAuditEventsInfiniteOptions = (options?: Options<ListAdminA
             return data;
         },
         queryKey: listAdminAuditEventsInfiniteQueryKey(options)
+    });
+    return opts as Omit<typeof opts, 'initialData'>;
+};
+
+export const listAdminJobsQueryKey = (options: Options<ListAdminJobsData>) => createQueryKey('listAdminJobs', options);
+
+/**
+ * List the finished jobs
+ *
+ * Returns the background jobs of a finished status, newest first by the time they ended, for an admin. Their payloads are never returned.
+ */
+export const listAdminJobsOptions = (options: Options<ListAdminJobsData>) => queryOptions<ListAdminJobsResponse, ListAdminJobsError, ListAdminJobsResponse, ReturnType<typeof listAdminJobsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listAdminJobs({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listAdminJobsQueryKey(options)
+});
+
+export const listAdminJobsInfiniteQueryKey = (options: Options<ListAdminJobsData>): QueryKey<Options<ListAdminJobsData>> => createQueryKey('listAdminJobs', options, true);
+
+/**
+ * List the finished jobs
+ *
+ * Returns the background jobs of a finished status, newest first by the time they ended, for an admin. Their payloads are never returned.
+ */
+export const listAdminJobsInfiniteOptions = (options: Options<ListAdminJobsData>) => {
+    const opts = infiniteQueryOptions<ListAdminJobsResponse, ListAdminJobsError, InfiniteData<ListAdminJobsResponse>, QueryKey<Options<ListAdminJobsData>>, string | Pick<QueryKey<Options<ListAdminJobsData>>[0], 'body' | 'headers' | 'path' | 'query'>>(
+    // @ts-ignore
+    {
+        queryFn: async ({ pageParam, queryKey, signal }) => {
+            // @ts-ignore
+            const page: Pick<QueryKey<Options<ListAdminJobsData>>[0], 'body' | 'headers' | 'path' | 'query'> = typeof pageParam === 'object' ? pageParam : {
+                query: {
+                    cursor: pageParam
+                }
+            };
+            const params = createInfiniteParams(queryKey, page);
+            const { data } = await listAdminJobs({
+                ...options,
+                ...params,
+                signal,
+                throwOnError: true
+            });
+            return data;
+        },
+        queryKey: listAdminJobsInfiniteQueryKey(options)
     });
     return opts as Omit<typeof opts, 'initialData'>;
 };
