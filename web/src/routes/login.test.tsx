@@ -114,6 +114,21 @@ describe("login page", () => {
     },
   );
 
+  it("given data cached for the account of a session that ended, when an account logs in, then none of it is kept", async () => {
+    const user = userEvent.setup();
+    server.use(...fakeAuth({ user: admin }));
+    const { queryClient } = renderRoute("/login");
+    const leftOver = ["data of the previous account"];
+    queryClient.setQueryData(leftOver, "health data");
+
+    await logIn(user, { login: "admin", password });
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Verve" }),
+    ).toBeInTheDocument();
+    expect(queryClient.getQueryData(leftOver)).toBeUndefined();
+  });
+
   it("given the login page, when the user fills it in with the keyboard and presses Enter, then the account logs in", async () => {
     const user = userEvent.setup();
     server.use(...fakeAuth({ user: admin }));

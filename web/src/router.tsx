@@ -32,7 +32,15 @@ export function createAppRouter({
   queryDefaults,
 }: CreateAppRouterOptions = {}) {
   const queryClient: QueryClient = new QueryClient({
-    ...(queryDefaults && { defaultOptions: queryDefaults }),
+    defaultOptions: {
+      ...queryDefaults,
+      queries: {
+        // Retrying a 401 would only delay the login page.
+        retry: (failureCount, error) =>
+          !isUnauthorized(error) && failureCount < 3,
+        ...queryDefaults?.queries,
+      },
+    },
     queryCache: new QueryCache({
       onError: (error, query) => {
         if (isUnauthorized(error) && !isSessionCheck(query)) {

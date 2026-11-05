@@ -47,6 +47,9 @@ function Login() {
   const login = useMutation({
     ...loginMutationOptions(),
     onSuccess: async (user) => {
+      // A session can end without the cache being cleared, when the protected
+      // routes find it gone: no data of that account may reach this one.
+      queryClient.removeQueries();
       // The login answers the user of the new session, as /auth/me does.
       queryClient.setQueryData(getCurrentUserQueryKey(), user);
       await navigate({ href: redirect ?? "/", replace: true });

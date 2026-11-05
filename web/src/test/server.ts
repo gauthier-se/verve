@@ -35,6 +35,17 @@ export const admin: CurrentUser = { id: 1, username: "admin", role: "admin" };
 /** The password of the account of `fakeAuth`. */
 export const password = "correct horse battery staple";
 
+/** Answers GET `path` with 401, as the server does once the session ended. */
+export function unauthorized(path: string) {
+  return http.get(path, () =>
+    problemResponse({
+      title: "Unauthorized",
+      status: 401,
+      code: "unauthorized",
+    }),
+  );
+}
+
 interface FakeAuthOptions {
   /** The only account of the instance. Without one, setup is required. */
   user?: CurrentUser;

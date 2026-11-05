@@ -54,7 +54,7 @@
     "title": "Page introuvable"
   },
   "setup": {
-    "description": "Ouvrez le lien de configuration que le serveur écrit dans son journal tant qu'aucun compte n'existe, ou créez le premier administrateur avec la commande verve user create.",
+    "description": "L'assistant de configuration n'est pas encore disponible. Pour créer le premier administrateur, exécutez verve user create --admin <nom d'utilisateur> sur le serveur, puis connectez-vous.",
     "title": "Configurer Verve"
   },
   "unexpectedError": "Une erreur s'est produite. Réessayez.",

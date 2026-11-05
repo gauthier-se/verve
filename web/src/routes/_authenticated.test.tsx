@@ -1,9 +1,12 @@
 import { act, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { getCurrentUserQueryKey } from "@/api/generated/@tanstack/react-query.gen";
+import {
+  getCurrentUserQueryKey,
+  listAccountAuditEventsOptions,
+} from "@/api/generated/@tanstack/react-query.gen";
 import { renderRoute } from "@/test/render";
-import { admin, fakeAuth, member, server } from "@/test/server";
+import { admin, fakeAuth, member, server, unauthorized } from "@/test/server";
 
 describe("protected routes", () => {
   it.each([
@@ -40,10 +43,14 @@ describe("protected routes", () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: "Administration" }),
     ).toBeInTheDocument();
-    server.use(...fakeAuth({ user: admin }));
+    server.use(
+      ...fakeAuth({ user: admin }),
+      unauthorized("/api/v1/account/audit"),
+    );
 
+    // A query of the page, for data of the account.
     await act(() =>
-      queryClient.refetchQueries({ queryKey: getCurrentUserQueryKey() }),
+      queryClient.query(listAccountAuditEventsOptions()).catch(() => undefined),
     );
 
     expect(

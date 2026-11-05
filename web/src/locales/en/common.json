@@ -53,7 +53,7 @@
     "title": "Page not found"
   },
   "setup": {
-    "description": "Open the setup link that the server writes to its log while no account exists, or create the first admin with the command verve user create.",
+    "description": "The setup wizard is not available yet. To create the first admin, run verve user create --admin <username> on the server, then log in.",
     "title": "Set up Verve"
   },
   "unexpectedError": "Something went wrong. Try again.",

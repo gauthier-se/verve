@@ -5,7 +5,10 @@ export const Route = createFileRoute("/setup")({
   component: Setup,
 });
 
-/** Tells how to create the first admin, until the setup wizard. */
+/**
+ * Tells how to create the first admin until the setup wizard: the setup link
+ * of the server log opens this page too.
+ */
 function Setup() {
   const { t } = useTranslation();
   return (
