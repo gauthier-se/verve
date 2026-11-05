@@ -36,9 +36,10 @@ const (
 type LoginLimiter struct {
 	clk clock.Clock
 
-	mu        sync.Mutex
-	logins    failureCounters[string]
-	ips       failureCounters[netip.Addr]
+	mu     sync.Mutex
+	logins failureCounters[string]
+	// ips counts by the network of clientNetwork, so that one host counts once.
+	ips       failureCounters[netip.Prefix]
 	nextSweep time.Time
 }
 
@@ -47,7 +48,7 @@ func NewLoginLimiter(clk clock.Clock) *LoginLimiter {
 	return &LoginLimiter{
 		clk:    clk,
 		logins: failureCounters[string]{limit: loginFailureLimit, byKey: map[string]*failures{}},
-		ips:    failureCounters[netip.Addr]{limit: ipFailureLimit, byKey: map[netip.Addr]*failures{}},
+		ips:    failureCounters[netip.Prefix]{limit: ipFailureLimit, byKey: map[netip.Prefix]*failures{}},
 	}
 }
 
@@ -59,7 +60,7 @@ func (l *LoginLimiter) Wait(login string, ip netip.Addr) time.Duration {
 
 	now := l.sweep()
 
-	return max(l.logins.wait(store.FoldCase(login), now), l.ips.wait(ip, now))
+	return max(l.logins.wait(store.FoldCase(login), now), l.ips.wait(clientNetwork(ip), now))
 }
 
 // Fail records a failed login as login from ip. It counts whether or not a user has login, so that
@@ -70,7 +71,27 @@ func (l *LoginLimiter) Fail(login string, ip netip.Addr) {
 
 	now := l.sweep()
 	l.logins.fail(store.FoldCase(login), now)
-	l.ips.fail(ip, now)
+	l.ips.fail(clientNetwork(ip), now)
+}
+
+// ipv6HostBits is the prefix length of the IPv6 network that a single host commonly holds whole.
+const ipv6HostBits = 64
+
+// clientNetwork returns the network that the client IP limit counts ip in: its IPv6 /64, since a
+// single host commonly holds a whole /64 and would otherwise get past the limit by changing its
+// address, or its IPv4 address alone. An IPv4-mapped address counts as its IPv4 address, and the
+// unknown IPs share the zero network.
+func clientNetwork(ip netip.Addr) netip.Prefix {
+	if !ip.IsValid() {
+		return netip.Prefix{}
+	}
+
+	ip = ip.Unmap()
+	if ip.Is6() {
+		return netip.PrefixFrom(ip.WithZone(""), ipv6HostBits).Masked()
+	}
+
+	return netip.PrefixFrom(ip, ip.BitLen())
 }
 
 // Reset forgets the failures of login, after it logged in. The failures of the client IP stay, so

@@ -91,6 +91,33 @@ func TestLoginLimiter_TwentyFailuresFromAnIPDelayItsNextAttempt(t *testing.T) {
 	require.Zero(t, l.Wait("zoe", laptopIP))
 }
 
+// Given 20 failures from addresses of one IPv6 /64, which a single host commonly holds whole, then
+// they count as one client IP: the next attempt from any address of that /64 waits, and the other
+// networks do not. IPv4 addresses count each on their own, and an IPv4-mapped IPv6 address as its
+// IPv4 address.
+func TestLoginLimiter_IPv6AddressesOfOne64ShareACounter(t *testing.T) {
+	t.Parallel()
+
+	l, _ := newTestLimiter()
+
+	for i := range 20 {
+		l.Fail(fmt.Sprintf("user%d", i), netip.MustParseAddr(fmt.Sprintf("2001:db8:1:2::%x", i+1)))
+	}
+
+	require.Equal(t, time.Second, l.Wait("zoe", netip.MustParseAddr("2001:db8:1:2:ffff:ffff:ffff:ffff")))
+	require.Zero(t, l.Wait("zoe", netip.MustParseAddr("2001:db8:1:3::1")))
+
+	for i := range 19 {
+		l.Fail(fmt.Sprintf("user%d", i), netip.MustParseAddr("192.0.2.1"))
+	}
+
+	l.Fail("yann", netip.MustParseAddr("192.0.2.2"))
+	require.Zero(t, l.Wait("zoe", netip.MustParseAddr("192.0.2.1")))
+
+	l.Fail("yann", netip.MustParseAddr("::ffff:192.0.2.1"))
+	require.Equal(t, time.Second, l.Wait("zoe", netip.MustParseAddr("192.0.2.1")))
+}
+
 // Given a delayed login, then the wait shrinks as time passes, and an attempt is accepted once the
 // delay has passed.
 func TestLoginLimiter_AttemptsAreAcceptedOnceTheDelayHasPassed(t *testing.T) {
