@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/gauthier-se/verve/internal/clock"
@@ -329,6 +330,43 @@ func (r jobs) PurgeFinished(ctx context.Context, completedBefore, failedBefore t
 	}
 
 	return nil
+}
+
+func (r jobs) ListByStatus(ctx context.Context, status store.JobStatus, page store.PageRequest) ([]store.Job, error) {
+	if page.Limit < 1 {
+		return nil, fmt.Errorf("list %s jobs: limit %d below 1: %w", status, page.Limit, store.ErrInvalid)
+	}
+
+	switch status {
+	case store.JobCompleted, store.JobFailed, store.JobCancelled:
+	default:
+		return nil, fmt.Errorf("list %s jobs: not a finished status: %w", status, store.ErrInvalid)
+	}
+
+	// The position before every job, so that the query always has one.
+	params := sqlcgen.ListJobsByStatusParams{
+		Status:  string(status),
+		AfterAt: sql.NullInt64{Int64: math.MaxInt64, Valid: true},
+		AfterID: math.MaxInt64,
+		MaxJobs: int64(page.Limit),
+	}
+
+	if page.After != (store.Cursor{}) {
+		params.AfterAt = nullMillis(page.After.At)
+		params.AfterID = page.After.ID
+	}
+
+	rows, err := r.q.read().ListJobsByStatus(ctx, params)
+	if err != nil {
+		return nil, fmt.Errorf("list %s jobs: %w", status, err)
+	}
+
+	listed := make([]store.Job, 0, len(rows))
+	for _, row := range rows {
+		listed = append(listed, jobOf(row))
+	}
+
+	return listed, nil
 }
 
 // fenced runs a write that applies only to a job id in the right state, usually running under its

@@ -59,6 +59,12 @@ type Job struct {
 	FinishedAt time.Time
 }
 
+// Cursor returns the position of the job in the lists of JobsRepository.ListByStatus, which only
+// lists finished jobs.
+func (j Job) Cursor() Cursor {
+	return Cursor{At: j.FinishedAt, ID: j.ID}
+}
+
 // JobsRepository stores the background jobs. A job is held through the claims value that Claim
 // returns: Heartbeat, Complete, Fail, Release, Retry and ConfirmCancel return ErrNotFound for a
 // missing job, and ErrConflict when the job is not running under that value. Both change nothing.
@@ -116,4 +122,10 @@ type JobsRepository interface {
 	// PurgeFinished removes the completed and cancelled jobs that ended before completedBefore, and
 	// the failed jobs that ended before failedBefore. Queued and running jobs are never removed.
 	PurgeFinished(ctx context.Context, completedBefore, failedBefore time.Time) error
+	// ListByStatus returns the jobs of a finished status, completed, failed or cancelled, newest
+	// first by FinishedAt then ID: at most page.Limit of them, after page.After. A finished job keeps
+	// its end, so that following the position of the last job of each page lists every job once,
+	// even while jobs end: they are newer than the first page. It returns ErrInvalid for another
+	// status, whose jobs have no end to sort them by, and when page.Limit is below 1.
+	ListByStatus(ctx context.Context, status JobStatus, page PageRequest) ([]Job, error)
 }

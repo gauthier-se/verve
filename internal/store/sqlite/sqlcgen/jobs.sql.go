@@ -436,6 +436,71 @@ func (q *Queries) ListJobSchedules(ctx context.Context) ([]JobSchedule, error) {
 	return items, nil
 }
 
+const listJobsByStatus = `-- name: ListJobsByStatus :many
+SELECT id, kind, payload, status, attempts, claims, lost_leases, run_at, locked_until, user_id, serial_key, last_error, created_at, finished_at, cancel_requested
+FROM jobs
+WHERE status = ?1
+  AND finished_at <= ?2
+  AND (finished_at < ?2 OR id < ?3)
+ORDER BY finished_at DESC, id DESC
+LIMIT ?4
+`
+
+type ListJobsByStatusParams struct {
+	Status  string
+	AfterAt sql.NullInt64
+	AfterID int64
+	MaxJobs int64
+}
+
+// The jobs of a finished status, newest first by the time they ended, after a position: those that
+// ended before it, or at the same time with a smaller id. The position is always set, the first
+// page starting after the largest time and id, so that the index on status and finished_at bounds
+// the scan.
+func (q *Queries) ListJobsByStatus(ctx context.Context, arg ListJobsByStatusParams) ([]Job, error) {
+	rows, err := q.db.QueryContext(ctx, listJobsByStatus,
+		arg.Status,
+		arg.AfterAt,
+		arg.AfterID,
+		arg.MaxJobs,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Job
+	for rows.Next() {
+		var i Job
+		if err := rows.Scan(
+			&i.ID,
+			&i.Kind,
+			&i.Payload,
+			&i.Status,
+			&i.Attempts,
+			&i.Claims,
+			&i.LostLeases,
+			&i.RunAt,
+			&i.LockedUntil,
+			&i.UserID,
+			&i.SerialKey,
+			&i.LastError,
+			&i.CreatedAt,
+			&i.FinishedAt,
+			&i.CancelRequested,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const purgeFinishedJobs = `-- name: PurgeFinishedJobs :exec
 DELETE FROM jobs
 WHERE (status IN ('completed', 'cancelled') AND finished_at < ?1)
