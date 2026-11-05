@@ -5,7 +5,7 @@ import { describe, expect, it, onTestFinished, vi } from "vitest";
 
 import { stubLocationAssign } from "@/test/location";
 import { renderRoute } from "@/test/render";
-import { meta, server } from "@/test/server";
+import { fakeAuth, member, meta, server } from "@/test/server";
 
 /** Renders the not-found page, whose link to the home page navigates client-side. */
 async function renderLoadedApp() {
@@ -62,6 +62,7 @@ describe("root route", () => {
   it("given the server version did not change, when the user navigates, then the navigation stays client-side", async () => {
     const user = userEvent.setup();
     const assign = stubLocationAssign();
+    server.use(...fakeAuth({ user: member, signedIn: true }));
     const { router } = await renderLoadedApp();
 
     await user.click(screen.getByRole("link", { name: "Back to home" }));

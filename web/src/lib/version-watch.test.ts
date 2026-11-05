@@ -1,4 +1,3 @@
-import { QueryClient } from "@tanstack/react-query";
 import {
   createMemoryHistory,
   RouterContextProvider,
@@ -17,8 +16,7 @@ import { stubLocationAssign } from "@/test/location";
  */
 async function renderVersionWatch(version: string | undefined) {
   const router = createAppRouter({
-    queryClient: new QueryClient(),
-    history: createMemoryHistory({ initialEntries: ["/"] }),
+    history: createMemoryHistory({ initialEntries: ["/login"] }),
   });
   await router.load();
   const assign = stubLocationAssign();

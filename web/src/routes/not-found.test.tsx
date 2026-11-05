@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { initI18n } from "@/i18n";
 import { renderRoute } from "@/test/render";
+import { fakeAuth, member, server } from "@/test/server";
 
 describe("not-found page", () => {
   it.each([
@@ -30,6 +31,7 @@ describe("not-found page", () => {
 
   it("given the not-found page, when the user follows the home link, then the home page is shown", async () => {
     const user = userEvent.setup();
+    server.use(...fakeAuth({ user: member, signedIn: true }));
     const { router } = renderRoute("/does-not-exist");
 
     await user.click(await screen.findByRole("link", { name: "Back to home" }));

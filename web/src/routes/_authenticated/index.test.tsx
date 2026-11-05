@@ -3,9 +3,11 @@ import { describe, expect, it } from "vitest";
 
 import { initI18n } from "@/i18n";
 import { renderRoute } from "@/test/render";
+import { fakeAuth, member, server } from "@/test/server";
 
 describe("index route", () => {
   it("given the index route, when it renders, then it shows Verve as the level 1 heading", async () => {
+    server.use(...fakeAuth({ user: member, signedIn: true }));
     renderRoute("/");
 
     expect(
@@ -21,6 +23,7 @@ describe("index route", () => {
     async ({ lng, tagline }) => {
       const i18n = await initI18n();
       await i18n.changeLanguage(lng);
+      server.use(...fakeAuth({ user: member, signedIn: true }));
 
       renderRoute("/");
 

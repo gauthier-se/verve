@@ -1,6 +1,10 @@
 import { expect, test } from "./fixtures";
 
-test("given the home page, then the footer shows the version and the console has no error", async ({
+// The pages that need a session check it with a request that answers 401
+// without one, which the browser reports as a console error: the smoke tests
+// stay on public pages, so that they pass whether setup is done or not.
+
+test("given a public page, then the footer shows the version and the console has no error", async ({
   page,
   request,
 }) => {
@@ -9,7 +13,7 @@ test("given the home page, then the footer shows the version and the console has
   // A binary built without the version metadata reports "dev".
   expect(version).not.toBe("dev");
 
-  await page.goto("/");
+  await page.goto("/login");
 
   await expect(page.getByRole("contentinfo")).toHaveText(`Verve ${version}`);
 });
