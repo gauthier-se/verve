@@ -3,9 +3,11 @@ package app
 import (
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"sync"
 
+	"github.com/gauthier-se/verve/internal/auth"
 	"github.com/gauthier-se/verve/internal/clock"
 	"github.com/gauthier-se/verve/internal/config"
 	"github.com/gauthier-se/verve/internal/httpapi"
@@ -18,16 +20,19 @@ import (
 // Run logs the configuration warnings, reads the embedded web app, creates the data directory
 // layout, takes its lock, opens the database, loads or generates the secret key and starts serving
 // HTTP. It then applies the pending migrations, during which only the health probes are served,
-// starts the job worker, marks the server ready and serves until ctx is cancelled.
+// writes the setup link on stderr while no user exists, starts the job worker, marks the server
+// ready and serves until ctx is cancelled.
 // Resources are released in reverse order: the database is closed once the server and the worker
 // have stopped.
-func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
-	return run(ctx, cfg, logger, beforeMigrate, jobs.NewRegistry())
+func Run(ctx context.Context, cfg config.Config, logger *slog.Logger, stderr io.Writer) error {
+	return run(ctx, cfg, logger, stderr, beforeMigrate, jobs.NewRegistry())
 }
 
 // run is Run with hook called before the pending migrations are applied, and with the job kinds of
 // registry.
-func run(ctx context.Context, cfg config.Config, logger *slog.Logger, hook beforeMigrateFunc, registry *jobs.Registry) error {
+func run(ctx context.Context, cfg config.Config, logger *slog.Logger, stderr io.Writer, hook beforeMigrateFunc,
+	registry *jobs.Registry,
+) error {
 	for _, warning := range cfg.Warnings() {
 		logger.Warn(warning)
 	}
@@ -68,6 +73,9 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger, hook befor
 	// the schema is migrated. Not closed on its own: the deferred closeDB closes the database under it.
 	st := sqlite.New(db, clk)
 
+	// Issued once the schema is migrated, when no user exists.
+	setupToken := new(auth.SetupToken)
+
 	handler := httpapi.NewHandler(httpapi.Deps{
 		Logger:         logger,
 		Clock:          clk,
@@ -79,6 +87,7 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger, hook befor
 		SPA:            spa,
 		HSTS:           cfg.PublicURL.HTTPS(),
 		PublicURL:      cfg.PublicURL,
+		SetupToken:     setupToken,
 	})
 	srv := NewServer(ServerConfig{Addr: cfg.ListenAddr}, handler, logger)
 
@@ -96,6 +105,12 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger, hook befor
 	}
 
 	if _, err := migrateDB(ctx, db, logger, hook); err != nil {
+		stopServer()
+
+		return errors.Join(err, <-served)
+	}
+
+	if err := offerSetup(ctx, st.Users(), setupToken, cfg.PublicURL, stderr); err != nil {
 		stopServer()
 
 		return errors.Join(err, <-served)

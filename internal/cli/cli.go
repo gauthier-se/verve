@@ -28,11 +28,17 @@ type Deps struct {
 	Migrate migrateFunc
 	// MigrationStatus lists the database migrations.
 	MigrationStatus migrationStatusFunc
+	// CreateUser creates a user, also next to a running server.
+	CreateUser createUserFunc
+	// ReadPassword reads a password without echo from the terminal of stdin. Nil means that stdin is
+	// not a terminal.
+	ReadPassword passwordFunc
 	// HealthcheckTimeout is how long healthcheck waits for the server, 3 seconds when zero.
 	HealthcheckTimeout time.Duration
 }
 
-// Execute runs the command line with the given arguments and returns the process exit code.
+// Execute runs the command line with the given arguments, reading os.Stdin, and returns the process
+// exit code.
 func Execute(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	environ := environMap(os.Environ())
 	deps := Deps{
@@ -43,9 +49,11 @@ func Execute(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		Serve:           app.Run,
 		Migrate:         app.Migrate,
 		MigrationStatus: app.MigrationStatus,
+		CreateUser:      app.CreateUser,
+		ReadPassword:    terminalPassword(os.Stdin),
 	}
 
-	return execute(ctx, deps, args, stdout, stderr)
+	return execute(ctx, deps, args, os.Stdin, stdout, stderr)
 }
 
 // environMap converts KEY=value pairs, as returned by os.Environ, into a map.
@@ -59,9 +67,10 @@ func environMap(environ []string) map[string]string {
 	return m
 }
 
-func execute(ctx context.Context, deps Deps, args []string, stdout, stderr io.Writer) int {
+func execute(ctx context.Context, deps Deps, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	root := NewRootCommand(deps)
 	root.SetArgs(args)
+	root.SetIn(stdin)
 	root.SetOut(stdout)
 	root.SetErr(stderr)
 
@@ -112,6 +121,7 @@ func NewRootCommand(deps Deps) *cobra.Command {
 
 	root.AddCommand(newServeCommand(runServe))
 	root.AddCommand(newMigrateCommand(loadConfig, deps))
+	root.AddCommand(newUserCommand(loadConfig, deps))
 	root.AddCommand(newVersionCommand(deps.Version))
 	root.AddCommand(newConfigCommand(loadConfig))
 	root.AddCommand(newHealthcheckCommand(loadConfig, deps.HealthcheckTimeout))

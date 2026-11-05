@@ -28,6 +28,8 @@ type APIDeps struct {
 	// Logins logs users in, and Sessions deletes the session of a logout.
 	Logins   *auth.Logins
 	Sessions auth.Sessions
+	// Setup creates the first admin.
+	Setup *auth.Setup
 	// PublicURL names the session cookie that login sets and logout clears.
 	PublicURL config.PublicURL
 }
@@ -61,6 +63,7 @@ func NewAPI(mux *http.ServeMux, deps APIDeps) huma.API {
 	registerMeta(api, deps.Version)
 	registerLoginAndLogout(api, deps)
 	registerCurrentUser(api, deps.Store)
+	registerSetup(api, deps)
 	registerAudit(api, deps.Store)
 	registerAdminJobs(api, deps.Store)
 
