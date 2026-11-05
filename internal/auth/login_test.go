@@ -311,6 +311,31 @@ func TestLogins_UnknownLoginVerifiesADummyHash(t *testing.T) {
 	require.False(t, outdated)
 }
 
+// Given the first login since the start, then it computes the dummy hash whether or not its user
+// exists, so that its timing does not reveal that either. The next logins reuse the dummy hash.
+func TestLogins_FirstLoginComputesTheDummyHashWhateverItsLogin(t *testing.T) {
+	t.Parallel()
+
+	for _, login := range []string{"alice", "bob"} {
+		t.Run(login, func(t *testing.T) {
+			t.Parallel()
+
+			lt := newLoginTest(t)
+			lt.mustCreateUser(t, "alice", currentHash(alicePassword))
+
+			for range 3 {
+				_, err := lt.login(t.Context(), phoneIP, login, wrongPassword)
+				require.ErrorIs(t, err, ErrInvalidCredentials)
+			}
+
+			calls := lt.hasher.recorded()
+			require.Len(t, calls.hashedPasswords, 1)
+			require.NotEqual(t, wrongPassword, calls.hashedPasswords[0])
+			require.Len(t, calls.verifiedHashes, 3)
+		})
+	}
+}
+
 // Given a hash with the former parameters, then a successful login replaces it with a hash of the
 // current ones. A hash with the current parameters, or a failed login, leaves the hash as it is.
 func TestLogins_SuccessUpgradesAnOutdatedHash(t *testing.T) {

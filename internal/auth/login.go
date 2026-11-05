@@ -180,9 +180,12 @@ func (l *Logins) checkPassword(ctx context.Context, creds Credentials, ip netip.
 		return "", err
 	}
 
+	// The first login since the start computes the dummy hash, whether or not its user exists.
+	dummy := l.dummyHash()
+
 	hash := user.PasswordHash
 	if hash == "" {
-		hash = l.dummyHash()
+		hash = dummy
 	}
 
 	ok, err := l.hasher.Verify(hash, creds.Password)
@@ -197,8 +200,12 @@ func (l *Logins) checkPassword(ctx context.Context, creds Credentials, ip netip.
 	}
 
 	outdated, err := l.hasher.NeedsRehash(hash)
-	if err != nil || !outdated {
-		return "", err
+	if err != nil {
+		return "", fmt.Errorf("check password hash of user %d: %w", user.ID, err)
+	}
+
+	if !outdated {
+		return "", nil
 	}
 
 	return l.hasher.Hash(creds.Password), nil
