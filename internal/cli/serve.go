@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -13,8 +14,9 @@ import (
 	"github.com/gauthier-se/verve/internal/logging"
 )
 
-// serveFunc runs the server until ctx is cancelled.
-type serveFunc func(ctx context.Context, cfg config.Config, logger *slog.Logger) error
+// serveFunc runs the server until ctx is cancelled. It writes the setup line on stderr, outside
+// logger.
+type serveFunc func(ctx context.Context, cfg config.Config, logger *slog.Logger, stderr io.Writer) error
 
 func newServeCommand(runServe func(cmd *cobra.Command, args []string) error) *cobra.Command {
 	return &cobra.Command{
@@ -35,6 +37,6 @@ func serveRunner(loadConfig func() (config.Config, error), serve serveFunc) func
 
 		context.AfterFunc(ctx, stop)
 
-		return serve(ctx, cfg, logging.New(cmd.ErrOrStderr(), cfg.Log))
+		return serve(ctx, cfg, logging.New(cmd.ErrOrStderr(), cfg.Log), cmd.ErrOrStderr())
 	})
 }

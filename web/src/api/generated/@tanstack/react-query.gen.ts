@@ -3,8 +3,8 @@
 import { type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { getCurrentUser, getMeta, listAccountAuditEvents, listAdminAuditEvents, listAdminJobs, login, logout, type Options } from '../sdk.gen';
-import type { GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetMetaData, GetMetaError, GetMetaResponse, ListAccountAuditEventsData, ListAccountAuditEventsError, ListAccountAuditEventsResponse, ListAdminAuditEventsData, ListAdminAuditEventsError, ListAdminAuditEventsResponse, ListAdminJobsData, ListAdminJobsError, ListAdminJobsResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutError, LogoutResponse } from '../types.gen';
+import { createFirstAdmin, getCurrentUser, getMeta, getSetupStatus, listAccountAuditEvents, listAdminAuditEvents, listAdminJobs, login, logout, type Options } from '../sdk.gen';
+import type { CreateFirstAdminData, CreateFirstAdminError, CreateFirstAdminResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetMetaData, GetMetaError, GetMetaResponse, GetSetupStatusData, GetSetupStatusError, GetSetupStatusResponse, ListAccountAuditEventsData, ListAccountAuditEventsError, ListAccountAuditEventsResponse, ListAdminAuditEventsData, ListAdminAuditEventsError, ListAdminAuditEventsResponse, ListAdminJobsData, ListAdminJobsError, ListAdminJobsResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutError, LogoutResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -301,3 +301,42 @@ export const getMetaOptions = (options?: Options<GetMetaData>) => queryOptions<G
     },
     queryKey: getMetaQueryKey(options)
 });
+
+export const getSetupStatusQueryKey = (options?: Options<GetSetupStatusData>) => createQueryKey('getSetupStatus', options);
+
+/**
+ * Get the setup status
+ *
+ * Tells whether the instance has no user yet, so that the first admin must be created with the setup token. It needs no authentication.
+ */
+export const getSetupStatusOptions = (options?: Options<GetSetupStatusData>) => queryOptions<GetSetupStatusResponse, GetSetupStatusError, GetSetupStatusResponse, ReturnType<typeof getSetupStatusQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getSetupStatus({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getSetupStatusQueryKey(options)
+});
+
+/**
+ * Create the first admin
+ *
+ * Creates the first admin with the setup token, opens their session and sets the session cookie. Once a user exists, whatever the token, it answers 409 `setup_completed`. A wrong token answers 403 `setup_token_invalid`. A username or password that breaks the rules answers 422 with the code of the rule: `username_invalid`, `password_too_short`, `password_too_long` or `password_too_common`.
+ */
+export const createFirstAdminMutation = (options?: Partial<Options<CreateFirstAdminData>>): UseMutationOptions<CreateFirstAdminResponse, CreateFirstAdminError, Options<CreateFirstAdminData>> => {
+    const mutationOptions: UseMutationOptions<CreateFirstAdminResponse, CreateFirstAdminError, Options<CreateFirstAdminData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await createFirstAdmin({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};

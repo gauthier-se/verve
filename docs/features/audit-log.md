@@ -32,7 +32,7 @@ An append-only record of security-relevant and data management events: logins, t
   - authentication: login success, login failure, logout, session revoked, password changed, password reset requested and completed, TOTP enabled, disabled and recovery code used, OIDC account linked and unlinked,
   - tokens: created, revoked, rejected because revoked, expired or user disabled,
   - data: import started, completed, failed, cancelled, data deleted (scope and counts), block rule created and removed, export created and downloaded, account deletion requested and completed,
-  - administration: user invited, enabled, disabled, role changed, password reset link generated, 2FA reset, instance setting changed, backup created, downloaded and restored.
+  - administration: user created by the setup or the command line, user invited, enabled, disabled, role changed, password reset link generated, 2FA reset, instance setting changed, backup created, downloaded and restored.
 - **FR-3**: Payloads never contain health values, passwords, tokens, session ids or secret settings values.
 - **FR-4**: Users see events where they are the actor or the subject, in their security page.
 - **FR-5**: Admins see all events with filters (type, actor, subject, date range).
@@ -62,6 +62,7 @@ An append-only record of security-relevant and data management events: logins, t
   - `auth.login_succeeded`: the user as actor, and the login method in the payload, such as `{"method": "password"}`.
   - `auth.login_failed`: no actor, the user of the login as subject, or none for a login that no user has (FR-8), and the attempted login in the payload, `{"attempted": "..."}`.
   - `auth.logout`: the user as actor and an empty payload. A logout without a valid session records nothing.
+- The creation of a user, `user.created`: no actor, since no user acted (the setup comes before any user, and the command line has none), the new user as subject, and their role and where they were created from in the payload, `{"role": "admin", "source": "setup"}` or `"source": "cli"`. The setup records the client of its request. A rejected setup records nothing.
 - Endpoints, paginated as described in [Architecture](../architecture.md#pagination), newest first by first occurrence, then by id:
   - `GET /api/v1/account/audit`: the events whose actor or subject is the user of the session (FR-4). An admin also gets only their own events here.
   - `GET /api/v1/admin/audit`: every event, for admins only (403 `forbidden` for a member), with the filters `type`, `actor` and `subject` (user ids, so the events of the system are found by their type), `from` and `to` (RFC 3339 times), which combine (FR-5). An aggregated event is in the time range while one of its occurrences is: its first one before `to`, and its last one at or after `from`. A `to` that is not after `from` answers 422 `validation_failed`.

@@ -17,6 +17,7 @@ const (
 	TypeLoginFailed    = "auth.login_failed"
 	TypeLoginSucceeded = "auth.login_succeeded"
 	TypeLogout         = "auth.logout"
+	TypeUserCreated    = "user.created"
 )
 
 // Event is an audit event to record, built by a constructor of this package.
@@ -74,6 +75,32 @@ func Logout(userID int64) Event {
 		eventType: TypeLogout,
 		actorID:   userID,
 		payload:   logoutPayload{},
+	}
+}
+
+// UserSource is where a user was created from.
+type UserSource string
+
+// The sources of a user.
+const (
+	// SourceSetup is the setup page, which creates the first admin with the setup token.
+	SourceSetup UserSource = "setup"
+	// SourceCLI is verve user create.
+	SourceCLI UserSource = "cli"
+)
+
+type userCreatedPayload struct {
+	Role   store.UserRole `json:"role"`
+	Source UserSource     `json:"source"`
+}
+
+// UserCreated is the creation of the user of userID, with role, from source. It has no actor: no
+// user acted, since the setup comes before any user and the command line has none.
+func UserCreated(userID int64, role store.UserRole, source UserSource) Event {
+	return Event{
+		eventType: TypeUserCreated,
+		subjectID: userID,
+		payload:   userCreatedPayload{Role: role, Source: source},
 	}
 }
 

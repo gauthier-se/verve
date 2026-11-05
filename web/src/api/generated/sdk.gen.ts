@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetMetaData, GetMetaErrors, GetMetaResponses, ListAccountAuditEventsData, ListAccountAuditEventsErrors, ListAccountAuditEventsResponses, ListAdminAuditEventsData, ListAdminAuditEventsErrors, ListAdminAuditEventsResponses, ListAdminJobsData, ListAdminJobsErrors, ListAdminJobsResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutErrors, LogoutResponses } from './types.gen';
+import type { CreateFirstAdminData, CreateFirstAdminErrors, CreateFirstAdminResponses, GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetMetaData, GetMetaErrors, GetMetaResponses, GetSetupStatusData, GetSetupStatusErrors, GetSetupStatusResponses, ListAccountAuditEventsData, ListAccountAuditEventsErrors, ListAccountAuditEventsResponses, ListAdminAuditEventsData, ListAdminAuditEventsErrors, ListAdminAuditEventsResponses, ListAdminJobsData, ListAdminJobsErrors, ListAdminJobsResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutErrors, LogoutResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -105,3 +105,24 @@ export const getCurrentUser = <ThrowOnError extends boolean = false>(options?: O
  * Returns the name of the application and the build metadata of the server, without authentication.
  */
 export const getMeta = <ThrowOnError extends boolean = false>(options?: Options<GetMetaData, ThrowOnError>): RequestResult<GetMetaResponses, GetMetaErrors, ThrowOnError> => (options?.client ?? client).get<GetMetaResponses, GetMetaErrors, ThrowOnError>({ url: '/api/v1/meta', ...options });
+
+/**
+ * Get the setup status
+ *
+ * Tells whether the instance has no user yet, so that the first admin must be created with the setup token. It needs no authentication.
+ */
+export const getSetupStatus = <ThrowOnError extends boolean = false>(options?: Options<GetSetupStatusData, ThrowOnError>): RequestResult<GetSetupStatusResponses, GetSetupStatusErrors, ThrowOnError> => (options?.client ?? client).get<GetSetupStatusResponses, GetSetupStatusErrors, ThrowOnError>({ url: '/api/v1/setup', ...options });
+
+/**
+ * Create the first admin
+ *
+ * Creates the first admin with the setup token, opens their session and sets the session cookie. Once a user exists, whatever the token, it answers 409 `setup_completed`. A wrong token answers 403 `setup_token_invalid`. A username or password that breaks the rules answers 422 with the code of the rule: `username_invalid`, `password_too_short`, `password_too_long` or `password_too_common`.
+ */
+export const createFirstAdmin = <ThrowOnError extends boolean = false>(options: Options<CreateFirstAdminData, ThrowOnError>): RequestResult<CreateFirstAdminResponses, CreateFirstAdminErrors, ThrowOnError> => (options.client ?? client).post<CreateFirstAdminResponses, CreateFirstAdminErrors, ThrowOnError>({
+    url: '/api/v1/setup',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});

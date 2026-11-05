@@ -210,6 +210,28 @@ export type Problem = {
     type: string;
 };
 
+export type SetupInputBody = {
+    /**
+     * The password of the admin: 12 to 128 characters, and not a common password.
+     */
+    password: string;
+    /**
+     * The setup token, from the setup link that verve serve writes on stderr while no user exists.
+     */
+    token: string;
+    /**
+     * The username of the admin: 1 to 64 characters, without @, whitespace, control or invisible characters.
+     */
+    username: string;
+};
+
+export type SetupStatusOutputBody = {
+    /**
+     * Whether the instance has no user yet: the first admin is then created with the setup token.
+     */
+    required: boolean;
+};
+
 export type ListAccountAuditEventsData = {
     body?: never;
     path?: never;
@@ -487,3 +509,69 @@ export type GetMetaResponses = {
 };
 
 export type GetMetaResponse = GetMetaResponses[keyof GetMetaResponses];
+
+export type GetSetupStatusData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/setup';
+};
+
+export type GetSetupStatusErrors = {
+    /**
+     * Error
+     */
+    default: Problem;
+};
+
+export type GetSetupStatusError = GetSetupStatusErrors[keyof GetSetupStatusErrors];
+
+export type GetSetupStatusResponses = {
+    /**
+     * OK
+     */
+    200: SetupStatusOutputBody;
+};
+
+export type GetSetupStatusResponse = GetSetupStatusResponses[keyof GetSetupStatusResponses];
+
+export type CreateFirstAdminData = {
+    body: SetupInputBody;
+    path?: never;
+    query?: never;
+    url: '/api/v1/setup';
+};
+
+export type CreateFirstAdminErrors = {
+    /**
+     * Forbidden
+     */
+    403: Problem;
+    /**
+     * Conflict
+     */
+    409: Problem;
+    /**
+     * Request Entity Too Large
+     */
+    413: Problem;
+    /**
+     * Unprocessable Entity
+     */
+    422: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type CreateFirstAdminError = CreateFirstAdminErrors[keyof CreateFirstAdminErrors];
+
+export type CreateFirstAdminResponses = {
+    /**
+     * Created
+     */
+    201: CurrentUser;
+};
+
+export type CreateFirstAdminResponse = CreateFirstAdminResponses[keyof CreateFirstAdminResponses];

@@ -377,6 +377,45 @@
           "code"
         ],
         "type": "object"
+      },
+      "SetupInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "password": {
+            "description": "The password of the admin: 12 to 128 characters, and not a common password.",
+            "type": "string"
+          },
+          "token": {
+            "description": "The setup token, from the setup link that verve serve writes on stderr while no user exists.",
+            "type": "string"
+          },
+          "username": {
+            "description": "The username of the admin: 1 to 64 characters, without @, whitespace, control or invisible characters.",
+            "examples": [
+              "alice"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "username",
+          "password"
+        ],
+        "type": "object"
+      },
+      "SetupStatusOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "required": {
+            "description": "Whether the instance has no user yet: the first admin is then created with the setup token.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "required"
+        ],
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -937,6 +976,126 @@
         "summary": "Get the server metadata",
         "tags": [
           "Meta"
+        ]
+      }
+    },
+    "/api/v1/setup": {
+      "get": {
+        "description": "Tells whether the instance has no user yet, so that the first admin must be created with the setup token. It needs no authentication.",
+        "operationId": "get-setup-status",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupStatusOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get the setup status",
+        "tags": [
+          "Setup"
+        ]
+      },
+      "post": {
+        "description": "Creates the first admin with the setup token, opens their session and sets the session cookie. Once a user exists, whatever the token, it answers 409 `setup_completed`. A wrong token answers 403 `setup_token_invalid`. A username or password that breaks the rules answers 422 with the code of the rule: `username_invalid`, `password_too_short`, `password_too_long` or `password_too_common`.",
+        "operationId": "create-first-admin",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentUser"
+                }
+              }
+            },
+            "description": "Created",
+            "headers": {
+              "Set-Cookie": {
+                "schema": {
+                  "description": "The session cookie.",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Create the first admin",
+        "tags": [
+          "Setup"
         ]
       }
     }

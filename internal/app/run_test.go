@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -51,21 +52,35 @@ func startRun(t *testing.T, cfg config.Config) (string, *syncBuffer, func()) {
 }
 
 // startRunWith runs Run, with hook called before the pending migrations and the job kinds of
-// registry, until it listens. It returns the bound address, the logs and a function that stops Run
-// and checks that it returned without error.
+// registry, until it listens. It returns the bound address, the logs, which stderr shares, and a
+// function that stops Run and checks that it returned without error.
 func startRunWith(t *testing.T, cfg config.Config, hook beforeMigrateFunc, registry *jobs.Registry) (string, *syncBuffer, func()) {
 	t.Helper()
 
 	logger, logs := testLogger()
+	addr, stop := runUntilListening(t, cfg, logger, logs, logs, hook, registry)
+
+	return addr, logs, stop
+}
+
+// runUntilListening runs Run with logger and stderr, hook called before the pending migrations and
+// the job kinds of registry, until trace, a text log that logger writes to, shows the bound
+// address. It returns that address and a function that stops Run and checks that it returned
+// without error.
+func runUntilListening(t *testing.T, cfg config.Config, logger *slog.Logger, stderr io.Writer, trace *syncBuffer,
+	hook beforeMigrateFunc, registry *jobs.Registry,
+) (string, func()) {
+	t.Helper()
+
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
 
-	go func() { done <- run(ctx, cfg, logger, hook, registry) }()
+	go func() { done <- run(ctx, cfg, logger, stderr, hook, registry) }()
 
 	var addr string
 
 	require.Eventually(t, func() bool {
-		m := loggedAddr.FindStringSubmatch(logs.String())
+		m := loggedAddr.FindStringSubmatch(trace.String())
 		if m == nil {
 			return false
 		}
@@ -87,7 +102,7 @@ func startRunWith(t *testing.T, cfg config.Config, hook beforeMigrateFunc, regis
 		}
 	}
 
-	return addr, logs, stop
+	return addr, stop
 }
 
 // Given a data directory that does not exist, when Run starts, then it creates the directory
@@ -160,7 +175,7 @@ func TestRun_DataDirLockedFails(t *testing.T) {
 
 	logger, logs := testLogger()
 
-	err = Run(t.Context(), testConfig(dataDir), logger)
+	err = Run(t.Context(), testConfig(dataDir), logger, logs)
 	require.EqualError(t, err, "another Verve process is using "+dataDir)
 	require.NotRegexp(t, loggedAddr, logs.String())
 }
@@ -220,7 +235,7 @@ func TestRun_UnreadableSecretKeyFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 
-	err := Run(ctx, testConfig(dataDir), logger)
+	err := Run(ctx, testConfig(dataDir), logger, logs)
 	require.ErrorContains(t, err, "read secret key: ")
 	require.ErrorContains(t, err, path)
 	require.NotRegexp(t, loggedAddr, logs.String())
@@ -611,7 +626,7 @@ func TestRun_NewerDatabaseFails(t *testing.T) {
 
 	logger, logs := testLogger()
 
-	err := Run(t.Context(), testConfig(dataDir), logger)
+	err := Run(t.Context(), testConfig(dataDir), logger, logs)
 	require.ErrorContains(t, err, "is newer than this binary supports")
 	require.Contains(t, logs.String(), `msg="server stopped"`)
 	require.NotContains(t, logs.String(), `msg="server ready"`)

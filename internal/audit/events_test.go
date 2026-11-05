@@ -25,6 +25,7 @@ func eventsByConstructor() map[string]Event {
 		"LoginFailed":    LoginFailed("alice", 7),
 		"LoginSucceeded": LoginSucceeded(7, store.LoginPassword),
 		"Logout":         Logout(7),
+		"UserCreated":    UserCreated(7, store.RoleAdmin, SourceSetup),
 	}
 }
 
@@ -270,6 +271,41 @@ func TestLoginSucceeded(t *testing.T) {
 	data, err := json.Marshal(event.payload)
 	require.NoError(t, err)
 	require.JSONEq(t, `{"method":"password"}`, string(data))
+}
+
+// Given a user created by the setup or by the command line, then the event has the user creation
+// type, no actor, since no user acted, the new user as subject, and their role and where they were
+// created from. It is never aggregated.
+func TestUserCreated(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		role   store.UserRole
+		source UserSource
+		want   string
+	}{
+		{name: "setup", role: store.RoleAdmin, source: SourceSetup, want: `{"role":"admin","source":"setup"}`},
+		{name: "command line", role: store.RoleMember, source: SourceCLI, want: `{"role":"member","source":"cli"}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			event := UserCreated(7, tt.role, tt.source)
+
+			require.Equal(t, TypeUserCreated, event.eventType)
+			require.Equal(t, "user.created", TypeUserCreated)
+			require.Zero(t, event.actorID)
+			require.Equal(t, int64(7), event.subjectID)
+			require.False(t, event.aggregateOnClientIP)
+
+			data, err := json.Marshal(event.payload)
+			require.NoError(t, err)
+			require.JSONEq(t, tt.want, string(data))
+		})
+	}
 }
 
 // Given a logout, then the event has the logout type, the user as actor, no subject and an empty
