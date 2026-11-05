@@ -41,6 +41,12 @@ func (p *Problem) ContentType(string) string {
 	return "application/problem+json"
 }
 
+// codedProblem returns the problem of status whose code is the message of err, a stable code such as
+// those of the password policy.
+func codedProblem(status int, err error) *Problem {
+	return &Problem{Type: "about:blank", Title: http.StatusText(status), Status: status, Code: err.Error()}
+}
+
 // WriteProblem answers p.Status with p as an application/problem+json body.
 func WriteProblem(w http.ResponseWriter, p Problem) {
 	p.Type = cmp.Or(p.Type, "about:blank")

@@ -8,10 +8,12 @@ import (
 	"unicode/utf8"
 )
 
+// The lengths of a password and a username, in characters, which the messages that explain the rules
+// also quote.
 const (
-	minPasswordLength = 12
-	maxPasswordLength = 128
-	maxUsernameLength = 64
+	MinPasswordLength = 12
+	MaxPasswordLength = 128
+	MaxUsernameLength = 64
 )
 
 // The errors of the password and username rules. Their messages are the stable codes that the API
@@ -44,9 +46,9 @@ func NewPasswordPolicy() PasswordPolicy {
 // not bytes.
 func (p PasswordPolicy) Check(password string) error {
 	switch length := utf8.RuneCountInString(password); {
-	case length < minPasswordLength:
+	case length < MinPasswordLength:
 		return ErrPasswordTooShort
-	case length > maxPasswordLength:
+	case length > MaxPasswordLength:
 		return ErrPasswordTooLong
 	case listed(p.common, strings.ToLower(password)):
 		return ErrPasswordTooCommon
@@ -84,7 +86,7 @@ func listed(list, entry string) bool {
 // username and an email, and two usernames never look the same because of an invisible character.
 // Length counts characters, not bytes.
 func ValidateUsername(username string) error {
-	if username == "" || utf8.RuneCountInString(username) > maxUsernameLength || !utf8.ValidString(username) ||
+	if username == "" || utf8.RuneCountInString(username) > MaxUsernameLength || !utf8.ValidString(username) ||
 		strings.ContainsFunc(username, forbiddenInUsername) {
 		return ErrUsernameInvalid
 	}

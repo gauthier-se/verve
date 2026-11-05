@@ -42,16 +42,15 @@ func newUserCommand(loadConfig func() (config.Config, error), deps Deps) *cobra.
 			"asked twice on the terminal, or read from stdin with --password-stdin. Creating the first admin " +
 			"this way completes the setup of the instance.",
 		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return withConfig(loadConfig, func(cmd *cobra.Command, cfg config.Config) error {
-				role := store.RoleMember
-				if admin {
-					role = store.RoleAdmin
-				}
+		RunE: withConfig(loadConfig, func(cmd *cobra.Command, cfg config.Config) error {
+			role := store.RoleMember
+			if admin {
+				role = store.RoleAdmin
+			}
 
-				return createUser(cmd, cfg, deps, auth.NewAccount{Username: args[0], Role: role}, passwordStdin)
-			})(cmd, args)
-		},
+			// The username is the one argument that cobra.ExactArgs lets through.
+			return createUser(cmd, cfg, deps, auth.NewAccount{Username: cmd.Flags().Arg(0), Role: role}, passwordStdin)
+		}),
 	}
 
 	create.Flags().BoolVar(&admin, "admin", false, "create an admin rather than a member")
@@ -141,11 +140,12 @@ func readPasswordStdin(r io.Reader) (string, error) {
 func createUserError(err error, username string) error {
 	switch {
 	case errors.Is(err, auth.ErrUsernameInvalid):
-		return errors.New("username must have 1 to 64 characters, without @, whitespace, control or invisible characters")
+		return fmt.Errorf("username must have 1 to %d characters, without @, whitespace, control or invisible characters",
+			auth.MaxUsernameLength)
 	case errors.Is(err, auth.ErrPasswordTooShort):
-		return errors.New("password must have at least 12 characters")
+		return fmt.Errorf("password must have at least %d characters", auth.MinPasswordLength)
 	case errors.Is(err, auth.ErrPasswordTooLong):
-		return errors.New("password must have at most 128 characters")
+		return fmt.Errorf("password must have at most %d characters", auth.MaxPasswordLength)
 	case errors.Is(err, auth.ErrPasswordTooCommon):
 		return errors.New("password is too common: choose another one")
 	case errors.Is(err, store.ErrConflict):

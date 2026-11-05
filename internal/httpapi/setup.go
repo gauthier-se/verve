@@ -111,8 +111,3 @@ func setupError(err error) error {
 		return fmt.Errorf("create first admin: %w", err)
 	}
 }
-
-// codedProblem returns the problem of status whose code is the message of err, a stable code.
-func codedProblem(status int, err error) *Problem {
-	return &Problem{Type: "about:blank", Title: http.StatusText(status), Status: status, Code: err.Error()}
-}
