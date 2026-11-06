@@ -75,3 +75,8 @@ type User struct {
 	CreatedAt    int64
 	LastLoginAt  sql.NullInt64
 }
+
+type UserPreference struct {
+	UserID   int64
+	Timezone sql.NullString
+}

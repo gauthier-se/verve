@@ -145,6 +145,13 @@ func constraintError(err error) error {
 	}
 }
 
+// isForeignKeyError reports whether err is the failure of a foreign key constraint.
+func isForeignKeyError(err error) bool {
+	var sqliteErr *sqlite.Error
+
+	return errors.As(err, &sqliteErr) && sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_FOREIGNKEY
+}
+
 func userOf(row sqlcgen.User) store.User {
 	return store.User{
 		ID:           row.ID,

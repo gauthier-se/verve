@@ -131,6 +131,16 @@
             ],
             "type": "string"
           },
+          "timezone": {
+            "description": "The IANA name of the timezone of the user, or null until they confirm one.",
+            "examples": [
+              "Europe/Paris"
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "username": {
             "description": "The username, in the case it was created with.",
             "examples": [
@@ -142,7 +152,8 @@
         "required": [
           "id",
           "username",
-          "role"
+          "role",
+          "timezone"
         ],
         "type": "object"
       },
@@ -334,6 +345,25 @@
         ],
         "type": "object"
       },
+      "Preferences": {
+        "additionalProperties": false,
+        "properties": {
+          "timezone": {
+            "description": "The IANA name of the timezone of the user, or null until they confirm one: their days are in UTC until then.",
+            "examples": [
+              "Europe/Paris"
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "timezone"
+        ],
+        "type": "object"
+      },
       "Problem": {
         "additionalProperties": false,
         "properties": {
@@ -415,6 +445,19 @@
         "required": [
           "required"
         ],
+        "type": "object"
+      },
+      "UpdatePreferencesInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "timezone": {
+            "description": "The IANA name of the timezone of the user. Left out, it is unchanged.",
+            "examples": [
+              "Europe/Paris"
+            ],
+            "type": "string"
+          }
+        },
         "type": "object"
       }
     },
@@ -512,6 +555,118 @@
         "summary": "List the audit events of the current user",
         "tags": [
           "Audit"
+        ]
+      }
+    },
+    "/api/v1/account/preferences": {
+      "get": {
+        "description": "Returns the preferences of the user of the session.",
+        "operationId": "get-preferences",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Preferences"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Get the preferences of the current user",
+        "tags": [
+          "Account"
+        ]
+      },
+      "patch": {
+        "description": "Changes the preferences given in the body, keeps the others, and returns the preferences. A timezone that is not an IANA name, such as `Europe/Paris`, answers 422 `timezone_invalid`.",
+        "operationId": "update-preferences",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePreferencesInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Preferences"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Change the preferences of the current user",
+        "tags": [
+          "Account"
         ]
       }
     },

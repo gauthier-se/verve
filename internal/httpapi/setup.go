@@ -88,9 +88,14 @@ func registerSetup(api huma.API, deps APIDeps) {
 			return nil, setupError(err)
 		}
 
+		current, err := loadCurrentUser(ctx, deps.Store, loggedIn.User)
+		if err != nil {
+			return nil, fmt.Errorf("create first admin: %w", err)
+		}
+
 		return &setupOutput{
 			SetCookie: *newSessionCookie(deps.PublicURL, loggedIn.SessionID, loggedIn.Session.ExpiresAt),
-			Body:      currentUserOf(loggedIn.User),
+			Body:      current,
 		}, nil
 	})
 }

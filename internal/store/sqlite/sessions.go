@@ -7,9 +7,6 @@ import (
 	"fmt"
 	"time"
 
-	"modernc.org/sqlite"
-	sqlite3 "modernc.org/sqlite/lib"
-
 	"github.com/gauthier-se/verve/internal/clock"
 	"github.com/gauthier-se/verve/internal/store"
 	"github.com/gauthier-se/verve/internal/store/sqlite/sqlcgen"
@@ -43,8 +40,7 @@ func (r sessions) Create(ctx context.Context, session store.NewSession) (store.S
 		})
 
 		// The only foreign key of a session is its user.
-		var sqliteErr *sqlite.Error
-		if errors.As(err, &sqliteErr) && sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_FOREIGNKEY {
+		if isForeignKeyError(err) {
 			return store.ErrNotFound
 		}
 

@@ -184,7 +184,7 @@ func TestLogin_ValidCredentialsSetTheSessionCookie(t *testing.T) {
 
 			require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 			require.Equal(t, "application/json", rec.Header().Get("Content-Type"))
-			require.JSONEq(t, fmt.Sprintf(`{"id":%d,"username":"alice","email":"alice@example.com","role":"member"}`,
+			require.JSONEq(t, fmt.Sprintf(`{"id":%d,"username":"alice","email":"alice@example.com","role":"member","timezone":null}`,
 				alice.ID), rec.Body.String())
 
 			id := sessionCookieOf(t, rec, tt.cookieName)

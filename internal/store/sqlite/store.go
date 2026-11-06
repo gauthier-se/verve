@@ -77,6 +77,10 @@ func (r repositories) Sessions() store.SessionsRepository {
 	return sessions(r)
 }
 
+func (r repositories) Preferences() store.PreferencesRepository {
+	return preferences(r)
+}
+
 func (r repositories) AfterCommit(fn func()) {
 	r.q.afterCommit(fn)
 }

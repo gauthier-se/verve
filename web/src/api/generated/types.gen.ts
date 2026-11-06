@@ -76,6 +76,10 @@ export type CurrentUser = {
      */
     role: 'admin' | 'member';
     /**
+     * The IANA name of the timezone of the user, or null until they confirm one.
+     */
+    timezone: string | null;
+    /**
      * The username, in the case it was created with.
      */
     username: string;
@@ -179,6 +183,13 @@ export type PageJob = {
     nextCursor?: string;
 };
 
+export type Preferences = {
+    /**
+     * The IANA name of the timezone of the user, or null until they confirm one: their days are in UTC until then.
+     */
+    timezone: string | null;
+};
+
 export type Problem = {
     /**
      * A stable machine-readable error code.
@@ -232,6 +243,13 @@ export type SetupStatusOutputBody = {
     required: boolean;
 };
 
+export type UpdatePreferencesInputBody = {
+    /**
+     * The IANA name of the timezone of the user. Left out, it is unchanged.
+     */
+    timezone?: string;
+};
+
 export type ListAccountAuditEventsData = {
     body?: never;
     path?: never;
@@ -273,6 +291,68 @@ export type ListAccountAuditEventsResponses = {
 };
 
 export type ListAccountAuditEventsResponse = ListAccountAuditEventsResponses[keyof ListAccountAuditEventsResponses];
+
+export type GetPreferencesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/account/preferences';
+};
+
+export type GetPreferencesErrors = {
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type GetPreferencesError = GetPreferencesErrors[keyof GetPreferencesErrors];
+
+export type GetPreferencesResponses = {
+    /**
+     * OK
+     */
+    200: Preferences;
+};
+
+export type GetPreferencesResponse = GetPreferencesResponses[keyof GetPreferencesResponses];
+
+export type UpdatePreferencesData = {
+    body: UpdatePreferencesInputBody;
+    path?: never;
+    query?: never;
+    url: '/api/v1/account/preferences';
+};
+
+export type UpdatePreferencesErrors = {
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Unprocessable Entity
+     */
+    422: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type UpdatePreferencesError = UpdatePreferencesErrors[keyof UpdatePreferencesErrors];
+
+export type UpdatePreferencesResponses = {
+    /**
+     * OK
+     */
+    200: Preferences;
+};
+
+export type UpdatePreferencesResponse = UpdatePreferencesResponses[keyof UpdatePreferencesResponses];
 
 export type ListAdminAuditEventsData = {
     body?: never;

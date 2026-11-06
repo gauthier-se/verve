@@ -31,6 +31,7 @@ export default interface Resources {
       "invalid_credentials": "The username, email or password is incorrect.",
       "rate_limited": "Too many attempts. Wait a moment, then try again.",
       "rate_limited_wait": "Too many attempts. Try again in {{wait}}.",
+      "timezone_invalid": "Verve does not know this timezone. Enter a name such as Europe/Paris.",
       "unauthorized": "Log in to continue."
     },
     "home": {
@@ -57,6 +58,14 @@ export default interface Resources {
     "setup": {
       "description": "The setup wizard is not available yet. To create the first admin, run verve user create --admin <username> on the server, then log in.",
       "title": "Set up Verve"
+    },
+    "timezone": {
+      "confirm": "Confirm",
+      "description": "Your days start at midnight in this timezone. It comes from your browser: correct it if it is wrong.",
+      "label": "Timezone",
+      "later": "Not now",
+      "required": "Enter a timezone.",
+      "title": "Confirm your timezone"
     },
     "unexpectedError": "Something went wrong. Try again.",
     "userMenu": {

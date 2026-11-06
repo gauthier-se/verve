@@ -138,8 +138,8 @@ func getWith(t *testing.T, h http.Handler, target string, cookies ...string) *ht
 	return serveWith(h, httptest.NewRequestWithContext(t.Context(), http.MethodGet, target, nil), cookies...)
 }
 
-// Given a valid session cookie, then GET /api/v1/auth/me returns 200 with the id, username, email
-// and role of its user.
+// Given a valid session cookie, then GET /api/v1/auth/me returns 200 with the id, username, email,
+// role and timezone of its user.
 func TestAuth_MeReturnsTheUserOfTheSession(t *testing.T) {
 	t.Parallel()
 
@@ -155,7 +155,7 @@ func TestAuth_MeReturnsTheUserOfTheSession(t *testing.T) {
 
 			require.Equal(t, http.StatusOK, rec.Code)
 			require.Equal(t, "application/json", rec.Header().Get("Content-Type"))
-			require.JSONEq(t, fmt.Sprintf(`{"id":%d,"username":"alice","email":"alice@example.com","role":%q}`,
+			require.JSONEq(t, fmt.Sprintf(`{"id":%d,"username":"alice","email":"alice@example.com","role":%q,"timezone":null}`,
 				user.ID, role), rec.Body.String())
 		})
 	}
@@ -174,7 +174,7 @@ func TestAuth_MeLeavesOutAMissingEmail(t *testing.T) {
 		"verve_session="+a.mustCreateSession(t, user))
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	require.JSONEq(t, fmt.Sprintf(`{"id":%d,"username":"bob","role":"member"}`, user.ID), rec.Body.String())
+	require.JSONEq(t, fmt.Sprintf(`{"id":%d,"username":"bob","role":"member","timezone":null}`, user.ID), rec.Body.String())
 }
 
 // Given a missing, empty, unknown, expired or revoked session cookie on a protected operation, then

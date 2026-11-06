@@ -5,6 +5,10 @@ import (
 	"context"
 	"os"
 
+	// The timezones of the users load even on a system without a timezone database, such as
+	// Windows. It adds about 400 KB to the binary.
+	_ "time/tzdata"
+
 	"github.com/gauthier-se/verve/internal/cli"
 )
 

@@ -47,7 +47,9 @@ test("given a phone screen and a session, when a protected page loads, then the 
   // username checks that the user menu cannot push the page wider.
   const username = "an-admin-with-a-username-longer-than-a-phone-screen";
   await page.route("/api/v1/auth/me", (route) =>
-    route.fulfill({ json: { id: 1, username, role: "admin" } }),
+    route.fulfill({
+      json: { id: 1, username, role: "admin", timezone: "Europe/Paris" },
+    }),
   );
 
   await page.goto("/");
@@ -70,4 +72,27 @@ test("given a phone screen and a session, when a protected page loads, then the 
     );
   await expectTouchTarget(page.getByRole("menuitem", { name: "Log out" }));
   await expectNoHorizontalScroll(page);
+});
+
+test("given a phone screen and a user without a timezone, when a protected page loads, then the timezone dialog fits without horizontal scroll and its controls are touch targets", async ({
+  page,
+}) => {
+  await page.route("/api/v1/auth/me", (route) =>
+    route.fulfill({
+      json: { id: 1, username: "admin", role: "admin", timezone: null },
+    }),
+  );
+
+  await page.goto("/");
+  const dialog = page.getByRole("dialog", { name: "Confirm your timezone" });
+  await expect(dialog).toBeVisible();
+  // The dialog zooms in as it opens, which scales its controls until it ends.
+  await dialog.evaluate((element) =>
+    Promise.all(element.getAnimations().map((animation) => animation.finished)),
+  );
+
+  await expectNoHorizontalScroll(page);
+  await expectTouchTarget(dialog.getByLabel("Timezone"));
+  await expectTouchTarget(dialog.getByRole("button", { name: "Not now" }));
+  await expectTouchTarget(dialog.getByRole("button", { name: "Confirm" }));
 });

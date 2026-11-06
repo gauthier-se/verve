@@ -63,6 +63,7 @@ func NewAPI(mux *http.ServeMux, deps APIDeps) huma.API {
 	registerMeta(api, deps.Version)
 	registerLoginAndLogout(api, deps)
 	registerCurrentUser(api, deps.Store)
+	registerPreferences(api, deps.Store)
 	registerSetup(api, deps)
 	registerAudit(api, deps.Store)
 	registerAdminJobs(api, deps.Store)
