@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gauthier-se/verve/internal/store"
@@ -49,10 +50,13 @@ func Location(ctx context.Context, preferences store.PreferencesRepository, user
 
 // loadTimezone returns the location of the IANA timezone name, or ErrTimezoneInvalid. time.LoadLocation
 // reads the database of the system, then the one that cmd/verve embeds, so that every name loads on a
-// system without one. It also takes the empty name and Local, which are not IANA names: the empty
-// name stands for UTC, and Local for the zone of the server.
+// system without one. It also takes names that are not IANA names:
+//   - the empty name, which stands for UTC, and Local, the zone of the server;
+//   - the posix/ and right/ trees that many systems install beside the IANA names, which the
+//     embedded database lacks, so that they would stop loading on another system. right/ counts
+//     leap seconds.
 func loadTimezone(name string) (*time.Location, error) {
-	if name == "" || name == "Local" {
+	if name == "" || name == "Local" || strings.HasPrefix(name, "posix/") || strings.HasPrefix(name, "right/") {
 		return nil, ErrTimezoneInvalid
 	}
 
