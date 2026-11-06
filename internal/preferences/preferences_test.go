@@ -63,7 +63,9 @@ func TestLocation_ReturnsTheConfirmedTimezone(t *testing.T) {
 }
 
 // Given a valid IANA name, then SetTimezone stores it and returns the preferences. Given a name
-// that is not one, then ErrTimezoneInvalid, and the user keeps the timezone they had.
+// that is not one, then ErrTimezoneInvalid, and the user keeps the timezone they had. The posix/ and
+// right/ trees that many systems install beside the IANA names load from their database, but not
+// from the embedded one, and right/ counts leap seconds.
 func TestSetTimezone_StoresOnlyValidNames(t *testing.T) {
 	t.Parallel()
 
@@ -76,7 +78,10 @@ func TestSetTimezone_StoresOnlyValidNames(t *testing.T) {
 		require.Equal(t, store.Preferences{Timezone: name}, got)
 	}
 
-	for _, name := range []string{"", "Local", "Mars/Olympus_Mons", "Europe/../Europe/Paris", "/etc/localtime"} {
+	for _, name := range []string{
+		"", "Local", "Mars/Olympus_Mons", "Europe/../Europe/Paris", "/etc/localtime",
+		"posix/Europe/Paris", "right/Europe/Paris",
+	} {
 		_, err := SetTimezone(ctx, s.Preferences(), user.ID, name)
 		require.ErrorIs(t, err, ErrTimezoneInvalid, name)
 	}
