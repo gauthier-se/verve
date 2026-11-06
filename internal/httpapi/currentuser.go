@@ -50,7 +50,7 @@ func registerCurrentUser(api huma.API, repos store.Repositories) {
 			return nil, currentUserError(err)
 		}
 
-		current, err := currentUserIn(ctx, repos, user)
+		current, err := loadCurrentUser(ctx, repos, user)
 		if err != nil {
 			return nil, currentUserError(err)
 		}
@@ -69,15 +69,15 @@ func currentUserError(err error) error {
 	return fmt.Errorf("get current user: %w", err)
 }
 
-// currentUserIn returns user as the API describes the current user, with their preferences read in
-// repos.
-func currentUserIn(ctx context.Context, repos store.Repositories, user store.User) (CurrentUser, error) {
-	got, err := repos.Preferences().Get(ctx, user.ID)
+// loadCurrentUser returns user as the API describes the current user, with their preferences
+// read in repos.
+func loadCurrentUser(ctx context.Context, repos store.Repositories, user store.User) (CurrentUser, error) {
+	prefs, err := repos.Preferences().Get(ctx, user.ID)
 	if err != nil {
 		return CurrentUser{}, err
 	}
 
-	return currentUserOf(user, got), nil
+	return currentUserOf(user, prefs), nil
 }
 
 // currentUserOf returns user, whose preferences are prefs, as the API describes the current user.

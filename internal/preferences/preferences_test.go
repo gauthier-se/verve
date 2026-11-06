@@ -51,7 +51,7 @@ func TestLocation_ReturnsTheConfirmedTimezone(t *testing.T) {
 
 	s, user := newTestUser(t)
 
-	_, err := SetTimezone(t.Context(), s, user.ID, "America/New_York")
+	_, err := SetTimezone(t.Context(), s.Preferences(), user.ID, "America/New_York")
 	require.NoError(t, err)
 
 	loc, err := Location(t.Context(), s.Preferences(), user.ID)
@@ -71,13 +71,13 @@ func TestSetTimezone_StoresOnlyValidNames(t *testing.T) {
 	ctx := t.Context()
 
 	for _, name := range []string{"Europe/Paris", "UTC", "Etc/GMT+5", "Asia/Kathmandu"} {
-		got, err := SetTimezone(ctx, s, user.ID, name)
+		got, err := SetTimezone(ctx, s.Preferences(), user.ID, name)
 		require.NoError(t, err, name)
 		require.Equal(t, store.Preferences{Timezone: name}, got)
 	}
 
 	for _, name := range []string{"", "Local", "Mars/Olympus_Mons", "Europe/../Europe/Paris", "/etc/localtime"} {
-		_, err := SetTimezone(ctx, s, user.ID, name)
+		_, err := SetTimezone(ctx, s.Preferences(), user.ID, name)
 		require.ErrorIs(t, err, ErrTimezoneInvalid, name)
 	}
 

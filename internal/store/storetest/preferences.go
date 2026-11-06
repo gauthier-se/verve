@@ -63,24 +63,6 @@ func RunPreferences(t *testing.T, newStore NewStoreFunc) {
 		requireTimezone(ctx, t, s.Preferences(), alice.ID, "America/New_York")
 	})
 
-	// Given an empty timezone, then SetTimezone leaves the user without one.
-	t.Run("EmptyTimezoneLeavesTheUserWithoutOne", func(t *testing.T) {
-		t.Parallel()
-
-		s := newStore(t, clock.NewFake(preferencesTime))
-		ctx := t.Context()
-		user := mustCreateUser(ctx, t, s.Users(), newUser("alice", ""))
-
-		_, err := s.Preferences().SetTimezone(ctx, user.ID, "Europe/Paris")
-		require.NoError(t, err)
-
-		set, err := s.Preferences().SetTimezone(ctx, user.ID, "")
-		require.NoError(t, err)
-		require.Equal(t, store.Preferences{}, set)
-
-		requireTimezone(ctx, t, s.Preferences(), user.ID, "")
-	})
-
 	// Given a user id that no account has, then Get and SetTimezone return store.ErrNotFound.
 	t.Run("MissingUserReturnsErrNotFound", func(t *testing.T) {
 		t.Parallel()

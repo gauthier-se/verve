@@ -47,12 +47,12 @@ func registerPreferences(api huma.API, repos store.Repositories) {
 			return nil, err
 		}
 
-		got, err := repos.Preferences().Get(ctx, principal.UserID)
+		prefs, err := repos.Preferences().Get(ctx, principal.UserID)
 		if err != nil {
 			return nil, preferencesError("get preferences", err)
 		}
 
-		return &preferencesOutput{Body: preferencesOf(got)}, nil
+		return &preferencesOutput{Body: preferencesOf(prefs)}, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -71,18 +71,18 @@ func registerPreferences(api huma.API, repos store.Repositories) {
 			return nil, err
 		}
 
-		var got store.Preferences
+		var prefs store.Preferences
 		if in.Body.Timezone == nil {
-			got, err = repos.Preferences().Get(ctx, principal.UserID)
+			prefs, err = repos.Preferences().Get(ctx, principal.UserID)
 		} else {
-			got, err = preferences.SetTimezone(ctx, repos, principal.UserID, *in.Body.Timezone)
+			prefs, err = preferences.SetTimezone(ctx, repos.Preferences(), principal.UserID, *in.Body.Timezone)
 		}
 
 		if err != nil {
 			return nil, preferencesError("update preferences", err)
 		}
 
-		return &preferencesOutput{Body: preferencesOf(got)}, nil
+		return &preferencesOutput{Body: preferencesOf(prefs)}, nil
 	})
 }
 
@@ -100,16 +100,16 @@ func preferencesError(action string, err error) error {
 	}
 }
 
-// preferencesOf returns got as the API describes the preferences.
-func preferencesOf(got store.Preferences) Preferences {
-	return Preferences{Timezone: timezoneOf(got)}
+// preferencesOf returns prefs as the API describes the preferences.
+func preferencesOf(prefs store.Preferences) Preferences {
+	return Preferences{Timezone: timezoneOf(prefs)}
 }
 
-// timezoneOf returns the timezone of got as the API describes it, nil for none.
-func timezoneOf(got store.Preferences) *string {
-	if got.Timezone == "" {
+// timezoneOf returns the timezone of prefs as the API describes it, nil for none.
+func timezoneOf(prefs store.Preferences) *string {
+	if prefs.Timezone == "" {
 		return nil
 	}
 
-	return &got.Timezone
+	return &prefs.Timezone
 }

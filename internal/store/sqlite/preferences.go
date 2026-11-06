@@ -6,9 +6,6 @@ import (
 	"errors"
 	"fmt"
 
-	"modernc.org/sqlite"
-	sqlite3 "modernc.org/sqlite/lib"
-
 	"github.com/gauthier-se/verve/internal/clock"
 	"github.com/gauthier-se/verve/internal/store"
 	"github.com/gauthier-se/verve/internal/store/sqlite/sqlcgen"
@@ -41,12 +38,11 @@ func (r preferences) SetTimezone(ctx context.Context, userID int64, timezone str
 
 		row, err = q.SetTimezone(ctx, sqlcgen.SetTimezoneParams{
 			UserID:   userID,
-			Timezone: sql.NullString{String: timezone, Valid: timezone != ""},
+			Timezone: sql.NullString{String: timezone, Valid: true},
 		})
 
 		// The only foreign key of the preferences is their user.
-		var sqliteErr *sqlite.Error
-		if errors.As(err, &sqliteErr) && sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_FOREIGNKEY {
+		if isForeignKeyError(err) {
 			return store.ErrNotFound
 		}
 

@@ -69,7 +69,7 @@ func registerLoginAndLogout(api huma.API, deps APIDeps) {
 			return nil, loginError(err)
 		}
 
-		current, err := currentUserIn(ctx, deps.Store, loggedIn.User)
+		current, err := loadCurrentUser(ctx, deps.Store, loggedIn.User)
 		if err != nil {
 			return nil, fmt.Errorf("log in: %w", err)
 		}

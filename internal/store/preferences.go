@@ -15,6 +15,6 @@ type PreferencesRepository interface {
 	// Get returns the preferences of the user of userID, or ErrNotFound when no user has userID.
 	Get(ctx context.Context, userID int64) (Preferences, error)
 	// SetTimezone replaces the timezone of the user of userID and returns their preferences, or
-	// returns ErrNotFound when no user has userID. An empty timezone leaves the user without one.
+	// returns ErrNotFound when no user has userID.
 	SetTimezone(ctx context.Context, userID int64, timezone string) (Preferences, error)
 }
