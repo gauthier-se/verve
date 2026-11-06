@@ -104,7 +104,8 @@ func NewSetup(token *SetupToken, accounts Accounts, sessions Sessions) *Setup {
 // The count and the token are checked on the reader before the transaction, so that the requests
 // that fail them never take the writer nor hash a password. The count is read again in the
 // transaction that creates the admin, so that of concurrent setups, or of a setup and verve user
-// create, only one creates a user.
+// create, only one creates a user. It is also read again after a token that does not match, so that
+// a setup overtaken by another one, which revoked the token, returns ErrSetupCompleted as well.
 //
 // A setup that finds a user, or creates one, revokes the token: it stops being valid as soon as a
 // user exists, and does not become valid again if no user is left, until a restart issues another.
@@ -128,7 +129,7 @@ func (s *Setup) createAdmin(ctx context.Context, st store.Store, admin FirstAdmi
 	}
 
 	if !s.token.Matches(admin.Token) {
-		return LoggedIn{}, ErrSetupTokenInvalid
+		return LoggedIn{}, tokenMismatchError(ctx, st.Users())
 	}
 
 	user, err := s.accounts.checkAndHash(NewAccount{Username: admin.Username, Password: admin.Password, Role: store.RoleAdmin})
@@ -171,4 +172,21 @@ func (s *Setup) createAdmin(ctx context.Context, st store.Store, admin FirstAdmi
 	})
 
 	return loggedIn, err
+}
+
+// tokenMismatchError returns the error of a setup whose token does not match: ErrSetupTokenInvalid,
+// or ErrSetupCompleted once users holds a user. A concurrent setup may have created the admin and
+// revoked the token since the count was read: it committed the admin before it revoked the token,
+// so the count read again sees them.
+func tokenMismatchError(ctx context.Context, users store.UsersRepository) error {
+	required, err := SetupRequired(ctx, users)
+	if err != nil {
+		return err
+	}
+
+	if !required {
+		return ErrSetupCompleted
+	}
+
+	return ErrSetupTokenInvalid
 }
