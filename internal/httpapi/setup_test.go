@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -290,33 +291,96 @@ func TestSetup_TokenStopsBeingValidOnceAUserExisted(t *testing.T) {
 	}
 }
 
-// countBarrierStore wraps a real store, so that a count of the users read outside a transaction
-// signals arrived once read, then waits for release: the setups that read it all see no user before
-// any of them writes.
+// countBarrier holds the first counts of the users read outside a transaction: each of them signals
+// arrived once read, then waits for release, so that the setups that read them all see no user
+// before any of them writes. The later counts go through.
+type countBarrier struct {
+	holds   int64
+	counted atomic.Int64
+	arrived chan struct{}
+	release chan struct{}
+}
+
+// newCountBarrier returns a barrier that holds the first holds counts.
+func newCountBarrier(holds int) *countBarrier {
+	return &countBarrier{holds: int64(holds), arrived: make(chan struct{}, holds), release: make(chan struct{})}
+}
+
+// waitForCounts waits until n held counts were read. After 5 seconds, it releases them and fails the
+// test.
+func (b *countBarrier) waitForCounts(t *testing.T, n int) {
+	t.Helper()
+
+	for range n {
+		select {
+		case <-b.arrived:
+		case <-time.After(5 * time.Second):
+			close(b.release)
+			t.Fatal("the setups must read the count of the users")
+		}
+	}
+}
+
+// countBarrierStore wraps a real store, so that barrier holds its counts of the users.
 type countBarrierStore struct {
 	store.Store
 
-	arrived chan<- struct{}
-	release <-chan struct{}
+	barrier *countBarrier
 }
 
 func (s countBarrierStore) Users() store.UsersRepository {
-	return countBarrierUsers{UsersRepository: s.Store.Users(), arrived: s.arrived, release: s.release}
+	return countBarrierUsers{UsersRepository: s.Store.Users(), barrier: s.barrier}
 }
 
 type countBarrierUsers struct {
 	store.UsersRepository
 
-	arrived chan<- struct{}
-	release <-chan struct{}
+	barrier *countBarrier
 }
 
 func (u countBarrierUsers) Count(ctx context.Context) (int64, error) {
 	count, err := u.UsersRepository.Count(ctx)
-	u.arrived <- struct{}{}
-	<-u.release
+
+	if u.barrier.counted.Add(1) <= u.barrier.holds {
+		u.barrier.arrived <- struct{}{}
+		<-u.barrier.release
+	}
 
 	return count, err
+}
+
+// Given a setup with the right token that read that no user exists, when another setup creates the
+// admin and revokes the token before the first one checks it, then the first one answers 409
+// setup_completed, not 403: once a user exists, a setup answers 409 whatever its token (#168).
+func TestSetup_SetupOvertakenByAnotherAnswers409(t *testing.T) {
+	t.Parallel()
+
+	a := newAuthTest(t)
+
+	var token auth.SetupToken
+
+	issued := token.Issue()
+	barrier := newCountBarrier(1)
+
+	deps := a.deps(t, "")
+	deps.SetupToken = &token
+	deps.Store = countBarrierStore{Store: a.store, barrier: barrier}
+	h := NewHandler(deps)
+
+	late := sameOriginPost(t, "http://example.com", setupPath, setupBody(t, issued, "bob", alicePassword), laptopAddr)
+	overtaken := make(chan *httptest.ResponseRecorder, 1)
+
+	go func() { overtaken <- serveWith(h, late) }()
+
+	barrier.waitForCounts(t, 1)
+
+	rec := postSetup(t, h, setupBody(t, issued, "alice", alicePassword))
+	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+
+	close(barrier.release)
+
+	requireProblem(t, <-overtaken, http.StatusConflict, "setup_completed")
+	a.requireUserCount(t, 1)
 }
 
 // Given two concurrent setups with the right token, which both read that no user exists, then only
@@ -329,12 +393,11 @@ func TestSetup_ConcurrentSetupsCreateOneUser(t *testing.T) {
 	var token auth.SetupToken
 
 	issued := token.Issue()
-	arrived := make(chan struct{}, 2)
-	release := make(chan struct{})
+	barrier := newCountBarrier(2)
 
 	deps := a.deps(t, "")
 	deps.SetupToken = &token
-	deps.Store = countBarrierStore{Store: a.store, arrived: arrived, release: release}
+	deps.Store = countBarrierStore{Store: a.store, barrier: barrier}
 	h := NewHandler(deps)
 
 	// Different usernames, so that the unique username cannot be what keeps the second user out.
@@ -348,16 +411,8 @@ func TestSetup_ConcurrentSetupsCreateOneUser(t *testing.T) {
 		go func() { statuses <- serveWith(h, r).Code }()
 	}
 
-	for range requests {
-		select {
-		case <-arrived:
-		case <-time.After(5 * time.Second):
-			close(release)
-			t.Fatal("both setups must read the count of the users")
-		}
-	}
-
-	close(release)
+	barrier.waitForCounts(t, len(requests))
+	close(barrier.release)
 
 	got := []int{<-statuses, <-statuses}
 	require.ElementsMatch(t, []int{http.StatusCreated, http.StatusConflict}, got)
