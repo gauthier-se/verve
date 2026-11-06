@@ -15,6 +15,11 @@ import { useVersionWatch } from "@/lib/version-watch";
 
 export interface RouterContext {
   queryClient: QueryClient;
+  /**
+   * Reads the secret that the link of the current page carries in its
+   * fragment, and removes the fragment from the address bar.
+   */
+  readFragmentSecret: () => string | undefined;
 }
 
 export const Route = createRootRouteWithContext<RouterContext>()({

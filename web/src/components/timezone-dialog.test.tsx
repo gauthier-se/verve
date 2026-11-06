@@ -1,47 +1,22 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
+import { http } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { CurrentUser, UpdatePreferencesInputBody } from "@/api/generated";
+import type { CurrentUser } from "@/api/generated";
 import { getCurrentUserQueryKey } from "@/api/generated/@tanstack/react-query.gen";
 import { initI18n } from "@/i18n";
 import { problemResponse } from "@/test/problem";
 import { renderRoute } from "@/test/render";
 import { fakeAuth, member, server } from "@/test/server";
+import {
+  acceptPreferences,
+  preferencesPath,
+  stubBrowserTimezone,
+} from "@/test/timezone";
 
 /** A member who has not confirmed a timezone yet. */
 const newcomer: CurrentUser = { ...member, timezone: null };
-
-const preferencesPath = "/api/v1/account/preferences";
-
-/** Makes the browser report `timeZone` as its timezone. */
-function stubBrowserTimezone(timeZone: string) {
-  const options = new Intl.DateTimeFormat().resolvedOptions();
-  vi.spyOn(Intl.DateTimeFormat.prototype, "resolvedOptions").mockReturnValue({
-    ...options,
-    timeZone,
-  });
-}
-
-/**
- * Answers PATCH /api/v1/account/preferences as the server does for a valid
- * name, and returns the bodies it receives.
- */
-function acceptPreferences() {
-  const bodies: UpdatePreferencesInputBody[] = [];
-  server.use(
-    http.patch<never, UpdatePreferencesInputBody>(
-      preferencesPath,
-      async ({ request }) => {
-        const body = await request.json();
-        bodies.push(body);
-        return HttpResponse.json({ timezone: body.timezone ?? null });
-      },
-    ),
-  );
-  return bodies;
-}
 
 /** Opens the shell for `newcomer`, with `timeZone` as the browser zone. */
 async function openShell(timeZone = "Asia/Tokyo") {

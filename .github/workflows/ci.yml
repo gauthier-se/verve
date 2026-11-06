@@ -144,6 +144,10 @@ jobs:
   e2e:
     name: e2e
     runs-on: ubuntu-latest
+    # The job takes about 3 minutes. Installing the system packages of the
+    # browsers can hang on the runner: without a limit, it would run for the
+    # 6 hours of the default.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
 

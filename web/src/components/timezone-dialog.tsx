@@ -1,13 +1,8 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { errorMessage } from "@/api/errors";
 import type { CurrentUser } from "@/api/generated";
-import {
-  getCurrentUserQueryKey,
-  updatePreferencesMutation,
-} from "@/api/generated/@tanstack/react-query.gen";
 import { useAppForm } from "@/components/form/app-form";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,6 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { browserTimezone, useUpdateTimezone } from "@/lib/timezone";
 
 interface TimezoneDialogProps {
   /** The user of the session. */
@@ -33,17 +29,9 @@ interface TimezoneDialogProps {
  */
 export function TimezoneDialog({ user }: TimezoneDialogProps) {
   const { t, i18n } = useTranslation();
-  const queryClient = useQueryClient();
   const [open, setOpen] = useState(user.timezone === null);
-  const update = useMutation({
-    ...updatePreferencesMutation(),
-    onSuccess: ({ timezone }) => {
-      queryClient.setQueryData<CurrentUser>(
-        getCurrentUserQueryKey(),
-        (current) => current && { ...current, timezone },
-      );
-      setOpen(false);
-    },
+  const update = useUpdateTimezone(() => {
+    setOpen(false);
   });
   const form = useAppForm({
     defaultValues: { timezone: browserTimezone() },
@@ -112,9 +100,4 @@ export function TimezoneDialog({ user }: TimezoneDialogProps) {
       </DialogContent>
     </Dialog>
   );
-}
-
-/** The timezone of the browser, as an IANA name such as Europe/Paris. */
-function browserTimezone(): string {
-  return new Intl.DateTimeFormat().resolvedOptions().timeZone;
 }

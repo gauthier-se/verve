@@ -27,10 +27,16 @@
     "csrf_failed": "The request was blocked as a security measure. Reload the page and try again.",
     "forbidden": "You do not have permission to do this.",
     "invalid_credentials": "The username, email or password is incorrect.",
+    "password_too_common": "This password is too common. Choose another one.",
+    "password_too_long": "Use at most 128 characters for the password.",
+    "password_too_short": "Use at least 12 characters for the password.",
     "rate_limited": "Too many attempts. Wait a moment, then try again.",
     "rate_limited_wait": "Too many attempts. Try again in {{wait}}.",
+    "setup_completed": "Verve is already set up. Log in with an existing account.",
+    "setup_token_invalid": "This setup token is not valid. Each start of Verve writes a new setup link to its log: use the latest one.",
     "timezone_invalid": "Verve does not know this timezone. Enter a name such as Europe/Paris.",
-    "unauthorized": "Log in to continue."
+    "unauthorized": "Log in to continue.",
+    "username_invalid": "Use 1 to 64 characters for the username, without @, spaces or invisible characters."
   },
   "home": {
     "tagline": "Your health data, on your server."
@@ -54,8 +60,34 @@
     "title": "Page not found"
   },
   "setup": {
-    "description": "The setup wizard is not available yet. To create the first admin, run verve user create --admin <username> on the server, then log in.",
-    "title": "Set up Verve"
+    "account": {
+      "confirmation": "Confirm password",
+      "description": "This account administers Verve. Like every account, it keeps its own health data.",
+      "goToLogin": "Go to the login page",
+      "password": "Password",
+      "passwordMismatch": "The passwords do not match.",
+      "passwordRequired": "Enter a password.",
+      "submit": "Create account",
+      "title": "Admin account",
+      "username": "Username",
+      "usernameRequired": "Enter a username."
+    },
+    "continue": "Continue",
+    "import": {
+      "description": "Verve shows the Apple Health data that you send to it, in two ways:",
+      "export": "Your history: on your iPhone, open the Health app, tap your profile picture, then Export All Health Data, and upload the export.zip file to Verve.",
+      "open": "Open Verve",
+      "sync": "Continuous sync: the Health Auto Export app sends your new data to Verve on a schedule.",
+      "title": "Import your data"
+    },
+    "progress": "Step {{step}} of {{total}}",
+    "title": "Set up Verve",
+    "token": {
+      "description": "When it starts, Verve writes a setup link to its log, on the line that begins with \"Create the first admin\". Paste the link, or the token after its # sign.",
+      "label": "Setup link or token",
+      "required": "Enter the setup link or the token.",
+      "title": "Setup token"
+    }
   },
   "timezone": {
     "confirm": "Confirm",

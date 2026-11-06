@@ -6,10 +6,15 @@ import {
   QueryClient,
   QueryClientProvider,
 } from "@tanstack/react-query";
-import { createRouter, type RouterHistory } from "@tanstack/react-router";
+import {
+  createBrowserHistory,
+  createRouter,
+  type RouterHistory,
+} from "@tanstack/react-router";
 
 import { isUnauthorized } from "@/api/errors";
 import { getCurrentUserQueryKey } from "@/api/generated/@tanstack/react-query.gen";
+import { createFragmentSecretReader } from "@/lib/fragment-secret";
 import { leaveSession } from "@/lib/session";
 import { routeTree } from "@/routeTree.gen";
 
@@ -23,11 +28,12 @@ interface CreateAppRouterOptions {
 /**
  * Creates the application router with its QueryClient, which is available
  * both in the route context (for loaders) and through QueryClientProvider (for
- * hooks). A query that answers 401 means that the session ended during use:
- * the app leaves the session, with the current URL as the target after login.
+ * hooks), and the reader of the secrets that links carry in their fragment. A
+ * query that answers 401 means that the session ended during use: the app
+ * leaves the session, with the current URL as the target after login.
  */
 export function createAppRouter({
-  history,
+  history = createBrowserHistory(),
   queryDefaults,
 }: CreateAppRouterOptions = {}) {
   const queryClient: QueryClient = new QueryClient({
@@ -57,8 +63,11 @@ export function createAppRouter({
 
   const router = createRouter({
     routeTree,
-    context: { queryClient },
-    ...(history && { history }),
+    context: {
+      queryClient,
+      readFragmentSecret: createFragmentSecretReader(history),
+    },
+    history,
     Wrap: ({ children }) => (
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     ),

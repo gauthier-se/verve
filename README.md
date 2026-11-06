@@ -84,7 +84,7 @@ Common tasks (`task --list` shows them all):
 
 `task go:lint` and `task go:test` run the Go side only, and the `web:*` tasks the web side only, for example `task web:test`. The web app lives in `web/` and also has its own scripts (`pnpm dev`, `pnpm test`, `pnpm lint`) for use inside that directory.
 
-`task e2e` starts the binary on `127.0.0.1:18080` with a temporary data directory and writes the HTML report to `web/playwright-report`. Outside NixOS, download the browsers once with `pnpm --dir web exec playwright install chromium webkit`.
+`task e2e` starts one binary per browser, on `127.0.0.1:18080` for Chromium and `127.0.0.1:18081` for WebKit, each with a temporary data directory, since the setup test creates the first admin. It writes the HTML report to `web/playwright-report`. Outside NixOS, download the browsers once with `pnpm --dir web exec playwright install chromium webkit`.
 
 ## Documentation
 

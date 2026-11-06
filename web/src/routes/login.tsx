@@ -4,9 +4,9 @@ import { useTranslation } from "react-i18next";
 
 import { loginMutationOptions } from "@/api/auth";
 import { errorMessage } from "@/api/errors";
-import { getCurrentUserQueryKey } from "@/api/generated/@tanstack/react-query.gen";
 import { useAppForm } from "@/components/form/app-form";
 import { Button } from "@/components/ui/button";
+import { enterSession } from "@/lib/session";
 
 interface LoginSearch {
   /** The URL of the app to go to after login. */
@@ -47,11 +47,7 @@ function Login() {
   const login = useMutation({
     ...loginMutationOptions(),
     onSuccess: async (user) => {
-      // A session can end without the cache being cleared, when the protected
-      // routes find it gone: no data of that account may reach this one.
-      queryClient.removeQueries();
-      // The login answers the user of the new session, as /auth/me does.
-      queryClient.setQueryData(getCurrentUserQueryKey(), user);
+      enterSession(queryClient, user);
       await navigate({ href: redirect ?? "/", replace: true });
     },
   });
