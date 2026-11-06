@@ -53,11 +53,15 @@ Per-user settings that drive display and calculations: language, units, timezone
 
 - Settings page sections: Profile, Display, Time, Heart rate, Goals.
 - Units preview next to the selector ("72.4 kg", "2,150 kcal").
+- Timezone at first login (M1): when the user of the session has no timezone, the shell opens a dialog with the zone of the browser (`Intl.DateTimeFormat().resolvedOptions().timeZone`) in an editable field. Confirming stores it. "Not now" or Escape closes the dialog until the app loads again, and the days of the user stay in UTC until then.
 
 ## Data and API notes
 
-- `user_preferences` and `user_profile` tables.
+- `user_preferences` and `user_profile` tables. A user has no `user_preferences` row until they set a preference, and the row is deleted with them.
 - Endpoints: `GET/PATCH /api/v1/account/preferences` (timezone only in M1), `GET/PATCH /api/v1/account/profile`.
+- `GET /api/v1/account/preferences` answers `{"timezone": "Europe/Paris"}`, with `null` until the user confirms one. `PATCH` takes the preferences to change, keeps the ones left out, and answers the preferences. A timezone that is not an IANA name answers 422 `timezone_invalid`, and so do the empty name and `Local`, which `time.LoadLocation` would read as UTC and as the zone of the server. `GET /api/v1/auth/me` includes the timezone, so that the web app knows at once whether to ask for it.
+- Names are checked against the timezone database of the system, then the one embedded in the binary (`time/tzdata`), so that every name loads on a system without one, such as Windows.
+- `preferences.Location` gives the effective zone of a user for the computations: their timezone, or UTC until they confirm one.
 - Values are always stored in canonical units, the SPA converts for display and input.
 
 ## Edge cases

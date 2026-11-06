@@ -69,9 +69,14 @@ func registerLoginAndLogout(api huma.API, deps APIDeps) {
 			return nil, loginError(err)
 		}
 
+		current, err := currentUserIn(ctx, deps.Store, loggedIn.User)
+		if err != nil {
+			return nil, fmt.Errorf("log in: %w", err)
+		}
+
 		return &loginOutput{
 			SetCookie: *newSessionCookie(deps.PublicURL, loggedIn.SessionID, loggedIn.Session.ExpiresAt),
-			Body:      currentUserOf(loggedIn.User),
+			Body:      current,
 		}, nil
 	})
 

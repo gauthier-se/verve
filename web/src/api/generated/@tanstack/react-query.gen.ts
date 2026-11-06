@@ -3,8 +3,8 @@
 import { type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { createFirstAdmin, getCurrentUser, getMeta, getSetupStatus, listAccountAuditEvents, listAdminAuditEvents, listAdminJobs, login, logout, type Options } from '../sdk.gen';
-import type { CreateFirstAdminData, CreateFirstAdminError, CreateFirstAdminResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetMetaData, GetMetaError, GetMetaResponse, GetSetupStatusData, GetSetupStatusError, GetSetupStatusResponse, ListAccountAuditEventsData, ListAccountAuditEventsError, ListAccountAuditEventsResponse, ListAdminAuditEventsData, ListAdminAuditEventsError, ListAdminAuditEventsResponse, ListAdminJobsData, ListAdminJobsError, ListAdminJobsResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutError, LogoutResponse } from '../types.gen';
+import { createFirstAdmin, getCurrentUser, getMeta, getPreferences, getSetupStatus, listAccountAuditEvents, listAdminAuditEvents, listAdminJobs, login, logout, type Options, updatePreferences } from '../sdk.gen';
+import type { CreateFirstAdminData, CreateFirstAdminError, CreateFirstAdminResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetMetaData, GetMetaError, GetMetaResponse, GetPreferencesData, GetPreferencesError, GetPreferencesResponse, GetSetupStatusData, GetSetupStatusError, GetSetupStatusResponse, ListAccountAuditEventsData, ListAccountAuditEventsError, ListAccountAuditEventsResponse, ListAdminAuditEventsData, ListAdminAuditEventsError, ListAdminAuditEventsResponse, ListAdminJobsData, ListAdminJobsError, ListAdminJobsResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutError, LogoutResponse, UpdatePreferencesData, UpdatePreferencesError, UpdatePreferencesResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -118,6 +118,45 @@ export const listAccountAuditEventsInfiniteOptions = (options?: Options<ListAcco
         queryKey: listAccountAuditEventsInfiniteQueryKey(options)
     });
     return opts as Omit<typeof opts, 'initialData'>;
+};
+
+export const getPreferencesQueryKey = (options?: Options<GetPreferencesData>) => createQueryKey('getPreferences', options);
+
+/**
+ * Get the preferences of the current user
+ *
+ * Returns the preferences of the user of the session.
+ */
+export const getPreferencesOptions = (options?: Options<GetPreferencesData>) => queryOptions<GetPreferencesResponse, GetPreferencesError, GetPreferencesResponse, ReturnType<typeof getPreferencesQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getPreferences({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getPreferencesQueryKey(options)
+});
+
+/**
+ * Change the preferences of the current user
+ *
+ * Changes the preferences given in the body, keeps the others, and returns the preferences. A timezone that is not an IANA name, such as `Europe/Paris`, answers 422 `timezone_invalid`.
+ */
+export const updatePreferencesMutation = (options?: Partial<Options<UpdatePreferencesData>>): UseMutationOptions<UpdatePreferencesResponse, UpdatePreferencesError, Options<UpdatePreferencesData>> => {
+    const mutationOptions: UseMutationOptions<UpdatePreferencesResponse, UpdatePreferencesError, Options<UpdatePreferencesData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await updatePreferences({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
 };
 
 export const listAdminAuditEventsQueryKey = (options?: Options<ListAdminAuditEventsData>) => createQueryKey('listAdminAuditEvents', options);

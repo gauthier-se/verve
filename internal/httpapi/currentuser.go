@@ -17,6 +17,9 @@ type CurrentUser struct {
 	Username string `json:"username" example:"alice" doc:"The username, in the case it was created with."`
 	Email    string `json:"email,omitempty" example:"alice@example.com" doc:"The email address, left out when the user has none."`
 	Role     string `json:"role" enum:"admin,member" example:"member" doc:"The role of the user."`
+	// Timezone is the timezone of Preferences, so that the web app knows at once whether to ask for
+	// it.
+	Timezone *string `json:"timezone" nullable:"true" example:"Europe/Paris" doc:"The IANA name of the timezone of the user, or null until they confirm one."`
 }
 
 // currentUserOutput is the response of GET /api/v1/auth/me.
@@ -43,25 +46,47 @@ func registerCurrentUser(api huma.API, repos store.Repositories) {
 		}
 
 		user, err := repos.Users().Get(ctx, principal.UserID)
-		if errors.Is(err, store.ErrNotFound) {
-			// The user was deleted since the session lookup.
-			return nil, huma.NewError(http.StatusUnauthorized, "")
-		}
-
 		if err != nil {
-			return nil, fmt.Errorf("get current user: %w", err)
+			return nil, currentUserError(err)
 		}
 
-		return &currentUserOutput{Body: currentUserOf(user)}, nil
+		current, err := currentUserIn(ctx, repos, user)
+		if err != nil {
+			return nil, currentUserError(err)
+		}
+
+		return &currentUserOutput{Body: current}, nil
 	})
 }
 
-// currentUserOf returns user as the API describes the current user.
-func currentUserOf(user store.User) CurrentUser {
+// currentUserError returns the problem of the error of GET /api/v1/auth/me: 401 for a user deleted
+// since the session lookup, and the error otherwise.
+func currentUserError(err error) error {
+	if errors.Is(err, store.ErrNotFound) {
+		return huma.NewError(http.StatusUnauthorized, "")
+	}
+
+	return fmt.Errorf("get current user: %w", err)
+}
+
+// currentUserIn returns user as the API describes the current user, with their preferences read in
+// repos.
+func currentUserIn(ctx context.Context, repos store.Repositories, user store.User) (CurrentUser, error) {
+	got, err := repos.Preferences().Get(ctx, user.ID)
+	if err != nil {
+		return CurrentUser{}, err
+	}
+
+	return currentUserOf(user, got), nil
+}
+
+// currentUserOf returns user, whose preferences are prefs, as the API describes the current user.
+func currentUserOf(user store.User, prefs store.Preferences) CurrentUser {
 	return CurrentUser{
 		ID:       user.ID,
 		Username: user.Username,
 		Email:    user.Email,
 		Role:     string(user.Role),
+		Timezone: timezoneOf(prefs),
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/gauthier-se/verve/internal/auth"
+	"github.com/gauthier-se/verve/internal/store"
 )
 
 // maxSetupBodyBytes bounds the body of a setup. It holds the longest username and password in JSON,
@@ -90,7 +91,8 @@ func registerSetup(api huma.API, deps APIDeps) {
 
 		return &setupOutput{
 			SetCookie: *newSessionCookie(deps.PublicURL, loggedIn.SessionID, loggedIn.Session.ExpiresAt),
-			Body:      currentUserOf(loggedIn.User),
+			// The admin was just created, without preferences.
+			Body: currentUserOf(loggedIn.User, store.Preferences{}),
 		}, nil
 	})
 }
