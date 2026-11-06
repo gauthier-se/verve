@@ -58,6 +58,18 @@ describe("createFragmentSecretReader", () => {
     expect(readSecret()).toBeUndefined();
   });
 
+  it("given a secret read on one page, when the user leaves the page and comes back to its path, then the secret is gone", () => {
+    const history = openInBrowser("/setup#s3cr3t");
+    const readSecret = createFragmentSecretReader(history);
+    readSecret();
+
+    history.push("/invite");
+    readSecret();
+    history.push("/setup");
+
+    expect(readSecret()).toBeUndefined();
+  });
+
   it("given a link with a query string and a secret, when the secret is read, then only the fragment leaves the address bar", () => {
     const readSecret = createFragmentSecretReader(
       openInBrowser("/reset-password?lang=fr#s3cr3t"),

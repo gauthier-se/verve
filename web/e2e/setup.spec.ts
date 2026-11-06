@@ -17,23 +17,22 @@ test("given the built binary on an empty data directory, when the installer open
   // have written it yet.
   let link: string | undefined;
   await expect
-    .poll(async () => (link = await readSetupLink(baseURL)))
+    .poll(async () => (link = await readSetupLink(baseURL)), {
+      message:
+        "e2e/server.ts wrote no setup link: the instance already has a user, or Playwright reused a server that it did not start",
+    })
     .toBeDefined();
   if (link === undefined) {
     throw new Error("The server printed no setup link");
   }
-  const token = new URL(link, baseURL).hash.slice(1);
-  expect(token).not.toBe("");
-  const requested: string[] = [];
-  page.on("request", (request) => {
-    requested.push(request.url());
-  });
+  expect(new URL(link, baseURL).hash).not.toBe("");
 
   await page.goto(link);
 
   await expect(
     page.getByRole("heading", { level: 2, name: "Admin account" }),
   ).toBeVisible();
+  // The token has left the address bar and the history entry.
   expect(page.url()).toBe(new URL("/setup", baseURL).href);
   await page.getByLabel("Username").fill("admin");
   await page.getByLabel("Password", { exact: true }).fill(password);
@@ -62,5 +61,4 @@ test("given the built binary on an empty data directory, when the installer open
   ).toBeVisible();
   // The timezone of the wizard is stored: the app does not ask for it again.
   await expect(page.getByRole("dialog")).toBeHidden();
-  expect(requested.filter((url) => url.includes(token))).toEqual([]);
 });

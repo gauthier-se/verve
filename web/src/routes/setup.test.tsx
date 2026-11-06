@@ -1,17 +1,15 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
+import { http } from "msw";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
-import type {
-  SetupInputBody,
-  UpdatePreferencesInputBody,
-} from "@/api/generated";
+import type { SetupInputBody } from "@/api/generated";
 import { getCurrentUserQueryKey } from "@/api/generated/@tanstack/react-query.gen";
 import { initI18n } from "@/i18n";
 import { problemResponse } from "@/test/problem";
 import { renderRoute } from "@/test/render";
 import { admin, fakeAuth, server } from "@/test/server";
+import { acceptPreferences, stubBrowserTimezone } from "@/test/timezone";
 
 /** The setup token that the fake server printed. */
 const setupToken = "bq3jX0m_Vb8Qe5rWkY2nT4uH7cL9aZ1sD6fG0hJ3kP8";
@@ -37,34 +35,6 @@ function rejectSetup({ status, code }: { status: number; code: string }) {
   return http.post("/api/v1/setup", () =>
     problemResponse({ title: "Setup rejected", status, code }),
   );
-}
-
-/** Makes the browser report `timeZone` as its timezone. */
-function stubBrowserTimezone(timeZone: string) {
-  const options = new Intl.DateTimeFormat().resolvedOptions();
-  vi.spyOn(Intl.DateTimeFormat.prototype, "resolvedOptions").mockReturnValue({
-    ...options,
-    timeZone,
-  });
-}
-
-/**
- * Answers PATCH /api/v1/account/preferences as the server does for a valid
- * name, and returns the bodies it receives.
- */
-function acceptPreferences() {
-  const bodies: UpdatePreferencesInputBody[] = [];
-  server.use(
-    http.patch<never, UpdatePreferencesInputBody>(
-      "/api/v1/account/preferences",
-      async ({ request }) => {
-        const body = await request.json();
-        bodies.push(body);
-        return HttpResponse.json({ timezone: body.timezone ?? null });
-      },
-    ),
-  );
-  return bodies;
 }
 
 interface AdminEntry {
@@ -223,6 +193,10 @@ describe("setup page", () => {
       entry: "the setup link",
       input: `  https://verve.example.com/setup#${setupToken}  `,
     },
+    {
+      entry: "the setup line of a server without a public URL",
+      input: `Create the first admin at /setup#${setupToken} on the address of this server`,
+    },
   ])(
     "given /setup without a fragment, when the user enters $entry, then the wizard has four steps and sends the token",
     async ({ input }) => {
@@ -259,13 +233,13 @@ describe("setup page", () => {
     expect(screen.getByText("Step 1 of 4")).toBeInTheDocument();
   });
 
-  it("given a link with a token that is no longer valid, when the admin is created, then the wizard asks for the token and says why, and the token entered then creates the admin", async () => {
+  it("given a link with a token that is no longer valid, when the admin is created, then the wizard asks for the token and says why, and the token entered then creates the admin entered before", async () => {
     const user = userEvent.setup();
     server.use(...fakeAuth({ setupToken }));
     const setups = recordSetups();
     renderRoute("/setup#the-token-of-a-previous-start");
 
-    await createAdmin(user);
+    await createAdmin(user, { username: "root" });
 
     expect(await screen.findByText("Step 1 of 4")).toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent(
@@ -273,12 +247,18 @@ describe("setup page", () => {
     );
     await user.type(screen.getByLabelText("Setup link or token"), setupToken);
     await user.click(screen.getByRole("button", { name: "Continue" }));
-    await createAdmin(user);
+    // The account step keeps what the user entered.
+    expect(await screen.findByLabelText("Username")).toHaveValue("root");
+    await user.click(screen.getByRole("button", { name: "Create account" }));
 
     expect(await screen.findByText("Step 3 of 4")).toBeInTheDocument();
-    expect(setups.map((setup) => setup.token)).toEqual([
-      "the-token-of-a-previous-start",
-      setupToken,
+    expect(setups).toEqual([
+      {
+        token: "the-token-of-a-previous-start",
+        username: "root",
+        password: adminPassword,
+      },
+      { token: setupToken, username: "root", password: adminPassword },
     ]);
   });
 

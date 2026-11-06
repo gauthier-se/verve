@@ -1,15 +1,9 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 
 import { errorMessage } from "@/api/errors";
-import type { CurrentUser } from "@/api/generated";
-import {
-  getCurrentUserQueryKey,
-  updatePreferencesMutation,
-} from "@/api/generated/@tanstack/react-query.gen";
 import { useAppForm } from "@/components/form/app-form";
 import { Button } from "@/components/ui/button";
-import { browserTimezone } from "@/lib/timezone";
+import { browserTimezone, useUpdateTimezone } from "@/lib/timezone";
 
 interface TimezoneStepProps {
   /** Called once the timezone is stored. */
@@ -22,17 +16,7 @@ interface TimezoneStepProps {
  */
 export function TimezoneStep({ onDone }: TimezoneStepProps) {
   const { t, i18n } = useTranslation();
-  const queryClient = useQueryClient();
-  const update = useMutation({
-    ...updatePreferencesMutation(),
-    onSuccess: ({ timezone }) => {
-      queryClient.setQueryData<CurrentUser>(
-        getCurrentUserQueryKey(),
-        (current) => current && { ...current, timezone },
-      );
-      onDone();
-    },
-  });
+  const update = useUpdateTimezone(onDone);
   const form = useAppForm({
     defaultValues: { timezone: browserTimezone() },
     onSubmit: ({ value }) => {

@@ -3,7 +3,10 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { getSetupStatusOptions } from "@/api/generated/@tanstack/react-query.gen";
-import { AccountStep } from "@/components/setup/account-step";
+import {
+  type AccountEntry,
+  AccountStep,
+} from "@/components/setup/account-step";
 import { ImportStep } from "@/components/setup/import-step";
 import { TimezoneStep } from "@/components/setup/timezone-step";
 import { TokenStep } from "@/components/setup/token-step";
@@ -48,25 +51,27 @@ function Setup() {
   const [step, setStep] = useState<Step>(
     token === undefined ? "token" : "account",
   );
-  // The token of the link, or the one entered before, that the server refused.
+  // Whether the server refused a token, from the link or entered before.
   const [tokenRejected, setTokenRejected] = useState(false);
+  // What the user entered for the admin, kept while they correct the token.
+  const [account, setAccount] = useState<AccountEntry>();
   const steps: Step[] =
     context.token === undefined || tokenRejected
       ? ["token", "account", "timezone", "import"]
       : ["account", "timezone", "import"];
   const headingRef = useRef<HTMLHeadingElement>(null);
-  const moved = useRef(false);
+  const changedStep = useRef(false);
 
   // Once the user moves to another step, the focus goes to its heading, which
   // tells a screen reader that the page changed.
   useEffect(() => {
-    if (moved.current) {
+    if (changedStep.current) {
       headingRef.current?.focus();
     }
   }, [step]);
 
   function goTo(next: Step) {
-    moved.current = true;
+    changedStep.current = true;
     setStep(next);
   }
 
@@ -103,10 +108,13 @@ function Setup() {
         {step === "account" && token !== undefined && (
           <AccountStep
             token={token}
+            entry={account}
             onCreated={() => {
+              setAccount(undefined);
               goTo("timezone");
             }}
-            onTokenRejected={() => {
+            onTokenRejected={(entry) => {
+              setAccount(entry);
               setTokenRejected(true);
               goTo("token");
             }}

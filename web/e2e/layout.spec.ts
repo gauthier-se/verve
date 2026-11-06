@@ -43,8 +43,9 @@ test("given a phone screen, when the login page loads, then it fits without hori
 test("given a phone screen and a session, when a protected page loads, then the shell fits without horizontal scroll and its navigation is made of touch targets", async ({
   page,
 }) => {
-  // The test instance has no account, so the session is faked. A long
-  // username checks that the user menu cannot push the page wider.
+  // The session is faked, so that the test passes whether the setup test has
+  // created the admin or not. A long username checks that the user menu cannot
+  // push the page wider.
   const username = "an-admin-with-a-username-longer-than-a-phone-screen";
   await page.route("/api/v1/auth/me", (route) =>
     route.fulfill({

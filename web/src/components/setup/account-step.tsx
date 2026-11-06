@@ -3,28 +3,35 @@ import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
 import { errorMessage, hasProblemCode } from "@/api/errors";
-import {
-  createFirstAdminMutation,
-  getCurrentUserQueryKey,
-} from "@/api/generated/@tanstack/react-query.gen";
+import { createFirstAdminMutation } from "@/api/generated/@tanstack/react-query.gen";
 import { useAppForm } from "@/components/form/app-form";
 import { Button } from "@/components/ui/button";
+import { enterSession } from "@/lib/session";
+
+/** What the user entered for the admin account. */
+export interface AccountEntry {
+  username: string;
+  password: string;
+}
 
 interface AccountStepProps {
   /** The setup token, from the link or entered by the user. */
   token: string;
+  /** What the user entered before, when the step comes back. */
+  entry?: AccountEntry | undefined;
   /** Called once the admin exists, with their session open. */
   onCreated: () => void;
-  /** Called when the server rejects the token. */
-  onTokenRejected: () => void;
+  /** Called when the server rejects the token, with what the user entered. */
+  onTokenRejected: (entry: AccountEntry) => void;
 }
 
 /**
- * Creates the first admin with the setup token, which opens their session.
- * The user of the session goes into the query cache, as after a login.
+ * Creates the first admin with the setup token, which opens their session as
+ * a login does.
  */
 export function AccountStep({
   token,
+  entry,
   onCreated,
   onTokenRejected,
 }: AccountStepProps) {
@@ -33,18 +40,21 @@ export function AccountStep({
   const create = useMutation({
     ...createFirstAdminMutation(),
     onSuccess: (user) => {
-      queryClient.removeQueries();
-      queryClient.setQueryData(getCurrentUserQueryKey(), user);
+      enterSession(queryClient, user);
       onCreated();
     },
-    onError: (error) => {
+    onError: (error, { body }) => {
       if (hasProblemCode(error, "setup_token_invalid")) {
-        onTokenRejected();
+        onTokenRejected({ username: body.username, password: body.password });
       }
     },
   });
   const form = useAppForm({
-    defaultValues: { username: "", password: "", confirmation: "" },
+    defaultValues: {
+      username: entry?.username ?? "",
+      password: entry?.password ?? "",
+      confirmation: entry?.password ?? "",
+    },
     onSubmit: ({ value }) => {
       create.mutate({
         body: { token, username: value.username, password: value.password },

@@ -61,8 +61,12 @@ export function TokenStep({ error, onSubmit }: TokenStepProps) {
   );
 }
 
-/** The token of a setup link, or the entry itself when it is not a link. */
+/**
+ * The token of an entry: what follows the # of a setup link, up to the end of
+ * the link, since the line of the log can go on after it, or the entry itself
+ * when it is not a link.
+ */
 function tokenOf(entry: string): string {
-  const trimmed = entry.trim();
-  return trimmed.slice(trimmed.lastIndexOf("#") + 1);
+  const afterHash = entry.slice(entry.lastIndexOf("#") + 1);
+  return afterHash.trim().split(/\s/)[0] ?? "";
 }

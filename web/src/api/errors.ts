@@ -54,7 +54,7 @@ export function isUnauthorized(error: unknown): boolean {
 }
 
 /** Tells whether an error thrown by the API client is a problem of `code`. */
-export function hasProblemCode(error: unknown, code: string): boolean {
+export function hasProblemCode(error: unknown, code: ErrorCode): boolean {
   return isProblem(error) && error.code === code;
 }
 
