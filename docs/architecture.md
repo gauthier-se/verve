@@ -264,4 +264,4 @@ The cursor is opaque to clients: it encodes the time and the id of the last item
 - Fixtures checked into the repository: a synthetic Apple Health export, unpacked in the `testdata/` of `internal/synthexport`, and anonymized Health Auto Export payloads (version 1 and 2). `tools/synthexport` writes a synthetic export of any size.
 - API contract: the generated OpenAPI spec is committed and diffed in CI.
 - Smoke tests with Playwright against the production binary, in Chromium and WebKit, on every pull request.
-- End-to-end tests for critical flows (setup, import, Today page) once M2 is reached.
+- End-to-end tests for critical flows: setup from M1, import and the Today page once M2 is reached.

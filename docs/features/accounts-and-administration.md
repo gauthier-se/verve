@@ -61,6 +61,10 @@ Verve is multi-user for a household. Each user's health data is isolated. An adm
 ## UX notes
 
 - Setup wizard: setup token, admin account, timezone, then a short guide to importing data. Default language and units join it in M2, with [User preferences and profile](user-preferences-and-profile.md).
+  - The token step appears when the link gave no token. It accepts the token or the whole link, as the server log prints it. When the server answers `setup_token_invalid`, the wizard comes back to this step with the message.
+  - The admin account step asks the password twice, and checks that both match before sending the request. Its errors are translated from their code, and `setup_completed` links to the login page.
+  - The timezone step proposes the timezone of the browser, so that the first login does not ask for it again.
+  - The steps and the token live in the memory of the page, never in `localStorage`, `sessionStorage` or the history state. A reload before the admin exists starts again from the token step, and a reload after it goes to the login page.
 - Admin area is a separate section in navigation, visible only to admins. Its pages are under `/admin`, and a member who opens one gets the not-found page.
 - Deleting data is always behind a confirmation dialog describing exactly what will be removed.
 

@@ -53,6 +53,11 @@ export function isUnauthorized(error: unknown): boolean {
   return isProblem(error) && error.status === 401;
 }
 
+/** Tells whether an error thrown by the API client is a problem of `code`. */
+export function hasProblemCode(error: unknown, code: string): boolean {
+  return isProblem(error) && error.code === code;
+}
+
 /**
  * Adds to a problem the wait of the Retry-After header of its response, as
  * `retryAfter` in seconds, when the header gives it in seconds. Any other

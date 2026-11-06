@@ -17,7 +17,7 @@ Every pull request runs these required checks:
 | `go` | golangci-lint (linters and formatting), tests with the race detector, total coverage of at least 80 percent outside `cmd/` and generated code, govulncheck | `task go:lint`, `task test:coverage`, `task vuln` |
 | `generated` | Generated code up to date: sqlc queries, OpenAPI spec (`web/openapi.json`), TypeScript API client (`web/src/api/generated`), translation files and types | `task generate`, then no change in `git status` |
 | `web` | Dependencies install from the lockfile without changes, ESLint, Prettier format check, TypeScript type check, translation check (files up to date with the keys in code, no hardcoded user-facing text), Vitest tests with coverage, production build | `task web:lint`, `pnpm coverage` in `web/`, `task web:build` |
-| `e2e` | Playwright smoke tests in Chromium and WebKit against the production binary. On failure, the HTML report is uploaded as the `playwright-report` artifact | `task e2e` |
+| `e2e` | Playwright smoke tests and end-to-end tests, such as the setup wizard, in Chromium and WebKit against the production binary. On failure, the HTML report is uploaded as the `playwright-report` artifact | `task e2e` |
 | `docker` | `compose.yaml` is valid, the image builds for `linux/amd64` and `linux/arm64` without pushing, and the amd64 image passes the smoke test. Layers are restored from the GitHub Actions cache | `docker compose config --quiet`, `docker buildx build --platform linux/amd64 --load --tag verve:smoke .`, then `scripts/docker-smoke.sh verve:smoke` |
 | `pr-title` | The pull request title follows the commit message format below | |
 

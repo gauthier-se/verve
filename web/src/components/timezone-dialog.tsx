@@ -19,6 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { browserTimezone } from "@/lib/timezone";
 
 interface TimezoneDialogProps {
   /** The user of the session. */
@@ -112,9 +113,4 @@ export function TimezoneDialog({ user }: TimezoneDialogProps) {
       </DialogContent>
     </Dialog>
   );
-}
-
-/** The timezone of the browser, as an IANA name such as Europe/Paris. */
-function browserTimezone(): string {
-  return new Intl.DateTimeFormat().resolvedOptions().timeZone;
 }
