@@ -1,7 +1,12 @@
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 
-import type { CurrentUser, LoginInputBody, Meta } from "@/api/generated";
+import type {
+  CurrentUser,
+  LoginInputBody,
+  Meta,
+  SetupInputBody,
+} from "@/api/generated";
 import { problemResponse } from "@/test/problem";
 
 /** The server metadata answered by default. */
@@ -57,22 +62,59 @@ interface FakeAuthOptions {
   user?: CurrentUser;
   /** Whether the browser starts with a session of the account. */
   signedIn?: boolean;
+  /** The setup token printed by the server while setup is required. */
+  setupToken?: string;
 }
 
 /**
  * Handlers that fake the authentication endpoints for one browser, to
  * register with `server.use(...fakeAuth())`. GET /api/v1/auth/me answers the
  * account while the browser has a session and 401 otherwise. A login with the
- * username or email of the account and `fakePassword` opens the session, any
- * other login answers 401 invalid_credentials, and a logout ends it.
+ * username or email of the account and its password, `fakePassword` unless
+ * setup chose another, opens the session, any other login answers 401
+ * invalid_credentials, and a logout ends it. While there is no account, a
+ * setup with `setupToken` creates it as an admin without a timezone and opens
+ * its session, as the server does.
  */
-export function fakeAuth({ user, signedIn = false }: FakeAuthOptions = {}) {
+export function fakeAuth({
+  user,
+  signedIn = false,
+  setupToken,
+}: FakeAuthOptions = {}) {
+  let account = user;
+  let accountPassword = fakePassword;
   let sessionUser = signedIn ? user : undefined;
 
   return [
     http.get("/api/v1/setup", () =>
-      HttpResponse.json({ required: user === undefined }),
+      HttpResponse.json({ required: account === undefined }),
     ),
+    http.post<never, SetupInputBody>("/api/v1/setup", async ({ request }) => {
+      const body = await request.json();
+      if (account !== undefined) {
+        return problemResponse({
+          title: "Conflict",
+          status: 409,
+          code: "setup_completed",
+        });
+      }
+      if (setupToken === undefined || body.token !== setupToken) {
+        return problemResponse({
+          title: "Forbidden",
+          status: 403,
+          code: "setup_token_invalid",
+        });
+      }
+      account = {
+        id: 1,
+        username: body.username,
+        role: "admin",
+        timezone: null,
+      };
+      accountPassword = body.password;
+      sessionUser = account;
+      return HttpResponse.json(account, { status: 201 });
+    }),
     http.get("/api/v1/auth/me", () =>
       sessionUser
         ? HttpResponse.json(sessionUser)
@@ -87,17 +129,17 @@ export function fakeAuth({ user, signedIn = false }: FakeAuthOptions = {}) {
       async ({ request }) => {
         const body = await request.json();
         const known =
-          user !== undefined &&
-          (body.login === user.username || body.login === user.email);
-        if (!known || body.password !== fakePassword) {
+          account !== undefined &&
+          (body.login === account.username || body.login === account.email);
+        if (!known || body.password !== accountPassword) {
           return problemResponse({
             title: "Unauthorized",
             status: 401,
             code: "invalid_credentials",
           });
         }
-        sessionUser = user;
-        return HttpResponse.json(user);
+        sessionUser = account;
+        return HttpResponse.json(account);
       },
     ),
     http.post("/api/v1/auth/logout", () => {
