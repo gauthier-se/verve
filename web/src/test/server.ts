@@ -21,16 +21,22 @@ export const server = setupServer(
   http.get("/api/v1/meta", () => HttpResponse.json(meta)),
 );
 
-/** A member account, with an email address. */
+/** A member account, with an email address and a timezone. */
 export const member: CurrentUser = {
   id: 2,
   username: "alice",
   email: "alice@example.com",
   role: "member",
+  timezone: "Europe/Paris",
 };
 
-/** An admin account, without an email address. */
-export const admin: CurrentUser = { id: 1, username: "admin", role: "admin" };
+/** An admin account, without an email address, with a timezone. */
+export const admin: CurrentUser = {
+  id: 1,
+  username: "admin",
+  role: "admin",
+  timezone: "Europe/Paris",
+};
 
 /** The password of the account of `fakeAuth`. */
 export const fakePassword = "correct horse battery staple";

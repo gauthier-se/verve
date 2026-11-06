@@ -65,7 +65,7 @@ func TestSetup_RightTokenCreatesTheAdminAndOpensASession(t *testing.T) {
 
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 	require.Equal(t, "application/json", rec.Header().Get("Content-Type"))
-	require.JSONEq(t, `{"id":1,"username":"Alice","role":"admin"}`, rec.Body.String())
+	require.JSONEq(t, `{"id":1,"username":"Alice","role":"admin","timezone":null}`, rec.Body.String())
 
 	id := sessionCookieOf(t, rec, "verve_session")
 	require.Equal(t, []string{"verve_session=" + id + "; Path=/; Expires=Fri, 04 Dec 2026 08:00:00 GMT; HttpOnly; SameSite=Lax"},
@@ -73,7 +73,7 @@ func TestSetup_RightTokenCreatesTheAdminAndOpensASession(t *testing.T) {
 
 	me := getWith(t, h, "/api/v1/auth/me", "verve_session="+id)
 	require.Equal(t, http.StatusOK, me.Code)
-	require.JSONEq(t, `{"id":1,"username":"Alice","role":"admin"}`, me.Body.String())
+	require.JSONEq(t, `{"id":1,"username":"Alice","role":"admin","timezone":null}`, me.Body.String())
 
 	login := loginAt(t, h, laptopAddr, "alice", alicePassword)
 	require.Equal(t, http.StatusOK, login.Code, login.Body.String())
