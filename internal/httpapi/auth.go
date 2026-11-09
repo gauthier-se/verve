@@ -80,9 +80,10 @@ func clearedSessionCookie(publicURL config.PublicURL) *http.Cookie {
 }
 
 type (
-	principalKey   struct{}
-	sessionIDKey   struct{}
-	lookupErrorKey struct{}
+	principalKey       struct{}
+	sessionIDKey       struct{}
+	sessionPublicIDKey struct{}
+	lookupErrorKey     struct{}
 )
 
 // PrincipalFrom returns the principal stored by AuthenticationMiddleware, and false when the
@@ -97,6 +98,14 @@ func PrincipalFrom(ctx context.Context) (auth.Principal, bool) {
 // not, or empty when there is none. Login replaces that session, and logout deletes it.
 func sessionIDFrom(ctx context.Context) string {
 	id, _ := ctx.Value(sessionIDKey{}).(string)
+
+	return id
+}
+
+// sessionPublicIDFrom returns the public id of the valid session of the request, or empty when it
+// has none.
+func sessionPublicIDFrom(ctx context.Context) string {
+	id, _ := ctx.Value(sessionPublicIDKey{}).(string)
 
 	return id
 }
@@ -149,6 +158,7 @@ func AuthenticationMiddleware(repos store.Repositories, sessions auth.Sessions, 
 
 				principal := auth.Principal{UserID: found.Session.UserID, Role: found.User.Role, Method: auth.MethodSession}
 				ctx = context.WithValue(ctx, principalKey{}, principal)
+				ctx = context.WithValue(ctx, sessionPublicIDKey{}, found.Session.PublicID)
 			}
 
 			next.ServeHTTP(w, r.WithContext(ctx))

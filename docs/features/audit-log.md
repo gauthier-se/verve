@@ -62,6 +62,8 @@ An append-only record of security-relevant and data management events: logins, t
   - `auth.login_succeeded`: the user as actor, and the login method in the payload, such as `{"method": "password"}`.
   - `auth.login_failed`: no actor, the user of the login as subject, or none for a login that no user has (FR-8), and the attempted login in the payload, `{"attempted": "..."}`.
   - `auth.logout`: the user as actor and an empty payload. A logout without a valid session records nothing.
+  - `auth.password_changed`: the user as actor and an empty payload. The other sessions that the change revokes record no event of their own. A wrong current password records nothing: it counts in the login rate limit instead.
+  - `auth.session_revoked`: the user as actor, and the number of sessions revoked in the payload, `{"revoked": 1}` for one session. A revocation of the other sessions when there are none records nothing.
 - The creation of a user, `user.created`: no actor, since no user acted (the setup comes before any user, and the command line has none), the new user as subject, and their role and where they were created from in the payload, `{"role": "admin", "source": "setup"}` or `"source": "cli"`. The setup records the client of its request. A rejected setup records nothing.
 - Endpoints, paginated as described in [Architecture](../architecture.md#pagination), newest first by first occurrence, then by id:
   - `GET /api/v1/account/audit`: the events whose actor or subject is the user of the session (FR-4). An admin also gets only their own events here.

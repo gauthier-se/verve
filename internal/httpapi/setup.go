@@ -109,8 +109,7 @@ func setupError(err error) error {
 		return codedProblem(http.StatusConflict, err)
 	case errors.Is(err, auth.ErrSetupTokenInvalid):
 		return codedProblem(http.StatusForbidden, err)
-	case errors.Is(err, auth.ErrUsernameInvalid), errors.Is(err, auth.ErrPasswordTooShort),
-		errors.Is(err, auth.ErrPasswordTooLong), errors.Is(err, auth.ErrPasswordTooCommon):
+	case errors.Is(err, auth.ErrUsernameInvalid), auth.IsPasswordPolicyError(err):
 		return codedProblem(http.StatusUnprocessableEntity, err)
 	default:
 		return fmt.Errorf("create first admin: %w", err)

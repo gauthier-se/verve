@@ -110,15 +110,58 @@ func (r sessions) Delete(ctx context.Context, idHash []byte) error {
 	return nil
 }
 
-func (r sessions) DeleteOthers(ctx context.Context, userID int64, keepIDHash []byte) error {
+func (r sessions) ListByUser(ctx context.Context, userID int64) ([]store.Session, error) {
+	rows, err := r.q.read().ListUserSessions(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list sessions of user %d: %w", userID, err)
+	}
+
+	list := make([]store.Session, 0, len(rows))
+	for _, row := range rows {
+		list = append(list, sessionOf(row))
+	}
+
+	return list, nil
+}
+
+func (r sessions) DeleteByPublicID(ctx context.Context, userID int64, publicID string) error {
 	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
-		return q.DeleteOtherSessions(ctx, sqlcgen.DeleteOtherSessionsParams{UserID: userID, KeepIDHash: keepIDHash})
+		deleted, err := q.DeleteUserSessionByPublicID(ctx, sqlcgen.DeleteUserSessionByPublicIDParams{
+			UserID:   userID,
+			PublicID: publicID,
+		})
+		if err != nil {
+			return err
+		}
+
+		if deleted == 0 {
+			return store.ErrNotFound
+		}
+
+		return nil
 	})
 	if err != nil {
-		return fmt.Errorf("delete other sessions of user %d: %w", userID, err)
+		return fmt.Errorf("delete session of user %d by public id: %w", userID, err)
 	}
 
 	return nil
+}
+
+func (r sessions) DeleteOthers(ctx context.Context, userID int64, keepIDHash []byte) (int64, error) {
+	var deleted int64
+
+	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
+		var err error
+
+		deleted, err = q.DeleteOtherSessions(ctx, sqlcgen.DeleteOtherSessionsParams{UserID: userID, KeepIDHash: keepIDHash})
+
+		return err
+	})
+	if err != nil {
+		return 0, fmt.Errorf("delete other sessions of user %d: %w", userID, err)
+	}
+
+	return deleted, nil
 }
 
 func (r sessions) PurgeExpired(ctx context.Context, now time.Time) error {

@@ -104,18 +104,19 @@ func loginError(err error) error {
 
 	switch {
 	case errors.Is(err, auth.ErrInvalidCredentials):
-		return &Problem{
-			Type:   "about:blank",
-			Title:  http.StatusText(http.StatusUnauthorized),
-			Status: http.StatusUnauthorized,
-			Code:   "invalid_credentials",
-		}
+		return invalidCredentials(http.StatusUnauthorized)
 	case errors.As(err, &limited):
 		return huma.ErrorWithHeaders(huma.NewError(http.StatusTooManyRequests, ""),
 			http.Header{"Retry-After": {retryAfterSeconds(limited.RetryAfter)}})
 	default:
 		return err
 	}
+}
+
+// invalidCredentials returns the problem of status for credentials that do not match: 401 for a
+// login, and 403 for a password change, whose request already has a session.
+func invalidCredentials(status int) *Problem {
+	return &Problem{Type: "about:blank", Title: http.StatusText(status), Status: status, Code: "invalid_credentials"}
 }
 
 // retryAfterSeconds returns wait in whole seconds, rounded up, for a Retry-After header.

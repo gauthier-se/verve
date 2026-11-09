@@ -170,19 +170,40 @@ func (l *Logins) checkLimit(login string, ip netip.Addr) error {
 // It returns ErrInvalidCredentials for a wrong password or a user who is not active, and counts the
 // failure before it frees the slot, so that the attempts waiting for one see it.
 func (l *Logins) checkPassword(ctx context.Context, creds Credentials, ip netip.Addr, user store.User) (string, error) {
+	var rehash string
+
+	err := l.inHashingSlot(ctx, creds.Login, ip, func() error {
+		var err error
+
+		rehash, err = l.verifyInSlot(creds, ip, user)
+
+		return err
+	})
+
+	return rehash, err
+}
+
+// inHashingSlot runs fn in a hashing slot, once it checked again that login and ip are not
+// delayed: the failures of other attempts may have reached the limit while it waited for the slot.
+// fn counts its failures before the slot is freed, so that the attempts waiting for one see them.
+func (l *Logins) inHashingSlot(ctx context.Context, login string, ip netip.Addr, fn func() error) error {
 	select {
 	case l.hashing <- struct{}{}:
 	case <-ctx.Done():
-		return "", fmt.Errorf("wait for a hashing slot: %w", context.Cause(ctx))
+		return fmt.Errorf("wait for a hashing slot: %w", context.Cause(ctx))
 	}
 
 	defer func() { <-l.hashing }()
 
-	// The failures of other attempts may have reached the limit while this one waited.
-	if err := l.checkLimit(creds.Login, ip); err != nil {
-		return "", err
+	if err := l.checkLimit(login, ip); err != nil {
+		return err
 	}
 
+	return fn()
+}
+
+// verifyInSlot is the part of checkPassword that runs in a hashing slot.
+func (l *Logins) verifyInSlot(creds Credentials, ip netip.Addr, user store.User) (string, error) {
 	// The first login since the start computes the dummy hash, whether or not its user exists.
 	dummy := l.dummyHash()
 
@@ -232,7 +253,7 @@ func (l *Logins) openSession(ctx context.Context, st store.Store, user store.Use
 			return err
 		}
 
-		if current.PasswordHash != user.PasswordHash || current.Status != store.UserActive {
+		if changedSince(current, user) {
 			return errUserChanged
 		}
 
@@ -273,6 +294,13 @@ func (l *Logins) openSession(ctx context.Context, st store.Store, user store.Use
 	})
 
 	return loggedIn, err
+}
+
+// changedSince reports whether current, the user as the store holds them now, was deleted, or had
+// their password hash or status changed, since they were read as user: a password verified against
+// user may no longer be theirs.
+func changedSince(current, user store.User) bool {
+	return current.PasswordHash != user.PasswordHash || current.Status != store.UserActive
 }
 
 // recordFailure records the failed login of login through st, about the user of userID who has
