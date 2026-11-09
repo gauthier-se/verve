@@ -91,7 +91,7 @@ func (p PasswordResets) Create(ctx context.Context, st store.Store, adminID, use
 // the writer nor hashes a password. It is checked again in the transaction, so that of concurrent
 // resets, only one replaces the password.
 func (p PasswordResets) Reset(ctx context.Context, st store.Store, token, password string) error {
-	if _, err := p.validLink(ctx, st, token); err != nil {
+	if _, err := validLink(ctx, st, p.clk, token, store.InvitationReset, ErrResetLinkInvalid); err != nil {
 		return err
 	}
 
@@ -101,7 +101,7 @@ func (p PasswordResets) Reset(ctx context.Context, st store.Store, token, passwo
 	}
 
 	return st.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
-		link, err := p.validLink(ctx, tx, token)
+		link, err := validLink(ctx, tx, p.clk, token, store.InvitationReset, ErrResetLinkInvalid)
 		if err != nil {
 			return err
 		}
@@ -133,23 +133,4 @@ func (p PasswordResets) Reset(ctx context.Context, st store.Store, token, passwo
 
 		return audit.Record(ctx, tx.AuditEvents(), audit.PasswordResetCompleted(link.UserID))
 	})
-}
-
-// validLink returns the reset link of token, read through repos, or ErrResetLinkInvalid when it is
-// used, expired, unknown or an invitation.
-func (p PasswordResets) validLink(ctx context.Context, repos store.Repositories, token string) (store.Invitation, error) {
-	link, err := repos.Invitations().GetByTokenHash(ctx, hashLinkToken(token))
-	if errors.Is(err, store.ErrNotFound) {
-		return store.Invitation{}, ErrResetLinkInvalid
-	}
-
-	if err != nil {
-		return store.Invitation{}, err
-	}
-
-	if link.Kind != store.InvitationReset || !link.UsedAt.IsZero() || p.clk.Now().After(link.ExpiresAt) {
-		return store.Invitation{}, ErrResetLinkInvalid
-	}
-
-	return link, nil
 }
