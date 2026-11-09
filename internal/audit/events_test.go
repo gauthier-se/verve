@@ -33,6 +33,8 @@ func eventsByConstructor() map[string]Event {
 		"UserEnabled":       UserEnabled(1, 7),
 		"UserRoleChanged":   UserRoleChanged(1, 7, store.RoleMember, store.RoleAdmin),
 		"UserPasswordReset": UserPasswordReset(0, 7),
+		"PasswordResetLinkCreated": PasswordResetLinkCreated(1, 7),
+		"PasswordResetCompleted":   PasswordResetCompleted(7),
 	}
 }
 
@@ -351,6 +353,24 @@ func TestPasswordChanged(t *testing.T) {
 	require.JSONEq(t, `{}`, string(data))
 }
 
+// Given a password reset through a reset link, then the event has the reset completion type, the
+// user as actor, no subject and an empty payload. It is never aggregated.
+func TestPasswordResetCompleted(t *testing.T) {
+	t.Parallel()
+
+	event := PasswordResetCompleted(7)
+
+	require.Equal(t, TypePasswordResetCompleted, event.eventType)
+	require.Equal(t, "auth.password_reset_completed", TypePasswordResetCompleted)
+	require.Equal(t, int64(7), event.actorID)
+	require.Zero(t, event.subjectID)
+	require.False(t, event.aggregateOnClientIP)
+
+	data, err := json.Marshal(event.payload)
+	require.NoError(t, err)
+	require.JSONEq(t, `{}`, string(data))
+}
+
 // Given sessions that a user revoked, then the event has the session revocation type, the user as
 // actor, no subject, and the number of sessions revoked. It is never aggregated.
 func TestSessionsRevoked(t *testing.T) {
@@ -403,6 +423,8 @@ func TestAdminActions(t *testing.T) {
 		{name: "role changed", event: UserRoleChanged(1, 7, store.RoleMember, store.RoleAdmin),
 			eventType: "user.role_changed", actor: 1, want: `{"from":"member","to":"admin"}`},
 		{name: "password reset by the system", event: UserPasswordReset(0, 7), eventType: "user.password_reset", want: `{}`},
+		{name: "password reset link created", event: PasswordResetLinkCreated(1, 7),
+			eventType: "user.password_reset_link_created", actor: 1, want: `{}`},
 	}
 
 	for _, tt := range tests {
