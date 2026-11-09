@@ -203,3 +203,84 @@ func RunInvitations(t *testing.T, newStore NewStoreFunc) {
 		require.Equal(t, 1, succeeded)
 	})
 }
+
+// RunPasswordResetLinks runs the InvitationsRepository contract of the password reset links
+// against the stores returned by newStore.
+func RunPasswordResetLinks(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+
+	// Given a created reset link, then GetByTokenHash returns it with its user, and without the
+	// username, email and role that only an invitation has.
+	t.Run("ResetLinkStoresItsUser", func(t *testing.T) {
+		t.Parallel()
+
+		s := newStore(t, clock.NewFake(invitationsTime))
+		ctx := t.Context()
+		admin := mustCreateUser(ctx, t, s.Users(), newUser("admin", ""))
+		bob := mustCreateUser(ctx, t, s.Users(), newUser("bob", ""))
+
+		created := mustCreateInvitation(ctx, t, s.Invitations(), newResetLink(admin.ID, bob.ID, "secret"))
+
+		want := store.Invitation{
+			ID:        created.ID,
+			Kind:      store.InvitationReset,
+			ExpiresAt: invitationsUTC.Add(24 * time.Hour),
+			UserID:    bob.ID,
+			CreatedBy: admin.ID,
+			CreatedAt: invitationsUTC,
+		}
+		require.Equal(t, want, created)
+
+		got, err := s.Invitations().GetByTokenHash(ctx, tokenHash("secret"))
+		require.NoError(t, err)
+		require.Equal(t, want, got)
+	})
+
+	// Given unused and used reset links of a user, unused reset links of another user and an
+	// invitation, when DeleteUnusedResets deletes those of the user, then only their unused reset
+	// links are gone.
+	t.Run("DeleteUnusedResetsDeletesOnlyTheUnusedResetLinksOfTheUser", func(t *testing.T) {
+		t.Parallel()
+
+		s := newStore(t, clock.NewFake(invitationsTime))
+		ctx := t.Context()
+		admin := mustCreateUser(ctx, t, s.Users(), newUser("admin", ""))
+		bob := mustCreateUser(ctx, t, s.Users(), newUser("bob", ""))
+		carol := mustCreateUser(ctx, t, s.Users(), newUser("carol", ""))
+
+		mustCreateInvitation(ctx, t, s.Invitations(), newResetLink(admin.ID, bob.ID, "bob first"))
+		mustCreateInvitation(ctx, t, s.Invitations(), newResetLink(admin.ID, bob.ID, "bob second"))
+		used := mustCreateInvitation(ctx, t, s.Invitations(), newResetLink(admin.ID, bob.ID, "bob used"))
+		require.NoError(t, s.Invitations().MarkUsed(ctx, used.ID, bob.ID))
+		mustCreateInvitation(ctx, t, s.Invitations(), newResetLink(admin.ID, carol.ID, "carol"))
+
+		invitation := newInvitation(admin.ID, "dave")
+		invitation.TokenHash = tokenHash("dave")
+		mustCreateInvitation(ctx, t, s.Invitations(), invitation)
+
+		require.NoError(t, s.Invitations().DeleteUnusedResets(ctx, bob.ID))
+
+		for token, kept := range map[string]bool{
+			"bob first": false, "bob second": false, "bob used": true, "carol": true, "dave": true,
+		} {
+			_, err := s.Invitations().GetByTokenHash(ctx, tokenHash(token))
+			if kept {
+				require.NoError(t, err, token)
+			} else {
+				require.ErrorIs(t, err, store.ErrNotFound, token)
+			}
+		}
+	})
+}
+
+// newResetLink returns a reset link of the user of userID, created by createdBy, for the link token
+// token, which expires in 24 hours.
+func newResetLink(createdBy, userID int64, token string) store.NewInvitation {
+	return store.NewInvitation{
+		Kind:      store.InvitationReset,
+		TokenHash: tokenHash(token),
+		UserID:    userID,
+		ExpiresAt: invitationsTime.Add(24 * time.Hour),
+		CreatedBy: createdBy,
+	}
+}

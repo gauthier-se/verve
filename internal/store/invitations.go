@@ -12,6 +12,8 @@ type InvitationKind string
 const (
 	// InvitationInvite creates the account of the invitee, who chooses their password.
 	InvitationInvite InvitationKind = "invite"
+	// InvitationReset replaces the password of its user, who chooses the new one.
+	InvitationReset InvitationKind = "reset"
 )
 
 // NewInvitation describes a single-use link to create. The store never sees the token of the link,
@@ -22,9 +24,11 @@ type NewInvitation struct {
 	TokenHash []byte
 	// Username, Email and Role describe the account that an invitation creates. Email is empty for
 	// none.
-	Username  string
-	Email     string
-	Role      UserRole
+	Username string
+	Email    string
+	Role     UserRole
+	// UserID is the user whose password a reset link replaces, or 0 for an invitation.
+	UserID    int64
 	ExpiresAt time.Time
 	// CreatedBy is the user who created the link.
 	CreatedBy int64
@@ -42,7 +46,8 @@ type Invitation struct {
 	ExpiresAt time.Time
 	// UsedAt is when the link was used, or zero while it is not.
 	UsedAt time.Time
-	// UserID is the user that using the link created, or 0 while it is not used.
+	// UserID is the user that using an invitation created, or 0 while it is not used, and the user
+	// of a reset link.
 	UserID int64
 	// CreatedBy is the user who created the link, or 0 once that user is deleted.
 	CreatedBy int64
@@ -61,4 +66,7 @@ type InvitationsRepository interface {
 	// userID, or returns ErrNotFound when no unused link has id, so that of concurrent uses, only
 	// one succeeds.
 	MarkUsed(ctx context.Context, id, userID int64) error
+	// DeleteUnusedResets deletes the unused reset links of the user of userID, so that a new one
+	// replaces them.
+	DeleteUnusedResets(ctx context.Context, userID int64) error
 }

@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	// invitationTokenLength is the length of the token of an invitation link, in bytes: 256 bits.
-	invitationTokenLength = 32
+	// linkTokenLength is the length of the token of a single-use link, in bytes: 256 bits.
+	linkTokenLength = 32
 	// invitationLifetime is how long an invitation stays valid (FR-4 of accounts and
 	// administration).
 	invitationLifetime = 72 * time.Hour
@@ -75,7 +75,7 @@ func (i Invitations) Create(ctx context.Context, st store.Store, invitation NewI
 		}
 	}
 
-	token := randomText(invitationTokenLength)
+	token := randomText(linkTokenLength)
 
 	var created store.Invitation
 
@@ -111,20 +111,28 @@ func (i Invitations) Create(ctx context.Context, st store.Store, invitation NewI
 // Inspect returns the invitation of token, read through repos, or ErrInvitationInvalid when it is
 // used, expired or unknown.
 func (i Invitations) Inspect(ctx context.Context, repos store.Repositories, token string) (store.Invitation, error) {
-	invitation, err := repos.Invitations().GetByTokenHash(ctx, hashLinkToken(token))
+	return validLink(ctx, repos, i.clk, token, store.InvitationInvite, ErrInvitationInvalid)
+}
+
+// validLink returns the single-use link of token and kind, read through repos, or invalid when it
+// is used, expired at the time of clk, unknown or of another kind.
+func validLink(
+	ctx context.Context, repos store.Repositories, clk clock.Clock, token string, kind store.InvitationKind, invalid error,
+) (store.Invitation, error) {
+	link, err := repos.Invitations().GetByTokenHash(ctx, hashLinkToken(token))
 	if errors.Is(err, store.ErrNotFound) {
-		return store.Invitation{}, ErrInvitationInvalid
+		return store.Invitation{}, invalid
 	}
 
 	if err != nil {
 		return store.Invitation{}, err
 	}
 
-	if invitation.Kind != store.InvitationInvite || !invitation.UsedAt.IsZero() || i.clk.Now().After(invitation.ExpiresAt) {
-		return store.Invitation{}, ErrInvitationInvalid
+	if link.Kind != kind || !link.UsedAt.IsZero() || clk.Now().After(link.ExpiresAt) {
+		return store.Invitation{}, invalid
 	}
 
-	return invitation, nil
+	return link, nil
 }
 
 // Accept creates the user of the invitation of token with password through st, marks the

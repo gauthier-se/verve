@@ -345,6 +345,32 @@ export type Problem = {
     type: string;
 };
 
+export type ResetLink = {
+    /**
+     * When the link stops being valid, 24 hours after its creation.
+     */
+    expiresAt: string;
+    /**
+     * The single-use link to give to the user, answered once: <VERVE_PUBLIC_URL>/reset-password#<token>, or /reset-password#<token> to append to the origin of the client when the public URL is not set.
+     */
+    link: string;
+    /**
+     * The id of the user whose password the link resets.
+     */
+    userId: number;
+};
+
+export type ResetPasswordInputBody = {
+    /**
+     * The new password: 12 to 128 characters, and not a common password.
+     */
+    password: string;
+    /**
+     * The token of the reset link, from the fragment of its link.
+     */
+    token: string;
+};
+
 export type Session = {
     /**
      * The browser that the user agent of the login names, left out when unknown. It is only a hint.
@@ -882,6 +908,56 @@ export type ListAdminUsersResponses = {
 
 export type ListAdminUsersResponse = ListAdminUsersResponses[keyof ListAdminUsersResponses];
 
+export type CreatePasswordResetLinkData = {
+    body?: never;
+    path: {
+        /**
+         * The id of the user.
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/api/v1/admin/users/{id}/password-reset';
+};
+
+export type CreatePasswordResetLinkErrors = {
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Forbidden
+     */
+    403: Problem;
+    /**
+     * Not Found
+     */
+    404: Problem;
+    /**
+     * Conflict
+     */
+    409: Problem;
+    /**
+     * Unprocessable Entity
+     */
+    422: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type CreatePasswordResetLinkError = CreatePasswordResetLinkErrors[keyof CreatePasswordResetLinkErrors];
+
+export type CreatePasswordResetLinkResponses = {
+    /**
+     * Created
+     */
+    201: ResetLink;
+};
+
+export type CreatePasswordResetLinkResponse = CreatePasswordResetLinkResponses[keyof CreatePasswordResetLinkResponses];
+
 export type SetUserRoleData = {
     body: SetUserRoleInputBody;
     path: {
@@ -1187,6 +1263,43 @@ export type GetMetaResponses = {
 };
 
 export type GetMetaResponse = GetMetaResponses[keyof GetMetaResponses];
+
+export type ResetPasswordData = {
+    body: ResetPasswordInputBody;
+    path?: never;
+    query?: never;
+    url: '/api/v1/password-reset';
+};
+
+export type ResetPasswordErrors = {
+    /**
+     * Gone
+     */
+    410: Problem;
+    /**
+     * Request Entity Too Large
+     */
+    413: Problem;
+    /**
+     * Unprocessable Entity
+     */
+    422: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type ResetPasswordError = ResetPasswordErrors[keyof ResetPasswordErrors];
+
+export type ResetPasswordResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type ResetPasswordResponse = ResetPasswordResponses[keyof ResetPasswordResponses];
 
 export type GetSetupStatusData = {
     body?: never;

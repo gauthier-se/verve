@@ -11,8 +11,8 @@ import (
 )
 
 const createInvitation = `-- name: CreateInvitation :one
-INSERT INTO invitations (kind, token_hash, username, email, role, expires_at, created_by, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO invitations (kind, token_hash, username, email, role, user_id, expires_at, created_by, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id, kind, token_hash, username, email, role, user_id, expires_at, used_at, created_by, created_at
 `
 
@@ -22,6 +22,7 @@ type CreateInvitationParams struct {
 	Username  sql.NullString
 	Email     sql.NullString
 	Role      sql.NullString
+	UserID    sql.NullInt64
 	ExpiresAt int64
 	CreatedBy sql.NullInt64
 	CreatedAt int64
@@ -34,6 +35,7 @@ func (q *Queries) CreateInvitation(ctx context.Context, arg CreateInvitationPara
 		arg.Username,
 		arg.Email,
 		arg.Role,
+		arg.UserID,
 		arg.ExpiresAt,
 		arg.CreatedBy,
 		arg.CreatedAt,
@@ -53,6 +55,19 @@ func (q *Queries) CreateInvitation(ctx context.Context, arg CreateInvitationPara
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const deleteUnusedResets = `-- name: DeleteUnusedResets :exec
+DELETE
+FROM invitations
+WHERE kind = 'reset'
+  AND user_id = ?
+  AND used_at IS NULL
+`
+
+func (q *Queries) DeleteUnusedResets(ctx context.Context, userID sql.NullInt64) error {
+	_, err := q.db.ExecContext(ctx, deleteUnusedResets, userID)
+	return err
 }
 
 const getInvitationByTokenHash = `-- name: GetInvitationByTokenHash :one

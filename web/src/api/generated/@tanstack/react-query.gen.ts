@@ -3,8 +3,8 @@
 import { type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { acceptInvitation, changePassword, createFirstAdmin, createInvitation, getCurrentUser, getMeta, getPreferences, getSetupStatus, inspectInvitation, listAccountAuditEvents, listAdminAuditEvents, listAdminJobs, listAdminUsers, listSessions, login, logout, type Options, revokeOtherSessions, revokeSession, setUserRole, setUserStatus, updatePreferences } from '../sdk.gen';
-import type { AcceptInvitationData, AcceptInvitationError, AcceptInvitationResponse, ChangePasswordData, ChangePasswordError, ChangePasswordResponse, CreateFirstAdminData, CreateFirstAdminError, CreateFirstAdminResponse, CreateInvitationData, CreateInvitationError, CreateInvitationResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetMetaData, GetMetaError, GetMetaResponse, GetPreferencesData, GetPreferencesError, GetPreferencesResponse, GetSetupStatusData, GetSetupStatusError, GetSetupStatusResponse, InspectInvitationData, InspectInvitationError, InspectInvitationResponse, ListAccountAuditEventsData, ListAccountAuditEventsError, ListAccountAuditEventsResponse, ListAdminAuditEventsData, ListAdminAuditEventsError, ListAdminAuditEventsResponse, ListAdminJobsData, ListAdminJobsError, ListAdminJobsResponse, ListAdminUsersData, ListAdminUsersError, ListAdminUsersResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutError, LogoutResponse, RevokeOtherSessionsData, RevokeOtherSessionsError, RevokeOtherSessionsResponse, RevokeSessionData, RevokeSessionError, RevokeSessionResponse, SetUserRoleData, SetUserRoleError, SetUserRoleResponse, SetUserStatusData, SetUserStatusError, SetUserStatusResponse, UpdatePreferencesData, UpdatePreferencesError, UpdatePreferencesResponse } from '../types.gen';
+import { acceptInvitation, changePassword, createFirstAdmin, createInvitation, createPasswordResetLink, getCurrentUser, getMeta, getPreferences, getSetupStatus, inspectInvitation, listAccountAuditEvents, listAdminAuditEvents, listAdminJobs, listAdminUsers, listSessions, login, logout, type Options, resetPassword, revokeOtherSessions, revokeSession, setUserRole, setUserStatus, updatePreferences } from '../sdk.gen';
+import type { AcceptInvitationData, AcceptInvitationError, AcceptInvitationResponse, ChangePasswordData, ChangePasswordError, ChangePasswordResponse, CreateFirstAdminData, CreateFirstAdminError, CreateFirstAdminResponse, CreateInvitationData, CreateInvitationError, CreateInvitationResponse, CreatePasswordResetLinkData, CreatePasswordResetLinkError, CreatePasswordResetLinkResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetMetaData, GetMetaError, GetMetaResponse, GetPreferencesData, GetPreferencesError, GetPreferencesResponse, GetSetupStatusData, GetSetupStatusError, GetSetupStatusResponse, InspectInvitationData, InspectInvitationError, InspectInvitationResponse, ListAccountAuditEventsData, ListAccountAuditEventsError, ListAccountAuditEventsResponse, ListAdminAuditEventsData, ListAdminAuditEventsError, ListAdminAuditEventsResponse, ListAdminJobsData, ListAdminJobsError, ListAdminJobsResponse, ListAdminUsersData, ListAdminUsersError, ListAdminUsersResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutError, LogoutResponse, ResetPasswordData, ResetPasswordError, ResetPasswordResponse, RevokeOtherSessionsData, RevokeOtherSessionsError, RevokeOtherSessionsResponse, RevokeSessionData, RevokeSessionError, RevokeSessionResponse, SetUserRoleData, SetUserRoleError, SetUserRoleResponse, SetUserStatusData, SetUserStatusError, SetUserStatusResponse, UpdatePreferencesData, UpdatePreferencesError, UpdatePreferencesResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -412,6 +412,25 @@ export const listAdminUsersInfiniteOptions = (options?: Options<ListAdminUsersDa
 };
 
 /**
+ * Create a password reset link
+ *
+ * Creates a password reset link valid 24 hours for the user and answers it, once: only the hash of its token is stored. The earlier links of the user stop working. The admin never sets nor sees the password. An account being deleted answers 409 `user_deleting`.
+ */
+export const createPasswordResetLinkMutation = (options?: Partial<Options<CreatePasswordResetLinkData>>): UseMutationOptions<CreatePasswordResetLinkResponse, CreatePasswordResetLinkError, Options<CreatePasswordResetLinkData>> => {
+    const mutationOptions: UseMutationOptions<CreatePasswordResetLinkResponse, CreatePasswordResetLinkError, Options<CreatePasswordResetLinkData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await createPasswordResetLink({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
  * Change the role of a user
  *
  * Sets the role of the user and returns the user. A change revokes every session of the user, so that they log in again with a new session. Demoting the last active admin answers 409 `last_admin`, and a change of an account being deleted 409 `user_deleting`.
@@ -564,6 +583,25 @@ export const getMetaOptions = (options?: Options<GetMetaData>) => queryOptions<G
     },
     queryKey: getMetaQueryKey(options)
 });
+
+/**
+ * Reset a password
+ *
+ * Replaces the password of the user of the reset link, marks the link used and revokes every session of the user, who then logs in with the new password. The token is in the body so that it never reaches a log. A link used, expired, unknown, replaced by a newer one or of an account being deleted answers 410 `reset_link_invalid`. A password that breaks the rules answers 422 with the code of the rule: `password_too_short`, `password_too_long` or `password_too_common`, and the link stays valid. It needs no authentication.
+ */
+export const resetPasswordMutation = (options?: Partial<Options<ResetPasswordData>>): UseMutationOptions<ResetPasswordResponse, ResetPasswordError, Options<ResetPasswordData>> => {
+    const mutationOptions: UseMutationOptions<ResetPasswordResponse, ResetPasswordError, Options<ResetPasswordData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await resetPassword({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
 
 export const getSetupStatusQueryKey = (options?: Options<GetSetupStatusData>) => createQueryKey('getSetupStatus', options);
 

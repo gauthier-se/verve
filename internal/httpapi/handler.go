@@ -61,15 +61,16 @@ func NewHandler(d Deps) http.Handler {
 	logins := auth.NewLogins(sessions, hasher, auth.NewLoginLimiter(d.Clock))
 	accounts := auth.NewAccounts(hasher, policy)
 	NewAPI(mux, APIDeps{
-		Version:     d.Version,
-		Store:       d.Store,
-		Logins:      logins,
-		Sessions:    sessions,
-		Passwords:   auth.NewPasswords(logins, policy),
-		Setup:       auth.NewSetup(d.SetupToken, accounts, sessions),
-		Invitations: auth.NewInvitations(d.Clock, accounts, sessions),
-		Admin:       auth.NewAdmin(accounts, sessions),
-		PublicURL:   d.PublicURL,
+		Version:        d.Version,
+		Store:          d.Store,
+		Logins:         logins,
+		Sessions:       sessions,
+		Passwords:      auth.NewPasswords(logins, policy),
+		Setup:          auth.NewSetup(d.SetupToken, accounts, sessions),
+		Invitations:    auth.NewInvitations(d.Clock, accounts, sessions),
+		PasswordResets: auth.NewPasswordResets(d.Clock, accounts, sessions),
+		Admin:          auth.NewAdmin(accounts, sessions),
+		PublicURL:      d.PublicURL,
 	})
 
 	if d.SPA != nil {

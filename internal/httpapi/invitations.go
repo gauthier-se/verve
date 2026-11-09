@@ -14,9 +14,9 @@ import (
 	"github.com/gauthier-se/verve/internal/store"
 )
 
-// maxInvitationBodyBytes bounds the body of the invitation operations. It holds the longest
-// username, email, token and password in JSON, even with every character escaped.
-const maxInvitationBodyBytes = 8 * 1024
+// maxLinkBodyBytes bounds the body of the operations of the single-use links. It holds the
+// longest username, email, token and password in JSON, even with every character escaped.
+const maxLinkBodyBytes = 8 * 1024
 
 // createInvitationInput is the input of POST /api/v1/admin/invitations. The username and the email
 // have no rules in the schema: the operation answers them with its own codes.
@@ -91,7 +91,7 @@ func registerInvitations(api huma.API, deps APIDeps) {
 		Tags:          []string{"Admin"},
 		Security:      sessionSecurity(),
 		DefaultStatus: http.StatusCreated,
-		MaxBodyBytes:  maxInvitationBodyBytes,
+		MaxBodyBytes:  maxLinkBodyBytes,
 		Errors: []int{
 			http.StatusUnauthorized, http.StatusForbidden, http.StatusConflict,
 			http.StatusRequestEntityTooLarge, http.StatusUnprocessableEntity,
@@ -120,7 +120,7 @@ func registerInvitations(api huma.API, deps APIDeps) {
 			Email:     invitation.Email,
 			Role:      string(invitation.Role),
 			ExpiresAt: invitation.ExpiresAt,
-			Link:      invitationLink(deps.PublicURL, created.Token),
+			Link:      singleUseLink(deps.PublicURL, "/invite", created.Token),
 		}}, nil
 	})
 
@@ -133,7 +133,7 @@ func registerInvitations(api huma.API, deps APIDeps) {
 			"so that it never reaches a log. A used, expired or unknown invitation answers 410 " +
 			"`invitation_invalid`. It needs no authentication.",
 		Tags:         []string{"Invitations"},
-		MaxBodyBytes: maxInvitationBodyBytes,
+		MaxBodyBytes: maxLinkBodyBytes,
 		Errors:       []int{http.StatusGone, http.StatusRequestEntityTooLarge},
 	}, func(ctx context.Context, in *inspectInvitationInput) (*inspectInvitationOutput, error) {
 		invitation, err := deps.Invitations.Inspect(ctx, deps.Store, in.Body.Token)
@@ -160,7 +160,7 @@ func registerInvitations(api huma.API, deps APIDeps) {
 			"or `email_taken`. It needs no authentication.",
 		Tags:          []string{"Invitations"},
 		DefaultStatus: http.StatusCreated,
-		MaxBodyBytes:  maxInvitationBodyBytes,
+		MaxBodyBytes:  maxLinkBodyBytes,
 		Errors: []int{
 			http.StatusConflict, http.StatusGone,
 			http.StatusRequestEntityTooLarge, http.StatusUnprocessableEntity,
@@ -183,10 +183,10 @@ func registerInvitations(api huma.API, deps APIDeps) {
 	})
 }
 
-// invitationLink returns the link of an invitation with token at publicURL, or its path when
+// singleUseLink returns the link to the page at path with token at publicURL, or its path when
 // publicURL is unset. The token goes in the fragment, which never reaches a server (ADR 0010).
-func invitationLink(publicURL config.PublicURL, token string) string {
-	return publicURL.String() + "/invite#" + token
+func singleUseLink(publicURL config.PublicURL, path, token string) string {
+	return publicURL.String() + path + "#" + token
 }
 
 // invitationError returns the problem of the error of an invitation operation: 410 for an invalid
