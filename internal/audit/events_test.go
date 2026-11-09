@@ -22,10 +22,12 @@ import (
 // eventsByConstructor holds an event of each constructor of the package, by the constructor's name.
 func eventsByConstructor() map[string]Event {
 	return map[string]Event{
-		"LoginFailed":    LoginFailed("alice", 7),
-		"LoginSucceeded": LoginSucceeded(7, store.LoginPassword),
-		"Logout":         Logout(7),
-		"UserCreated":    UserCreated(7, store.RoleAdmin, SourceSetup),
+		"LoginFailed":     LoginFailed("alice", 7),
+		"LoginSucceeded":  LoginSucceeded(7, store.LoginPassword),
+		"Logout":          Logout(7),
+		"PasswordChanged": PasswordChanged(7),
+		"SessionsRevoked": SessionsRevoked(7, 1),
+		"UserCreated":     UserCreated(7, store.RoleAdmin, SourceSetup),
 	}
 }
 
@@ -323,4 +325,40 @@ func TestLogout(t *testing.T) {
 	data, err := json.Marshal(event.payload)
 	require.NoError(t, err)
 	require.JSONEq(t, `{}`, string(data))
+}
+
+// Given a password change, then the event has the password change type, the user as actor, no
+// subject and an empty payload. It is never aggregated.
+func TestPasswordChanged(t *testing.T) {
+	t.Parallel()
+
+	event := PasswordChanged(7)
+
+	require.Equal(t, TypePasswordChanged, event.eventType)
+	require.Equal(t, "auth.password_changed", TypePasswordChanged)
+	require.Equal(t, int64(7), event.actorID)
+	require.Zero(t, event.subjectID)
+	require.False(t, event.aggregateOnClientIP)
+
+	data, err := json.Marshal(event.payload)
+	require.NoError(t, err)
+	require.JSONEq(t, `{}`, string(data))
+}
+
+// Given sessions that a user revoked, then the event has the session revocation type, the user as
+// actor, no subject, and the number of sessions revoked. It is never aggregated.
+func TestSessionsRevoked(t *testing.T) {
+	t.Parallel()
+
+	event := SessionsRevoked(7, 3)
+
+	require.Equal(t, TypeSessionRevoked, event.eventType)
+	require.Equal(t, "auth.session_revoked", TypeSessionRevoked)
+	require.Equal(t, int64(7), event.actorID)
+	require.Zero(t, event.subjectID)
+	require.False(t, event.aggregateOnClientIP)
+
+	data, err := json.Marshal(event.payload)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"revoked":3}`, string(data))
 }

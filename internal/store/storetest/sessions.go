@@ -244,10 +244,72 @@ func RunSessions(t *testing.T, newStore NewStoreFunc) {
 
 		mustCreateSession(ctx, t, s.Sessions(), newSession(bob.ID, "bob-phone"))
 
-		require.NoError(t, s.Sessions().DeleteOthers(ctx, alice.ID, idHash("alice-phone")))
+		deleted, err := s.Sessions().DeleteOthers(ctx, alice.ID, idHash("alice-phone"))
+		require.NoError(t, err)
+		require.Equal(t, int64(2), deleted)
 
 		requireSessionsRemoved(ctx, t, s.Sessions(), "alice-laptop", "alice-tablet")
 		requireSessionsKept(ctx, t, s.Sessions(), "alice-phone", "bob-phone")
+
+		deleted, err = s.Sessions().DeleteOthers(ctx, alice.ID, idHash("alice-phone"))
+		require.NoError(t, err)
+		require.Zero(t, deleted)
+	})
+
+	// Given sessions of two users, seen at different times, then ListByUser returns the sessions of
+	// one user, most recently seen first, and an empty list for a user without sessions.
+	t.Run("ListByUserReturnsTheSessionsOfTheUserMostRecentlySeenFirst", func(t *testing.T) {
+		t.Parallel()
+
+		clk := clock.NewFake(sessionsTime)
+		s := newStore(t, clk)
+		ctx := t.Context()
+		alice := mustCreateUser(ctx, t, s.Users(), newUser("alice", ""))
+		bob := mustCreateUser(ctx, t, s.Users(), newUser("bob", ""))
+		carol := mustCreateUser(ctx, t, s.Users(), newUser("carol", ""))
+
+		phone := mustCreateSession(ctx, t, s.Sessions(), newSession(alice.ID, "alice-phone"))
+		mustCreateSession(ctx, t, s.Sessions(), newSession(bob.ID, "bob-phone"))
+
+		clk.Advance(time.Minute)
+		laptop := mustCreateSession(ctx, t, s.Sessions(), newSession(alice.ID, "alice-laptop"))
+
+		clk.Advance(time.Minute)
+		phone, err := s.Sessions().Touch(ctx, idHash("alice-phone"), phone.ExpiresAt)
+		require.NoError(t, err)
+
+		got, err := s.Sessions().ListByUser(ctx, alice.ID)
+		require.NoError(t, err)
+		require.Equal(t, []store.Session{phone, laptop}, got)
+
+		got, err = s.Sessions().ListByUser(ctx, carol.ID)
+		require.NoError(t, err)
+		require.Empty(t, got)
+	})
+
+	// Given sessions of two users, then DeleteByPublicID removes the session of a user by its public
+	// id, and returns store.ErrNotFound for the session of another user or an unknown public id,
+	// which it keeps.
+	t.Run("DeleteByPublicIDRemovesOnlyASessionOfTheUser", func(t *testing.T) {
+		t.Parallel()
+
+		s := newStore(t, clock.NewFake(sessionsTime))
+		ctx := t.Context()
+		alice := mustCreateUser(ctx, t, s.Users(), newUser("alice", ""))
+		bob := mustCreateUser(ctx, t, s.Users(), newUser("bob", ""))
+
+		phone := mustCreateSession(ctx, t, s.Sessions(), newSession(alice.ID, "alice-phone"))
+		mustCreateSession(ctx, t, s.Sessions(), newSession(alice.ID, "alice-laptop"))
+		bobPhone := mustCreateSession(ctx, t, s.Sessions(), newSession(bob.ID, "bob-phone"))
+
+		require.NoError(t, s.Sessions().DeleteByPublicID(ctx, alice.ID, phone.PublicID))
+		requireSessionsRemoved(ctx, t, s.Sessions(), "alice-phone")
+
+		require.ErrorIs(t, s.Sessions().DeleteByPublicID(ctx, alice.ID, phone.PublicID), store.ErrNotFound)
+		require.ErrorIs(t, s.Sessions().DeleteByPublicID(ctx, alice.ID, bobPhone.PublicID), store.ErrNotFound)
+		require.ErrorIs(t, s.Sessions().DeleteByPublicID(ctx, alice.ID, "unknown"), store.ErrNotFound)
+
+		requireSessionsKept(ctx, t, s.Sessions(), "alice-laptop", "bob-phone")
 	})
 
 	// Given sessions that expire before, at and after a time, then PurgeExpired at that time removes
