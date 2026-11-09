@@ -320,3 +320,48 @@ func TestAdmin_ResetPasswordChecksThePolicy(t *testing.T) {
 	err = at.admin.ResetPassword(t.Context(), at.store, PasswordReset{UserID: 42, Password: newPassword})
 	require.ErrorIs(t, err, store.ErrNotFound)
 }
+
+// Given an account being deleted, then its status and role cannot change, so that enabling it does
+// not cancel the deletion: ErrUserDeleting, and nothing changes.
+func TestAdmin_AccountBeingDeletedCannotChange(t *testing.T) {
+	t.Parallel()
+
+	at := newAdminTest(t)
+	admin := at.mustCreateRole(t, "admin", store.RoleAdmin)
+	bob := at.mustCreateRole(t, "bob", store.RoleMember)
+
+	_, err := at.store.Users().SetStatus(t.Context(), bob.ID, store.UserDeleting)
+	require.NoError(t, err)
+
+	for _, status := range []store.UserStatus{store.UserActive, store.UserDisabled} {
+		_, err = at.admin.SetStatus(t.Context(), at.store, StatusChange{ActorID: admin.ID, UserID: bob.ID, Status: status})
+		require.ErrorIs(t, err, ErrUserDeleting, status)
+	}
+
+	_, err = at.admin.SetRole(t.Context(), at.store, RoleChange{ActorID: admin.ID, UserID: bob.ID, Role: store.RoleAdmin})
+	require.ErrorIs(t, err, ErrUserDeleting)
+
+	stored, err := at.store.Users().Get(t.Context(), bob.ID)
+	require.NoError(t, err)
+	require.Equal(t, store.UserDeleting, stored.Status)
+	require.Equal(t, store.RoleMember, stored.Role)
+}
+
+// Given a status or a role that does not exist, then the change fails with store.ErrInvalid and
+// stores nothing.
+func TestAdmin_UnknownStatusOrRoleIsInvalid(t *testing.T) {
+	t.Parallel()
+
+	at := newAdminTest(t)
+	bob := at.mustCreateRole(t, "bob", store.RoleMember)
+
+	_, err := at.admin.SetStatus(t.Context(), at.store, StatusChange{UserID: bob.ID, Status: store.UserDeleting})
+	require.ErrorIs(t, err, store.ErrInvalid)
+
+	_, err = at.admin.SetRole(t.Context(), at.store, RoleChange{UserID: bob.ID, Role: "owner"})
+	require.ErrorIs(t, err, store.ErrInvalid)
+
+	stored, err := at.store.Users().Get(t.Context(), bob.ID)
+	require.NoError(t, err)
+	require.Equal(t, bob, stored)
+}

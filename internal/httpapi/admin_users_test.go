@@ -208,3 +208,18 @@ func mustField(t *testing.T, body []byte, name string) string {
 
 	return string(field)
 }
+
+// Given an account being deleted, then its status and role changes answer 409 user_deleting.
+func TestAdminUsers_AccountBeingDeletedAnswers409(t *testing.T) {
+	t.Parallel()
+
+	u := newAdminUsersTest(t)
+
+	_, err := u.store.Users().SetStatus(t.Context(), u.bob.ID, store.UserDeleting)
+	require.NoError(t, err)
+
+	requireProblem(t, accountRequest(t, u.handler, http.MethodPut, userStatusPath(u.bob.ID), `{"status":"active"}`, u.adminCookie),
+		http.StatusConflict, "user_deleting")
+	requireProblem(t, accountRequest(t, u.handler, http.MethodPut, userRolePath(u.bob.ID), `{"role":"admin"}`, u.adminCookie),
+		http.StatusConflict, "user_deleting")
+}
