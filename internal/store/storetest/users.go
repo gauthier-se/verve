@@ -331,6 +331,111 @@ func RunUsers(t *testing.T, newStore NewStoreFunc) {
 		requireUserCount(ctx, t, users, 2)
 	})
 
+	// Given users created at different times, then List returns them newest first by CreatedAt then
+	// ID, at most page.Limit of them, after page.After. Following the position of the last user of
+	// each page lists every user once. Given a limit below 1, then store.ErrInvalid.
+	t.Run("ListReturnsTheUsersNewestFirstByPage", func(t *testing.T) {
+		t.Parallel()
+
+		clk := clock.NewFake(usersTime)
+		users := newStore(t, clk).Users()
+		ctx := t.Context()
+
+		first := mustCreateUser(ctx, t, users, newUser("first", ""))
+		second := mustCreateUser(ctx, t, users, newUser("second", ""))
+
+		clk.Advance(time.Minute)
+		third := mustCreateUser(ctx, t, users, newUser("third", "third@example.com"))
+
+		got, err := users.List(ctx, store.PageRequest{Limit: 2})
+		require.NoError(t, err)
+		require.Equal(t, []store.User{third, second}, got)
+
+		got, err = users.List(ctx, store.PageRequest{After: got[1].Cursor(), Limit: 2})
+		require.NoError(t, err)
+		require.Equal(t, []store.User{first}, got)
+
+		got, err = users.List(ctx, store.PageRequest{After: first.Cursor(), Limit: 2})
+		require.NoError(t, err)
+		require.Empty(t, got)
+
+		_, err = users.List(ctx, store.PageRequest{Limit: 0})
+		require.ErrorIs(t, err, store.ErrInvalid)
+	})
+
+	// Given SetRole and SetStatus, then they return the changed user, Get returns it too, and the
+	// other users keep their role and status. Given a missing id, then store.ErrNotFound.
+	t.Run("SetRoleAndSetStatusChangeTheUser", func(t *testing.T) {
+		t.Parallel()
+
+		users := newStore(t, clock.NewFake(usersTime)).Users()
+		ctx := t.Context()
+
+		alice := mustCreateUser(ctx, t, users, newUser("alice", ""))
+		bob := mustCreateUser(ctx, t, users, newUser("bob", ""))
+
+		changed, err := users.SetRole(ctx, alice.ID, store.RoleAdmin)
+		require.NoError(t, err)
+
+		want := alice
+		want.Role = store.RoleAdmin
+		require.Equal(t, want, changed)
+
+		changed, err = users.SetStatus(ctx, alice.ID, store.UserDisabled)
+		require.NoError(t, err)
+
+		want.Status = store.UserDisabled
+		require.Equal(t, want, changed)
+
+		got, err := users.Get(ctx, alice.ID)
+		require.NoError(t, err)
+		require.Equal(t, want, got)
+
+		got, err = users.Get(ctx, bob.ID)
+		require.NoError(t, err)
+		require.Equal(t, bob, got)
+
+		_, err = users.SetRole(ctx, 42, store.RoleAdmin)
+		require.ErrorIs(t, err, store.ErrNotFound)
+
+		_, err = users.SetStatus(ctx, 42, store.UserDisabled)
+		require.ErrorIs(t, err, store.ErrNotFound)
+	})
+
+	// Given admins and members, active or not, then CountActiveAdmins counts the active admins only.
+	t.Run("CountActiveAdminsCountsTheActiveAdmins", func(t *testing.T) {
+		t.Parallel()
+
+		users := newStore(t, clock.NewFake(usersTime)).Users()
+		ctx := t.Context()
+
+		requireActiveAdmins := func(want int64) {
+			t.Helper()
+
+			got, err := users.CountActiveAdmins(ctx)
+			require.NoError(t, err)
+			require.Equal(t, want, got)
+		}
+
+		requireActiveAdmins(0)
+
+		admin := newUser("admin", "")
+		admin.Role = store.RoleAdmin
+		mustCreateUser(ctx, t, users, admin)
+
+		disabled := newUser("disabled", "")
+		disabled.Role = store.RoleAdmin
+		disabledAdmin := mustCreateUser(ctx, t, users, disabled)
+		mustCreateUser(ctx, t, users, newUser("member", ""))
+
+		requireActiveAdmins(2)
+
+		_, err := users.SetStatus(ctx, disabledAdmin.ID, store.UserDisabled)
+		require.NoError(t, err)
+
+		requireActiveAdmins(1)
+	})
+
 	// Given a user created through the repositories of WithTx, when the transaction rolls back, then
 	// no user exists.
 	t.Run("RolledBackTransactionLeavesNoUser", func(t *testing.T) {

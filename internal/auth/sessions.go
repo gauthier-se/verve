@@ -187,6 +187,11 @@ func (s Sessions) RevokeOthers(ctx context.Context, repos store.Repositories, us
 	return repos.Sessions().DeleteOthers(ctx, userID, hashSessionID(keep))
 }
 
+// RevokeAll deletes every session of the user of userID and returns how many it deleted.
+func (s Sessions) RevokeAll(ctx context.Context, repos store.Repositories, userID int64) (int64, error) {
+	return repos.Sessions().DeleteByUser(ctx, userID)
+}
+
 // lifetimes are how long a session stays valid without activity, and at most after its creation.
 type lifetimes struct {
 	idle    time.Duration

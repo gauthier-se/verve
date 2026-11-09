@@ -68,6 +68,7 @@ func NewHandler(d Deps) http.Handler {
 		Passwords:   auth.NewPasswords(logins, policy),
 		Setup:       auth.NewSetup(d.SetupToken, accounts, sessions),
 		Invitations: auth.NewInvitations(d.Clock, accounts, sessions),
+		Admin:       auth.NewAdmin(accounts, sessions),
 		PublicURL:   d.PublicURL,
 	})
 

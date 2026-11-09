@@ -10,6 +10,20 @@ import (
 	"database/sql"
 )
 
+const countActiveAdmins = `-- name: CountActiveAdmins :one
+SELECT count(*)
+FROM users
+WHERE role = 'admin'
+  AND status = 'active'
+`
+
+func (q *Queries) CountActiveAdmins(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countActiveAdmins)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countUsers = `-- name: CountUsers :one
 SELECT count(*)
 FROM users
@@ -115,6 +129,58 @@ func (q *Queries) GetUserByLogin(ctx context.Context, loginFold string) (User, e
 	return i, err
 }
 
+const listUsers = `-- name: ListUsers :many
+SELECT id, username, username_fold, email, email_fold, password_hash, role, status, created_at, last_login_at
+FROM users
+WHERE created_at <= ?1
+  AND (created_at < ?1 OR id < ?2)
+ORDER BY created_at DESC, id DESC
+LIMIT ?3
+`
+
+type ListUsersParams struct {
+	AfterAt  int64
+	AfterID  int64
+	MaxUsers int64
+}
+
+// The users newest first by creation, after a position: those created before it, or at the same
+// time with a smaller id. The position is always set, the first page starting after the largest
+// time and id, so that the index on created_at bounds the scan.
+func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]User, error) {
+	rows, err := q.db.QueryContext(ctx, listUsers, arg.AfterAt, arg.AfterID, arg.MaxUsers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []User
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.Username,
+			&i.UsernameFold,
+			&i.Email,
+			&i.EmailFold,
+			&i.PasswordHash,
+			&i.Role,
+			&i.Status,
+			&i.CreatedAt,
+			&i.LastLoginAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setUserLastLoginAt = `-- name: SetUserLastLoginAt :one
 UPDATE users
 SET last_login_at = ?
@@ -162,4 +228,64 @@ func (q *Queries) SetUserPasswordHash(ctx context.Context, arg SetUserPasswordHa
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const setUserRole = `-- name: SetUserRole :one
+UPDATE users
+SET role = ?
+WHERE id = ?
+RETURNING id, username, username_fold, email, email_fold, password_hash, role, status, created_at, last_login_at
+`
+
+type SetUserRoleParams struct {
+	Role string
+	ID   int64
+}
+
+func (q *Queries) SetUserRole(ctx context.Context, arg SetUserRoleParams) (User, error) {
+	row := q.db.QueryRowContext(ctx, setUserRole, arg.Role, arg.ID)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.UsernameFold,
+		&i.Email,
+		&i.EmailFold,
+		&i.PasswordHash,
+		&i.Role,
+		&i.Status,
+		&i.CreatedAt,
+		&i.LastLoginAt,
+	)
+	return i, err
+}
+
+const setUserStatus = `-- name: SetUserStatus :one
+UPDATE users
+SET status = ?
+WHERE id = ?
+RETURNING id, username, username_fold, email, email_fold, password_hash, role, status, created_at, last_login_at
+`
+
+type SetUserStatusParams struct {
+	Status string
+	ID     int64
+}
+
+func (q *Queries) SetUserStatus(ctx context.Context, arg SetUserStatusParams) (User, error) {
+	row := q.db.QueryRowContext(ctx, setUserStatus, arg.Status, arg.ID)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.UsernameFold,
+		&i.Email,
+		&i.EmailFold,
+		&i.PasswordHash,
+		&i.Role,
+		&i.Status,
+		&i.CreatedAt,
+		&i.LastLoginAt,
+	)
+	return i, err
 }

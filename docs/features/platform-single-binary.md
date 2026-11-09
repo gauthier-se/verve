@@ -41,7 +41,7 @@ Verve ships as one executable named `verve`. It serves the REST API and the web 
   | `import xml --user <name> <file>` | Import an Apple Health export, see [XML import](ingestion-xml-import.md) |
   | `import native --user <name> <file>` | Import a Verve native JSON file, for example an export from another instance, see [Data export](data-export.md) |
   | `backup` / `restore <file>` | See [Backups](backups.md) |
-  | `user create [--admin] [--password-stdin] <username>`, `user list`, `user reset-password`, `user disable`, `user enable` | Break-glass user management. `user create` works while `serve` runs, see [Accounts and administration](accounts-and-administration.md) FR-2 |
+  | `user create [--admin] [--password-stdin] <username>`, `user list`, `user reset-password [--password-stdin] <username>`, `user disable <username>`, `user enable <username>` | Break-glass user management. They work while `serve` runs, with the rules of the API, see [Accounts and administration](accounts-and-administration.md) FR-2 and its data and API notes |
   | `openapi` | Print the OpenAPI spec as JSON (used by the frontend build), without loading the configuration or opening the data directory |
   | `config check` | Validate configuration and print the effective values with secrets masked |
   | `healthcheck` | Call `/healthz` on the configured listen address, through the IPv4 loopback when its host is empty or unspecified (`:8080`, `0.0.0.0:8080`, `[::]:8080`). Exit 1 with the reason on stderr on any status other than 200, a connection error or no answer within 3 seconds (for images without curl) |

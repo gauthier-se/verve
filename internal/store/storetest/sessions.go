@@ -256,6 +256,34 @@ func RunSessions(t *testing.T, newStore NewStoreFunc) {
 		require.Zero(t, deleted)
 	})
 
+	// Given sessions of two users, then DeleteByUser removes every session of one user, returns how
+	// many, and keeps the sessions of the other user.
+	t.Run("DeleteByUserRemovesEverySessionOfTheUser", func(t *testing.T) {
+		t.Parallel()
+
+		s := newStore(t, clock.NewFake(sessionsTime))
+		ctx := t.Context()
+		alice := mustCreateUser(ctx, t, s.Users(), newUser("alice", ""))
+		bob := mustCreateUser(ctx, t, s.Users(), newUser("bob", ""))
+
+		for _, id := range []string{"alice-phone", "alice-laptop"} {
+			mustCreateSession(ctx, t, s.Sessions(), newSession(alice.ID, id))
+		}
+
+		mustCreateSession(ctx, t, s.Sessions(), newSession(bob.ID, "bob-phone"))
+
+		deleted, err := s.Sessions().DeleteByUser(ctx, alice.ID)
+		require.NoError(t, err)
+		require.Equal(t, int64(2), deleted)
+
+		requireSessionsRemoved(ctx, t, s.Sessions(), "alice-phone", "alice-laptop")
+		requireSessionsKept(ctx, t, s.Sessions(), "bob-phone")
+
+		deleted, err = s.Sessions().DeleteByUser(ctx, alice.ID)
+		require.NoError(t, err)
+		require.Zero(t, deleted)
+	})
+
 	// Given sessions of two users, seen at different times, then ListByUser returns the sessions of
 	// one user, most recently seen first, and an empty list for a user without sessions.
 	t.Run("ListByUserReturnsTheSessionsOfTheUserMostRecentlySeenFirst", func(t *testing.T) {

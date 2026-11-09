@@ -62,6 +62,8 @@ type SessionsRepository interface {
 	// DeleteOthers removes the sessions of userID, except the one of keepIDHash, and returns how
 	// many it removed.
 	DeleteOthers(ctx context.Context, userID int64, keepIDHash []byte) (int64, error)
+	// DeleteByUser removes every session of userID and returns how many it removed.
+	DeleteByUser(ctx context.Context, userID int64) (int64, error)
 	// PurgeExpired removes the sessions whose ExpiresAt is before now.
 	PurgeExpired(ctx context.Context, now time.Time) error
 }

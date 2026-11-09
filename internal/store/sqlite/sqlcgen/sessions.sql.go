@@ -109,6 +109,20 @@ func (q *Queries) DeleteUserSessionByPublicID(ctx context.Context, arg DeleteUse
 	return result.RowsAffected()
 }
 
+const deleteUserSessions = `-- name: DeleteUserSessions :execrows
+DELETE
+FROM sessions
+WHERE user_id = ?
+`
+
+func (q *Queries) DeleteUserSessions(ctx context.Context, userID int64) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteUserSessions, userID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const getSession = `-- name: GetSession :one
 SELECT sessions.id_hash, sessions.public_id, sessions.user_id, sessions.method, sessions.created_at, sessions.last_seen_at, sessions.expires_at, sessions.client_ip, sessions.user_agent, users.id, users.username, users.username_fold, users.email, users.email_fold, users.password_hash, users.role, users.status, users.created_at, users.last_login_at
 FROM sessions

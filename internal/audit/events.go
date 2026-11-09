@@ -14,13 +14,17 @@ import (
 
 // The types of the audit events.
 const (
-	TypeLoginFailed     = "auth.login_failed"
-	TypeLoginSucceeded  = "auth.login_succeeded"
-	TypeLogout          = "auth.logout"
-	TypePasswordChanged = "auth.password_changed"
-	TypeSessionRevoked  = "auth.session_revoked"
-	TypeUserCreated     = "user.created"
-	TypeUserInvited     = "user.invited"
+	TypeLoginFailed       = "auth.login_failed"
+	TypeLoginSucceeded    = "auth.login_succeeded"
+	TypeLogout            = "auth.logout"
+	TypePasswordChanged   = "auth.password_changed"
+	TypeSessionRevoked    = "auth.session_revoked"
+	TypeUserCreated       = "user.created"
+	TypeUserInvited       = "user.invited"
+	TypeUserDisabled      = "user.disabled"
+	TypeUserEnabled       = "user.enabled"
+	TypeUserRoleChanged   = "user.role_changed"
+	TypeUserPasswordReset = "user.password_reset"
 )
 
 // Event is an audit event to record, built by a constructor of this package.
@@ -148,6 +152,60 @@ func UserInvited(adminID int64, username string, role store.UserRole) Event {
 		eventType: TypeUserInvited,
 		actorID:   adminID,
 		payload:   userInvitedPayload{Username: username, Role: role},
+	}
+}
+
+type userDisabledPayload struct{}
+
+// UserDisabled is the admin of adminID, or the system for 0, disabling the user of userID, which
+// revoked their sessions.
+func UserDisabled(adminID, userID int64) Event {
+	return Event{
+		eventType: TypeUserDisabled,
+		actorID:   adminID,
+		subjectID: userID,
+		payload:   userDisabledPayload{},
+	}
+}
+
+type userEnabledPayload struct{}
+
+// UserEnabled is the admin of adminID, or the system for 0, enabling the user of userID again.
+func UserEnabled(adminID, userID int64) Event {
+	return Event{
+		eventType: TypeUserEnabled,
+		actorID:   adminID,
+		subjectID: userID,
+		payload:   userEnabledPayload{},
+	}
+}
+
+type userRoleChangedPayload struct {
+	From store.UserRole `json:"from"`
+	To   store.UserRole `json:"to"`
+}
+
+// UserRoleChanged is the admin of adminID, or the system for 0, changing the role of the user of
+// userID from one role to another, which revoked their sessions.
+func UserRoleChanged(adminID, userID int64, from, to store.UserRole) Event {
+	return Event{
+		eventType: TypeUserRoleChanged,
+		actorID:   adminID,
+		subjectID: userID,
+		payload:   userRoleChangedPayload{From: from, To: to},
+	}
+}
+
+type userPasswordResetPayload struct{}
+
+// UserPasswordReset is the admin of adminID, or the system for 0, replacing the password of the
+// user of userID, which revoked their sessions.
+func UserPasswordReset(adminID, userID int64) Event {
+	return Event{
+		eventType: TypeUserPasswordReset,
+		actorID:   adminID,
+		subjectID: userID,
+		payload:   userPasswordResetPayload{},
 	}
 }
 

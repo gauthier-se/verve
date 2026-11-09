@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 
 	"modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
@@ -123,6 +124,85 @@ func (r users) Count(ctx context.Context) (int64, error) {
 	count, err := r.q.read().CountUsers(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("count users: %w", err)
+	}
+
+	return count, nil
+}
+
+func (r users) List(ctx context.Context, page store.PageRequest) ([]store.User, error) {
+	if page.Limit < 1 {
+		return nil, fmt.Errorf("list users: limit %d below 1: %w", page.Limit, store.ErrInvalid)
+	}
+
+	// The position before every user, so that the query always has one.
+	params := sqlcgen.ListUsersParams{AfterAt: math.MaxInt64, AfterID: math.MaxInt64, MaxUsers: int64(page.Limit)}
+
+	if page.After != (store.Cursor{}) {
+		params.AfterAt = toMillis(page.After.At)
+		params.AfterID = page.After.ID
+	}
+
+	rows, err := r.q.read().ListUsers(ctx, params)
+	if err != nil {
+		return nil, fmt.Errorf("list users: %w", err)
+	}
+
+	listed := make([]store.User, 0, len(rows))
+	for _, row := range rows {
+		listed = append(listed, userOf(row))
+	}
+
+	return listed, nil
+}
+
+func (r users) SetRole(ctx context.Context, id int64, role store.UserRole) (store.User, error) {
+	user, err := r.update(ctx, func(q *sqlcgen.Queries) (sqlcgen.User, error) {
+		return q.SetUserRole(ctx, sqlcgen.SetUserRoleParams{Role: string(role), ID: id})
+	})
+	if err != nil {
+		return store.User{}, fmt.Errorf("set role of user %d: %w", id, err)
+	}
+
+	return user, nil
+}
+
+func (r users) SetStatus(ctx context.Context, id int64, status store.UserStatus) (store.User, error) {
+	user, err := r.update(ctx, func(q *sqlcgen.Queries) (sqlcgen.User, error) {
+		return q.SetUserStatus(ctx, sqlcgen.SetUserStatusParams{Status: string(status), ID: id})
+	})
+	if err != nil {
+		return store.User{}, fmt.Errorf("set status of user %d: %w", id, err)
+	}
+
+	return user, nil
+}
+
+// update runs on the writer the update of a user that fn makes, and returns the updated user, or
+// store.ErrNotFound when fn updates no user.
+func (r users) update(ctx context.Context, fn func(q *sqlcgen.Queries) (sqlcgen.User, error)) (store.User, error) {
+	var row sqlcgen.User
+
+	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
+		var err error
+
+		row, err = fn(q)
+		if errors.Is(err, sql.ErrNoRows) {
+			return store.ErrNotFound
+		}
+
+		return err
+	})
+	if err != nil {
+		return store.User{}, err
+	}
+
+	return userOf(row), nil
+}
+
+func (r users) CountActiveAdmins(ctx context.Context) (int64, error) {
+	count, err := r.q.read().CountActiveAdmins(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("count active admins: %w", err)
 	}
 
 	return count, nil
