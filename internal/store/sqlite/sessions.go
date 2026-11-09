@@ -164,6 +164,23 @@ func (r sessions) DeleteOthers(ctx context.Context, userID int64, keepIDHash []b
 	return deleted, nil
 }
 
+func (r sessions) DeleteByUser(ctx context.Context, userID int64) (int64, error) {
+	var deleted int64
+
+	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
+		var err error
+
+		deleted, err = q.DeleteUserSessions(ctx, userID)
+
+		return err
+	})
+	if err != nil {
+		return 0, fmt.Errorf("delete sessions of user %d: %w", userID, err)
+	}
+
+	return deleted, nil
+}
+
 func (r sessions) PurgeExpired(ctx context.Context, now time.Time) error {
 	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
 		return q.PurgeExpiredSessions(ctx, toMillis(now))

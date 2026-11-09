@@ -15,6 +15,37 @@ export type AcceptInvitationInputBody = {
     token: string;
 };
 
+export type AdminUser = {
+    /**
+     * When the account was created.
+     */
+    createdAt: string;
+    /**
+     * The email address, left out when the user has none.
+     */
+    email?: string;
+    /**
+     * The id of the user.
+     */
+    id: number;
+    /**
+     * When the user last logged in, left out when they never did.
+     */
+    lastLoginAt?: string;
+    /**
+     * The role of the user.
+     */
+    role: 'admin' | 'member';
+    /**
+     * The status of the account. A disabled user cannot log in.
+     */
+    status: 'active' | 'disabled' | 'deleting';
+    /**
+     * The username, in the case it was created with.
+     */
+    username: string;
+};
+
 export type AuditEvent = {
     /**
      * The user who acted, left out for the system.
@@ -243,6 +274,17 @@ export type Meta = {
     version: string;
 };
 
+export type PageAdminUser = {
+    /**
+     * The items of the page, newest first.
+     */
+    items: Array<AdminUser>;
+    /**
+     * The cursor of the next page, left out on the last page.
+     */
+    nextCursor?: string;
+};
+
 export type PageAuditEvent = {
     /**
      * The items of the page, newest first.
@@ -339,6 +381,20 @@ export type SessionsOutputBody = {
      * The sessions, most recently used first.
      */
     items: Array<Session>;
+};
+
+export type SetUserRoleInputBody = {
+    /**
+     * The role to set. A change revokes the sessions of the user.
+     */
+    role: 'admin' | 'member';
+};
+
+export type SetUserStatusInputBody = {
+    /**
+     * The status to set: disabled revokes the sessions of the user and refuses their logins until active again.
+     */
+    status: 'active' | 'disabled';
 };
 
 export type SetupInputBody = {
@@ -779,6 +835,160 @@ export type ListAdminJobsResponses = {
 };
 
 export type ListAdminJobsResponse = ListAdminJobsResponses[keyof ListAdminJobsResponses];
+
+export type ListAdminUsersData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * The nextCursor of the previous page, left out for the first page.
+         */
+        cursor?: string;
+        /**
+         * The maximum number of items of the page, at most 200: a larger limit counts as 200.
+         */
+        limit?: number;
+    };
+    url: '/api/v1/admin/users';
+};
+
+export type ListAdminUsersErrors = {
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Forbidden
+     */
+    403: Problem;
+    /**
+     * Unprocessable Entity
+     */
+    422: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type ListAdminUsersError = ListAdminUsersErrors[keyof ListAdminUsersErrors];
+
+export type ListAdminUsersResponses = {
+    /**
+     * OK
+     */
+    200: PageAdminUser;
+};
+
+export type ListAdminUsersResponse = ListAdminUsersResponses[keyof ListAdminUsersResponses];
+
+export type SetUserRoleData = {
+    body: SetUserRoleInputBody;
+    path: {
+        /**
+         * The id of the user.
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/api/v1/admin/users/{id}/role';
+};
+
+export type SetUserRoleErrors = {
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Forbidden
+     */
+    403: Problem;
+    /**
+     * Not Found
+     */
+    404: Problem;
+    /**
+     * Conflict
+     */
+    409: Problem;
+    /**
+     * Request Entity Too Large
+     */
+    413: Problem;
+    /**
+     * Unprocessable Entity
+     */
+    422: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type SetUserRoleError = SetUserRoleErrors[keyof SetUserRoleErrors];
+
+export type SetUserRoleResponses = {
+    /**
+     * OK
+     */
+    200: AdminUser;
+};
+
+export type SetUserRoleResponse = SetUserRoleResponses[keyof SetUserRoleResponses];
+
+export type SetUserStatusData = {
+    body: SetUserStatusInputBody;
+    path: {
+        /**
+         * The id of the user.
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/api/v1/admin/users/{id}/status';
+};
+
+export type SetUserStatusErrors = {
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Forbidden
+     */
+    403: Problem;
+    /**
+     * Not Found
+     */
+    404: Problem;
+    /**
+     * Conflict
+     */
+    409: Problem;
+    /**
+     * Request Entity Too Large
+     */
+    413: Problem;
+    /**
+     * Unprocessable Entity
+     */
+    422: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type SetUserStatusError = SetUserStatusErrors[keyof SetUserStatusErrors];
+
+export type SetUserStatusResponses = {
+    /**
+     * OK
+     */
+    200: AdminUser;
+};
+
+export type SetUserStatusResponse = SetUserStatusResponses[keyof SetUserStatusResponses];
 
 export type LoginData = {
     body: LoginInputBody;

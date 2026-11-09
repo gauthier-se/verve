@@ -32,6 +32,8 @@ type APIDeps struct {
 	Passwords auth.Passwords
 	// Invitations invites users and creates their account.
 	Invitations auth.Invitations
+	// Admin enables, disables and changes the role of accounts.
+	Admin auth.Admin
 	// Setup creates the first admin.
 	Setup *auth.Setup
 	// PublicURL names the session cookie that login sets and logout clears.
@@ -73,6 +75,7 @@ func NewAPI(mux *http.ServeMux, deps APIDeps) huma.API {
 	registerInvitations(api, deps)
 	registerAudit(api, deps.Store)
 	registerAdminJobs(api, deps.Store)
+	registerAdminUsers(api, deps)
 
 	return api
 }

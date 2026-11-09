@@ -1,12 +1,15 @@
 package cli
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"strings"
+	"text/tabwriter"
+	"time"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -22,6 +25,15 @@ const maxPasswordInput = 4096
 
 // createUserFunc creates a user in the configured database, also next to a running server.
 type createUserFunc func(ctx context.Context, cfg config.Config, account auth.NewAccount) (store.User, error)
+
+// listUsersFunc lists the users of the configured database, newest first.
+type listUsersFunc func(ctx context.Context, cfg config.Config) ([]store.User, error)
+
+// setUserStatusFunc enables or disables the user of login in the configured database.
+type setUserStatusFunc func(ctx context.Context, cfg config.Config, login string, status store.UserStatus) (store.User, error)
+
+// resetPasswordFunc replaces the password of the user of login in the configured database.
+type resetPasswordFunc func(ctx context.Context, cfg config.Config, login, password string) (store.User, error)
 
 // passwordFunc reads a password without echo from a terminal.
 type passwordFunc func() (string, error)
@@ -56,9 +68,118 @@ func newUserCommand(loadConfig func() (config.Config, error), deps Deps) *cobra.
 	create.Flags().BoolVar(&admin, "admin", false, "create an admin rather than a member")
 	create.Flags().BoolVar(&passwordStdin, "password-stdin", false, "read the password from stdin rather than the terminal")
 
-	cmd.AddCommand(create)
+	list := &cobra.Command{
+		Use:   "list",
+		Short: "List the users, also while the server runs",
+		Args:  cobra.NoArgs,
+		RunE: withConfig(loadConfig, func(cmd *cobra.Command, cfg config.Config) error {
+			users, err := deps.ListUsers(cmd.Context(), cfg)
+			if err != nil {
+				return fmt.Errorf("list users: %w", err)
+			}
+
+			return printUsers(cmd.OutOrStdout(), users)
+		}),
+	}
+
+	var resetStdin bool
+
+	resetPassword := &cobra.Command{
+		Use:   "reset-password <username>",
+		Short: "Replace the password of a user and revoke their sessions, also while the server runs",
+		Long: "Replace the password of a user and revoke their sessions. The password is asked twice on the " +
+			"terminal, or read from stdin with --password-stdin.",
+		Args: cobra.ExactArgs(1),
+		RunE: withConfig(loadConfig, func(cmd *cobra.Command, cfg config.Config) error {
+			login := cmd.Flags().Arg(0)
+
+			password, err := readPassword(cmd, resetStdin, deps.ReadPassword)
+			if err != nil {
+				return err
+			}
+
+			user, err := deps.ResetPassword(cmd.Context(), cfg, login, password)
+			if err != nil {
+				return userError(err, login, "reset password")
+			}
+
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Reset the password of %s\n", user.Username)
+
+			return nil
+		}),
+	}
+
+	resetPassword.Flags().BoolVar(&resetStdin, "password-stdin", false, "read the password from stdin rather than the terminal")
+
+	cmd.AddCommand(create, list, resetPassword,
+		newSetStatusCommand(loadConfig, deps, "disable", "Disable a user and revoke their sessions", store.UserDisabled, "Disabled"),
+		newSetStatusCommand(loadConfig, deps, "enable", "Enable a disabled user again", store.UserActive, "Enabled"))
 
 	return cmd
+}
+
+// newSetStatusCommand returns the command use, which gives the user of its argument status and
+// prints done with their username.
+func newSetStatusCommand(loadConfig func() (config.Config, error), deps Deps, use, short string, status store.UserStatus,
+	done string,
+) *cobra.Command {
+	return &cobra.Command{
+		Use:   use + " <username>",
+		Short: short + ", also while the server runs",
+		Args:  cobra.ExactArgs(1),
+		RunE: withConfig(loadConfig, func(cmd *cobra.Command, cfg config.Config) error {
+			login := cmd.Flags().Arg(0)
+
+			user, err := deps.SetUserStatus(cmd.Context(), cfg, login, status)
+			if err != nil {
+				return userError(err, login, use+" user")
+			}
+
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s %s\n", done, user.Username)
+
+			return nil
+		}),
+	}
+}
+
+// printUsers writes users to w as a table, a dash standing for a missing email or login.
+func printUsers(w io.Writer, users []store.User) error {
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+
+	_, _ = fmt.Fprintln(tw, "USERNAME\tEMAIL\tROLE\tSTATUS\tCREATED\tLAST LOGIN")
+
+	for _, user := range users {
+		lastLogin := "-"
+		if !user.LastLoginAt.IsZero() {
+			lastLogin = user.LastLoginAt.Format(time.RFC3339)
+		}
+
+		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", user.Username, cmp.Or(user.Email, "-"), user.Role, user.Status,
+			user.CreatedAt.Format(time.RFC3339), lastLogin)
+	}
+
+	if err := tw.Flush(); err != nil {
+		return fmt.Errorf("print users: %w", err)
+	}
+
+	return nil
+}
+
+// userError returns err as what to change, for the errors of a command on the user of login that
+// the person who runs it can fix, or else wrapped with op.
+func userError(err error, login, op string) error {
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		return fmt.Errorf("no user %q", login)
+	case errors.Is(err, auth.ErrLastAdmin):
+		return fmt.Errorf("%s is the last active admin", login)
+	}
+
+	if policyErr := passwordPolicyError(err); policyErr != nil {
+		return policyErr
+	}
+
+	return fmt.Errorf("%s: %w", op, err)
 }
 
 // createUser reads the password of account, from stdin when fromStdin is set or else from the
@@ -138,20 +259,33 @@ func readPasswordStdin(r io.Reader) (string, error) {
 // createUserError returns err as what to change, for the errors that the person who runs the command
 // can fix.
 func createUserError(err error, username string) error {
+	if policyErr := passwordPolicyError(err); policyErr != nil {
+		return policyErr
+	}
+
 	switch {
 	case errors.Is(err, auth.ErrUsernameInvalid):
 		return fmt.Errorf("username must have 1 to %d characters, without @, whitespace, control or invisible characters",
 			auth.MaxUsernameLength)
+	case errors.Is(err, store.ErrConflict):
+		return fmt.Errorf("username %q is taken", username)
+	default:
+		return fmt.Errorf("create user: %w", err)
+	}
+}
+
+// passwordPolicyError returns the rule of the password policy that err breaks as what to change, or
+// nil when err is not an error of the policy.
+func passwordPolicyError(err error) error {
+	switch {
 	case errors.Is(err, auth.ErrPasswordTooShort):
 		return fmt.Errorf("password must have at least %d characters", auth.MinPasswordLength)
 	case errors.Is(err, auth.ErrPasswordTooLong):
 		return fmt.Errorf("password must have at most %d characters", auth.MaxPasswordLength)
 	case errors.Is(err, auth.ErrPasswordTooCommon):
 		return errors.New("password is too common: choose another one")
-	case errors.Is(err, store.ErrConflict):
-		return fmt.Errorf("username %q is taken", username)
 	default:
-		return fmt.Errorf("create user: %w", err)
+		return nil
 	}
 }
 

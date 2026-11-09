@@ -54,7 +54,7 @@ Username and password login with argon2id hashing and server-side sessions store
 
   The session cookie carries the expiry of the session: login sets it, and each renewal (FR-8) sends it again with the new expiry, so that the browser keeps it as long as the session lives.
 - **FR-8**: `last_seen_at` is updated at most once per minute per session, together with the expiry. A lookup reads on the reader pool: only this renewal writes.
-- **FR-9**: The session identifier is regenerated at login and when the user's privileges change. A login from a request that already has a session deletes that session.
+- **FR-9**: The session identifier is regenerated at login and when the user's privileges change. A login from a request that already has a session deletes that session. A role change, made by an admin for another person, revokes every session of that user, since the server cannot hand a new cookie to someone else: they log in again with a new session.
 - **FR-10**: Logout deletes the session server-side and clears the cookie. It answers 204, even without a session or with an unknown, expired or revoked one.
 - **FR-11**: Changing the password requires the current password and revokes all other sessions.
 - **FR-12**: The active sessions page lists sessions (device and browser from the user agent, approximate location is not computed, IP, login method, last seen) and allows revoking any of them or all others.

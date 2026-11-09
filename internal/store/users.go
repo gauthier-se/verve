@@ -79,4 +79,18 @@ type UsersRepository interface {
 	RecordLogin(ctx context.Context, id int64) (User, error)
 	// Count returns the number of users, whatever their status.
 	Count(ctx context.Context) (int64, error)
+	// List returns the users newest first by CreatedAt then ID, whatever their status: at most
+	// page.Limit of them, after page.After. It returns ErrInvalid when page.Limit is below 1.
+	List(ctx context.Context, page PageRequest) ([]User, error)
+	// SetRole sets the role of the user of id and returns the user, or returns ErrNotFound.
+	SetRole(ctx context.Context, id int64, role UserRole) (User, error)
+	// SetStatus sets the status of the user of id and returns the user, or returns ErrNotFound.
+	SetStatus(ctx context.Context, id int64, status UserStatus) (User, error)
+	// CountActiveAdmins returns the number of active users whose role is admin.
+	CountActiveAdmins(ctx context.Context) (int64, error)
+}
+
+// Cursor returns the position of the user in the lists of UsersRepository.List.
+func (u User) Cursor() Cursor {
+	return Cursor{At: u.CreatedAt, ID: u.ID}
 }

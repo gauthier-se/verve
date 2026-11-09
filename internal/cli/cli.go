@@ -30,6 +30,10 @@ type Deps struct {
 	MigrationStatus migrationStatusFunc
 	// CreateUser creates a user, also next to a running server.
 	CreateUser createUserFunc
+	// ListUsers, SetUserStatus and ResetPassword manage the users, also next to a running server.
+	ListUsers     listUsersFunc
+	SetUserStatus setUserStatusFunc
+	ResetPassword resetPasswordFunc
 	// ReadPassword reads a password without echo from the terminal of stdin. Nil means that stdin is
 	// not a terminal.
 	ReadPassword passwordFunc
@@ -50,6 +54,9 @@ func Execute(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		Migrate:         app.Migrate,
 		MigrationStatus: app.MigrationStatus,
 		CreateUser:      app.CreateUser,
+		ListUsers:       app.ListUsers,
+		SetUserStatus:   app.SetUserStatus,
+		ResetPassword:   app.ResetPassword,
 		ReadPassword:    terminalPassword(os.Stdin),
 	}
 

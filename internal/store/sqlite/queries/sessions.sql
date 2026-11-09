@@ -45,3 +45,8 @@ DELETE
 FROM sessions
 WHERE user_id = sqlc.arg(user_id)
   AND public_id = sqlc.arg(public_id);
+
+-- name: DeleteUserSessions :execrows
+DELETE
+FROM sessions
+WHERE user_id = ?;
