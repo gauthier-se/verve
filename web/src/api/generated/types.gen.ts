@@ -4,6 +4,17 @@ export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };
 
+export type AcceptInvitationInputBody = {
+    /**
+     * The password of the new account: 12 to 128 characters, and not a common password.
+     */
+    password: string;
+    /**
+     * The token of the invitation, from the fragment of its link.
+     */
+    token: string;
+};
+
 export type AuditEvent = {
     /**
      * The user who acted, left out for the system.
@@ -73,6 +84,21 @@ export type ChangePasswordInputBody = {
     newPassword: string;
 };
 
+export type CreateInvitationInputBody = {
+    /**
+     * The email of the account, optional. It holds an @.
+     */
+    email?: string;
+    /**
+     * The role of the account.
+     */
+    role: 'admin' | 'member';
+    /**
+     * The username of the account to create: 1 to 64 characters, without @, whitespace, control or invisible characters.
+     */
+    username: string;
+};
+
 export type CurrentUser = {
     /**
      * The email address, left out when the user has none.
@@ -109,6 +135,51 @@ export type ErrorDetail = {
      * The value at the given location
      */
     value?: unknown;
+};
+
+export type InspectInvitationInputBody = {
+    /**
+     * The token of the invitation, from the fragment of its link.
+     */
+    token: string;
+};
+
+export type Invitation = {
+    /**
+     * The email of the account, left out when there is none.
+     */
+    email?: string;
+    /**
+     * When the invitation stops being valid, 72 hours after its creation.
+     */
+    expiresAt: string;
+    /**
+     * The id of the invitation.
+     */
+    id: number;
+    /**
+     * The single-use link to send to the invitee, answered once: <VERVE_PUBLIC_URL>/invite#<token>, or /invite#<token> to append to the origin of the client when the public URL is not set.
+     */
+    link: string;
+    /**
+     * The role of the account.
+     */
+    role: 'admin' | 'member';
+    /**
+     * The username of the account that the invitation creates.
+     */
+    username: string;
+};
+
+export type InvitationDetails = {
+    /**
+     * When the invitation stops being valid.
+     */
+    expiresAt: string;
+    /**
+     * The username of the account that the invitation creates.
+     */
+    username: string;
 };
 
 export type Job = {
@@ -614,6 +685,51 @@ export type ListAdminAuditEventsResponses = {
 
 export type ListAdminAuditEventsResponse = ListAdminAuditEventsResponses[keyof ListAdminAuditEventsResponses];
 
+export type CreateInvitationData = {
+    body: CreateInvitationInputBody;
+    path?: never;
+    query?: never;
+    url: '/api/v1/admin/invitations';
+};
+
+export type CreateInvitationErrors = {
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Forbidden
+     */
+    403: Problem;
+    /**
+     * Conflict
+     */
+    409: Problem;
+    /**
+     * Request Entity Too Large
+     */
+    413: Problem;
+    /**
+     * Unprocessable Entity
+     */
+    422: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type CreateInvitationError = CreateInvitationErrors[keyof CreateInvitationErrors];
+
+export type CreateInvitationResponses = {
+    /**
+     * Created
+     */
+    201: Invitation;
+};
+
+export type CreateInvitationResponse = CreateInvitationResponses[keyof CreateInvitationResponses];
+
 export type ListAdminJobsData = {
     body?: never;
     path?: never;
@@ -758,6 +874,84 @@ export type GetCurrentUserResponses = {
 };
 
 export type GetCurrentUserResponse = GetCurrentUserResponses[keyof GetCurrentUserResponses];
+
+export type AcceptInvitationData = {
+    body: AcceptInvitationInputBody;
+    path?: never;
+    query?: never;
+    url: '/api/v1/invitations/accept';
+};
+
+export type AcceptInvitationErrors = {
+    /**
+     * Conflict
+     */
+    409: Problem;
+    /**
+     * Gone
+     */
+    410: Problem;
+    /**
+     * Request Entity Too Large
+     */
+    413: Problem;
+    /**
+     * Unprocessable Entity
+     */
+    422: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type AcceptInvitationError = AcceptInvitationErrors[keyof AcceptInvitationErrors];
+
+export type AcceptInvitationResponses = {
+    /**
+     * Created
+     */
+    201: CurrentUser;
+};
+
+export type AcceptInvitationResponse = AcceptInvitationResponses[keyof AcceptInvitationResponses];
+
+export type InspectInvitationData = {
+    body: InspectInvitationInputBody;
+    path?: never;
+    query?: never;
+    url: '/api/v1/invitations/inspect';
+};
+
+export type InspectInvitationErrors = {
+    /**
+     * Gone
+     */
+    410: Problem;
+    /**
+     * Request Entity Too Large
+     */
+    413: Problem;
+    /**
+     * Unprocessable Entity
+     */
+    422: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type InspectInvitationError = InspectInvitationErrors[keyof InspectInvitationErrors];
+
+export type InspectInvitationResponses = {
+    /**
+     * OK
+     */
+    200: InvitationDetails;
+};
+
+export type InspectInvitationResponse = InspectInvitationResponses[keyof InspectInvitationResponses];
 
 export type GetMetaData = {
     body?: never;

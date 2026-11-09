@@ -16,13 +16,14 @@ const (
 	MaxUsernameLength = 64
 )
 
-// The errors of the password and username rules. Their messages are the stable codes that the API
+// The errors of the password, username and email rules. Their messages are the stable codes that the API
 // answers with.
 var (
 	ErrPasswordTooShort  = errors.New("password_too_short")
 	ErrPasswordTooLong   = errors.New("password_too_long")
 	ErrPasswordTooCommon = errors.New("password_too_common")
 	ErrUsernameInvalid   = errors.New("username_invalid")
+	ErrEmailInvalid      = errors.New("email_invalid")
 )
 
 // IsPasswordPolicyError reports whether err is the error of a rule of the password policy.
@@ -101,4 +102,14 @@ func ValidateUsername(username string) error {
 
 func forbiddenInUsername(r rune) bool {
 	return r == '@' || unicode.IsSpace(r) || unicode.IsControl(r) || unicode.Is(unicode.Cf, r)
+}
+
+// ValidateEmail returns ErrEmailInvalid unless email holds an @, as every email does, so that it can
+// never be taken for a username at login.
+func ValidateEmail(email string) error {
+	if !strings.Contains(email, "@") {
+		return ErrEmailInvalid
+	}
+
+	return nil
 }

@@ -3,8 +3,8 @@
 import { type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { changePassword, createFirstAdmin, getCurrentUser, getMeta, getPreferences, getSetupStatus, listAccountAuditEvents, listAdminAuditEvents, listAdminJobs, listSessions, login, logout, type Options, revokeOtherSessions, revokeSession, updatePreferences } from '../sdk.gen';
-import type { ChangePasswordData, ChangePasswordError, ChangePasswordResponse, CreateFirstAdminData, CreateFirstAdminError, CreateFirstAdminResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetMetaData, GetMetaError, GetMetaResponse, GetPreferencesData, GetPreferencesError, GetPreferencesResponse, GetSetupStatusData, GetSetupStatusError, GetSetupStatusResponse, ListAccountAuditEventsData, ListAccountAuditEventsError, ListAccountAuditEventsResponse, ListAdminAuditEventsData, ListAdminAuditEventsError, ListAdminAuditEventsResponse, ListAdminJobsData, ListAdminJobsError, ListAdminJobsResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutError, LogoutResponse, RevokeOtherSessionsData, RevokeOtherSessionsError, RevokeOtherSessionsResponse, RevokeSessionData, RevokeSessionError, RevokeSessionResponse, UpdatePreferencesData, UpdatePreferencesError, UpdatePreferencesResponse } from '../types.gen';
+import { acceptInvitation, changePassword, createFirstAdmin, createInvitation, getCurrentUser, getMeta, getPreferences, getSetupStatus, inspectInvitation, listAccountAuditEvents, listAdminAuditEvents, listAdminJobs, listSessions, login, logout, type Options, revokeOtherSessions, revokeSession, updatePreferences } from '../sdk.gen';
+import type { AcceptInvitationData, AcceptInvitationError, AcceptInvitationResponse, ChangePasswordData, ChangePasswordError, ChangePasswordResponse, CreateFirstAdminData, CreateFirstAdminError, CreateFirstAdminResponse, CreateInvitationData, CreateInvitationError, CreateInvitationResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetMetaData, GetMetaError, GetMetaResponse, GetPreferencesData, GetPreferencesError, GetPreferencesResponse, GetSetupStatusData, GetSetupStatusError, GetSetupStatusResponse, InspectInvitationData, InspectInvitationError, InspectInvitationResponse, ListAccountAuditEventsData, ListAccountAuditEventsError, ListAccountAuditEventsResponse, ListAdminAuditEventsData, ListAdminAuditEventsError, ListAdminAuditEventsResponse, ListAdminJobsData, ListAdminJobsError, ListAdminJobsResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutError, LogoutResponse, RevokeOtherSessionsData, RevokeOtherSessionsError, RevokeOtherSessionsResponse, RevokeSessionData, RevokeSessionError, RevokeSessionResponse, UpdatePreferencesData, UpdatePreferencesError, UpdatePreferencesResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -288,6 +288,25 @@ export const listAdminAuditEventsInfiniteOptions = (options?: Options<ListAdminA
     return opts as Omit<typeof opts, 'initialData'>;
 };
 
+/**
+ * Invite a user
+ *
+ * Creates an invitation valid 72 hours and answers its single-use link, once: only the hash of its token is stored. A username or email that a user has, ignoring case, answers 409 `username_taken` or `email_taken`. A username or email that breaks the rules answers 422 `username_invalid` or `email_invalid`.
+ */
+export const createInvitationMutation = (options?: Partial<Options<CreateInvitationData>>): UseMutationOptions<CreateInvitationResponse, CreateInvitationError, Options<CreateInvitationData>> => {
+    const mutationOptions: UseMutationOptions<CreateInvitationResponse, CreateInvitationError, Options<CreateInvitationData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await createInvitation({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
 export const listAdminJobsQueryKey = (options: Options<ListAdminJobsData>) => createQueryKey('listAdminJobs', options);
 
 /**
@@ -397,6 +416,44 @@ export const getCurrentUserOptions = (options?: Options<GetCurrentUserData>) => 
     },
     queryKey: getCurrentUserQueryKey(options)
 });
+
+/**
+ * Accept an invitation
+ *
+ * Creates the account of the invitation with the password, marks the invitation used, opens the session and sets the session cookie. A used, expired or unknown invitation answers 410 `invitation_invalid`. A password that breaks the rules answers 422 with the code of the rule: `password_too_short`, `password_too_long` or `password_too_common`, and the invitation stays valid. A username or email that a user took since the invitation answers 409 `username_taken` or `email_taken`. It needs no authentication.
+ */
+export const acceptInvitationMutation = (options?: Partial<Options<AcceptInvitationData>>): UseMutationOptions<AcceptInvitationResponse, AcceptInvitationError, Options<AcceptInvitationData>> => {
+    const mutationOptions: UseMutationOptions<AcceptInvitationResponse, AcceptInvitationError, Options<AcceptInvitationData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await acceptInvitation({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Inspect an invitation
+ *
+ * Returns the username and the expiry of the invitation of the token, which the body carries so that it never reaches a log. A used, expired or unknown invitation answers 410 `invitation_invalid`. It needs no authentication.
+ */
+export const inspectInvitationMutation = (options?: Partial<Options<InspectInvitationData>>): UseMutationOptions<InspectInvitationResponse, InspectInvitationError, Options<InspectInvitationData>> => {
+    const mutationOptions: UseMutationOptions<InspectInvitationResponse, InspectInvitationError, Options<InspectInvitationData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await inspectInvitation({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
 
 export const getMetaQueryKey = (options?: Options<GetMetaData>) => createQueryKey('getMeta', options);
 

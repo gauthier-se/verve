@@ -20,6 +20,7 @@ const (
 	TypePasswordChanged = "auth.password_changed"
 	TypeSessionRevoked  = "auth.session_revoked"
 	TypeUserCreated     = "user.created"
+	TypeUserInvited     = "user.invited"
 )
 
 // Event is an audit event to record, built by a constructor of this package.
@@ -115,6 +116,8 @@ const (
 	SourceSetup UserSource = "setup"
 	// SourceCLI is verve user create.
 	SourceCLI UserSource = "cli"
+	// SourceInvitation is an invitation, accepted by the invitee.
+	SourceInvitation UserSource = "invitation"
 )
 
 type userCreatedPayload struct {
@@ -123,12 +126,28 @@ type userCreatedPayload struct {
 }
 
 // UserCreated is the creation of the user of userID, with role, from source. It has no actor: no
-// user acted, since the setup comes before any user and the command line has none.
+// user acted, since the setup comes before any user, the command line has none, and the invitee of
+// an invitation is not a user until it creates them.
 func UserCreated(userID int64, role store.UserRole, source UserSource) Event {
 	return Event{
 		eventType: TypeUserCreated,
 		subjectID: userID,
 		payload:   userCreatedPayload{Role: role, Source: source},
+	}
+}
+
+type userInvitedPayload struct {
+	Username string         `json:"username"`
+	Role     store.UserRole `json:"role"`
+}
+
+// UserInvited is the admin of adminID inviting username with role. It has no subject: the user does
+// not exist until the invitation is accepted, which records UserCreated.
+func UserInvited(adminID int64, username string, role store.UserRole) Event {
+	return Event{
+		eventType: TypeUserInvited,
+		actorID:   adminID,
+		payload:   userInvitedPayload{Username: username, Role: role},
 	}
 }
 

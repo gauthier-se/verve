@@ -28,6 +28,7 @@ func eventsByConstructor() map[string]Event {
 		"PasswordChanged": PasswordChanged(7),
 		"SessionsRevoked": SessionsRevoked(7, 1),
 		"UserCreated":     UserCreated(7, store.RoleAdmin, SourceSetup),
+		"UserInvited":     UserInvited(1, "bob", store.RoleMember),
 	}
 }
 
@@ -289,6 +290,7 @@ func TestUserCreated(t *testing.T) {
 	}{
 		{name: "setup", role: store.RoleAdmin, source: SourceSetup, want: `{"role":"admin","source":"setup"}`},
 		{name: "command line", role: store.RoleMember, source: SourceCLI, want: `{"role":"member","source":"cli"}`},
+		{name: "invitation", role: store.RoleMember, source: SourceInvitation, want: `{"role":"member","source":"invitation"}`},
 	}
 
 	for _, tt := range tests {
@@ -361,4 +363,21 @@ func TestSessionsRevoked(t *testing.T) {
 	data, err := json.Marshal(event.payload)
 	require.NoError(t, err)
 	require.JSONEq(t, `{"revoked":3}`, string(data))
+}
+
+// Given an invitation, then the event has the invitation type, the admin as actor, no subject, and
+// the username and role of the invitation.
+func TestUserInvited(t *testing.T) {
+	t.Parallel()
+
+	event := UserInvited(1, "bob", store.RoleMember)
+
+	require.Equal(t, "user.invited", event.eventType)
+	require.Equal(t, int64(1), event.actorID)
+	require.Zero(t, event.subjectID)
+	require.False(t, event.aggregateOnClientIP)
+
+	data, err := json.Marshal(event.payload)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"username":"bob","role":"member"}`, string(data))
 }
