@@ -14,17 +14,19 @@ import (
 
 // The types of the audit events.
 const (
-	TypeLoginFailed       = "auth.login_failed"
-	TypeLoginSucceeded    = "auth.login_succeeded"
-	TypeLogout            = "auth.logout"
-	TypePasswordChanged   = "auth.password_changed"
-	TypeSessionRevoked    = "auth.session_revoked"
-	TypeUserCreated       = "user.created"
-	TypeUserInvited       = "user.invited"
-	TypeUserDisabled      = "user.disabled"
-	TypeUserEnabled       = "user.enabled"
-	TypeUserRoleChanged   = "user.role_changed"
-	TypeUserPasswordReset = "user.password_reset"
+	TypeLoginFailed              = "auth.login_failed"
+	TypeLoginSucceeded           = "auth.login_succeeded"
+	TypeLogout                   = "auth.logout"
+	TypePasswordChanged          = "auth.password_changed"
+	TypeSessionRevoked           = "auth.session_revoked"
+	TypeUserCreated              = "user.created"
+	TypeUserInvited              = "user.invited"
+	TypeUserDisabled             = "user.disabled"
+	TypeUserEnabled              = "user.enabled"
+	TypeUserRoleChanged          = "user.role_changed"
+	TypeUserPasswordReset        = "user.password_reset"
+	TypePasswordResetLinkCreated = "user.password_reset_link_created"
+	TypePasswordResetCompleted   = "auth.password_reset_completed"
 )
 
 // Event is an audit event to record, built by a constructor of this package.
@@ -206,6 +208,31 @@ func UserPasswordReset(adminID, userID int64) Event {
 		actorID:   adminID,
 		subjectID: userID,
 		payload:   userPasswordResetPayload{},
+	}
+}
+
+type passwordResetLinkCreatedPayload struct{}
+
+// PasswordResetLinkCreated is the admin of adminID creating a password reset link for the user of
+// userID, which replaced their earlier links.
+func PasswordResetLinkCreated(adminID, userID int64) Event {
+	return Event{
+		eventType: TypePasswordResetLinkCreated,
+		actorID:   adminID,
+		subjectID: userID,
+		payload:   passwordResetLinkCreatedPayload{},
+	}
+}
+
+type passwordResetCompletedPayload struct{}
+
+// PasswordResetCompleted is the user of userID choosing a new password through a reset link, which
+// revoked their sessions.
+func PasswordResetCompleted(userID int64) Event {
+	return Event{
+		eventType: TypePasswordResetCompleted,
+		actorID:   userID,
+		payload:   passwordResetCompletedPayload{},
 	}
 }
 

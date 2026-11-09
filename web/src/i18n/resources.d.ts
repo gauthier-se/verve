@@ -37,6 +37,7 @@ export default interface Resources {
       "password_too_short": "Use at least 12 characters for the password.",
       "rate_limited": "Too many attempts. Wait a moment, then try again.",
       "rate_limited_wait": "Too many attempts. Try again in {{wait}}.",
+      "reset_link_invalid": "This password reset link is no longer valid: it was already used, it expired, a newer one replaced it, or it is incomplete. Ask an admin for a new link.",
       "setup_completed": "Verve is already set up. Log in with an existing account.",
       "setup_token_invalid": "This setup token is not valid. Each start of Verve writes a new setup link to its log: use the latest one.",
       "timezone_invalid": "Verve does not know this timezone. Enter a name such as Europe/Paris.",
@@ -60,6 +61,7 @@ export default interface Resources {
     },
     "login": {
       "password": "Password",
+      "passwordChanged": "Your password changed. Log in with it.",
       "passwordRequired": "Enter your password.",
       "submit": "Log in",
       "title": "Log in",
@@ -75,6 +77,16 @@ export default interface Resources {
       "description": "The page you are looking for does not exist.",
       "home": "Back to home",
       "title": "Page not found"
+    },
+    "resetPassword": {
+      "confirmation": "Confirm password",
+      "description": "Choose the new password of your account. Every session of the account ends, and you log in again with the new password.",
+      "goToLogin": "Go to the login page",
+      "password": "New password",
+      "passwordMismatch": "The passwords do not match.",
+      "passwordRequired": "Enter a password.",
+      "submit": "Change password",
+      "title": "Reset your password"
     },
     "setup": {
       "account": {

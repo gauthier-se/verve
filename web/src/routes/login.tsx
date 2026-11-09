@@ -11,6 +11,8 @@ import { enterSession } from "@/lib/session";
 interface LoginSearch {
   /** The URL of the app to go to after login. */
   redirect?: string | undefined;
+  /** Whether the user just changed their password through a reset link. */
+  passwordChanged?: true | undefined;
 }
 
 export const Route = createFileRoute("/login")({
@@ -18,6 +20,7 @@ export const Route = createFileRoute("/login")({
   // be replaced with undefined, not left out.
   validateSearch: (search: Record<string, unknown>): LoginSearch => ({
     redirect: appPath(search.redirect),
+    passwordChanged: search.passwordChanged === true ? true : undefined,
   }),
   component: Login,
 });
@@ -41,7 +44,7 @@ function appPath(target: unknown): string | undefined {
 
 function Login() {
   const { t, i18n } = useTranslation();
-  const { redirect } = Route.useSearch();
+  const { redirect, passwordChanged } = Route.useSearch();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const login = useMutation({
@@ -71,6 +74,11 @@ function Login() {
           void form.handleSubmit();
         }}
       >
+        {passwordChanged && !login.isError && (
+          <p role="status" className="text-sm text-muted-foreground">
+            {t("login.passwordChanged")}
+          </p>
+        )}
         {login.isError && (
           <p role="alert" className="text-sm text-destructive">
             {errorMessage(login.error, i18n)}

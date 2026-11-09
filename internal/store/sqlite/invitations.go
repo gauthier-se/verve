@@ -30,12 +30,13 @@ func (r invitations) Create(ctx context.Context, invitation store.NewInvitation)
 			Username:  sql.NullString{String: invitation.Username, Valid: invitation.Username != ""},
 			Email:     sql.NullString{String: invitation.Email, Valid: invitation.Email != ""},
 			Role:      sql.NullString{String: string(invitation.Role), Valid: invitation.Role != ""},
+			UserID:    sql.NullInt64{Int64: invitation.UserID, Valid: invitation.UserID != 0},
 			ExpiresAt: toMillis(invitation.ExpiresAt),
 			CreatedBy: sql.NullInt64{Int64: invitation.CreatedBy, Valid: invitation.CreatedBy != 0},
 			CreatedAt: toMillis(r.clk.Now()),
 		})
 
-		// The only foreign key of a new invitation is its creator.
+		// The foreign keys of a new link are its creator and the user of a reset link.
 		if isForeignKeyError(err) {
 			return store.ErrNotFound
 		}
@@ -85,6 +86,17 @@ func (r invitations) MarkUsed(ctx context.Context, id, userID int64) error {
 	})
 	if err != nil {
 		return fmt.Errorf("mark invitation %d used: %w", id, err)
+	}
+
+	return nil
+}
+
+func (r invitations) DeleteUnusedResets(ctx context.Context, userID int64) error {
+	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
+		return q.DeleteUnusedResets(ctx, sql.NullInt64{Int64: userID, Valid: true})
+	})
+	if err != nil {
+		return fmt.Errorf("delete unused reset links of user %d: %w", userID, err)
 	}
 
 	return nil

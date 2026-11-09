@@ -36,6 +36,7 @@
     "password_too_short": "Utilisez au moins 12 caractères pour le mot de passe.",
     "rate_limited": "Trop de tentatives. Patientez un instant, puis réessayez.",
     "rate_limited_wait": "Trop de tentatives. Réessayez dans {{wait}}.",
+    "reset_link_invalid": "Ce lien de réinitialisation du mot de passe n'est plus valide : il a déjà servi, il a expiré, un lien plus récent l'a remplacé ou il est incomplet. Demandez un nouveau lien à un administrateur.",
     "setup_completed": "Verve est déjà configuré. Connectez-vous avec un compte existant.",
     "setup_token_invalid": "Ce jeton de configuration n'est pas valide. Chaque démarrage de Verve écrit un nouveau lien de configuration dans son journal : utilisez le plus récent.",
     "timezone_invalid": "Verve ne connaît pas ce fuseau horaire. Saisissez un nom comme Europe/Paris.",
@@ -59,6 +60,7 @@
   },
   "login": {
     "password": "Mot de passe",
+    "passwordChanged": "Votre mot de passe a été changé. Connectez-vous avec le nouveau.",
     "passwordRequired": "Saisissez votre mot de passe.",
     "submit": "Se connecter",
     "title": "Connexion",
@@ -74,6 +76,16 @@
     "description": "La page que vous cherchez n'existe pas.",
     "home": "Retour à l'accueil",
     "title": "Page introuvable"
+  },
+  "resetPassword": {
+    "confirmation": "Confirmer le mot de passe",
+    "description": "Choisissez le nouveau mot de passe de votre compte. Toutes les sessions du compte se terminent, et vous vous reconnectez avec le nouveau mot de passe.",
+    "goToLogin": "Aller à la page de connexion",
+    "password": "Nouveau mot de passe",
+    "passwordMismatch": "Les mots de passe ne correspondent pas.",
+    "passwordRequired": "Saisissez un mot de passe.",
+    "submit": "Changer le mot de passe",
+    "title": "Réinitialiser votre mot de passe"
   },
   "setup": {
     "account": {

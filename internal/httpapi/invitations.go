@@ -120,7 +120,7 @@ func registerInvitations(api huma.API, deps APIDeps) {
 			Email:     invitation.Email,
 			Role:      string(invitation.Role),
 			ExpiresAt: invitation.ExpiresAt,
-			Link:      invitationLink(deps.PublicURL, created.Token),
+			Link:      singleUseLink(deps.PublicURL, "/invite", created.Token),
 		}}, nil
 	})
 
@@ -183,10 +183,10 @@ func registerInvitations(api huma.API, deps APIDeps) {
 	})
 }
 
-// invitationLink returns the link of an invitation with token at publicURL, or its path when
+// singleUseLink returns the link to the page at path with token at publicURL, or its path when
 // publicURL is unset. The token goes in the fragment, which never reaches a server (ADR 0010).
-func invitationLink(publicURL config.PublicURL, token string) string {
-	return publicURL.String() + "/invite#" + token
+func singleUseLink(publicURL config.PublicURL, path, token string) string {
+	return publicURL.String() + path + "#" + token
 }
 
 // invitationError returns the problem of the error of an invitation operation: 410 for an invalid

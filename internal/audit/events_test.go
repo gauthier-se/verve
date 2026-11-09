@@ -22,17 +22,17 @@ import (
 // eventsByConstructor holds an event of each constructor of the package, by the constructor's name.
 func eventsByConstructor() map[string]Event {
 	return map[string]Event{
-		"LoginFailed":       LoginFailed("alice", 7),
-		"LoginSucceeded":    LoginSucceeded(7, store.LoginPassword),
-		"Logout":            Logout(7),
-		"PasswordChanged":   PasswordChanged(7),
-		"SessionsRevoked":   SessionsRevoked(7, 1),
-		"UserCreated":       UserCreated(7, store.RoleAdmin, SourceSetup),
-		"UserInvited":       UserInvited(1, "bob", store.RoleMember),
-		"UserDisabled":      UserDisabled(1, 7),
-		"UserEnabled":       UserEnabled(1, 7),
-		"UserRoleChanged":   UserRoleChanged(1, 7, store.RoleMember, store.RoleAdmin),
-		"UserPasswordReset": UserPasswordReset(0, 7),
+		"LoginFailed":              LoginFailed("alice", 7),
+		"LoginSucceeded":           LoginSucceeded(7, store.LoginPassword),
+		"Logout":                   Logout(7),
+		"PasswordChanged":          PasswordChanged(7),
+		"SessionsRevoked":          SessionsRevoked(7, 1),
+		"UserCreated":              UserCreated(7, store.RoleAdmin, SourceSetup),
+		"UserInvited":              UserInvited(1, "bob", store.RoleMember),
+		"UserDisabled":             UserDisabled(1, 7),
+		"UserEnabled":              UserEnabled(1, 7),
+		"UserRoleChanged":          UserRoleChanged(1, 7, store.RoleMember, store.RoleAdmin),
+		"UserPasswordReset":        UserPasswordReset(0, 7),
 		"PasswordResetLinkCreated": PasswordResetLinkCreated(1, 7),
 		"PasswordResetCompleted":   PasswordResetCompleted(7),
 	}

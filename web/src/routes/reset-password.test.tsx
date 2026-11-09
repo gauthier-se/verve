@@ -106,9 +106,9 @@ describe("password reset page", () => {
     ).toBeInTheDocument();
     expect(resets).toEqual([{ token: resetToken, password: newPassword }]);
     expect(addresses).not.toHaveLength(0);
-    expect(
-      addresses.filter((address) => address.includes(resetToken)),
-    ).toEqual([]);
+    expect(addresses.filter((address) => address.includes(resetToken))).toEqual(
+      [],
+    );
   });
 
   it("given a valid link, when the new password is chosen, then the page goes to the login page, which says that the password changed", async () => {
