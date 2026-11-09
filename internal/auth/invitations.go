@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	// invitationTokenLength is the length of the token of an invitation link, in bytes: 256 bits.
-	invitationTokenLength = 32
+	// linkTokenLength is the length of the token of a single-use link, in bytes: 256 bits.
+	linkTokenLength = 32
 	// invitationLifetime is how long an invitation stays valid (FR-4 of accounts and
 	// administration).
 	invitationLifetime = 72 * time.Hour
@@ -75,7 +75,7 @@ func (i Invitations) Create(ctx context.Context, st store.Store, invitation NewI
 		}
 	}
 
-	token := randomText(invitationTokenLength)
+	token := randomText(linkTokenLength)
 
 	var created store.Invitation
 

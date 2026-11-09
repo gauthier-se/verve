@@ -78,13 +78,14 @@ func registerPasswordResets(api huma.API, deps APIDeps) {
 		Summary:     "Reset a password",
 		Description: "Replaces the password of the user of the reset link, marks the link used and revokes every " +
 			"session of the user, who then logs in with the new password. The token is in the body so that " +
-			"it never reaches a log. A used, expired or unknown link answers 410 `reset_link_invalid`. A " +
+			"it never reaches a log. A link used, expired, unknown, replaced by a newer one or of an account " +
+			"being deleted answers 410 `reset_link_invalid`. A " +
 			"password that breaks the rules answers 422 with the code of the rule: `password_too_short`, " +
 			"`password_too_long` or `password_too_common`, and the link stays valid. It needs no " +
 			"authentication.",
 		Tags:          []string{"Password reset"},
 		DefaultStatus: http.StatusNoContent,
-		MaxBodyBytes:  maxInvitationBodyBytes,
+		MaxBodyBytes:  maxLinkBodyBytes,
 		Errors:        []int{http.StatusGone, http.StatusRequestEntityTooLarge, http.StatusUnprocessableEntity},
 	}, func(ctx context.Context, in *resetPasswordInput) (*struct{}, error) {
 		if err := deps.PasswordResets.Reset(ctx, deps.Store, in.Body.Token, in.Body.Password); err != nil {

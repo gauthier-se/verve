@@ -46,7 +46,7 @@ func NewPasswordResets(clk clock.Clock, accounts Accounts, sessions Sessions) Pa
 // It returns ErrUserDeleting for an account being deleted and store.ErrNotFound for an unknown
 // user.
 func (p PasswordResets) Create(ctx context.Context, st store.Store, adminID, userID int64) (CreatedResetLink, error) {
-	token := randomText(invitationTokenLength)
+	token := randomText(linkTokenLength)
 
 	var created store.Invitation
 

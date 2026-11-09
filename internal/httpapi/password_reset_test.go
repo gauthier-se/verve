@@ -237,8 +237,9 @@ func TestPasswordReset_WeakPasswordAnswers422AndKeepsTheLink(t *testing.T) {
 // resetLinkProblem is the problem of a used, expired or unknown reset link.
 const resetLinkProblem = `{"type":"about:blank","title":"Gone","status":410,"code":"reset_link_invalid"}`
 
-// Given a token used twice, expired, unknown, empty or the one of an invitation, then POST
-// /api/v1/password-reset answers 410 reset_link_invalid and changes no password.
+// Given a token used twice, expired, unknown, empty, of an account being deleted or the one of an
+// invitation, then POST /api/v1/password-reset answers 410 reset_link_invalid and changes no
+// password.
 func TestPasswordReset_InvalidTokenAnswers410(t *testing.T) {
 	t.Parallel()
 
@@ -272,6 +273,15 @@ func TestPasswordReset_InvalidTokenAnswers410(t *testing.T) {
 		{
 			name:  "empty",
 			token: func(*testing.T, adminUsersTest, string) string { return "" },
+		},
+		{
+			name: "account being deleted",
+			token: func(t *testing.T, u adminUsersTest, valid string) string {
+				_, err := u.store.Users().SetStatus(t.Context(), u.bob.ID, store.UserDeleting)
+				require.NoError(t, err)
+
+				return valid
+			},
 		},
 		{
 			name: "invitation",

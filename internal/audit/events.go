@@ -14,19 +14,19 @@ import (
 
 // The types of the audit events.
 const (
-	TypeLoginFailed              = "auth.login_failed"
-	TypeLoginSucceeded           = "auth.login_succeeded"
-	TypeLogout                   = "auth.logout"
-	TypePasswordChanged          = "auth.password_changed"
-	TypeSessionRevoked           = "auth.session_revoked"
-	TypeUserCreated              = "user.created"
-	TypeUserInvited              = "user.invited"
-	TypeUserDisabled             = "user.disabled"
-	TypeUserEnabled              = "user.enabled"
-	TypeUserRoleChanged          = "user.role_changed"
-	TypeUserPasswordReset        = "user.password_reset"
-	TypePasswordResetLinkCreated = "user.password_reset_link_created"
-	TypePasswordResetCompleted   = "auth.password_reset_completed"
+	TypeLoginFailed                  = "auth.login_failed"
+	TypeLoginSucceeded               = "auth.login_succeeded"
+	TypeLogout                       = "auth.logout"
+	TypePasswordChanged              = "auth.password_changed"
+	TypeSessionRevoked               = "auth.session_revoked"
+	TypeUserCreated                  = "user.created"
+	TypeUserInvited                  = "user.invited"
+	TypeUserDisabled                 = "user.disabled"
+	TypeUserEnabled                  = "user.enabled"
+	TypeUserRoleChanged              = "user.role_changed"
+	TypeUserPasswordReset            = "user.password_reset"
+	TypeUserPasswordResetLinkCreated = "user.password_reset_link_created"
+	TypePasswordResetCompleted       = "auth.password_reset_completed"
 )
 
 // Event is an audit event to record, built by a constructor of this package.
@@ -217,7 +217,7 @@ type passwordResetLinkCreatedPayload struct{}
 // userID, which replaced their earlier links.
 func PasswordResetLinkCreated(adminID, userID int64) Event {
 	return Event{
-		eventType: TypePasswordResetLinkCreated,
+		eventType: TypeUserPasswordResetLinkCreated,
 		actorID:   adminID,
 		subjectID: userID,
 		payload:   passwordResetLinkCreatedPayload{},
