@@ -57,12 +57,15 @@ func NewHandler(d Deps) http.Handler {
 
 	sessions := auth.NewSessions(d.Clock)
 	hasher := cmp.Or(d.Hasher, auth.DefaultHasher())
+	policy := auth.NewPasswordPolicy()
+	logins := auth.NewLogins(sessions, hasher, auth.NewLoginLimiter(d.Clock))
 	NewAPI(mux, APIDeps{
 		Version:   d.Version,
 		Store:     d.Store,
-		Logins:    auth.NewLogins(sessions, hasher, auth.NewLoginLimiter(d.Clock)),
+		Logins:    logins,
 		Sessions:  sessions,
-		Setup:     auth.NewSetup(d.SetupToken, auth.NewAccounts(hasher, auth.NewPasswordPolicy()), sessions),
+		Passwords: auth.NewPasswords(logins, policy),
+		Setup:     auth.NewSetup(d.SetupToken, auth.NewAccounts(hasher, policy), sessions),
 		PublicURL: d.PublicURL,
 	})
 

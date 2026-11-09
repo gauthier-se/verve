@@ -54,8 +54,14 @@ type SessionsRepository interface {
 	Touch(ctx context.Context, idHash []byte, expiresAt time.Time) (Session, error)
 	// Delete removes the session of idHash, or returns ErrNotFound.
 	Delete(ctx context.Context, idHash []byte) error
-	// DeleteOthers removes the sessions of userID, except the one of keepIDHash.
-	DeleteOthers(ctx context.Context, userID int64, keepIDHash []byte) error
+	// ListByUser returns the sessions of userID, most recently seen first, or an empty list.
+	ListByUser(ctx context.Context, userID int64) ([]Session, error)
+	// DeleteByPublicID removes the session of userID whose public id is publicID, or returns
+	// ErrNotFound, also when the session is of another user.
+	DeleteByPublicID(ctx context.Context, userID int64, publicID string) error
+	// DeleteOthers removes the sessions of userID, except the one of keepIDHash, and returns how
+	// many it removed.
+	DeleteOthers(ctx context.Context, userID int64, keepIDHash []byte) (int64, error)
 	// PurgeExpired removes the sessions whose ExpiresAt is before now.
 	PurgeExpired(ctx context.Context, now time.Time) error
 }

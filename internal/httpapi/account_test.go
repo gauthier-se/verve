@@ -18,7 +18,7 @@ import (
 
 // The paths of the account operations on passwords and sessions.
 const (
-	passwordPath = "/api/v1/account/password"
+	passwordPath = "/api/v1/account/password" //nolint:gosec // G101: a path, not a credential
 	sessionsPath = "/api/v1/account/sessions"
 	mePath       = "/api/v1/auth/me"
 )

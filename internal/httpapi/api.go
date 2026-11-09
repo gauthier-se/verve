@@ -25,9 +25,11 @@ type APIDeps struct {
 	Version version.Info
 	// Store holds the data of the operations.
 	Store store.Store
-	// Logins logs users in, and Sessions deletes the session of a logout.
+	// Logins logs users in, and Sessions lists the sessions and deletes them, such as at logout.
 	Logins   *auth.Logins
 	Sessions auth.Sessions
+	// Passwords changes the password of the user of a session.
+	Passwords auth.Passwords
 	// Setup creates the first admin.
 	Setup *auth.Setup
 	// PublicURL names the session cookie that login sets and logout clears.
@@ -64,6 +66,7 @@ func NewAPI(mux *http.ServeMux, deps APIDeps) huma.API {
 	registerLoginAndLogout(api, deps)
 	registerCurrentUser(api, deps.Store)
 	registerPreferences(api, deps.Store)
+	registerAccount(api, deps)
 	registerSetup(api, deps)
 	registerAudit(api, deps.Store)
 	registerAdminJobs(api, deps.Store)

@@ -3,8 +3,8 @@
 import { type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { createFirstAdmin, getCurrentUser, getMeta, getPreferences, getSetupStatus, listAccountAuditEvents, listAdminAuditEvents, listAdminJobs, login, logout, type Options, updatePreferences } from '../sdk.gen';
-import type { CreateFirstAdminData, CreateFirstAdminError, CreateFirstAdminResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetMetaData, GetMetaError, GetMetaResponse, GetPreferencesData, GetPreferencesError, GetPreferencesResponse, GetSetupStatusData, GetSetupStatusError, GetSetupStatusResponse, ListAccountAuditEventsData, ListAccountAuditEventsError, ListAccountAuditEventsResponse, ListAdminAuditEventsData, ListAdminAuditEventsError, ListAdminAuditEventsResponse, ListAdminJobsData, ListAdminJobsError, ListAdminJobsResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutError, LogoutResponse, UpdatePreferencesData, UpdatePreferencesError, UpdatePreferencesResponse } from '../types.gen';
+import { changePassword, createFirstAdmin, getCurrentUser, getMeta, getPreferences, getSetupStatus, listAccountAuditEvents, listAdminAuditEvents, listAdminJobs, listSessions, login, logout, type Options, revokeOtherSessions, revokeSession, updatePreferences } from '../sdk.gen';
+import type { ChangePasswordData, ChangePasswordError, ChangePasswordResponse, CreateFirstAdminData, CreateFirstAdminError, CreateFirstAdminResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetMetaData, GetMetaError, GetMetaResponse, GetPreferencesData, GetPreferencesError, GetPreferencesResponse, GetSetupStatusData, GetSetupStatusError, GetSetupStatusResponse, ListAccountAuditEventsData, ListAccountAuditEventsError, ListAccountAuditEventsResponse, ListAdminAuditEventsData, ListAdminAuditEventsError, ListAdminAuditEventsResponse, ListAdminJobsData, ListAdminJobsError, ListAdminJobsResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutError, LogoutResponse, RevokeOtherSessionsData, RevokeOtherSessionsError, RevokeOtherSessionsResponse, RevokeSessionData, RevokeSessionError, RevokeSessionResponse, UpdatePreferencesData, UpdatePreferencesError, UpdatePreferencesResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -120,6 +120,25 @@ export const listAccountAuditEventsInfiniteOptions = (options?: Options<ListAcco
     return opts as Omit<typeof opts, 'initialData'>;
 };
 
+/**
+ * Change the password of the current user
+ *
+ * Changes the password and revokes every other session of the user, keeping the current one. A wrong current password answers 403 `invalid_credentials` and counts as a failed login of the user, which delays their attempts with 429 `rate_limited` as the login does. A new password that breaks the rules answers 422 with the code of the rule: `password_too_short`, `password_too_long` or `password_too_common`.
+ */
+export const changePasswordMutation = (options?: Partial<Options<ChangePasswordData>>): UseMutationOptions<ChangePasswordResponse, ChangePasswordError, Options<ChangePasswordData>> => {
+    const mutationOptions: UseMutationOptions<ChangePasswordResponse, ChangePasswordError, Options<ChangePasswordData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await changePassword({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
 export const getPreferencesQueryKey = (options?: Options<GetPreferencesData>) => createQueryKey('getPreferences', options);
 
 /**
@@ -149,6 +168,64 @@ export const updatePreferencesMutation = (options?: Partial<Options<UpdatePrefer
     const mutationOptions: UseMutationOptions<UpdatePreferencesResponse, UpdatePreferencesError, Options<UpdatePreferencesData>> = {
         mutationFn: async (fnOptions) => {
             const { data } = await updatePreferences({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Revoke the other sessions of the current user
+ *
+ * Revokes every session of the user but the current one.
+ */
+export const revokeOtherSessionsMutation = (options?: Partial<Options<RevokeOtherSessionsData>>): UseMutationOptions<RevokeOtherSessionsResponse, RevokeOtherSessionsError, Options<RevokeOtherSessionsData>> => {
+    const mutationOptions: UseMutationOptions<RevokeOtherSessionsResponse, RevokeOtherSessionsError, Options<RevokeOtherSessionsData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await revokeOtherSessions({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const listSessionsQueryKey = (options?: Options<ListSessionsData>) => createQueryKey('listSessions', options);
+
+/**
+ * List the sessions of the current user
+ *
+ * Returns the valid sessions of the user, most recently used first, the current one flagged.
+ */
+export const listSessionsOptions = (options?: Options<ListSessionsData>) => queryOptions<ListSessionsResponse, ListSessionsError, ListSessionsResponse, ReturnType<typeof listSessionsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listSessions({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listSessionsQueryKey(options)
+});
+
+/**
+ * Revoke a session of the current user
+ *
+ * Revokes the session of the user with this public id. A session of another user answers 404.
+ */
+export const revokeSessionMutation = (options?: Partial<Options<RevokeSessionData>>): UseMutationOptions<RevokeSessionResponse, RevokeSessionError, Options<RevokeSessionData>> => {
+    const mutationOptions: UseMutationOptions<RevokeSessionResponse, RevokeSessionError, Options<RevokeSessionData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await revokeSession({
                 ...options,
                 ...fnOptions,
                 throwOnError: true

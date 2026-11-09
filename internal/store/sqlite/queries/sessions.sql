@@ -28,8 +28,20 @@ DELETE
 FROM sessions
 WHERE expires_at < sqlc.arg(now);
 
--- name: DeleteOtherSessions :exec
+-- name: DeleteOtherSessions :execrows
 DELETE
 FROM sessions
 WHERE user_id = sqlc.arg(user_id)
   AND id_hash <> sqlc.arg(keep_id_hash);
+
+-- name: ListUserSessions :many
+SELECT *
+FROM sessions
+WHERE user_id = ?
+ORDER BY last_seen_at DESC, created_at DESC, public_id;
+
+-- name: DeleteUserSessionByPublicID :execrows
+DELETE
+FROM sessions
+WHERE user_id = sqlc.arg(user_id)
+  AND public_id = sqlc.arg(public_id);

@@ -149,6 +149,44 @@ func (s Sessions) Revoke(ctx context.Context, repos store.Repositories, id strin
 	return repos.Sessions().Delete(ctx, hashSessionID(id))
 }
 
+// List returns the valid sessions of the user of userID, read in repos, most recently seen first.
+// The sessions that Lookup would reject, because they expired or ended under the current instance
+// settings, are left out.
+func (s Sessions) List(ctx context.Context, repos store.Repositories, userID int64) ([]store.Session, error) {
+	all, err := repos.Sessions().ListByUser(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	lifetimes, err := lifetimesOf(ctx, repos.InstanceSettings())
+	if err != nil {
+		return nil, err
+	}
+
+	now := s.clk.Now()
+	valid := make([]store.Session, 0, len(all))
+
+	for _, session := range all {
+		if !now.After(session.ExpiresAt) && !lifetimes.ended(session, now) {
+			valid = append(valid, session)
+		}
+	}
+
+	return valid, nil
+}
+
+// RevokeByPublicID deletes the session of the user of userID whose public id is publicID, or
+// returns store.ErrNotFound, also for a session of another user.
+func (s Sessions) RevokeByPublicID(ctx context.Context, repos store.Repositories, userID int64, publicID string) error {
+	return repos.Sessions().DeleteByPublicID(ctx, userID, publicID)
+}
+
+// RevokeOthers deletes the sessions of the user of userID except the one of the identifier keep,
+// and returns how many it deleted.
+func (s Sessions) RevokeOthers(ctx context.Context, repos store.Repositories, userID int64, keep string) (int64, error) {
+	return repos.Sessions().DeleteOthers(ctx, userID, hashSessionID(keep))
+}
+
 // lifetimes are how long a session stays valid without activity, and at most after its creation.
 type lifetimes struct {
 	idle    time.Duration

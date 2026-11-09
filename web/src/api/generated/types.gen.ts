@@ -62,6 +62,17 @@ export type AuditUser = {
     username?: string;
 };
 
+export type ChangePasswordInputBody = {
+    /**
+     * The current password of the user.
+     */
+    currentPassword: string;
+    /**
+     * The new password: 12 to 128 characters, and not a common password.
+     */
+    newPassword: string;
+};
+
 export type CurrentUser = {
     /**
      * The email address, left out when the user has none.
@@ -221,6 +232,44 @@ export type Problem = {
     type: string;
 };
 
+export type Session = {
+    /**
+     * The browser that the user agent of the login names, left out when unknown. It is only a hint.
+     */
+    browser?: string;
+    /**
+     * The IP address of the client that logged in, left out when unknown.
+     */
+    clientIp?: string;
+    /**
+     * Whether this is the session of the request.
+     */
+    current: boolean;
+    /**
+     * The device that the user agent of the login names, left out when unknown. It is only a hint.
+     */
+    device?: string;
+    /**
+     * The public id of the session, which names it in DELETE /api/v1/account/sessions/{id}.
+     */
+    id: string;
+    /**
+     * When the session was last used, to the minute.
+     */
+    lastSeenAt: string;
+    /**
+     * How the user logged in.
+     */
+    method: 'password';
+};
+
+export type SessionsOutputBody = {
+    /**
+     * The sessions, most recently used first.
+     */
+    items: Array<Session>;
+};
+
 export type SetupInputBody = {
     /**
      * The password of the admin: 12 to 128 characters, and not a common password.
@@ -292,6 +341,51 @@ export type ListAccountAuditEventsResponses = {
 
 export type ListAccountAuditEventsResponse = ListAccountAuditEventsResponses[keyof ListAccountAuditEventsResponses];
 
+export type ChangePasswordData = {
+    body: ChangePasswordInputBody;
+    path?: never;
+    query?: never;
+    url: '/api/v1/account/password';
+};
+
+export type ChangePasswordErrors = {
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Forbidden
+     */
+    403: Problem;
+    /**
+     * Request Entity Too Large
+     */
+    413: Problem;
+    /**
+     * Unprocessable Entity
+     */
+    422: Problem;
+    /**
+     * Too Many Requests
+     */
+    429: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type ChangePasswordError = ChangePasswordErrors[keyof ChangePasswordErrors];
+
+export type ChangePasswordResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type ChangePasswordResponse = ChangePasswordResponses[keyof ChangePasswordResponses];
+
 export type GetPreferencesData = {
     body?: never;
     path?: never;
@@ -353,6 +447,106 @@ export type UpdatePreferencesResponses = {
 };
 
 export type UpdatePreferencesResponse = UpdatePreferencesResponses[keyof UpdatePreferencesResponses];
+
+export type RevokeOtherSessionsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/account/sessions';
+};
+
+export type RevokeOtherSessionsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type RevokeOtherSessionsError = RevokeOtherSessionsErrors[keyof RevokeOtherSessionsErrors];
+
+export type RevokeOtherSessionsResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type RevokeOtherSessionsResponse = RevokeOtherSessionsResponses[keyof RevokeOtherSessionsResponses];
+
+export type ListSessionsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/account/sessions';
+};
+
+export type ListSessionsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type ListSessionsError = ListSessionsErrors[keyof ListSessionsErrors];
+
+export type ListSessionsResponses = {
+    /**
+     * OK
+     */
+    200: SessionsOutputBody;
+};
+
+export type ListSessionsResponse = ListSessionsResponses[keyof ListSessionsResponses];
+
+export type RevokeSessionData = {
+    body?: never;
+    path: {
+        /**
+         * The public id of the session.
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/account/sessions/{id}';
+};
+
+export type RevokeSessionErrors = {
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Not Found
+     */
+    404: Problem;
+    /**
+     * Unprocessable Entity
+     */
+    422: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type RevokeSessionError = RevokeSessionErrors[keyof RevokeSessionErrors];
+
+export type RevokeSessionResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type RevokeSessionResponse = RevokeSessionResponses[keyof RevokeSessionResponses];
 
 export type ListAdminAuditEventsData = {
     body?: never;

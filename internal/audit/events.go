@@ -14,10 +14,12 @@ import (
 
 // The types of the audit events.
 const (
-	TypeLoginFailed    = "auth.login_failed"
-	TypeLoginSucceeded = "auth.login_succeeded"
-	TypeLogout         = "auth.logout"
-	TypeUserCreated    = "user.created"
+	TypeLoginFailed     = "auth.login_failed"
+	TypeLoginSucceeded  = "auth.login_succeeded"
+	TypeLogout          = "auth.logout"
+	TypePasswordChanged = "auth.password_changed"
+	TypeSessionRevoked  = "auth.session_revoked"
+	TypeUserCreated     = "user.created"
 )
 
 // Event is an audit event to record, built by a constructor of this package.
@@ -75,6 +77,32 @@ func Logout(userID int64) Event {
 		eventType: TypeLogout,
 		actorID:   userID,
 		payload:   logoutPayload{},
+	}
+}
+
+type passwordChangedPayload struct{}
+
+// PasswordChanged is the user of userID changing their password, which revoked their other
+// sessions.
+func PasswordChanged(userID int64) Event {
+	return Event{
+		eventType: TypePasswordChanged,
+		actorID:   userID,
+		payload:   passwordChangedPayload{},
+	}
+}
+
+type sessionsRevokedPayload struct {
+	Revoked int64 `json:"revoked"`
+}
+
+// SessionsRevoked is the user of userID revoking revoked of their sessions at once: one from the
+// sessions page, or all but the current one.
+func SessionsRevoked(userID, revoked int64) Event {
+	return Event{
+		eventType: TypeSessionRevoked,
+		actorID:   userID,
+		payload:   sessionsRevokedPayload{Revoked: revoked},
 	}
 }
 

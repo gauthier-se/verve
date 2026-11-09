@@ -55,7 +55,7 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 	return i, err
 }
 
-const deleteOtherSessions = `-- name: DeleteOtherSessions :exec
+const deleteOtherSessions = `-- name: DeleteOtherSessions :execrows
 DELETE
 FROM sessions
 WHERE user_id = ?1
@@ -67,9 +67,12 @@ type DeleteOtherSessionsParams struct {
 	KeepIDHash []byte
 }
 
-func (q *Queries) DeleteOtherSessions(ctx context.Context, arg DeleteOtherSessionsParams) error {
-	_, err := q.db.ExecContext(ctx, deleteOtherSessions, arg.UserID, arg.KeepIDHash)
-	return err
+func (q *Queries) DeleteOtherSessions(ctx context.Context, arg DeleteOtherSessionsParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteOtherSessions, arg.UserID, arg.KeepIDHash)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const deleteSession = `-- name: DeleteSession :execrows
@@ -80,6 +83,26 @@ WHERE id_hash = ?
 
 func (q *Queries) DeleteSession(ctx context.Context, idHash []byte) (int64, error) {
 	result, err := q.db.ExecContext(ctx, deleteSession, idHash)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const deleteUserSessionByPublicID = `-- name: DeleteUserSessionByPublicID :execrows
+DELETE
+FROM sessions
+WHERE user_id = ?1
+  AND public_id = ?2
+`
+
+type DeleteUserSessionByPublicIDParams struct {
+	UserID   int64
+	PublicID string
+}
+
+func (q *Queries) DeleteUserSessionByPublicID(ctx context.Context, arg DeleteUserSessionByPublicIDParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteUserSessionByPublicID, arg.UserID, arg.PublicID)
 	if err != nil {
 		return 0, err
 	}
@@ -123,6 +146,46 @@ func (q *Queries) GetSession(ctx context.Context, idHash []byte) (GetSessionRow,
 		&i.User.LastLoginAt,
 	)
 	return i, err
+}
+
+const listUserSessions = `-- name: ListUserSessions :many
+SELECT id_hash, public_id, user_id, method, created_at, last_seen_at, expires_at, client_ip, user_agent
+FROM sessions
+WHERE user_id = ?
+ORDER BY last_seen_at DESC, created_at DESC, public_id
+`
+
+func (q *Queries) ListUserSessions(ctx context.Context, userID int64) ([]Session, error) {
+	rows, err := q.db.QueryContext(ctx, listUserSessions, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Session
+	for rows.Next() {
+		var i Session
+		if err := rows.Scan(
+			&i.IDHash,
+			&i.PublicID,
+			&i.UserID,
+			&i.Method,
+			&i.CreatedAt,
+			&i.LastSeenAt,
+			&i.ExpiresAt,
+			&i.ClientIp,
+			&i.UserAgent,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const purgeExpiredSessions = `-- name: PurgeExpiredSessions :exec
