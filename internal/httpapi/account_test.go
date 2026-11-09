@@ -278,6 +278,7 @@ func TestRevokeSession_RevokesASessionOfTheUserOnly(t *testing.T) {
 
 	require.Equal(t, http.StatusNoContent, rec.Code, rec.Body.String())
 	require.Empty(t, rec.Body.String())
+	require.Empty(t, rec.Header().Values("Set-Cookie"))
 	requireRevoked(t, a.handler, laptop)
 	requireAuthenticates(t, a.handler, a.aliceCookie, tablet)
 
@@ -287,6 +288,22 @@ func TestRevokeSession_RevokesASessionOfTheUserOnly(t *testing.T) {
 	}
 
 	requireAuthenticates(t, a.handler, bobLaptop, a.bobCookie)
+}
+
+// Given DELETE /api/v1/account/sessions/{id} on the session of the request, then it is revoked, and
+// the answer clears the session cookie, as a logout does. The other sessions are kept.
+func TestRevokeSession_CurrentSessionClearsTheCookie(t *testing.T) {
+	t.Parallel()
+
+	a := newAccountTest(t)
+	current, session := a.mustCreateSessionFrom(t, a.alice, "203.0.113.7", iPhoneSafari)
+
+	rec := accountRequest(t, a.handler, http.MethodDelete, sessionsPath+"/"+session.PublicID, "", current)
+
+	require.Equal(t, http.StatusNoContent, rec.Code, rec.Body.String())
+	require.Equal(t, []string{"verve_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"}, rec.Header().Values("Set-Cookie"))
+	requireRevoked(t, a.handler, current)
+	requireAuthenticates(t, a.handler, a.aliceCookie)
 }
 
 // Given DELETE /api/v1/account/sessions, then it answers 204 and every session of the user but the
