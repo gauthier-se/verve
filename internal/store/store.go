@@ -26,6 +26,7 @@ type Repositories interface {
 	Users() UsersRepository
 	Sessions() SessionsRepository
 	Preferences() PreferencesRepository
+	Invitations() InvitationsRepository
 
 	// AfterCommit calls fn once the writes made through these repositories are committed: at once
 	// outside WithTx, where each write is committed when it returns, and after the commit inside

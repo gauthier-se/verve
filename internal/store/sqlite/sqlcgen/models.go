@@ -28,6 +28,20 @@ type InstanceSetting struct {
 	UpdatedAt int64
 }
 
+type Invitation struct {
+	ID        int64
+	Kind      string
+	TokenHash []byte
+	Username  sql.NullString
+	Email     sql.NullString
+	Role      sql.NullString
+	UserID    sql.NullInt64
+	ExpiresAt int64
+	UsedAt    sql.NullInt64
+	CreatedBy sql.NullInt64
+	CreatedAt int64
+}
+
 type Job struct {
 	ID              int64
 	Kind            string

@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, CreateFirstAdminData, CreateFirstAdminErrors, CreateFirstAdminResponses, GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetMetaData, GetMetaErrors, GetMetaResponses, GetPreferencesData, GetPreferencesErrors, GetPreferencesResponses, GetSetupStatusData, GetSetupStatusErrors, GetSetupStatusResponses, ListAccountAuditEventsData, ListAccountAuditEventsErrors, ListAccountAuditEventsResponses, ListAdminAuditEventsData, ListAdminAuditEventsErrors, ListAdminAuditEventsResponses, ListAdminJobsData, ListAdminJobsErrors, ListAdminJobsResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutErrors, LogoutResponses, RevokeOtherSessionsData, RevokeOtherSessionsErrors, RevokeOtherSessionsResponses, RevokeSessionData, RevokeSessionErrors, RevokeSessionResponses, UpdatePreferencesData, UpdatePreferencesErrors, UpdatePreferencesResponses } from './types.gen';
+import type { AcceptInvitationData, AcceptInvitationErrors, AcceptInvitationResponses, ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, CreateFirstAdminData, CreateFirstAdminErrors, CreateFirstAdminResponses, CreateInvitationData, CreateInvitationErrors, CreateInvitationResponses, GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetMetaData, GetMetaErrors, GetMetaResponses, GetPreferencesData, GetPreferencesErrors, GetPreferencesResponses, GetSetupStatusData, GetSetupStatusErrors, GetSetupStatusResponses, InspectInvitationData, InspectInvitationErrors, InspectInvitationResponses, ListAccountAuditEventsData, ListAccountAuditEventsErrors, ListAccountAuditEventsResponses, ListAdminAuditEventsData, ListAdminAuditEventsErrors, ListAdminAuditEventsResponses, ListAdminJobsData, ListAdminJobsErrors, ListAdminJobsResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutErrors, LogoutResponses, RevokeOtherSessionsData, RevokeOtherSessionsErrors, RevokeOtherSessionsResponses, RevokeSessionData, RevokeSessionErrors, RevokeSessionResponses, UpdatePreferencesData, UpdatePreferencesErrors, UpdatePreferencesResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -147,6 +147,25 @@ export const listAdminAuditEvents = <ThrowOnError extends boolean = false>(optio
 });
 
 /**
+ * Invite a user
+ *
+ * Creates an invitation valid 72 hours and answers its single-use link, once: only the hash of its token is stored. A username or email that a user has, ignoring case, answers 409 `username_taken` or `email_taken`. A username or email that breaks the rules answers 422 `username_invalid` or `email_invalid`.
+ */
+export const createInvitation = <ThrowOnError extends boolean = false>(options: Options<CreateInvitationData, ThrowOnError>): RequestResult<CreateInvitationResponses, CreateInvitationErrors, ThrowOnError> => (options.client ?? client).post<CreateInvitationResponses, CreateInvitationErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'verve_session',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/admin/invitations',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
  * List the finished jobs
  *
  * Returns the background jobs of a finished status, newest first by the time they ended, for an admin. Their payloads are never returned.
@@ -195,6 +214,34 @@ export const getCurrentUser = <ThrowOnError extends boolean = false>(options?: O
         }],
     url: '/api/v1/auth/me',
     ...options
+});
+
+/**
+ * Accept an invitation
+ *
+ * Creates the account of the invitation with the password, marks the invitation used, opens the session and sets the session cookie. A used, expired or unknown invitation answers 410 `invitation_invalid`. A password that breaks the rules answers 422 with the code of the rule: `password_too_short`, `password_too_long` or `password_too_common`, and the invitation stays valid. A username or email that a user took since the invitation answers 409 `username_taken` or `email_taken`. It needs no authentication.
+ */
+export const acceptInvitation = <ThrowOnError extends boolean = false>(options: Options<AcceptInvitationData, ThrowOnError>): RequestResult<AcceptInvitationResponses, AcceptInvitationErrors, ThrowOnError> => (options.client ?? client).post<AcceptInvitationResponses, AcceptInvitationErrors, ThrowOnError>({
+    url: '/api/v1/invitations/accept',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Inspect an invitation
+ *
+ * Returns the username and the expiry of the invitation of the token, which the body carries so that it never reaches a log. A used, expired or unknown invitation answers 410 `invitation_invalid`. It needs no authentication.
+ */
+export const inspectInvitation = <ThrowOnError extends boolean = false>(options: Options<InspectInvitationData, ThrowOnError>): RequestResult<InspectInvitationResponses, InspectInvitationErrors, ThrowOnError> => (options.client ?? client).post<InspectInvitationResponses, InspectInvitationErrors, ThrowOnError>({
+    url: '/api/v1/invitations/inspect',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
 });
 
 /**

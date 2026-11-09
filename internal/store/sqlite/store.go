@@ -81,6 +81,10 @@ func (r repositories) Preferences() store.PreferencesRepository {
 	return preferences(r)
 }
 
+func (r repositories) Invitations() store.InvitationsRepository {
+	return invitations(r)
+}
+
 func (r repositories) AfterCommit(fn func()) {
 	r.q.afterCommit(fn)
 }

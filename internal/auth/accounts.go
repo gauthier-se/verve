@@ -10,6 +10,8 @@ import (
 // NewAccount describes an account to create, which logs in with a password.
 type NewAccount struct {
 	Username string
+	// Email is empty for none. The store requires an @ in it.
+	Email    string
 	Password string
 	Role     store.UserRole
 }
@@ -61,6 +63,7 @@ func (a Accounts) checkAndHash(account NewAccount) (store.NewUser, error) {
 
 	return store.NewUser{
 		Username:     account.Username,
+		Email:        account.Email,
 		PasswordHash: a.hasher.Hash(account.Password),
 		Role:         account.Role,
 	}, nil

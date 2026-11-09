@@ -1,6 +1,24 @@
 {
   "components": {
     "schemas": {
+      "AcceptInvitationInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "password": {
+            "description": "The password of the new account: 12 to 128 characters, and not a common password.",
+            "type": "string"
+          },
+          "token": {
+            "description": "The token of the invitation, from the fragment of its link.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "password"
+        ],
+        "type": "object"
+      },
       "AuditEvent": {
         "additionalProperties": false,
         "properties": {
@@ -122,6 +140,38 @@
         ],
         "type": "object"
       },
+      "CreateInvitationInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "description": "The email of the account, optional. It holds an @.",
+            "examples": [
+              "bob@example.com"
+            ],
+            "type": "string"
+          },
+          "role": {
+            "description": "The role of the account.",
+            "enum": [
+              "admin",
+              "member"
+            ],
+            "type": "string"
+          },
+          "username": {
+            "description": "The username of the account to create: 1 to 64 characters, without @, whitespace, control or invisible characters.",
+            "examples": [
+              "bob"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "role"
+        ],
+        "type": "object"
+      },
       "CurrentUser": {
         "additionalProperties": false,
         "properties": {
@@ -192,6 +242,90 @@
             "description": "The value at the given location"
           }
         },
+        "type": "object"
+      },
+      "InspectInvitationInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "token": {
+            "description": "The token of the invitation, from the fragment of its link.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "type": "object"
+      },
+      "Invitation": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "description": "The email of the account, left out when there is none.",
+            "examples": [
+              "bob@example.com"
+            ],
+            "type": "string"
+          },
+          "expiresAt": {
+            "description": "When the invitation stops being valid, 72 hours after its creation.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "description": "The id of the invitation.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "link": {
+            "description": "The single-use link to send to the invitee, answered once: \u003cVERVE_PUBLIC_URL\u003e/invite#\u003ctoken\u003e, or /invite#\u003ctoken\u003e to append to the origin of the client when the public URL is not set.",
+            "type": "string"
+          },
+          "role": {
+            "description": "The role of the account.",
+            "enum": [
+              "admin",
+              "member"
+            ],
+            "type": "string"
+          },
+          "username": {
+            "description": "The username of the account that the invitation creates.",
+            "examples": [
+              "bob"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "role",
+          "expiresAt",
+          "link"
+        ],
+        "type": "object"
+      },
+      "InvitationDetails": {
+        "additionalProperties": false,
+        "properties": {
+          "expiresAt": {
+            "description": "When the invitation stops being valid.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "username": {
+            "description": "The username of the account that the invitation creates.",
+            "examples": [
+              "bob"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "expiresAt"
+        ],
         "type": "object"
       },
       "Job": {
@@ -1165,6 +1299,103 @@
         ]
       }
     },
+    "/api/v1/admin/invitations": {
+      "post": {
+        "description": "Creates an invitation valid 72 hours and answers its single-use link, once: only the hash of its token is stored. A username or email that a user has, ignoring case, answers 409 `username_taken` or `email_taken`. A username or email that breaks the rules answers 422 `username_invalid` or `email_invalid`.",
+        "operationId": "create-invitation",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateInvitationInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Invitation"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Invite a user",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
     "/api/v1/admin/jobs": {
       "get": {
         "description": "Returns the background jobs of a finished status, newest first by the time they ended, for an admin. Their payloads are never returned.",
@@ -1443,6 +1674,168 @@
         "summary": "Get the current user",
         "tags": [
           "Auth"
+        ]
+      }
+    },
+    "/api/v1/invitations/accept": {
+      "post": {
+        "description": "Creates the account of the invitation with the password, marks the invitation used, opens the session and sets the session cookie. A used, expired or unknown invitation answers 410 `invitation_invalid`. A password that breaks the rules answers 422 with the code of the rule: `password_too_short`, `password_too_long` or `password_too_common`, and the invitation stays valid. A username or email that a user took since the invitation answers 409 `username_taken` or `email_taken`. It needs no authentication.",
+        "operationId": "accept-invitation",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptInvitationInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentUser"
+                }
+              }
+            },
+            "description": "Created",
+            "headers": {
+              "Set-Cookie": {
+                "schema": {
+                  "description": "The session cookie.",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "410": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Accept an invitation",
+        "tags": [
+          "Invitations"
+        ]
+      }
+    },
+    "/api/v1/invitations/inspect": {
+      "post": {
+        "description": "Returns the username and the expiry of the invitation of the token, which the body carries so that it never reaches a log. A used, expired or unknown invitation answers 410 `invitation_invalid`. It needs no authentication.",
+        "operationId": "inspect-invitation",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InspectInvitationInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationDetails"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "410": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Inspect an invitation",
+        "tags": [
+          "Invitations"
         ]
       }
     },
