@@ -169,6 +169,7 @@ func TestChangePassword_WrongCurrentPasswordIsForbiddenAndRateLimited(t *testing
 	}
 
 	requireRateLimited(t, changePassword(t, a.handler, alicePassword, newPassword, a.aliceCookie), "1")
+	requireRateLimited(t, changePassword(t, a.handler, alicePassword, "short", a.aliceCookie), "1")
 	requireRateLimited(t, loginAt(t, a.handler, laptopAddr, "alice", alicePassword), "1")
 
 	requireAuthenticates(t, a.handler, a.aliceCookie, laptop)

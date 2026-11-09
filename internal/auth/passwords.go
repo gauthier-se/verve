@@ -42,10 +42,6 @@ func NewPasswords(logins *Logins, policy PasswordPolicy) Passwords {
 // username, a *RateLimitedError while the username or the client IP is delayed, and
 // store.ErrNotFound for a user who no longer exists.
 func (p Passwords) Change(ctx context.Context, st store.Store, change PasswordChange) error {
-	if err := p.policy.Check(change.New); err != nil {
-		return err
-	}
-
 	ip := audit.MetaFrom(ctx).IP
 
 	username, err := p.attempt(ctx, st, change, ip)
@@ -64,7 +60,8 @@ func (p Passwords) Change(ctx context.Context, st store.Store, change PasswordCh
 	var limited *RateLimitedError
 
 	switch {
-	case err == nil, errors.Is(err, ErrInvalidCredentials), errors.As(err, &limited):
+	case err == nil, errors.Is(err, ErrInvalidCredentials), errors.As(err, &limited),
+		errors.Is(err, ErrPasswordTooShort), errors.Is(err, ErrPasswordTooLong), errors.Is(err, ErrPasswordTooCommon):
 		return err
 	default:
 		return fmt.Errorf("change password of user %d: %w", change.UserID, err)
@@ -81,6 +78,11 @@ func (p Passwords) attempt(ctx context.Context, st store.Store, change PasswordC
 	}
 
 	if err := p.logins.checkLimit(user.Username, ip); err != nil {
+		return user.Username, err
+	}
+
+	// After the limit, so that a delayed user learns nothing more from a weak new password.
+	if err := p.policy.Check(change.New); err != nil {
 		return user.Username, err
 	}
 
