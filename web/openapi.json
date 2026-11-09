@@ -936,7 +936,7 @@
     },
     "/api/v1/account/sessions/{id}": {
       "delete": {
-        "description": "Revokes the session of the user with this public id. A session of another user answers 404.",
+        "description": "Revokes the session of the user with this public id. A session of another user answers 404. Revoking the session of the request also clears the session cookie, as a logout does.",
         "operationId": "revoke-session",
         "parameters": [
           {
@@ -952,7 +952,15 @@
         ],
         "responses": {
           "204": {
-            "description": "No Content"
+            "description": "No Content",
+            "headers": {
+              "Set-Cookie": {
+                "schema": {
+                  "description": "The session cookie, cleared, when the session revoked is the one of the request.",
+                  "type": "string"
+                }
+              }
+            }
           },
           "401": {
             "content": {

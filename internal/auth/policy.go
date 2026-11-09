@@ -25,6 +25,11 @@ var (
 	ErrUsernameInvalid   = errors.New("username_invalid")
 )
 
+// IsPasswordPolicyError reports whether err is the error of a rule of the password policy.
+func IsPasswordPolicyError(err error) bool {
+	return errors.Is(err, ErrPasswordTooShort) || errors.Is(err, ErrPasswordTooLong) || errors.Is(err, ErrPasswordTooCommon)
+}
+
 //go:embed common-passwords.txt
 var commonPasswordsFile string
 

@@ -50,6 +50,12 @@ type revokeSessionInput struct {
 	ID string `path:"id" doc:"The public id of the session."`
 }
 
+// revokeSessionOutput is the response of DELETE /api/v1/account/sessions/{id}.
+type revokeSessionOutput struct {
+	// SetCookie is empty, and left out, unless the session revoked is the one of the request.
+	SetCookie string `header:"Set-Cookie" doc:"The session cookie, cleared, when the session revoked is the one of the request."`
+}
+
 // registerAccount registers the operations on the password and the sessions of the user of the
 // session: POST /api/v1/account/password, which changes the password with deps.Passwords, and GET
 // and DELETE /api/v1/account/sessions, which list and revoke the sessions with deps.Sessions, all
@@ -124,16 +130,17 @@ func registerAccount(api huma.API, deps APIDeps) {
 	})
 
 	huma.Register(api, huma.Operation{
-		OperationID:   "revoke-session",
-		Method:        http.MethodDelete,
-		Path:          "/api/v1/account/sessions/{id}",
-		Summary:       "Revoke a session of the current user",
-		Description:   "Revokes the session of the user with this public id. A session of another user answers 404.",
+		OperationID: "revoke-session",
+		Method:      http.MethodDelete,
+		Path:        "/api/v1/account/sessions/{id}",
+		Summary:     "Revoke a session of the current user",
+		Description: "Revokes the session of the user with this public id. A session of another user answers 404. " +
+			"Revoking the session of the request also clears the session cookie, as a logout does.",
 		Tags:          []string{"Account"},
 		Security:      sessionSecurity(),
 		DefaultStatus: http.StatusNoContent,
 		Errors:        []int{http.StatusUnauthorized, http.StatusNotFound},
-	}, func(ctx context.Context, in *revokeSessionInput) (*struct{}, error) {
+	}, func(ctx context.Context, in *revokeSessionInput) (*revokeSessionOutput, error) {
 		principal, err := requireUser(ctx)
 		if err != nil {
 			return nil, err
@@ -154,7 +161,12 @@ func registerAccount(api huma.API, deps APIDeps) {
 			return nil, fmt.Errorf("revoke session: %w", err)
 		}
 
-		return &struct{}{}, nil
+		out := &revokeSessionOutput{}
+		if in.ID == sessionPublicIDFrom(ctx) {
+			out.SetCookie = clearedSessionCookie(deps.PublicURL).String()
+		}
+
+		return out, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -198,16 +210,10 @@ func changePasswordError(err error) error {
 
 	switch {
 	case errors.Is(err, auth.ErrInvalidCredentials):
-		return &Problem{
-			Type:   "about:blank",
-			Title:  http.StatusText(http.StatusForbidden),
-			Status: http.StatusForbidden,
-			Code:   "invalid_credentials",
-		}
+		return invalidCredentials(http.StatusForbidden)
 	case errors.As(err, &limited):
 		return loginError(err)
-	case errors.Is(err, auth.ErrPasswordTooShort), errors.Is(err, auth.ErrPasswordTooLong),
-		errors.Is(err, auth.ErrPasswordTooCommon):
+	case auth.IsPasswordPolicyError(err):
 		return codedProblem(http.StatusUnprocessableEntity, err)
 	case errors.Is(err, store.ErrNotFound):
 		return huma.NewError(http.StatusUnauthorized, "")

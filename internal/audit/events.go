@@ -96,8 +96,8 @@ type sessionsRevokedPayload struct {
 	Revoked int64 `json:"revoked"`
 }
 
-// SessionsRevoked is the user of userID revoking revoked of their sessions at once: one from the
-// sessions page, or all but the current one.
+// SessionsRevoked is the user of userID revoking some of their sessions at once, revoked being how
+// many: one from the sessions page, or all but the current one. Its type is TypeSessionRevoked.
 func SessionsRevoked(userID, revoked int64) Event {
 	return Event{
 		eventType: TypeSessionRevoked,

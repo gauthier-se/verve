@@ -220,7 +220,7 @@ export const listSessionsOptions = (options?: Options<ListSessionsData>) => quer
 /**
  * Revoke a session of the current user
  *
- * Revokes the session of the user with this public id. A session of another user answers 404.
+ * Revokes the session of the user with this public id. A session of another user answers 404. Revoking the session of the request also clears the session cookie, as a logout does.
  */
 export const revokeSessionMutation = (options?: Partial<Options<RevokeSessionData>>): UseMutationOptions<RevokeSessionResponse, RevokeSessionError, Options<RevokeSessionData>> => {
     const mutationOptions: UseMutationOptions<RevokeSessionResponse, RevokeSessionError, Options<RevokeSessionData>> = {

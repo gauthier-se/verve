@@ -60,8 +60,7 @@ func (p Passwords) Change(ctx context.Context, st store.Store, change PasswordCh
 	var limited *RateLimitedError
 
 	switch {
-	case err == nil, errors.Is(err, ErrInvalidCredentials), errors.As(err, &limited),
-		errors.Is(err, ErrPasswordTooShort), errors.Is(err, ErrPasswordTooLong), errors.Is(err, ErrPasswordTooCommon):
+	case err == nil, errors.Is(err, ErrInvalidCredentials), errors.As(err, &limited), IsPasswordPolicyError(err):
 		return err
 	default:
 		return fmt.Errorf("change password of user %d: %w", change.UserID, err)
@@ -97,7 +96,7 @@ func (p Passwords) attempt(ctx context.Context, st store.Store, change PasswordC
 			return err
 		}
 
-		if current.PasswordHash != user.PasswordHash || current.Status != store.UserActive {
+		if changedSince(current, user) {
 			return errUserChanged
 		}
 
@@ -122,35 +121,38 @@ func (p Passwords) attempt(ctx context.Context, st store.Store, change PasswordC
 func (p Passwords) verifyAndHash(ctx context.Context, user store.User, change PasswordChange, ip netip.Addr) (string, error) {
 	l := p.logins
 
-	select {
-	case l.hashing <- struct{}{}:
-	case <-ctx.Done():
-		return "", fmt.Errorf("wait for a hashing slot: %w", context.Cause(ctx))
-	}
+	var hash string
 
-	defer func() { <-l.hashing }()
+	err := l.inHashingSlot(ctx, user.Username, ip, func() error {
+		ok, err := p.verifyCurrent(user, change.Current)
+		if err != nil {
+			return err
+		}
 
-	// The failures of other attempts may have reached the limit while this one waited.
-	if err := l.checkLimit(user.Username, ip); err != nil {
-		return "", err
-	}
+		if !ok {
+			l.limiter.Fail(user.Username, ip)
 
+			return ErrInvalidCredentials
+		}
+
+		hash = l.hasher.Hash(change.New)
+
+		return nil
+	})
+
+	return hash, err
+}
+
+// verifyCurrent reports whether current is the password of user, false for a user without one.
+func (p Passwords) verifyCurrent(user store.User, current string) (bool, error) {
 	if user.PasswordHash == "" {
-		l.limiter.Fail(user.Username, ip)
-
-		return "", ErrInvalidCredentials
+		return false, nil
 	}
 
-	ok, err := l.hasher.Verify(user.PasswordHash, change.Current)
+	ok, err := p.logins.hasher.Verify(user.PasswordHash, current)
 	if err != nil {
-		return "", fmt.Errorf("verify password of user %d: %w", user.ID, err)
+		return false, fmt.Errorf("verify password of user %d: %w", user.ID, err)
 	}
 
-	if !ok {
-		l.limiter.Fail(user.Username, ip)
-
-		return "", ErrInvalidCredentials
-	}
-
-	return l.hasher.Hash(change.New), nil
+	return ok, nil
 }

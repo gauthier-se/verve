@@ -119,7 +119,7 @@ export const listSessions = <ThrowOnError extends boolean = false>(options?: Opt
 /**
  * Revoke a session of the current user
  *
- * Revokes the session of the user with this public id. A session of another user answers 404.
+ * Revokes the session of the user with this public id. A session of another user answers 404. Revoking the session of the request also clears the session cookie, as a logout does.
  */
 export const revokeSession = <ThrowOnError extends boolean = false>(options: Options<RevokeSessionData, ThrowOnError>): RequestResult<RevokeSessionResponses, RevokeSessionErrors, ThrowOnError> => (options.client ?? client).delete<RevokeSessionResponses, RevokeSessionErrors, ThrowOnError>({
     security: [{

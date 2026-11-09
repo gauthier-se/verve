@@ -43,14 +43,14 @@ func (u editedGetUsers) Get(ctx context.Context, id int64) (store.User, error) {
 	return user, err
 }
 
-// changePassword changes the password of user from current to newPassword through st, from the
-// phone.
-func (lt loginTest) changePassword(ctx context.Context, st store.Store, user store.User, current string) error {
+// changePassword changes the password of user from alicePassword to newPassword through st, from
+// the phone.
+func (lt loginTest) changePassword(ctx context.Context, st store.Store, user store.User) error {
 	ctx = audit.WithMeta(ctx, audit.Meta{IP: phoneIP, UserAgent: "Mozilla/5.0 (iPhone)"})
 
 	return NewPasswords(lt.logins, NewPasswordPolicy()).Change(ctx, st, PasswordChange{
 		UserID:  user.ID,
-		Current: current,
+		Current: alicePassword,
 		New:     newPassword,
 	})
 }
@@ -65,7 +65,7 @@ func TestPasswords_PasswordChangedSinceItsVerificationFails(t *testing.T) {
 	alice := lt.mustCreateUser(t, "alice", currentHash("a new password, changed meanwhile"))
 	st := &editedGets{Store: lt.store, edit: func(u *store.User) { u.PasswordHash = currentHash(alicePassword) }}
 
-	require.ErrorIs(t, lt.changePassword(t.Context(), st, alice, alicePassword), ErrInvalidCredentials)
+	require.ErrorIs(t, lt.changePassword(t.Context(), st, alice), ErrInvalidCredentials)
 
 	stored, err := lt.store.Users().Get(t.Context(), alice.ID)
 	require.NoError(t, err)
@@ -84,7 +84,7 @@ func TestPasswords_HashUpgradedByAConcurrentLoginIsVerifiedAgain(t *testing.T) {
 	alice := lt.mustCreateUser(t, "alice", currentHash(alicePassword))
 	st := &editedGets{Store: lt.store, edit: func(u *store.User) { u.PasswordHash = aliceOutdatedHash }}
 
-	require.NoError(t, lt.changePassword(t.Context(), st, alice, alicePassword))
+	require.NoError(t, lt.changePassword(t.Context(), st, alice))
 
 	stored, err := lt.store.Users().Get(t.Context(), alice.ID)
 	require.NoError(t, err)
@@ -102,11 +102,11 @@ func TestPasswords_UserWithoutPasswordFails(t *testing.T) {
 	alice := lt.mustCreateUser(t, "alice", "")
 
 	for range 5 {
-		require.ErrorIs(t, lt.changePassword(t.Context(), lt.store, alice, alicePassword), ErrInvalidCredentials)
+		require.ErrorIs(t, lt.changePassword(t.Context(), lt.store, alice), ErrInvalidCredentials)
 	}
 
 	var limited *RateLimitedError
-	require.ErrorAs(t, lt.changePassword(t.Context(), lt.store, alice, alicePassword), &limited)
+	require.ErrorAs(t, lt.changePassword(t.Context(), lt.store, alice), &limited)
 
 	require.Empty(t, lt.hasher.recorded().verifiedHashes)
 
