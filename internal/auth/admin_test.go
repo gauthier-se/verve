@@ -296,7 +296,7 @@ func TestAdmin_ResetPasswordReplacesItAndRevokesTheSessions(t *testing.T) {
 	_, err = at.login(t.Context(), phoneIP, "bob", newPassword)
 	require.NoError(t, err)
 
-	events := at.eventsOfType(t, audit.TypePasswordReset)
+	events := at.eventsOfType(t, audit.TypeUserPasswordReset)
 	require.Len(t, events, 1)
 	require.Zero(t, events[0].ActorID)
 	require.Equal(t, bob.ID, events[0].SubjectID)
@@ -315,7 +315,7 @@ func TestAdmin_ResetPasswordChecksThePolicy(t *testing.T) {
 	require.ErrorIs(t, err, ErrPasswordTooShort)
 
 	at.requireSessionCount(t, bob, 1)
-	require.Empty(t, at.eventsOfType(t, audit.TypePasswordReset))
+	require.Empty(t, at.eventsOfType(t, audit.TypeUserPasswordReset))
 
 	err = at.admin.ResetPassword(t.Context(), at.store, PasswordReset{UserID: 42, Password: newPassword})
 	require.ErrorIs(t, err, store.ErrNotFound)

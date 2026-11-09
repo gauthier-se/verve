@@ -468,7 +468,7 @@ func TestUserResetPassword_ReplacesThePasswordAndRevokesTheSessions(t *testing.T
 			require.NoError(t, err)
 			require.True(t, ok, "the user must have the new password")
 
-			requireSystemEvent(t, dataDir, audit.TypePasswordReset, bob)
+			requireSystemEvent(t, dataDir, audit.TypeUserPasswordReset, bob)
 		})
 	}
 }

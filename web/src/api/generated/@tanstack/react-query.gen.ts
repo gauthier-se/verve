@@ -414,7 +414,7 @@ export const listAdminUsersInfiniteOptions = (options?: Options<ListAdminUsersDa
 /**
  * Change the role of a user
  *
- * Sets the role of the user and returns the user. A change revokes every session of the user, so that they log in again with a new session. Demoting the last active admin answers 409 `last_admin`.
+ * Sets the role of the user and returns the user. A change revokes every session of the user, so that they log in again with a new session. Demoting the last active admin answers 409 `last_admin`, and a change of an account being deleted 409 `user_deleting`.
  */
 export const setUserRoleMutation = (options?: Partial<Options<SetUserRoleData>>): UseMutationOptions<SetUserRoleResponse, SetUserRoleError, Options<SetUserRoleData>> => {
     const mutationOptions: UseMutationOptions<SetUserRoleResponse, SetUserRoleError, Options<SetUserRoleData>> = {
@@ -433,7 +433,7 @@ export const setUserRoleMutation = (options?: Partial<Options<SetUserRoleData>>)
 /**
  * Enable or disable a user
  *
- * Sets the status of the user and returns the user. Disabling revokes every session of the user at once, and their logins fail until they are active again. Disabling the last active admin answers 409 `last_admin`.
+ * Sets the status of the user and returns the user. Disabling revokes every session of the user at once, and their logins fail until they are active again. Disabling the last active admin answers 409 `last_admin`, and a change of an account being deleted 409 `user_deleting`.
  */
 export const setUserStatusMutation = (options?: Partial<Options<SetUserStatusData>>): UseMutationOptions<SetUserStatusResponse, SetUserStatusError, Options<SetUserStatusData>> => {
     const mutationOptions: UseMutationOptions<SetUserStatusResponse, SetUserStatusError, Options<SetUserStatusData>> = {

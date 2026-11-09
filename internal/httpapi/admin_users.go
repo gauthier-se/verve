@@ -99,7 +99,7 @@ func registerAdminUsers(api huma.API, deps APIDeps) {
 		Summary:     "Enable or disable a user",
 		Description: "Sets the status of the user and returns the user. Disabling revokes every session of the " +
 			"user at once, and their logins fail until they are active again. Disabling the last active " +
-			"admin answers 409 `last_admin`.",
+			"admin answers 409 `last_admin`, and a change of an account being deleted 409 `user_deleting`.",
 		Tags:         []string{"Admin"},
 		Security:     sessionSecurity(),
 		MaxBodyBytes: maxAdminUserBodyBytes,
@@ -132,7 +132,7 @@ func registerAdminUsers(api huma.API, deps APIDeps) {
 		Summary:     "Change the role of a user",
 		Description: "Sets the role of the user and returns the user. A change revokes every session of the " +
 			"user, so that they log in again with a new session. Demoting the last active admin answers " +
-			"409 `last_admin`.",
+			"409 `last_admin`, and a change of an account being deleted 409 `user_deleting`.",
 		Tags:         []string{"Admin"},
 		Security:     sessionSecurity(),
 		MaxBodyBytes: maxAdminUserBodyBytes,
@@ -178,12 +178,12 @@ func adminUserOf(user store.User) AdminUser {
 }
 
 // adminUserError returns the problem of the error of a change of a user: 404 for an unknown user
-// and 409 last_admin. Any other error is wrapped with op.
+// and 409 last_admin or user_deleting. Any other error is wrapped with op.
 func adminUserError(op string, err error) error {
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		return huma.NewError(http.StatusNotFound, "")
-	case errors.Is(err, auth.ErrLastAdmin):
+	case errors.Is(err, auth.ErrLastAdmin), errors.Is(err, auth.ErrUserDeleting):
 		return codedProblem(http.StatusConflict, err)
 	default:
 		return fmt.Errorf("%s: %w", op, err)

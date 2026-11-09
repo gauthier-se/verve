@@ -173,6 +173,8 @@ func userError(err error, login, op string) error {
 		return fmt.Errorf("no user %q", login)
 	case errors.Is(err, auth.ErrLastAdmin):
 		return fmt.Errorf("%s is the last active admin", login)
+	case errors.Is(err, auth.ErrUserDeleting):
+		return fmt.Errorf("%s is being deleted", login)
 	}
 
 	if policyErr := passwordPolicyError(err); policyErr != nil {

@@ -32,7 +32,7 @@ type APIDeps struct {
 	Passwords auth.Passwords
 	// Invitations invites users and creates their account.
 	Invitations auth.Invitations
-	// Admin enables, disables and changes the role of accounts.
+	// Admin holds the rules of the administration of accounts: status and role changes here.
 	Admin auth.Admin
 	// Setup creates the first admin.
 	Setup *auth.Setup

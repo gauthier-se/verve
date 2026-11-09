@@ -14,17 +14,17 @@ import (
 
 // The types of the audit events.
 const (
-	TypeLoginFailed     = "auth.login_failed"
-	TypeLoginSucceeded  = "auth.login_succeeded"
-	TypeLogout          = "auth.logout"
-	TypePasswordChanged = "auth.password_changed"
-	TypeSessionRevoked  = "auth.session_revoked"
-	TypeUserCreated     = "user.created"
-	TypeUserInvited     = "user.invited"
-	TypeUserDisabled    = "user.disabled"
-	TypeUserEnabled     = "user.enabled"
-	TypeUserRoleChanged = "user.role_changed"
-	TypePasswordReset   = "user.password_reset"
+	TypeLoginFailed       = "auth.login_failed"
+	TypeLoginSucceeded    = "auth.login_succeeded"
+	TypeLogout            = "auth.logout"
+	TypePasswordChanged   = "auth.password_changed"
+	TypeSessionRevoked    = "auth.session_revoked"
+	TypeUserCreated       = "user.created"
+	TypeUserInvited       = "user.invited"
+	TypeUserDisabled      = "user.disabled"
+	TypeUserEnabled       = "user.enabled"
+	TypeUserRoleChanged   = "user.role_changed"
+	TypeUserPasswordReset = "user.password_reset"
 )
 
 // Event is an audit event to record, built by a constructor of this package.
@@ -196,16 +196,16 @@ func UserRoleChanged(adminID, userID int64, from, to store.UserRole) Event {
 	}
 }
 
-type passwordResetPayload struct{}
+type userPasswordResetPayload struct{}
 
-// PasswordReset is the admin of adminID, or the system for 0, replacing the password of the user of
-// userID, which revoked their sessions.
-func PasswordReset(adminID, userID int64) Event {
+// UserPasswordReset is the admin of adminID, or the system for 0, replacing the password of the
+// user of userID, which revoked their sessions.
+func UserPasswordReset(adminID, userID int64) Event {
 	return Event{
-		eventType: TypePasswordReset,
+		eventType: TypeUserPasswordReset,
 		actorID:   adminID,
 		subjectID: userID,
-		payload:   passwordResetPayload{},
+		payload:   userPasswordResetPayload{},
 	}
 }
 

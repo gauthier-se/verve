@@ -22,17 +22,17 @@ import (
 // eventsByConstructor holds an event of each constructor of the package, by the constructor's name.
 func eventsByConstructor() map[string]Event {
 	return map[string]Event{
-		"LoginFailed":     LoginFailed("alice", 7),
-		"LoginSucceeded":  LoginSucceeded(7, store.LoginPassword),
-		"Logout":          Logout(7),
-		"PasswordChanged": PasswordChanged(7),
-		"SessionsRevoked": SessionsRevoked(7, 1),
-		"UserCreated":     UserCreated(7, store.RoleAdmin, SourceSetup),
-		"UserInvited":     UserInvited(1, "bob", store.RoleMember),
-		"UserDisabled":    UserDisabled(1, 7),
-		"UserEnabled":     UserEnabled(1, 7),
-		"UserRoleChanged": UserRoleChanged(1, 7, store.RoleMember, store.RoleAdmin),
-		"PasswordReset":   PasswordReset(0, 7),
+		"LoginFailed":       LoginFailed("alice", 7),
+		"LoginSucceeded":    LoginSucceeded(7, store.LoginPassword),
+		"Logout":            Logout(7),
+		"PasswordChanged":   PasswordChanged(7),
+		"SessionsRevoked":   SessionsRevoked(7, 1),
+		"UserCreated":       UserCreated(7, store.RoleAdmin, SourceSetup),
+		"UserInvited":       UserInvited(1, "bob", store.RoleMember),
+		"UserDisabled":      UserDisabled(1, 7),
+		"UserEnabled":       UserEnabled(1, 7),
+		"UserRoleChanged":   UserRoleChanged(1, 7, store.RoleMember, store.RoleAdmin),
+		"UserPasswordReset": UserPasswordReset(0, 7),
 	}
 }
 
@@ -402,7 +402,7 @@ func TestAdminActions(t *testing.T) {
 		{name: "enabled by the system", event: UserEnabled(0, 7), eventType: "user.enabled", want: `{}`},
 		{name: "role changed", event: UserRoleChanged(1, 7, store.RoleMember, store.RoleAdmin),
 			eventType: "user.role_changed", actor: 1, want: `{"from":"member","to":"admin"}`},
-		{name: "password reset by the system", event: PasswordReset(0, 7), eventType: "user.password_reset", want: `{}`},
+		{name: "password reset by the system", event: UserPasswordReset(0, 7), eventType: "user.password_reset", want: `{}`},
 	}
 
 	for _, tt := range tests {

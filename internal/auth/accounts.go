@@ -57,14 +57,15 @@ func (a Accounts) checkAndHash(account NewAccount) (store.NewUser, error) {
 		return store.NewUser{}, err
 	}
 
-	if err := a.policy.Check(account.Password); err != nil {
+	hash, err := a.checkAndHashPassword(account.Password)
+	if err != nil {
 		return store.NewUser{}, err
 	}
 
 	return store.NewUser{
 		Username:     account.Username,
 		Email:        account.Email,
-		PasswordHash: a.hasher.Hash(account.Password),
+		PasswordHash: hash,
 		Role:         account.Role,
 	}, nil
 }
@@ -81,4 +82,14 @@ func insertUser(ctx context.Context, repos store.Repositories, user store.NewUse
 	}
 
 	return created, nil
+}
+
+// checkAndHashPassword checks password against the password policy and returns its hash, or the
+// error of the policy.
+func (a Accounts) checkAndHashPassword(password string) (string, error) {
+	if err := a.policy.Check(password); err != nil {
+		return "", err
+	}
+
+	return a.hasher.Hash(password), nil
 }

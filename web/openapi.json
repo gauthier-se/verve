@@ -1723,7 +1723,7 @@
     },
     "/api/v1/admin/users/{id}/role": {
       "put": {
-        "description": "Sets the role of the user and returns the user. A change revokes every session of the user, so that they log in again with a new session. Demoting the last active admin answers 409 `last_admin`.",
+        "description": "Sets the role of the user and returns the user. A change revokes every session of the user, so that they log in again with a new session. Demoting the last active admin answers 409 `last_admin`, and a change of an account being deleted 409 `user_deleting`.",
         "operationId": "set-user-role",
         "parameters": [
           {
@@ -1843,7 +1843,7 @@
     },
     "/api/v1/admin/users/{id}/status": {
       "put": {
-        "description": "Sets the status of the user and returns the user. Disabling revokes every session of the user at once, and their logins fail until they are active again. Disabling the last active admin answers 409 `last_admin`.",
+        "description": "Sets the status of the user and returns the user. Disabling revokes every session of the user at once, and their logins fail until they are active again. Disabling the last active admin answers 409 `last_admin`, and a change of an account being deleted 409 `user_deleting`.",
         "operationId": "set-user-status",
         "parameters": [
           {

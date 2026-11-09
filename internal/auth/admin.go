@@ -13,6 +13,10 @@ import (
 // code that the API answers with.
 var ErrLastAdmin = errors.New("last_admin")
 
+// ErrUserDeleting is returned for a change of an account being deleted, which would cancel the
+// deletion. Its message is the stable code that the API answers with.
+var ErrUserDeleting = errors.New("user_deleting")
+
 // StatusChange is an admin, or the system, enabling or disabling an account.
 type StatusChange struct {
 	// ActorID is the admin who acts, or 0 for the system, such as the command line.
@@ -58,7 +62,8 @@ func NewAdmin(accounts Accounts, sessions Sessions) Admin {
 // without an event.
 //
 // It returns ErrLastAdmin for the last active admin, checked in the transaction so that of
-// concurrent changes, one keeps an admin, and store.ErrNotFound for an unknown user.
+// concurrent changes, one keeps an admin, ErrUserDeleting for an account being deleted,
+// store.ErrNotFound for an unknown user, and store.ErrInvalid for another status.
 func (a Admin) SetStatus(ctx context.Context, st store.Store, change StatusChange) (store.User, error) {
 	if change.Status != store.UserActive && change.Status != store.UserDisabled {
 		return store.User{}, fmt.Errorf("set status %q: %w", change.Status, store.ErrInvalid)
@@ -67,7 +72,7 @@ func (a Admin) SetStatus(ctx context.Context, st store.Store, change StatusChang
 	var changed store.User
 
 	err := st.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
-		user, err := tx.Users().Get(ctx, change.UserID)
+		user, err := changeableUser(ctx, tx.Users(), change.UserID)
 		if err != nil {
 			return err
 		}
@@ -109,12 +114,17 @@ func (a Admin) SetStatus(ctx context.Context, st store.Store, change StatusChang
 // client of ctx. A user who already has the role is returned unchanged, without an event.
 //
 // It returns ErrLastAdmin for the demotion of the last active admin, checked in the transaction,
-// and store.ErrNotFound for an unknown user.
+// ErrUserDeleting for an account being deleted, store.ErrNotFound for an unknown user, and
+// store.ErrInvalid for an unknown role.
 func (a Admin) SetRole(ctx context.Context, st store.Store, change RoleChange) (store.User, error) {
+	if change.Role != store.RoleAdmin && change.Role != store.RoleMember {
+		return store.User{}, fmt.Errorf("set role %q: %w", change.Role, store.ErrInvalid)
+	}
+
 	var changed store.User
 
 	err := st.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
-		user, err := tx.Users().Get(ctx, change.UserID)
+		user, err := changeableUser(ctx, tx.Users(), change.UserID)
 		if err != nil {
 			return err
 		}
@@ -149,11 +159,10 @@ func (a Admin) SetRole(ctx context.Context, st store.Store, change RoleChange) (
 // every session of the user and records the audit event. It returns the error of the password
 // policy, and store.ErrNotFound for an unknown user.
 func (a Admin) ResetPassword(ctx context.Context, st store.Store, reset PasswordReset) error {
-	if err := a.accounts.policy.Check(reset.Password); err != nil {
+	hash, err := a.accounts.checkAndHashPassword(reset.Password)
+	if err != nil {
 		return err
 	}
-
-	hash := a.accounts.hasher.Hash(reset.Password)
 
 	return st.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
 		if err := tx.Users().SetPasswordHash(ctx, reset.UserID, hash); err != nil {
@@ -164,7 +173,7 @@ func (a Admin) ResetPassword(ctx context.Context, st store.Store, reset Password
 			return err
 		}
 
-		return audit.Record(ctx, tx.AuditEvents(), audit.PasswordReset(reset.ActorID, reset.UserID))
+		return audit.Record(ctx, tx.AuditEvents(), audit.UserPasswordReset(reset.ActorID, reset.UserID))
 	})
 }
 
@@ -185,4 +194,19 @@ func keepAnActiveAdmin(ctx context.Context, users store.UsersRepository, user st
 	}
 
 	return nil
+}
+
+// changeableUser returns the user of id read in users, ErrUserDeleting for an account being
+// deleted, whose status and role no longer change, or store.ErrNotFound.
+func changeableUser(ctx context.Context, users store.UsersRepository, id int64) (store.User, error) {
+	user, err := users.Get(ctx, id)
+	if err != nil {
+		return store.User{}, err
+	}
+
+	if user.Status == store.UserDeleting {
+		return store.User{}, ErrUserDeleting
+	}
+
+	return user, nil
 }

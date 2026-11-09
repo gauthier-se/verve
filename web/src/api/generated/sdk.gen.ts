@@ -198,7 +198,7 @@ export const listAdminUsers = <ThrowOnError extends boolean = false>(options?: O
 /**
  * Change the role of a user
  *
- * Sets the role of the user and returns the user. A change revokes every session of the user, so that they log in again with a new session. Demoting the last active admin answers 409 `last_admin`.
+ * Sets the role of the user and returns the user. A change revokes every session of the user, so that they log in again with a new session. Demoting the last active admin answers 409 `last_admin`, and a change of an account being deleted 409 `user_deleting`.
  */
 export const setUserRole = <ThrowOnError extends boolean = false>(options: Options<SetUserRoleData, ThrowOnError>): RequestResult<SetUserRoleResponses, SetUserRoleErrors, ThrowOnError> => (options.client ?? client).put<SetUserRoleResponses, SetUserRoleErrors, ThrowOnError>({
     security: [{
@@ -217,7 +217,7 @@ export const setUserRole = <ThrowOnError extends boolean = false>(options: Optio
 /**
  * Enable or disable a user
  *
- * Sets the status of the user and returns the user. Disabling revokes every session of the user at once, and their logins fail until they are active again. Disabling the last active admin answers 409 `last_admin`.
+ * Sets the status of the user and returns the user. Disabling revokes every session of the user at once, and their logins fail until they are active again. Disabling the last active admin answers 409 `last_admin`, and a change of an account being deleted 409 `user_deleting`.
  */
 export const setUserStatus = <ThrowOnError extends boolean = false>(options: Options<SetUserStatusData, ThrowOnError>): RequestResult<SetUserStatusResponses, SetUserStatusErrors, ThrowOnError> => (options.client ?? client).put<SetUserStatusResponses, SetUserStatusErrors, ThrowOnError>({
     security: [{
