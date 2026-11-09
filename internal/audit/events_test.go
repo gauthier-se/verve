@@ -29,6 +29,10 @@ func eventsByConstructor() map[string]Event {
 		"SessionsRevoked": SessionsRevoked(7, 1),
 		"UserCreated":     UserCreated(7, store.RoleAdmin, SourceSetup),
 		"UserInvited":     UserInvited(1, "bob", store.RoleMember),
+		"UserDisabled":    UserDisabled(1, 7),
+		"UserEnabled":     UserEnabled(1, 7),
+		"UserRoleChanged": UserRoleChanged(1, 7, store.RoleMember, store.RoleAdmin),
+		"PasswordReset":   PasswordReset(0, 7),
 	}
 }
 
@@ -380,4 +384,39 @@ func TestUserInvited(t *testing.T) {
 	data, err := json.Marshal(event.payload)
 	require.NoError(t, err)
 	require.JSONEq(t, `{"username":"bob","role":"member"}`, string(data))
+}
+
+// Given an admin action on an account, then the event has its type, the admin as actor, or the
+// system for 0, the user as subject, and the details of the action. It is never aggregated.
+func TestAdminActions(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		event     Event
+		eventType string
+		actor     int64
+		want      string
+	}{
+		{name: "disabled", event: UserDisabled(1, 7), eventType: "user.disabled", actor: 1, want: `{}`},
+		{name: "enabled by the system", event: UserEnabled(0, 7), eventType: "user.enabled", want: `{}`},
+		{name: "role changed", event: UserRoleChanged(1, 7, store.RoleMember, store.RoleAdmin),
+			eventType: "user.role_changed", actor: 1, want: `{"from":"member","to":"admin"}`},
+		{name: "password reset by the system", event: PasswordReset(0, 7), eventType: "user.password_reset", want: `{}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.Equal(t, tt.eventType, tt.event.eventType)
+			require.Equal(t, tt.actor, tt.event.actorID)
+			require.Equal(t, int64(7), tt.event.subjectID)
+			require.False(t, tt.event.aggregateOnClientIP)
+
+			data, err := json.Marshal(tt.event.payload)
+			require.NoError(t, err)
+			require.JSONEq(t, tt.want, string(data))
+		})
+	}
 }
