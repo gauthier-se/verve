@@ -6,7 +6,7 @@ require (
 	github.com/caarlos0/env/v11 v11.4.1
 	github.com/danielgtaylor/huma/v2 v2.39.1
 	github.com/gofrs/flock v0.13.1
-	github.com/klauspost/compress v1.20.1
+	github.com/klauspost/compress v1.20.4
 	github.com/pressly/goose/v3 v3.29.0
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/spf13/cobra v1.10.2
