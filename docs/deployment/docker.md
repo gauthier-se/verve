@@ -81,19 +81,20 @@ docker compose exec verve /verve backup
 
 A backup holds the secret key, which decrypts the secrets stored in the database: keep it as safe as the data directory. With the key in `VERVE_SECRET_KEY`, the backup holds only the database, and you keep the key yourself.
 
-Automatic backups, including one before every migration, and `verve restore` arrive with the [backups feature](../features/backups.md) in milestone M1. Until then, copy the data directory yourself before upgrading:
+Verve also backs up the database every day and before every migration, see [Backups](../features/backups.md). `verve restore` restores a backup of `/data/backups`. It needs the server stopped, and first keeps the current database as a `pre-restore` backup:
 
 ```sh
 docker compose stop verve
-docker compose cp verve:/data ./verve-backup
+docker compose run --rm verve restore /data/backups/verve-0.4.0-20261110T140305Z-manual.tar.zst
 docker compose start verve
 ```
 
-To roll back, restore this copy and go back to the previous image version in `compose.yaml`:
+A backup from an older version is migrated, and one from a newer version is refused. An archive without secret key, made with the key in `VERVE_SECRET_KEY`, keeps the current key.
+
+To roll back an upgrade, go back to the previous image version in `compose.yaml`, then restore the `pre-migration` backup that the new version took before migrating, named after the new version:
 
 ```sh
 docker compose stop verve
-docker run --rm --volumes-from "$(docker compose ps --all --quiet verve)" -v "$PWD/verve-backup:/backup:ro" alpine \
-  sh -c 'rm -rf /data/* && cp -R /backup/. /data/ && chown -R 65532:65532 /data'
+docker compose run --rm verve restore /data/backups/verve-0.5.0-20261110T140305Z-pre-migration.tar.zst
 docker compose up -d
 ```
