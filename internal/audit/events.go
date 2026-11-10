@@ -29,6 +29,7 @@ const (
 	TypePasswordResetCompleted       = "auth.password_reset_completed"
 	TypeUserDeletionRequested        = "user.deletion_requested"
 	TypeUserDeletionCompleted        = "user.deletion_completed"
+	TypeBackupCreated                = "backup.created"
 )
 
 // Event is an audit event to record, built by a constructor of this package.
@@ -260,6 +261,20 @@ func UserDeletionCompleted(userID int64) Event {
 		eventType: TypeUserDeletionCompleted,
 		subjectID: userID,
 		payload:   userDeletionCompletedPayload{},
+	}
+}
+
+type backupCreatedPayload struct {
+	Reason string `json:"reason"`
+	File   string `json:"file"`
+}
+
+// BackupCreated is a backup of the instance, made for reason into the archive named file. It has no
+// actor: the command line has no user, and the schedule and the migrations are the system.
+func BackupCreated(reason, file string) Event {
+	return Event{
+		eventType: TypeBackupCreated,
+		payload:   backupCreatedPayload{Reason: reason, File: file},
 	}
 }
 

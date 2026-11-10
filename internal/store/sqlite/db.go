@@ -26,9 +26,12 @@ const dbFilePerm = 0o600
 // descriptors.
 const connMaxIdleTime = 5 * time.Minute
 
+// busyTimeout makes a connection wait for a lock rather than fail with SQLITE_BUSY.
+const busyTimeout = "_pragma=busy_timeout(5000)"
+
 // pragmas apply to every connection of both pools.
 const pragmas = "_pragma=journal_mode(WAL)" +
-	"&_pragma=busy_timeout(5000)" +
+	"&" + busyTimeout +
 	"&_pragma=foreign_keys(ON)" +
 	"&_pragma=synchronous(NORMAL)"
 
@@ -36,6 +39,7 @@ const pragmas = "_pragma=journal_mode(WAL)" +
 // transactions start with BEGIN IMMEDIATE, so writers queue instead of failing with
 // SQLITE_BUSY, and a read-only pool that long writes never block.
 type DB struct {
+	path  string
 	write *sql.DB
 	read  *sql.DB
 }
@@ -56,7 +60,7 @@ func Open(ctx context.Context, path string) (*DB, error) {
 		return nil, errors.Join(fmt.Errorf("open database reader: %w", err), write.Close())
 	}
 
-	return &DB{write: write, read: read}, nil
+	return &DB{path: path, write: write, read: read}, nil
 }
 
 // fileURI returns the DSN of the database at path with the query params. The driver opens it as a
@@ -144,6 +148,24 @@ func (db *DB) checkpoint(ctx context.Context) error {
 	// One call, so that both statements run on the same connection.
 	if _, err := db.write.ExecContext(ctx, "PRAGMA busy_timeout(0); PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
 		return fmt.Errorf("checkpoint database: %w", err)
+	}
+
+	return nil
+}
+
+// Snapshot writes a consistent copy of the database to a new file at path with VACUUM INTO. It
+// runs on a connection of its own: the writer would hold off every other write for the whole copy,
+// and the readers are query_only, which refuses VACUUM INTO. In WAL mode, its read transaction
+// blocks no writer.
+func (db *DB) Snapshot(ctx context.Context, path string) error {
+	conn, err := openPool(ctx, fileURI(db.path, busyTimeout), 1)
+	if err != nil {
+		return fmt.Errorf("snapshot database: %w", err)
+	}
+
+	_, err = conn.ExecContext(ctx, "VACUUM INTO ?", path)
+	if err := errors.Join(err, conn.Close()); err != nil {
+		return fmt.Errorf("snapshot database: %w", err)
 	}
 
 	return nil

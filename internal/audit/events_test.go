@@ -37,6 +37,7 @@ func eventsByConstructor() map[string]Event {
 		"PasswordResetCompleted":   PasswordResetCompleted(7),
 		"UserDeletionRequested":    UserDeletionRequested(1, 7),
 		"UserDeletionCompleted":    UserDeletionCompleted(7),
+		"BackupCreated":            BackupCreated("manual", "verve-1.2.3-20261110T140305Z-manual.tar.zst"),
 	}
 }
 
@@ -406,6 +407,23 @@ func TestUserInvited(t *testing.T) {
 	data, err := json.Marshal(event.payload)
 	require.NoError(t, err)
 	require.JSONEq(t, `{"username":"bob","role":"member"}`, string(data))
+}
+
+// Given a backup, then the event has the backup type, no actor and no subject, and the reason and
+// the file name of the backup.
+func TestBackupCreated(t *testing.T) {
+	t.Parallel()
+
+	event := BackupCreated("manual", "verve-1.2.3-20261110T140305Z-manual.tar.zst")
+
+	require.Equal(t, "backup.created", event.eventType)
+	require.Zero(t, event.actorID)
+	require.Zero(t, event.subjectID)
+	require.False(t, event.aggregateOnClientIP)
+
+	data, err := json.Marshal(event.payload)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"reason":"manual","file":"verve-1.2.3-20261110T140305Z-manual.tar.zst"}`, string(data))
 }
 
 // Given an admin action on an account, then the event has its type, the admin as actor, or the
