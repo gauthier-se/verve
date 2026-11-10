@@ -169,3 +169,36 @@ func (q *Queries) RevokeUserAPIToken(ctx context.Context, arg RevokeUserAPIToken
 	)
 	return i, err
 }
+
+const touchAPIToken = `-- name: TouchAPIToken :one
+UPDATE api_tokens
+SET last_used_at = ?1,
+    last_used_ip = ?2
+WHERE id = ?3
+RETURNING id, user_id, name, scopes, prefix, token_hash, expires_at, created_at, last_used_at, last_used_ip, revoked_at
+`
+
+type TouchAPITokenParams struct {
+	LastUsedAt sql.NullInt64
+	LastUsedIp sql.NullString
+	ID         int64
+}
+
+func (q *Queries) TouchAPIToken(ctx context.Context, arg TouchAPITokenParams) (ApiToken, error) {
+	row := q.db.QueryRowContext(ctx, touchAPIToken, arg.LastUsedAt, arg.LastUsedIp, arg.ID)
+	var i ApiToken
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Name,
+		&i.Scopes,
+		&i.Prefix,
+		&i.TokenHash,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+		&i.LastUsedAt,
+		&i.LastUsedIp,
+		&i.RevokedAt,
+	)
+	return i, err
+}

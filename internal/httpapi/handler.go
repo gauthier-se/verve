@@ -135,7 +135,7 @@ func newHandler(d Deps, routes http.Handler) http.Handler {
 	middlewares = append(middlewares, CSRFMiddleware(d.PublicURL))
 
 	if d.Store != nil {
-		middlewares = append(middlewares, AuthenticationMiddleware(d.Store, auth.NewSessions(d.Clock), d.PublicURL))
+		middlewares = append(middlewares, AuthenticationMiddleware(d.Store, auth.NewSessions(d.Clock), auth.NewTokens(d.Clock), d.PublicURL))
 	}
 
 	return chain(routes, middlewares...)

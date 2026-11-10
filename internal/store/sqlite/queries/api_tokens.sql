@@ -22,3 +22,10 @@ SET revoked_at = coalesce(revoked_at, sqlc.arg(revoked_at))
 WHERE id = sqlc.arg(id)
   AND user_id = sqlc.arg(user_id)
 RETURNING *;
+
+-- name: TouchAPIToken :one
+UPDATE api_tokens
+SET last_used_at = sqlc.arg(last_used_at),
+    last_used_ip = sqlc.arg(last_used_ip)
+WHERE id = sqlc.arg(id)
+RETURNING *;
