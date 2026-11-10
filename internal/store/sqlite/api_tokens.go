@@ -115,11 +115,7 @@ func validScopes(scopes []store.TokenScope) bool {
 	}
 
 	for i, scope := range scopes {
-		if scope != store.ScopeIngest && scope != store.ScopeRead {
-			return false
-		}
-
-		if slices.Contains(scopes[:i], scope) {
+		if !scope.Known() || slices.Contains(scopes[:i], scope) {
 			return false
 		}
 	}

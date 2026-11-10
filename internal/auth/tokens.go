@@ -57,18 +57,20 @@ func CreateToken(ctx context.Context, repos store.Repositories, token NewToken) 
 // generateToken returns a new API token: vrv_ and tokenRandomLength base62 characters, each drawn
 // uniformly from crypto/rand by rejection sampling.
 func generateToken() string {
-	token := make([]byte, 0, len(tokenMarker)+tokenRandomLength)
+	length := len(tokenMarker) + tokenRandomLength
+
+	token := make([]byte, 0, length)
 	token = append(token, tokenMarker...)
 
 	// About 3% of the bytes are rejected: one batch is nearly always enough.
 	batch := make([]byte, tokenRandomLength+8)
 
-	for len(token) < cap(token) {
+	for len(token) < length {
 		// crypto/rand.Read never returns an error.
 		_, _ = rand.Read(batch)
 
 		for _, b := range batch {
-			if int(b) >= tokenByteLimit || len(token) == cap(token) {
+			if int(b) >= tokenByteLimit || len(token) == length {
 				continue
 			}
 

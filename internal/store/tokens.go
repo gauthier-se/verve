@@ -16,6 +16,11 @@ const (
 	ScopeRead TokenScope = "read"
 )
 
+// Known reports whether s is one of the scopes of an API token.
+func (s TokenScope) Known() bool {
+	return s == ScopeIngest || s == ScopeRead
+}
+
 // NewAPIToken describes an API token to create. The store never sees the token, only its hash.
 type NewAPIToken struct {
 	UserID int64
