@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/gauthier-se/verve/internal/auth"
+	"github.com/gauthier-se/verve/internal/backup"
 	"github.com/gauthier-se/verve/internal/clock"
 	"github.com/gauthier-se/verve/internal/config"
 	"github.com/gauthier-se/verve/internal/store"
@@ -48,6 +49,8 @@ type Deps struct {
 	// Jobs queues the jobs of the API, such as the deletion of an account, and wakes the worker. Nil
 	// means the jobs are written to the store, where the worker finds them at its next poll.
 	Jobs auth.JobQueue
+	// Backups lists, opens and creates the backups of the instance.
+	Backups *backup.Backups
 }
 
 // NewHandler returns the root handler of the server: the health probes, the API, a JSON 404
@@ -64,18 +67,26 @@ func NewHandler(d Deps) http.Handler {
 	logins := auth.NewLogins(sessions, hasher, auth.NewLoginLimiter(d.Clock))
 	accounts := auth.NewAccounts(hasher, policy)
 	passwords := auth.NewPasswords(logins, policy)
+
+	var jobs auth.JobQueue = auth.StoreQueue{}
+	if d.Jobs != nil {
+		jobs = d.Jobs
+	}
+
 	NewAPI(mux, APIDeps{
 		Version:        d.Version,
 		Store:          d.Store,
 		Logins:         logins,
 		Sessions:       sessions,
 		Passwords:      passwords,
-		Deletions:      auth.NewDeletions(passwords, sessions, d.Jobs),
+		Deletions:      auth.NewDeletions(passwords, sessions, jobs),
 		Setup:          auth.NewSetup(d.SetupToken, accounts, sessions),
 		Invitations:    auth.NewInvitations(d.Clock, accounts, sessions),
 		PasswordResets: auth.NewPasswordResets(d.Clock, accounts, sessions),
 		Admin:          auth.NewAdmin(accounts, sessions),
 		PublicURL:      d.PublicURL,
+		Backups:        d.Backups,
+		Jobs:           jobs,
 	})
 
 	if d.SPA != nil {

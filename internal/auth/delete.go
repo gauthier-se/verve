@@ -42,10 +42,11 @@ type JobQueue interface {
 	Enqueue(ctx context.Context, repos store.Repositories, job store.NewJob) (store.Job, error)
 }
 
-// storeQueue writes jobs to the store without waking a worker, which finds them at its next poll.
-type storeQueue struct{}
+// StoreQueue writes jobs to the store without waking a worker, which finds them at its next poll.
+type StoreQueue struct{}
 
-func (storeQueue) Enqueue(ctx context.Context, repos store.Repositories, job store.NewJob) (store.Job, error) {
+// Enqueue writes job through repos.
+func (StoreQueue) Enqueue(ctx context.Context, repos store.Repositories, job store.NewJob) (store.Job, error) {
 	return repos.Jobs().Enqueue(ctx, job)
 }
 
@@ -76,7 +77,7 @@ type Deletions struct {
 // store without waking a worker.
 func NewDeletions(passwords Passwords, sessions Sessions, queue JobQueue) Deletions {
 	if queue == nil {
-		queue = storeQueue{}
+		queue = StoreQueue{}
 	}
 
 	return Deletions{passwords: passwords, sessions: sessions, queue: queue}

@@ -8,6 +8,7 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
 	"github.com/gauthier-se/verve/internal/auth"
+	"github.com/gauthier-se/verve/internal/backup"
 	"github.com/gauthier-se/verve/internal/config"
 	"github.com/gauthier-se/verve/internal/store"
 	"github.com/gauthier-se/verve/internal/version"
@@ -42,6 +43,10 @@ type APIDeps struct {
 	Setup *auth.Setup
 	// PublicURL names the session cookie that login sets and logout clears.
 	PublicURL config.PublicURL
+	// Backups lists, opens and creates the backups of the instance.
+	Backups *backup.Backups
+	// Jobs queues the jobs of the API, such as manual backups.
+	Jobs auth.JobQueue
 }
 
 // useProblemErrors makes Huma build its errors as problems. huma.NewError is Huma's documented
@@ -82,6 +87,7 @@ func NewAPI(mux *http.ServeMux, deps APIDeps) huma.API {
 	registerAdminJobs(api, deps.Store)
 	registerAdminUsers(api, deps)
 	registerAccountDeletion(api, deps)
+	registerAdminBackups(api, deps)
 
 	return api
 }

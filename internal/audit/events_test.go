@@ -39,6 +39,8 @@ func eventsByConstructor() map[string]Event {
 		"UserDeletionCompleted":    UserDeletionCompleted(7),
 		"BackupCreated":            BackupCreated("manual", "verve-1.2.3-20261110T140305Z-manual.tar.zst"),
 		"BackupRestored":           BackupRestored("verve-1.2.3-20261110T140305Z-manual.tar.zst"),
+		"BackupCreatedBy":          BackupCreatedBy(1, "manual", "verve-1.2.3-20261110T140305Z-manual.tar.zst"),
+		"BackupDownloaded":         BackupDownloaded(1, "verve-1.2.3-20261110T140305Z-manual.tar.zst"),
 	}
 }
 
@@ -425,6 +427,41 @@ func TestBackupCreated(t *testing.T) {
 	data, err := json.Marshal(event.payload)
 	require.NoError(t, err)
 	require.JSONEq(t, `{"reason":"manual","file":"verve-1.2.3-20261110T140305Z-manual.tar.zst"}`, string(data))
+}
+
+// Given a backup that an admin asked for, then the event has the backup type, the admin as actor,
+// no subject, and the reason and the file name of the backup.
+func TestBackupCreatedBy(t *testing.T) {
+	t.Parallel()
+
+	event := BackupCreatedBy(1, "manual", "verve-1.2.3-20261110T140305Z-manual.tar.zst")
+
+	require.Equal(t, "backup.created", event.eventType)
+	require.Equal(t, int64(1), event.actorID)
+	require.Zero(t, event.subjectID)
+	require.False(t, event.aggregateOnClientIP)
+
+	data, err := json.Marshal(event.payload)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"reason":"manual","file":"verve-1.2.3-20261110T140305Z-manual.tar.zst"}`, string(data))
+}
+
+// Given the download of a backup, then the event has the download type, the admin as actor, no
+// subject, and the file name of the archive.
+func TestBackupDownloaded(t *testing.T) {
+	t.Parallel()
+
+	event := BackupDownloaded(1, "verve-1.2.3-20261110T140305Z-manual.tar.zst")
+
+	require.Equal(t, TypeBackupDownloaded, event.eventType)
+	require.Equal(t, "backup.downloaded", TypeBackupDownloaded)
+	require.Equal(t, int64(1), event.actorID)
+	require.Zero(t, event.subjectID)
+	require.False(t, event.aggregateOnClientIP)
+
+	data, err := json.Marshal(event.payload)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"file":"verve-1.2.3-20261110T140305Z-manual.tar.zst"}`, string(data))
 }
 
 // Given a restore, then the event has the restore type, no actor and no subject, and the file name
