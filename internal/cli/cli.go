@@ -36,6 +36,8 @@ type Deps struct {
 	ResetPassword resetPasswordFunc
 	// Backup creates a manual backup and returns its path, also next to a running server.
 	Backup backupFunc
+	// Restore restores a backup archive while the server is stopped.
+	Restore restoreFunc
 	// ReadPassword reads a password without echo from the terminal of stdin. Nil means that stdin is
 	// not a terminal.
 	ReadPassword passwordFunc
@@ -60,6 +62,7 @@ func Execute(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		SetUserStatus:   app.SetUserStatus,
 		ResetPassword:   app.ResetPassword,
 		Backup:          app.Backup,
+		Restore:         app.Restore,
 		ReadPassword:    terminalPassword(os.Stdin),
 	}
 
@@ -133,6 +136,7 @@ func NewRootCommand(deps Deps) *cobra.Command {
 	root.AddCommand(newMigrateCommand(loadConfig, deps))
 	root.AddCommand(newUserCommand(loadConfig, deps))
 	root.AddCommand(newBackupCommand(loadConfig, deps))
+	root.AddCommand(newRestoreCommand(loadConfig, deps))
 	root.AddCommand(newVersionCommand(deps.Version))
 	root.AddCommand(newConfigCommand(loadConfig))
 	root.AddCommand(newHealthcheckCommand(loadConfig, deps.HealthcheckTimeout))

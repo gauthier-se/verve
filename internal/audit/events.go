@@ -30,6 +30,7 @@ const (
 	TypeUserDeletionRequested        = "user.deletion_requested"
 	TypeUserDeletionCompleted        = "user.deletion_completed"
 	TypeBackupCreated                = "backup.created"
+	TypeBackupRestored               = "backup.restored"
 )
 
 // Event is an audit event to record, built by a constructor of this package.
@@ -275,6 +276,19 @@ func BackupCreated(reason, file string) Event {
 	return Event{
 		eventType: TypeBackupCreated,
 		payload:   backupCreatedPayload{Reason: reason, File: file},
+	}
+}
+
+type backupRestoredPayload struct {
+	File string `json:"file"`
+}
+
+// BackupRestored is the restore of the archive named file, which replaced the database. It has no
+// actor: the command line has no user.
+func BackupRestored(file string) Event {
+	return Event{
+		eventType: TypeBackupRestored,
+		payload:   backupRestoredPayload{File: file},
 	}
 }
 

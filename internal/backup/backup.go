@@ -33,6 +33,9 @@ const (
 	// ReasonPreMigration is a backup before migrations, which retention removes once the backups of
 	// newer migrations replace it.
 	ReasonPreMigration Reason = "pre-migration"
+	// ReasonPreRestore is a backup of the database that a restore replaces, which retention never
+	// removes.
+	ReasonPreRestore Reason = "pre-restore"
 )
 
 // preMigrationKeep is the number of pre-migration backups kept: those of the last 3 migrations
@@ -124,6 +127,18 @@ func (b *Backups) Create(ctx context.Context, s store.Store, reason Reason) (str
 // hold the event yet, and a migration that fails does not count as one of the last migrations.
 func (b *Backups) CreatePreMigration(ctx context.Context, db Snapshotter) (string, error) {
 	path, err := b.create(ctx, db, ReasonPreMigration, func(string) error { return nil })
+	if err != nil {
+		return "", fmt.Errorf("back up: %w", err)
+	}
+
+	return path, nil
+}
+
+// CreatePreRestore backs up db, the database that a restore replaces, and returns the path of the
+// archive, like Create. No retention ever removes it. It records no audit event: the caller records
+// it in the restored database, since db is about to be replaced.
+func (b *Backups) CreatePreRestore(ctx context.Context, db Snapshotter) (string, error) {
+	path, err := b.create(ctx, db, ReasonPreRestore, func(string) error { return nil })
 	if err != nil {
 		return "", fmt.Errorf("back up: %w", err)
 	}

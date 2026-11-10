@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 
@@ -48,4 +49,14 @@ func (l *Lock) Release() error {
 	}
 
 	return nil
+}
+
+// stopServeFirst tells to stop verve serve before doing, when err reports that another process
+// holds the lock on the data directory. It returns any other error as it is.
+func stopServeFirst(err error, doing string) error {
+	if _, inUse := errors.AsType[*dataDirInUseError](err); inUse {
+		return fmt.Errorf("%w: stop verve serve before %s", err, doing)
+	}
+
+	return err
 }

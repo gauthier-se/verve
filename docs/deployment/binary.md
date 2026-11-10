@@ -93,7 +93,7 @@ The logs in the journal show the startup warnings and one line per request.
 
 ## Upgrades
 
-Schema migrations run automatically at startup, and downgrades are not supported. Automatic backups arrive with the [backups feature](../features/backups.md) in milestone M1. Until then, copy the data directory when you upgrade.
+Schema migrations run automatically at startup, after a backup of the database, and downgrades are not supported. See [Backups](../features/backups.md).
 
 `verve backup` writes a consistent backup of the database and the secret key to the `backups` directory of the data directory while the server runs, and prints its path. Run it as the user of the service, so that it can read the data directory. A backup holds the secret key, which decrypts the secrets stored in the database: keep it as safe as the data directory. With the key in `VERVE_SECRET_KEY`, the backup holds only the database, and you keep the key yourself.
 
@@ -101,9 +101,15 @@ Download and extract the new version as in [Install the binary](#install-the-bin
 
 ```sh
 sudo systemctl stop verve
-sudo cp -a /var/lib/verve /var/lib/verve.bak
 sudo install -m 0755 verve /usr/local/bin/verve
 sudo systemctl start verve
 ```
 
-To roll back, stop the service, replace `/var/lib/verve` with this copy and install the previous binary.
+`verve restore` restores a backup. It needs the service stopped, and first keeps the current database as a `pre-restore` backup. A backup from an older version is migrated, and one from a newer version is refused. To roll back an upgrade, install the previous binary, here `verve-previous`, then restore the `pre-migration` backup that the new version took before migrating, named after the new version. Run the restore as the user of the service, with the settings of `/etc/verve/verve.env` that matter to it, such as `VERVE_SECRET_KEY`:
+
+```sh
+sudo systemctl stop verve
+sudo install -m 0755 verve-previous /usr/local/bin/verve
+sudo -u verve VERVE_DATA_DIR=/var/lib/verve verve restore /var/lib/verve/backups/verve-0.5.0-20261110T140305Z-pre-migration.tar.zst
+sudo systemctl start verve
+```

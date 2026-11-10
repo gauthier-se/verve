@@ -170,3 +170,52 @@ func (db *DB) Snapshot(ctx context.Context, path string) error {
 
 	return nil
 }
+
+// CheckRestorable checks the database file at path, extracted from a backup: it fails unless the
+// database passes PRAGMA integrity_check and has a schema, not newer than LatestVersion, read from
+// the database rather than from the name of the archive.
+func CheckRestorable(ctx context.Context, path string) (err error) {
+	db, err := Open(ctx, path)
+	if err != nil {
+		return err
+	}
+
+	defer func() { err = errors.Join(err, db.Close(ctx)) }()
+
+	if err := checkIntegrity(ctx, db); err != nil {
+		return err
+	}
+
+	current, err := CurrentVersion(ctx, db)
+	if err != nil {
+		return err
+	}
+
+	// A backup holds a schema: verve backup needs one, and a pre-migration backup skips a new
+	// database.
+	if current == 0 {
+		return errors.New("the database has no Verve schema")
+	}
+
+	if latest := LatestVersion(); current > latest {
+		return fmt.Errorf("database schema version %d is newer than this binary supports (%d): restore it with a newer Verve",
+			current, latest)
+	}
+
+	return nil
+}
+
+// checkIntegrity runs PRAGMA integrity_check on db and fails with its first problem unless it
+// reports none.
+func checkIntegrity(ctx context.Context, db *DB) error {
+	var result string
+	if err := db.read.QueryRowContext(ctx, "PRAGMA integrity_check").Scan(&result); err != nil {
+		return fmt.Errorf("check database integrity: %w", err)
+	}
+
+	if result != "ok" {
+		return fmt.Errorf("check database integrity: %s", result)
+	}
+
+	return nil
+}
