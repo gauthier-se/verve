@@ -49,6 +49,8 @@ func TestLoad_Defaults(t *testing.T) {
 	require.Empty(t, cfg.TrustedProxies)
 	require.Empty(t, cfg.MetricsAddr)
 	require.Equal(t, 365, cfg.Audit.RetentionDays)
+	require.Equal(t, "0 3 * * *", cfg.Backup.Schedule)
+	require.Equal(t, 7, cfg.Backup.Keep)
 
 	def := Default()
 	def.Sources = cfg.Sources
@@ -74,6 +76,8 @@ func TestLoad_DefaultSources(t *testing.T) {
 		"max_ingest_body":      SourceDefault,
 		"metrics_addr":         SourceDefault,
 		"audit.retention_days": SourceDefault,
+		"backup.schedule":      SourceDefault,
+		"backup.keep":          SourceDefault,
 	}, cfg.Sources)
 }
 
@@ -421,6 +425,163 @@ func TestLoad_AuditRetentionDaysMustBeAWholeNumber(t *testing.T) {
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "audit.retention_days (VERVE_AUDIT_RETENTION_DAYS)")
+}
+
+// Given the defaults, then backups run daily at 03:00. Given VERVE_BACKUP_SCHEDULE or the YAML key
+// backup.schedule with a cron expression, then it replaces the default. Given off, then backups are
+// not scheduled: Cron is empty.
+func TestLoad_BackupSchedule(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		file    string
+		environ map[string]string
+		want    string
+		cron    string
+		source  Source
+	}{
+		{name: "default", want: "0 3 * * *", cron: "0 3 * * *", source: SourceDefault},
+		{
+			name:    "environment",
+			environ: map[string]string{"VERVE_BACKUP_SCHEDULE": "30 1 * * 0"},
+			want:    "30 1 * * 0",
+			cron:    "30 1 * * 0",
+			source:  SourceEnv,
+		},
+		{name: "file", file: "backup:\n  schedule: \"15 */6 * * *\"\n", want: "15 */6 * * *", cron: "15 */6 * * *", source: SourceFile},
+		{name: "off in the environment", environ: map[string]string{"VERVE_BACKUP_SCHEDULE": "off"}, want: "off", source: SourceEnv},
+		{name: "off in the file", file: "backup:\n  schedule: \"off\"\n", want: "off", source: SourceFile},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			opts := LoadOptions{Env: tt.environ}
+			if tt.file != "" {
+				opts.File = writeFile(t, tt.file)
+			}
+
+			cfg, err := Load(opts)
+
+			require.NoError(t, err)
+			require.Equal(t, tt.want, cfg.Backup.Schedule)
+			require.Equal(t, tt.cron, cfg.Backup.Cron())
+			require.Equal(t, tt.source, cfg.Sources["backup.schedule"])
+		})
+	}
+}
+
+// Given a backup schedule that is neither off nor a cron expression with the five standard fields
+// that matches a date, then configuration validation fails, naming the setting and the value.
+func TestLoad_InvalidBackupScheduleIsInvalid(t *testing.T) {
+	t.Parallel()
+
+	for _, schedule := range []string{
+		"daily",
+		"Off",
+		"0 3 * *",
+		"0 0 3 * * *",
+		"99 3 * * *",
+		"0 3 30 2 *",
+		"@daily",
+		"CRON_TZ=Europe/Paris 0 3 * * *",
+	} {
+		t.Run(schedule, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := Load(LoadOptions{Env: map[string]string{"VERVE_BACKUP_SCHEDULE": schedule}})
+
+			require.ErrorContains(t, err,
+				`backup.schedule (VERVE_BACKUP_SCHEDULE): invalid value "`+schedule+`": must be off or a cron expression`)
+		})
+	}
+}
+
+// Given an empty backup schedule in the file, then configuration validation fails rather than
+// disabling backups silently: off disables them.
+func TestLoad_EmptyBackupScheduleInTheFileIsInvalid(t *testing.T) {
+	t.Parallel()
+
+	_, err := Load(LoadOptions{File: writeFile(t, "backup:\n  schedule: \"\"\n")})
+
+	require.ErrorContains(t, err, `backup.schedule (VERVE_BACKUP_SCHEDULE): invalid value "": must be off or a cron expression`)
+}
+
+// Given the defaults, then 7 scheduled backups are kept. Given VERVE_BACKUP_KEEP or the YAML key
+// backup.keep, then that number applies, and the environment wins over the file.
+func TestLoad_BackupKeep(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		file    string
+		environ map[string]string
+		want    int
+		source  Source
+	}{
+		{name: "default", want: 7, source: SourceDefault},
+		{name: "environment", environ: map[string]string{"VERVE_BACKUP_KEEP": "30"}, want: 30, source: SourceEnv},
+		{name: "file", file: "backup:\n  keep: 14\n", want: 14, source: SourceFile},
+		{name: "one", environ: map[string]string{"VERVE_BACKUP_KEEP": "1"}, want: 1, source: SourceEnv},
+		{
+			name:    "environment over file",
+			file:    "backup:\n  keep: 14\n",
+			environ: map[string]string{"VERVE_BACKUP_KEEP": "30"},
+			want:    30,
+			source:  SourceEnv,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			opts := LoadOptions{Env: tt.environ}
+			if tt.file != "" {
+				opts.File = writeFile(t, tt.file)
+			}
+
+			cfg, err := Load(opts)
+
+			require.NoError(t, err)
+			require.Equal(t, tt.want, cfg.Backup.Keep)
+			require.Equal(t, tt.source, cfg.Sources["backup.keep"])
+		})
+	}
+}
+
+// Given a number of backups to keep below 1, then configuration validation fails: retention would
+// remove the backup that just ran.
+func TestLoad_BackupKeepBelowOneIsInvalid(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		file    string
+		environ map[string]string
+		value   string
+	}{
+		{name: "zero in the environment", environ: map[string]string{"VERVE_BACKUP_KEEP": "0"}, value: "0"},
+		{name: "negative in the environment", environ: map[string]string{"VERVE_BACKUP_KEEP": "-1"}, value: "-1"},
+		{name: "zero in the file", file: "backup:\n  keep: 0\n", value: "0"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			opts := LoadOptions{Env: tt.environ}
+			if tt.file != "" {
+				opts.File = writeFile(t, tt.file)
+			}
+
+			_, err := Load(opts)
+
+			require.EqualError(t, err, `backup.keep (VERVE_BACKUP_KEEP): invalid value "`+tt.value+`": must be at least 1`)
+		})
+	}
 }
 
 // Given a size `10XB` or `-1` in the environment, then loading fails.
