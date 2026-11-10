@@ -46,6 +46,11 @@ type Store interface {
 	// through the Store inside fn can wait forever.
 	WithTx(ctx context.Context, fn func(ctx context.Context, tx Repositories) error) error
 
+	// Snapshot writes a consistent copy of the whole storage to a new file at path, which must not
+	// exist. It holds no writer: writes go on meanwhile, and the copy holds the writes committed when
+	// it starts. Its permissions are those of a new file of the process.
+	Snapshot(ctx context.Context, path string) error
+
 	// Close releases the storage.
 	Close(ctx context.Context) error
 }

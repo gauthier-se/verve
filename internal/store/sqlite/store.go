@@ -166,3 +166,8 @@ func inTx(ctx context.Context, db *sql.DB, fn func(tx *sql.Tx) error) (err error
 
 	return nil
 }
+
+// Snapshot copies the database, see DB.Snapshot.
+func (s *sqliteStore) Snapshot(ctx context.Context, path string) error {
+	return s.db.Snapshot(ctx, path)
+}
