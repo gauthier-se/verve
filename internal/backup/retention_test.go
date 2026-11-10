@@ -100,12 +100,10 @@ func TestApplyRetention(t *testing.T) {
 			t.Parallel()
 
 			dir := t.TempDir()
-			for _, name := range tt.files {
-				require.NoError(t, os.WriteFile(filepath.Join(dir, name), nil, 0o600))
-			}
+			writeArchives(t, dir, tt.files...)
 
 			backups := backup.New(backup.Config{Dir: dir}, clock.NewFake(backupTime))
-			require.NoError(t, backups.ApplyRetention(tt.keep))
+			require.NoError(t, backups.ApplyRetention(t.Context(), tt.keep))
 
 			var want []string
 
@@ -120,8 +118,8 @@ func TestApplyRetention(t *testing.T) {
 	}
 }
 
-// Given a directory and a temporary directory of a backup in progress named like scheduled
-// archives, then retention leaves them alone: it only removes regular files.
+// Given a directory named like an old scheduled archive, then retention leaves it alone: it only
+// removes regular files.
 func TestApplyRetention_LeavesDirectoriesAlone(t *testing.T) {
 	t.Parallel()
 
@@ -130,10 +128,10 @@ func TestApplyRetention_LeavesDirectoriesAlone(t *testing.T) {
 	archive := "verve-1.2.3-20261109T030000Z-scheduled.tar.zst"
 
 	require.NoError(t, os.Mkdir(filepath.Join(dir, folder), 0o700))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, archive), nil, 0o600))
+	writeArchives(t, dir, archive)
 
 	backups := backup.New(backup.Config{Dir: dir}, clock.NewFake(backupTime))
-	require.NoError(t, backups.ApplyRetention(1))
+	require.NoError(t, backups.ApplyRetention(t.Context(), 1))
 
 	require.ElementsMatch(t, []string{folder, archive}, dirNames(t, dir))
 }

@@ -2,6 +2,7 @@ package backup
 
 import (
 	"cmp"
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -58,8 +59,8 @@ func parseArchiveName(name string) (archiveName, bool) {
 
 // ApplyRetention removes the scheduled archives of the backups directory but the keep newest, by
 // the timestamp of their name. It never removes another archive, or a file whose name does not
-// parse.
-func (b *Backups) ApplyRetention(keep int) error {
+// parse. It stops at the first archive to remove once ctx is done.
+func (b *Backups) ApplyRetention(ctx context.Context, keep int) error {
 	entries, err := os.ReadDir(b.cfg.Dir)
 	if err != nil {
 		return fmt.Errorf("apply retention: %w", err)
@@ -85,6 +86,12 @@ func (b *Backups) ApplyRetention(keep int) error {
 	var errs []error
 
 	for _, archive := range scheduled[min(keep, len(scheduled)):] {
+		if err := ctx.Err(); err != nil {
+			errs = append(errs, err)
+
+			break
+		}
+
 		err := os.Remove(filepath.Join(b.cfg.Dir, archive.name))
 		if err != nil && !errors.Is(err, fs.ErrNotExist) {
 			errs = append(errs, err)

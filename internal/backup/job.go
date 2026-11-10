@@ -23,6 +23,6 @@ func Register(registry *jobs.Registry, b *Backups, s store.Store, keep int) {
 				return err
 			}
 
-			return b.ApplyRetention(keep)
+			return b.ApplyRetention(ctx, keep)
 		})
 }

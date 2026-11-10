@@ -53,7 +53,7 @@ func runBackupJob(t *testing.T, f fixture, s store.Store, keep int) store.Job {
 
 // Given a successful scheduled backup, then the job completes and only the last keep scheduled
 // backups stay, the new one included. Manual and pre-migration backups stay whatever their age.
-func TestRunJob_KeepsTheLastScheduledBackups(t *testing.T) {
+func TestScheduledBackup_KeepsTheLastScheduledBackups(t *testing.T) {
 	t.Parallel()
 
 	f := newFixture(t)
@@ -80,7 +80,7 @@ func TestRunJob_KeepsTheLastScheduledBackups(t *testing.T) {
 
 // Given a failed backup, then the job is failed at its first attempt with the error, for admins to
 // see, and retention does not run.
-func TestRunJob_FailedBackupFailsTheJobWithoutRetention(t *testing.T) {
+func TestScheduledBackup_FailedBackupFailsTheJobWithoutRetention(t *testing.T) {
 	t.Parallel()
 
 	f := newFixture(t)
@@ -101,7 +101,7 @@ func TestRunJob_FailedBackupFailsTheJobWithoutRetention(t *testing.T) {
 
 // Given a backup run, then the audit event is recorded with the system as actor and the scheduled
 // reason.
-func TestRunJob_RecordsTheAuditEventWithTheSystemAsActor(t *testing.T) {
+func TestScheduledBackup_RecordsTheAuditEventWithTheSystemAsActor(t *testing.T) {
 	t.Parallel()
 
 	f := newFixture(t)
