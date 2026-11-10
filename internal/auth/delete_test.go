@@ -1,0 +1,359 @@
+package auth
+
+import (
+	"context"
+	"encoding/json"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/gauthier-se/verve/internal/audit"
+	"github.com/gauthier-se/verve/internal/store"
+)
+
+// recordingQueue enqueues jobs through the repositories it is given, as the worker does, and
+// records them.
+type recordingQueue struct {
+	queued []store.Job
+}
+
+func (q *recordingQueue) Enqueue(ctx context.Context, repos store.Repositories, job store.NewJob) (store.Job, error) {
+	queued, err := repos.Jobs().Enqueue(ctx, job)
+	if err != nil {
+		return store.Job{}, err
+	}
+
+	q.queued = append(q.queued, queued)
+
+	return queued, nil
+}
+
+// deletionTest is an adminTest with the deletions service, whose jobs go to queue.
+type deletionTest struct {
+	adminTest
+
+	queue     *recordingQueue
+	deletions Deletions
+}
+
+func newDeletionTest(t *testing.T) deletionTest {
+	t.Helper()
+
+	at := newAdminTest(t)
+	queue := &recordingQueue{}
+
+	return deletionTest{
+		adminTest: at,
+		queue:     queue,
+		deletions: NewDeletions(NewPasswords(at.logins, NewPasswordPolicy()), at.sessions, queue),
+	}
+}
+
+// requireStatus checks that the user of id has status.
+func (dt deletionTest) requireStatus(t *testing.T, id int64, status store.UserStatus) {
+	t.Helper()
+
+	user, err := dt.store.Users().Get(t.Context(), id)
+	require.NoError(t, err)
+	require.Equal(t, status, user.Status)
+}
+
+// requireDeletionQueued checks that one account.delete job is queued for the user of id, without a
+// user of its own.
+func (dt deletionTest) requireDeletionQueued(t *testing.T, id int64) {
+	t.Helper()
+
+	require.Len(t, dt.queue.queued, 1)
+
+	job, err := dt.store.Jobs().Get(t.Context(), dt.queue.queued[0].ID)
+	require.NoError(t, err)
+	require.Equal(t, KindDeleteAccount, job.Kind)
+	require.Equal(t, store.JobQueued, job.Status)
+	require.Zero(t, job.UserID, "the job must not belong to the user, or it would delete itself")
+
+	var payload DeleteAccountPayload
+	require.NoError(t, json.Unmarshal(job.Payload, &payload))
+	require.Equal(t, id, payload.UserID)
+}
+
+// mustRequestOwnDeletion requests the deletion of user, with alicePassword.
+func (dt deletionTest) mustRequestOwnDeletion(t *testing.T, user store.User) {
+	t.Helper()
+
+	require.NoError(t, dt.deletions.DeleteOwn(t.Context(), dt.store, OwnDeletion{UserID: user.ID, Password: alicePassword}))
+}
+
+// Given the right password, then DeleteOwn marks the account deleting at once, revokes every
+// session of the user, so that their login fails, queues the account.delete job and records the
+// request with the user as actor and subject.
+func TestDeletions_OwnDeletionWithTheRightPasswordDisablesTheAccountAtOnce(t *testing.T) {
+	t.Parallel()
+
+	dt := newDeletionTest(t)
+	bob := dt.mustCreateRole(t, "bob", store.RoleMember)
+	dt.mustLogIn(t, bob)
+
+	dt.mustRequestOwnDeletion(t, bob)
+
+	dt.requireStatus(t, bob.ID, store.UserDeleting)
+	dt.requireSessionCount(t, bob, 0)
+	dt.requireDeletionQueued(t, bob.ID)
+
+	_, err := dt.login(t.Context(), phoneIP, "bob", alicePassword)
+	require.ErrorIs(t, err, ErrInvalidCredentials)
+
+	events := dt.eventsOfType(t, audit.TypeUserDeletionRequested)
+	require.Len(t, events, 1)
+	require.Equal(t, bob.ID, events[0].ActorID)
+	require.Equal(t, bob.ID, events[0].SubjectID)
+}
+
+// Given a wrong password, then DeleteOwn returns ErrInvalidCredentials and changes nothing. Each
+// wrong password counts as a failed login of the user, so that the fifth delays the next attempt.
+func TestDeletions_OwnDeletionWithAWrongPasswordChangesNothing(t *testing.T) {
+	t.Parallel()
+
+	dt := newDeletionTest(t)
+	bob := dt.mustCreateRole(t, "bob", store.RoleMember)
+	dt.mustLogIn(t, bob)
+
+	for range 5 {
+		err := dt.deletions.DeleteOwn(t.Context(), dt.store, OwnDeletion{UserID: bob.ID, Password: wrongPassword})
+		require.ErrorIs(t, err, ErrInvalidCredentials)
+	}
+
+	var limited *RateLimitedError
+	require.ErrorAs(t, dt.deletions.DeleteOwn(t.Context(), dt.store, OwnDeletion{UserID: bob.ID, Password: alicePassword}), &limited)
+
+	dt.requireStatus(t, bob.ID, store.UserActive)
+	dt.requireSessionCount(t, bob, 1)
+	require.Empty(t, dt.queue.queued)
+	require.Empty(t, dt.eventsOfType(t, audit.TypeUserDeletionRequested))
+}
+
+// Given an admin and the exact username as confirmation, then DeleteAsAdmin does what DeleteOwn
+// does, with the admin as actor. Given a confirmation that is not the exact username, even only by
+// case, then ErrConfirmationMismatch and nothing changes.
+func TestDeletions_AdminDeletionRequiresTheExactUsername(t *testing.T) {
+	t.Parallel()
+
+	dt := newDeletionTest(t)
+	admin := dt.mustCreateRole(t, "admin", store.RoleAdmin)
+	bob := dt.mustCreateRole(t, "Bob", store.RoleMember)
+	dt.mustLogIn(t, bob)
+
+	for _, confirmation := range []string{"", "bob", "Bob "} {
+		_, err := dt.deletions.DeleteAsAdmin(t.Context(), dt.store, AdminDeletion{ActorID: admin.ID, UserID: bob.ID, Confirmation: confirmation})
+		require.ErrorIs(t, err, ErrConfirmationMismatch, confirmation)
+	}
+
+	dt.requireStatus(t, bob.ID, store.UserActive)
+	dt.requireSessionCount(t, bob, 1)
+	require.Empty(t, dt.queue.queued)
+
+	deleting, err := dt.deletions.DeleteAsAdmin(t.Context(), dt.store, AdminDeletion{ActorID: admin.ID, UserID: bob.ID, Confirmation: "Bob"})
+	require.NoError(t, err)
+	require.Equal(t, store.UserDeleting, deleting.Status)
+
+	dt.requireStatus(t, bob.ID, store.UserDeleting)
+	dt.requireSessionCount(t, bob, 0)
+	dt.requireDeletionQueued(t, bob.ID)
+
+	events := dt.eventsOfType(t, audit.TypeUserDeletionRequested)
+	require.Len(t, events, 1)
+	require.Equal(t, admin.ID, events[0].ActorID)
+	require.Equal(t, bob.ID, events[0].SubjectID)
+}
+
+// Given the last active admin, then neither DeleteOwn nor DeleteAsAdmin deletes them: both return
+// ErrLastAdmin. Given another active admin, then the deletion goes on.
+func TestDeletions_LastActiveAdminIsNotDeleted(t *testing.T) {
+	t.Parallel()
+
+	dt := newDeletionTest(t)
+	admin := dt.mustCreateRole(t, "admin", store.RoleAdmin)
+
+	err := dt.deletions.DeleteOwn(t.Context(), dt.store, OwnDeletion{UserID: admin.ID, Password: alicePassword})
+	require.ErrorIs(t, err, ErrLastAdmin)
+
+	_, err = dt.deletions.DeleteAsAdmin(t.Context(), dt.store, AdminDeletion{ActorID: admin.ID, UserID: admin.ID, Confirmation: "admin"})
+	require.ErrorIs(t, err, ErrLastAdmin)
+
+	dt.requireStatus(t, admin.ID, store.UserActive)
+	require.Empty(t, dt.queue.queued)
+
+	dt.mustCreateRole(t, "other", store.RoleAdmin)
+	dt.mustRequestOwnDeletion(t, admin)
+	dt.requireStatus(t, admin.ID, store.UserDeleting)
+}
+
+// Given an account being deleted, then a second request returns ErrUserDeleting and queues nothing.
+// Given an unknown user, then store.ErrNotFound.
+func TestDeletions_SecondRequestAndUnknownUserAreRefused(t *testing.T) {
+	t.Parallel()
+
+	dt := newDeletionTest(t)
+	admin := dt.mustCreateRole(t, "admin", store.RoleAdmin)
+	bob := dt.mustCreateRole(t, "bob", store.RoleMember)
+
+	dt.mustRequestOwnDeletion(t, bob)
+
+	_, err := dt.deletions.DeleteAsAdmin(t.Context(), dt.store, AdminDeletion{ActorID: admin.ID, UserID: bob.ID, Confirmation: "bob"})
+	require.ErrorIs(t, err, ErrUserDeleting)
+	require.Len(t, dt.queue.queued, 1)
+
+	_, err = dt.deletions.DeleteAsAdmin(t.Context(), dt.store, AdminDeletion{ActorID: admin.ID, UserID: 42, Confirmation: "bob"})
+	require.ErrorIs(t, err, store.ErrNotFound)
+}
+
+// Given a pending deletion, then the username stays taken and the status is deleting until the job
+// has finished, and is free once it has.
+func TestDeletions_UsernameStaysTakenUntilTheJobHasFinished(t *testing.T) {
+	t.Parallel()
+
+	dt := newDeletionTest(t)
+	bob := dt.mustCreateRole(t, "bob", store.RoleMember)
+
+	dt.mustRequestOwnDeletion(t, bob)
+	dt.requireStatus(t, bob.ID, store.UserDeleting)
+
+	_, err := dt.store.Users().Create(t.Context(), store.NewUser{Username: "BOB", Role: store.RoleMember})
+	require.ErrorIs(t, err, store.ErrConflict)
+
+	require.NoError(t, DeleteAccount(t.Context(), dt.store, bob.ID))
+
+	_, err = dt.store.Users().Create(t.Context(), store.NewUser{Username: "BOB", Role: store.RoleMember})
+	require.NoError(t, err)
+}
+
+// countingStore records the limits of the calls of Jobs().DeleteByUser on the store it wraps.
+type countingStore struct {
+	store.Store
+
+	limits *[]int
+}
+
+func (s countingStore) Jobs() store.JobsRepository {
+	return countingJobs{JobsRepository: s.Store.Jobs(), limits: s.limits}
+}
+
+type countingJobs struct {
+	store.JobsRepository
+
+	limits *[]int
+}
+
+func (j countingJobs) DeleteByUser(ctx context.Context, userID int64, limit int) (int64, error) {
+	*j.limits = append(*j.limits, limit)
+
+	return j.JobsRepository.DeleteByUser(ctx, userID, limit)
+}
+
+// Given the account.delete job, then every row of the user is removed, the jobs in batches of at
+// most the batch size, the audit events about the user stay and the completion is recorded once.
+// Given the same job run again, then it succeeds and changes nothing.
+func TestDeleteAccount_RemovesTheRowsInBoundedBatchesAndIsSafeToRunTwice(t *testing.T) {
+	t.Parallel()
+
+	dt := newDeletionTest(t)
+	alice := dt.mustCreateRole(t, "alice", store.RoleMember)
+	bob := dt.mustCreateRole(t, "bob", store.RoleMember)
+	dt.mustLogIn(t, alice)
+	dt.mustLogIn(t, bob)
+
+	for _, user := range []store.User{alice, bob, bob, bob, bob, bob} {
+		_, err := dt.store.Jobs().Enqueue(t.Context(), store.NewJob{Kind: "test.job", Payload: json.RawMessage(`{}`), UserID: user.ID})
+		require.NoError(t, err)
+	}
+
+	dt.mustRequestOwnDeletion(t, bob)
+
+	var limits []int
+
+	counting := countingStore{Store: dt.store, limits: &limits}
+
+	for range 2 {
+		require.NoError(t, deleteAccount(t.Context(), counting, bob.ID, 2))
+	}
+
+	require.GreaterOrEqual(t, len(limits), 3, "five jobs in batches of two")
+
+	for _, limit := range limits {
+		require.Equal(t, 2, limit)
+	}
+
+	_, err := dt.store.Users().Get(t.Context(), bob.ID)
+	require.ErrorIs(t, err, store.ErrNotFound)
+
+	remaining, err := dt.store.Jobs().DeleteByUser(t.Context(), bob.ID, 100)
+	require.NoError(t, err)
+	require.Zero(t, remaining, "no job of the deleted user is left")
+
+	dt.requireSessionCount(t, alice, 1)
+
+	stillThere, err := dt.store.Jobs().DeleteByUser(t.Context(), alice.ID, 100)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), stillThere, "the jobs of the other user stay")
+
+	require.Len(t, dt.eventsOfType(t, audit.TypeUserDeletionRequested), 1, "the events about the user stay")
+
+	completed := dt.eventsOfType(t, audit.TypeUserDeletionCompleted)
+	require.Len(t, completed, 1)
+	require.Zero(t, completed[0].ActorID, "the system completes the deletion")
+	require.Equal(t, bob.ID, completed[0].SubjectID)
+}
+
+// Given a queued and a running job of the user, then the account.delete job cancels both first: it
+// fails with an error to retry while the running one has not stopped, and deletes nothing, then
+// deletes the account once it has.
+func TestDeleteAccount_CancelsTheJobsOfTheUserFirst(t *testing.T) {
+	t.Parallel()
+
+	dt := newDeletionTest(t)
+	bob := dt.mustCreateRole(t, "bob", store.RoleMember)
+	ctx := t.Context()
+
+	_, err := dt.store.Jobs().Enqueue(ctx, store.NewJob{Kind: "test.import", Payload: json.RawMessage(`{}`), UserID: bob.ID})
+	require.NoError(t, err)
+
+	running, _, err := dt.store.Jobs().Claim(ctx, time.Minute)
+	require.NoError(t, err)
+
+	queued, err := dt.store.Jobs().Enqueue(ctx, store.NewJob{Kind: "test.import", Payload: json.RawMessage(`{}`), UserID: bob.ID})
+	require.NoError(t, err)
+
+	_, err = dt.store.Users().SetStatus(ctx, bob.ID, store.UserDeleting)
+	require.NoError(t, err)
+
+	err = DeleteAccount(ctx, dt.store, bob.ID)
+	require.ErrorIs(t, err, ErrJobsStillRunning)
+
+	got, err := dt.store.Jobs().Get(ctx, queued.ID)
+	require.NoError(t, err)
+	require.Equal(t, store.JobCancelled, got.Status)
+
+	got, err = dt.store.Jobs().Get(ctx, running.ID)
+	require.NoError(t, err)
+	require.True(t, got.CancelRequested)
+
+	dt.requireStatus(t, bob.ID, store.UserDeleting)
+
+	require.NoError(t, dt.store.Jobs().ConfirmCancel(ctx, running.ID, running.Claims))
+	require.NoError(t, DeleteAccount(ctx, dt.store, bob.ID))
+
+	_, err = dt.store.Users().Get(ctx, bob.ID)
+	require.ErrorIs(t, err, store.ErrNotFound)
+}
+
+// Given a user who is not being deleted, then the account.delete job deletes nothing and returns
+// ErrUserNotDeleting, which no retry fixes.
+func TestDeleteAccount_RefusesAUserWhoIsNotBeingDeleted(t *testing.T) {
+	t.Parallel()
+
+	dt := newDeletionTest(t)
+	bob := dt.mustCreateRole(t, "bob", store.RoleMember)
+
+	require.ErrorIs(t, DeleteAccount(t.Context(), dt.store, bob.ID), ErrUserNotDeleting)
+	dt.requireStatus(t, bob.ID, store.UserActive)
+}

@@ -168,6 +168,98 @@ func RunJobs(t *testing.T, newStore NewStoreFunc) {
 	runJobsActive(t, newStore)
 	runJobsPurge(t, newStore)
 	runJobsListByStatus(t, newStore)
+	runJobsOfAUser(t, newStore)
+}
+
+// userJob returns a due job of the user of userID.
+func userJob(userID int64) store.NewJob {
+	job := dueJob(jobsTime, "")
+	job.UserID = userID
+
+	return job
+}
+
+func runJobsOfAUser(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+
+	const alice, bob = 1, 2
+
+	// Given queued, running and finished jobs of a user, then CancelByUser cancels the queued ones
+	// at once, requests the cancellation of the running ones, which it counts, and leaves the
+	// finished ones and the jobs of the other users as they are.
+	t.Run("CancelByUserCancelsTheQueuedAndRunningJobsOfTheUser", func(t *testing.T) {
+		t.Parallel()
+
+		clk := clock.NewFake(jobsTime)
+		jobs := newStore(t, clk).Jobs()
+		ctx := t.Context()
+
+		mustEnqueue(ctx, t, jobs, userJob(alice))
+		completed := mustClaim(ctx, t, jobs)
+		require.NoError(t, jobs.Complete(ctx, completed.ID, completed.Claims))
+
+		mustEnqueue(ctx, t, jobs, userJob(alice))
+		running := mustClaim(ctx, t, jobs)
+		queued := mustEnqueue(ctx, t, jobs, userJob(alice))
+		other := mustEnqueue(ctx, t, jobs, userJob(bob))
+		system := mustEnqueue(ctx, t, jobs, dueJob(jobsTime, ""))
+
+		clk.Advance(time.Second)
+
+		stillRunning, err := jobs.CancelByUser(ctx, alice)
+		require.NoError(t, err)
+		require.Equal(t, int64(1), stillRunning)
+
+		got := mustGet(ctx, t, jobs, queued.ID)
+		require.Equal(t, store.JobCancelled, got.Status)
+		require.Equal(t, clk.Now(), got.FinishedAt)
+
+		got = mustGet(ctx, t, jobs, running.ID)
+		require.Equal(t, store.JobRunning, got.Status)
+		require.True(t, got.CancelRequested)
+
+		require.Equal(t, store.JobCompleted, mustGet(ctx, t, jobs, completed.ID).Status)
+		require.Equal(t, other, mustGet(ctx, t, jobs, other.ID))
+		require.Equal(t, system, mustGet(ctx, t, jobs, system.ID))
+
+		require.NoError(t, jobs.ConfirmCancel(ctx, running.ID, running.Claims))
+
+		stillRunning, err = jobs.CancelByUser(ctx, alice)
+		require.NoError(t, err)
+		require.Zero(t, stillRunning)
+	})
+
+	// Given jobs of two users, then DeleteByUser removes at most the limit of the jobs of one user,
+	// whatever their status, and returns how many it removed, and the jobs of the other user stay.
+	t.Run("DeleteByUserRemovesAtMostTheLimitOfTheJobsOfTheUser", func(t *testing.T) {
+		t.Parallel()
+
+		jobs := newStore(t, clock.NewFake(jobsTime)).Jobs()
+		ctx := t.Context()
+
+		mustEnqueue(ctx, t, jobs, userJob(alice))
+		mustClaim(ctx, t, jobs)
+		mustEnqueue(ctx, t, jobs, userJob(alice))
+		mustEnqueue(ctx, t, jobs, userJob(alice))
+		other := mustEnqueue(ctx, t, jobs, userJob(bob))
+
+		deleted, err := jobs.DeleteByUser(ctx, alice, 2)
+		require.NoError(t, err)
+		require.Equal(t, int64(2), deleted)
+
+		deleted, err = jobs.DeleteByUser(ctx, alice, 2)
+		require.NoError(t, err)
+		require.Equal(t, int64(1), deleted)
+
+		deleted, err = jobs.DeleteByUser(ctx, alice, 2)
+		require.NoError(t, err)
+		require.Zero(t, deleted)
+
+		require.Equal(t, other, mustGet(ctx, t, jobs, other.ID))
+
+		_, err = jobs.DeleteByUser(ctx, alice, 0)
+		require.ErrorIs(t, err, store.ErrInvalid)
+	})
 }
 
 // mustEnqueueClaimed stores a job without a serial key, running from now, and returns it.

@@ -35,6 +35,8 @@ func eventsByConstructor() map[string]Event {
 		"UserPasswordReset":        UserPasswordReset(0, 7),
 		"PasswordResetLinkCreated": PasswordResetLinkCreated(1, 7),
 		"PasswordResetCompleted":   PasswordResetCompleted(7),
+		"UserDeletionRequested":    UserDeletionRequested(1, 7),
+		"UserDeletionCompleted":    UserDeletionCompleted(7),
 	}
 }
 
@@ -425,6 +427,8 @@ func TestAdminActions(t *testing.T) {
 		{name: "password reset by the system", event: UserPasswordReset(0, 7), eventType: "user.password_reset", want: `{}`},
 		{name: "password reset link created", event: PasswordResetLinkCreated(1, 7),
 			eventType: "user.password_reset_link_created", actor: 1, want: `{}`},
+		{name: "deletion requested", event: UserDeletionRequested(1, 7), eventType: "user.deletion_requested", actor: 1, want: `{}`},
+		{name: "deletion completed by the system", event: UserDeletionCompleted(7), eventType: "user.deletion_completed", want: `{}`},
 	}
 
 	for _, tt := range tests {
