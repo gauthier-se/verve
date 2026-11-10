@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AcceptInvitationData, AcceptInvitationErrors, AcceptInvitationResponses, ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, CreateFirstAdminData, CreateFirstAdminErrors, CreateFirstAdminResponses, CreateInvitationData, CreateInvitationErrors, CreateInvitationResponses, CreatePasswordResetLinkData, CreatePasswordResetLinkErrors, CreatePasswordResetLinkResponses, GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetMetaData, GetMetaErrors, GetMetaResponses, GetPreferencesData, GetPreferencesErrors, GetPreferencesResponses, GetSetupStatusData, GetSetupStatusErrors, GetSetupStatusResponses, InspectInvitationData, InspectInvitationErrors, InspectInvitationResponses, ListAccountAuditEventsData, ListAccountAuditEventsErrors, ListAccountAuditEventsResponses, ListAdminAuditEventsData, ListAdminAuditEventsErrors, ListAdminAuditEventsResponses, ListAdminJobsData, ListAdminJobsErrors, ListAdminJobsResponses, ListAdminUsersData, ListAdminUsersErrors, ListAdminUsersResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutErrors, LogoutResponses, ResetPasswordData, ResetPasswordErrors, ResetPasswordResponses, RevokeOtherSessionsData, RevokeOtherSessionsErrors, RevokeOtherSessionsResponses, RevokeSessionData, RevokeSessionErrors, RevokeSessionResponses, SetUserRoleData, SetUserRoleErrors, SetUserRoleResponses, SetUserStatusData, SetUserStatusErrors, SetUserStatusResponses, UpdatePreferencesData, UpdatePreferencesErrors, UpdatePreferencesResponses } from './types.gen';
+import type { AcceptInvitationData, AcceptInvitationErrors, AcceptInvitationResponses, ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, CreateFirstAdminData, CreateFirstAdminErrors, CreateFirstAdminResponses, CreateInvitationData, CreateInvitationErrors, CreateInvitationResponses, CreatePasswordResetLinkData, CreatePasswordResetLinkErrors, CreatePasswordResetLinkResponses, DeleteAccountData, DeleteAccountErrors, DeleteAccountResponses, DeleteUserData, DeleteUserErrors, DeleteUserResponses, GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetMetaData, GetMetaErrors, GetMetaResponses, GetPreferencesData, GetPreferencesErrors, GetPreferencesResponses, GetSetupStatusData, GetSetupStatusErrors, GetSetupStatusResponses, InspectInvitationData, InspectInvitationErrors, InspectInvitationResponses, ListAccountAuditEventsData, ListAccountAuditEventsErrors, ListAccountAuditEventsResponses, ListAdminAuditEventsData, ListAdminAuditEventsErrors, ListAdminAuditEventsResponses, ListAdminJobsData, ListAdminJobsErrors, ListAdminJobsResponses, ListAdminUsersData, ListAdminUsersErrors, ListAdminUsersResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutErrors, LogoutResponses, ResetPasswordData, ResetPasswordErrors, ResetPasswordResponses, RevokeOtherSessionsData, RevokeOtherSessionsErrors, RevokeOtherSessionsResponses, RevokeSessionData, RevokeSessionErrors, RevokeSessionResponses, SetUserRoleData, SetUserRoleErrors, SetUserRoleResponses, SetUserStatusData, SetUserStatusErrors, SetUserStatusResponses, UpdatePreferencesData, UpdatePreferencesErrors, UpdatePreferencesResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -17,6 +17,25 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
      */
     meta?: keyof ClientMeta extends never ? Record<string, unknown> : ClientMeta;
 };
+
+/**
+ * Delete the account of the current user
+ *
+ * Disables the account at once, revokes every session of the user and clears the session cookie, then removes the account and all its data in a background job. The username stays taken until the job has finished. A wrong password answers 403 `invalid_credentials` and counts as a failed login of the user, which delays their attempts with 429 `rate_limited` as the login does. The last active admin answers 409 `last_admin`.
+ */
+export const deleteAccount = <ThrowOnError extends boolean = false>(options: Options<DeleteAccountData, ThrowOnError>): RequestResult<DeleteAccountResponses, DeleteAccountErrors, ThrowOnError> => (options.client ?? client).delete<DeleteAccountResponses, DeleteAccountErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'verve_session',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/account',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
 
 /**
  * List the audit events of the current user
@@ -193,6 +212,25 @@ export const listAdminUsers = <ThrowOnError extends boolean = false>(options?: O
         }],
     url: '/api/v1/admin/users',
     ...options
+});
+
+/**
+ * Delete a user
+ *
+ * Disables the account at once and revokes every session of the user, then removes the account and all its data in a background job, and returns the user, being deleted. The confirmation must be the exact username of the user, or the request answers 422 `confirmation_mismatch`. The last active admin answers 409 `last_admin`, and an account already being deleted 409 `user_deleting`.
+ */
+export const deleteUser = <ThrowOnError extends boolean = false>(options: Options<DeleteUserData, ThrowOnError>): RequestResult<DeleteUserResponses, DeleteUserErrors, ThrowOnError> => (options.client ?? client).delete<DeleteUserResponses, DeleteUserErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'verve_session',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/admin/users/{id}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
 });
 
 /**

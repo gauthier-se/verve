@@ -3,9 +3,11 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/gauthier-se/verve/internal/audit"
+	"github.com/gauthier-se/verve/internal/auth"
 	"github.com/gauthier-se/verve/internal/clock"
 	"github.com/gauthier-se/verve/internal/config"
 	"github.com/gauthier-se/verve/internal/jobs"
@@ -18,6 +20,10 @@ const (
 	kindPurgeAudit    = "audit.purge"
 	kindPurgeSessions = "cleanup.sessions"
 )
+
+// deleteAccountMaxAttempts lets an account deletion wait, through its retries, for hours for the
+// jobs of the user that it cancelled to stop, since the account stays disabled until it succeeds.
+const deleteAccountMaxAttempts = 10
 
 // registerJobs adds the job kinds of the server to registry and returns its recurring jobs.
 func registerJobs(registry *jobs.Registry, st store.Store, clk clock.Clock, cfg config.Config) []jobs.Schedule {
@@ -32,6 +38,16 @@ func registerJobs(registry *jobs.Registry, st store.Store, clk clock.Clock, cfg 
 	jobs.Register(registry, kindPurgeSessions, jobs.KindOptions{}, func(ctx context.Context, _ jobs.Job[struct{}]) error {
 		return st.Sessions().PurgeExpired(ctx, clk.Now())
 	})
+
+	jobs.Register(registry, auth.KindDeleteAccount, jobs.KindOptions{MaxAttempts: deleteAccountMaxAttempts},
+		func(ctx context.Context, job jobs.Job[auth.DeleteAccountPayload]) error {
+			err := auth.DeleteAccount(ctx, st, job.Payload.UserID)
+			if errors.Is(err, auth.ErrUserNotDeleting) {
+				return jobs.Permanent(err)
+			}
+
+			return err
+		})
 
 	return []jobs.Schedule{
 		{Name: kindPurgeJobs, Kind: kindPurgeJobs, Every: 24 * time.Hour, Payload: json.RawMessage(`{}`)},

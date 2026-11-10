@@ -45,6 +45,9 @@ type Deps struct {
 	// SetupToken is the token that creates the first admin. Nil means none: the setup accepts no
 	// token.
 	SetupToken *auth.SetupToken
+	// Jobs queues the jobs of the API, such as the deletion of an account, and wakes the worker. Nil
+	// means the jobs are written to the store, where the worker finds them at its next poll.
+	Jobs auth.JobQueue
 }
 
 // NewHandler returns the root handler of the server: the health probes, the API, a JSON 404
@@ -60,12 +63,14 @@ func NewHandler(d Deps) http.Handler {
 	policy := auth.NewPasswordPolicy()
 	logins := auth.NewLogins(sessions, hasher, auth.NewLoginLimiter(d.Clock))
 	accounts := auth.NewAccounts(hasher, policy)
+	passwords := auth.NewPasswords(logins, policy)
 	NewAPI(mux, APIDeps{
 		Version:        d.Version,
 		Store:          d.Store,
 		Logins:         logins,
 		Sessions:       sessions,
-		Passwords:      auth.NewPasswords(logins, policy),
+		Passwords:      passwords,
+		Deletions:      auth.NewDeletions(passwords, sessions, d.Jobs),
 		Setup:          auth.NewSetup(d.SetupToken, accounts, sessions),
 		Invitations:    auth.NewInvitations(d.Clock, accounts, sessions),
 		PasswordResets: auth.NewPasswordResets(d.Clock, accounts, sessions),
