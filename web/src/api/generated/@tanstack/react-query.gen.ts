@@ -3,8 +3,8 @@
 import { type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { acceptInvitation, changePassword, createFirstAdmin, createInvitation, createPasswordResetLink, deleteAccount, deleteUser, getCurrentUser, getMeta, getPreferences, getSetupStatus, inspectInvitation, listAccountAuditEvents, listAdminAuditEvents, listAdminJobs, listAdminUsers, listSessions, login, logout, type Options, resetPassword, revokeOtherSessions, revokeSession, setUserRole, setUserStatus, updatePreferences } from '../sdk.gen';
-import type { AcceptInvitationData, AcceptInvitationError, AcceptInvitationResponse, ChangePasswordData, ChangePasswordError, ChangePasswordResponse, CreateFirstAdminData, CreateFirstAdminError, CreateFirstAdminResponse, CreateInvitationData, CreateInvitationError, CreateInvitationResponse, CreatePasswordResetLinkData, CreatePasswordResetLinkError, CreatePasswordResetLinkResponse, DeleteAccountData, DeleteAccountError, DeleteUserData, DeleteUserError, DeleteUserResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetMetaData, GetMetaError, GetMetaResponse, GetPreferencesData, GetPreferencesError, GetPreferencesResponse, GetSetupStatusData, GetSetupStatusError, GetSetupStatusResponse, InspectInvitationData, InspectInvitationError, InspectInvitationResponse, ListAccountAuditEventsData, ListAccountAuditEventsError, ListAccountAuditEventsResponse, ListAdminAuditEventsData, ListAdminAuditEventsError, ListAdminAuditEventsResponse, ListAdminJobsData, ListAdminJobsError, ListAdminJobsResponse, ListAdminUsersData, ListAdminUsersError, ListAdminUsersResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutError, LogoutResponse, ResetPasswordData, ResetPasswordError, ResetPasswordResponse, RevokeOtherSessionsData, RevokeOtherSessionsError, RevokeOtherSessionsResponse, RevokeSessionData, RevokeSessionError, RevokeSessionResponse, SetUserRoleData, SetUserRoleError, SetUserRoleResponse, SetUserStatusData, SetUserStatusError, SetUserStatusResponse, UpdatePreferencesData, UpdatePreferencesError, UpdatePreferencesResponse } from '../types.gen';
+import { acceptInvitation, changePassword, createAdminBackup, createFirstAdmin, createInvitation, createPasswordResetLink, deleteAccount, deleteUser, downloadAdminBackup, getCurrentUser, getMeta, getPreferences, getSetupStatus, inspectInvitation, listAccountAuditEvents, listAdminAuditEvents, listAdminBackups, listAdminJobs, listAdminUsers, listSessions, login, logout, type Options, resetPassword, revokeOtherSessions, revokeSession, setUserRole, setUserStatus, updatePreferences } from '../sdk.gen';
+import type { AcceptInvitationData, AcceptInvitationError, AcceptInvitationResponse, ChangePasswordData, ChangePasswordError, ChangePasswordResponse, CreateAdminBackupData, CreateAdminBackupError, CreateAdminBackupResponse, CreateFirstAdminData, CreateFirstAdminError, CreateFirstAdminResponse, CreateInvitationData, CreateInvitationError, CreateInvitationResponse, CreatePasswordResetLinkData, CreatePasswordResetLinkError, CreatePasswordResetLinkResponse, DeleteAccountData, DeleteAccountError, DeleteUserData, DeleteUserError, DeleteUserResponse, DownloadAdminBackupData, DownloadAdminBackupError, DownloadAdminBackupResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetMetaData, GetMetaError, GetMetaResponse, GetPreferencesData, GetPreferencesError, GetPreferencesResponse, GetSetupStatusData, GetSetupStatusError, GetSetupStatusResponse, InspectInvitationData, InspectInvitationError, InspectInvitationResponse, ListAccountAuditEventsData, ListAccountAuditEventsError, ListAccountAuditEventsResponse, ListAdminAuditEventsData, ListAdminAuditEventsError, ListAdminAuditEventsResponse, ListAdminBackupsData, ListAdminBackupsError, ListAdminBackupsResponse, ListAdminJobsData, ListAdminJobsError, ListAdminJobsResponse, ListAdminUsersData, ListAdminUsersError, ListAdminUsersResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutError, LogoutResponse, ResetPasswordData, ResetPasswordError, ResetPasswordResponse, RevokeOtherSessionsData, RevokeOtherSessionsError, RevokeOtherSessionsResponse, RevokeSessionData, RevokeSessionError, RevokeSessionResponse, SetUserRoleData, SetUserRoleError, SetUserRoleResponse, SetUserStatusData, SetUserStatusError, SetUserStatusResponse, UpdatePreferencesData, UpdatePreferencesError, UpdatePreferencesResponse } from '../types.gen';
 
 /**
  * Delete the account of the current user
@@ -306,6 +306,65 @@ export const listAdminAuditEventsInfiniteOptions = (options?: Options<ListAdminA
     });
     return opts as Omit<typeof opts, 'initialData'>;
 };
+
+export const listAdminBackupsQueryKey = (options?: Options<ListAdminBackupsData>) => createQueryKey('listAdminBackups', options);
+
+/**
+ * List the backups
+ *
+ * Returns the backup archives of the backups directory, newest first, and the next run of the scheduled backups, for an admin.
+ */
+export const listAdminBackupsOptions = (options?: Options<ListAdminBackupsData>) => queryOptions<ListAdminBackupsResponse, ListAdminBackupsError, ListAdminBackupsResponse, ReturnType<typeof listAdminBackupsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listAdminBackups({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listAdminBackupsQueryKey(options)
+});
+
+/**
+ * Back up now
+ *
+ * Queues a manual backup, which retention never removes, and returns the id of its job. A backup that fails marks its job failed. Manual backups run one at a time.
+ */
+export const createAdminBackupMutation = (options?: Partial<Options<CreateAdminBackupData>>): UseMutationOptions<CreateAdminBackupResponse, CreateAdminBackupError, Options<CreateAdminBackupData>> => {
+    const mutationOptions: UseMutationOptions<CreateAdminBackupResponse, CreateAdminBackupError, Options<CreateAdminBackupData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await createAdminBackup({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const downloadAdminBackupQueryKey = (options: Options<DownloadAdminBackupData>) => createQueryKey('downloadAdminBackup', options);
+
+/**
+ * Download a backup
+ *
+ * Streams a backup archive as an attachment, for an admin. The archive holds the database and the secret key: keep it safe. A name that is not the one of an archive of the backups directory answers 404 `not_found`.
+ */
+export const downloadAdminBackupOptions = (options: Options<DownloadAdminBackupData>) => queryOptions<DownloadAdminBackupResponse, DownloadAdminBackupError, DownloadAdminBackupResponse, ReturnType<typeof downloadAdminBackupQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await downloadAdminBackup({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: downloadAdminBackupQueryKey(options)
+});
 
 /**
  * Invite a user

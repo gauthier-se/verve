@@ -31,6 +31,7 @@ const (
 	TypeUserDeletionCompleted        = "user.deletion_completed"
 	TypeBackupCreated                = "backup.created"
 	TypeBackupRestored               = "backup.restored"
+	TypeBackupDownloaded             = "backup.downloaded"
 )
 
 // Event is an audit event to record, built by a constructor of this package.
@@ -276,6 +277,28 @@ func BackupCreated(reason, file string) Event {
 	return Event{
 		eventType: TypeBackupCreated,
 		payload:   backupCreatedPayload{Reason: reason, File: file},
+	}
+}
+
+// BackupCreatedBy is a backup of the instance that the admin of actorID asked for, made for reason
+// into the archive named file.
+func BackupCreatedBy(actorID int64, reason, file string) Event {
+	event := BackupCreated(reason, file)
+	event.actorID = actorID
+
+	return event
+}
+
+type backupDownloadedPayload struct {
+	File string `json:"file"`
+}
+
+// BackupDownloaded is the download of the archive named file by the admin of actorID.
+func BackupDownloaded(actorID int64, file string) Event {
+	return Event{
+		eventType: TypeBackupDownloaded,
+		actorID:   actorID,
+		payload:   backupDownloadedPayload{File: file},
 	}
 }
 

@@ -92,6 +92,7 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger, stderr io.
 		PublicURL:      cfg.PublicURL,
 		SetupToken:     setupToken,
 		Jobs:           worker,
+		Backups:        newBackups(cfg, clk),
 	})
 	srv := NewServer(ServerConfig{Addr: cfg.ListenAddr}, handler, logger)
 

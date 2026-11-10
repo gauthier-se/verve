@@ -121,6 +121,19 @@ func (b *Backups) Create(ctx context.Context, s store.Store, reason Reason) (str
 	return path, nil
 }
 
+// CreateManual backs up s for the admin of actorID, like Create for a manual backup, with the admin
+// as the actor of its audit event.
+func (b *Backups) CreateManual(ctx context.Context, s store.Store, actorID int64) (string, error) {
+	path, err := b.create(ctx, s, ReasonManual, func(name string) error {
+		return audit.Record(ctx, s.AuditEvents(), audit.BackupCreatedBy(actorID, string(ReasonManual), name))
+	})
+	if err != nil {
+		return "", fmt.Errorf("back up: %w", err)
+	}
+
+	return path, nil
+}
+
 // CreatePreMigration backs up db before its migrations and returns the path of the archive, like
 // Create. It records no audit event and removes no other archive: the caller records the event and
 // calls ApplyPreMigrationRetention once the migrations are applied, since the schema of db may not

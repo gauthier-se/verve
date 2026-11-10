@@ -104,6 +104,36 @@ export type AuditUser = {
     username?: string;
 };
 
+export type Backup = {
+    /**
+     * When the snapshot of the backup was taken.
+     */
+    createdAt: string;
+    /**
+     * The file name of the archive, which downloads it.
+     */
+    name: string;
+    /**
+     * Why the backup was made.
+     */
+    reason: 'scheduled' | 'pre-migration' | 'manual' | 'pre-restore';
+    /**
+     * The size of the archive, in bytes.
+     */
+    size: number;
+};
+
+export type BackupsOutputBody = {
+    /**
+     * The backups, newest first.
+     */
+    items: Array<Backup>;
+    /**
+     * When the next scheduled backup runs, left out when scheduled backups are off.
+     */
+    nextRun?: string;
+};
+
 export type ChangePasswordInputBody = {
     /**
      * The current password of the user.
@@ -113,6 +143,13 @@ export type ChangePasswordInputBody = {
      * The new password: 12 to 128 characters, and not a common password.
      */
     newPassword: string;
+};
+
+export type CreateBackupOutputBody = {
+    /**
+     * The id of the job of the backup, which the failed jobs list when it fails.
+     */
+    jobId: number;
 };
 
 export type CreateInvitationInputBody = {
@@ -827,6 +864,118 @@ export type ListAdminAuditEventsResponses = {
 };
 
 export type ListAdminAuditEventsResponse = ListAdminAuditEventsResponses[keyof ListAdminAuditEventsResponses];
+
+export type ListAdminBackupsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/admin/backups';
+};
+
+export type ListAdminBackupsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Forbidden
+     */
+    403: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type ListAdminBackupsError = ListAdminBackupsErrors[keyof ListAdminBackupsErrors];
+
+export type ListAdminBackupsResponses = {
+    /**
+     * OK
+     */
+    200: BackupsOutputBody;
+};
+
+export type ListAdminBackupsResponse = ListAdminBackupsResponses[keyof ListAdminBackupsResponses];
+
+export type CreateAdminBackupData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/admin/backups';
+};
+
+export type CreateAdminBackupErrors = {
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Forbidden
+     */
+    403: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type CreateAdminBackupError = CreateAdminBackupErrors[keyof CreateAdminBackupErrors];
+
+export type CreateAdminBackupResponses = {
+    /**
+     * Accepted
+     */
+    202: CreateBackupOutputBody;
+};
+
+export type CreateAdminBackupResponse = CreateAdminBackupResponses[keyof CreateAdminBackupResponses];
+
+export type DownloadAdminBackupData = {
+    body?: never;
+    path: {
+        /**
+         * The file name of the archive.
+         */
+        name: string;
+    };
+    query?: never;
+    url: '/api/v1/admin/backups/{name}/download';
+};
+
+export type DownloadAdminBackupErrors = {
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Forbidden
+     */
+    403: Problem;
+    /**
+     * Not Found
+     */
+    404: Problem;
+    /**
+     * Unprocessable Entity
+     */
+    422: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type DownloadAdminBackupError = DownloadAdminBackupErrors[keyof DownloadAdminBackupErrors];
+
+export type DownloadAdminBackupResponses = {
+    /**
+     * The archive.
+     */
+    200: Blob | File;
+};
+
+export type DownloadAdminBackupResponse = DownloadAdminBackupResponses[keyof DownloadAdminBackupResponses];
 
 export type CreateInvitationData = {
     body: CreateInvitationInputBody;

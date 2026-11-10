@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/gauthier-se/verve/internal/auth"
+	"github.com/gauthier-se/verve/internal/backup"
 	"github.com/gauthier-se/verve/internal/clock"
 	"github.com/gauthier-se/verve/internal/config"
 	"github.com/gauthier-se/verve/internal/store"
@@ -48,6 +49,8 @@ type Deps struct {
 	// Jobs queues the jobs of the API, such as the deletion of an account, and wakes the worker. Nil
 	// means the jobs are written to the store, where the worker finds them at its next poll.
 	Jobs auth.JobQueue
+	// Backups lists, opens and creates the backups of the instance.
+	Backups *backup.Backups
 }
 
 // NewHandler returns the root handler of the server: the health probes, the API, a JSON 404
@@ -76,6 +79,8 @@ func NewHandler(d Deps) http.Handler {
 		PasswordResets: auth.NewPasswordResets(d.Clock, accounts, sessions),
 		Admin:          auth.NewAdmin(accounts, sessions),
 		PublicURL:      d.PublicURL,
+		Backups:        d.Backups,
+		Jobs:           d.Jobs,
 	})
 
 	if d.SPA != nil {
