@@ -527,7 +527,7 @@ func TestAdminActions(t *testing.T) {
 func TestTokenRejected(t *testing.T) {
 	t.Parallel()
 
-	for reason, want := range map[TokenRejection]string{
+	for reason, want := range map[TokenRejection]string{ //nolint:gosec // G101: audit payloads, not credentials
 		TokenRevoked:      `{"id":3,"reason":"revoked"}`,
 		TokenExpired:      `{"id":3,"reason":"expired"}`,
 		TokenUserDisabled: `{"id":3,"reason":"user_disabled"}`,

@@ -342,7 +342,7 @@ func TestBearer_SessionOnlyOperationRejectsATokenPrincipal(t *testing.T) {
 }
 
 // Given an endless stream of requests with a revoked token, then each answers 401 token_revoked,
-// and their audit events are aggregated: 30 rejections fill 21 rows.
+// and their audit events are aggregated: from the 21st, the rejections add to the 20th row.
 func TestBearer_RejectionsAreAggregatedInTheAuditLog(t *testing.T) {
 	t.Parallel()
 
@@ -366,7 +366,8 @@ func TestBearer_RejectionsAreAggregatedInTheAuditLog(t *testing.T) {
 
 	events, err := a.store.AuditEvents().List(t.Context(), store.AuditEventsFilter{Type: "token.rejected"}, store.PageRequest{Limit: 100})
 	require.NoError(t, err)
-	require.Len(t, events, 21)
+	require.Len(t, events, 20)
+	require.Equal(t, int64(11), events[0].Count)
 
 	var count int64
 	for _, event := range events {
