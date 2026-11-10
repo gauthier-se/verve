@@ -24,8 +24,13 @@ import (
 // Reason is why a backup was made. It ends the name of the archive.
 type Reason string
 
-// ReasonManual is a backup asked for by an operator.
-const ReasonManual Reason = "manual"
+// Reasons of a backup.
+const (
+	// ReasonManual is a backup asked for by an operator.
+	ReasonManual Reason = "manual"
+	// ReasonScheduled is a backup of the schedule, which retention removes once newer ones replace it.
+	ReasonScheduled Reason = "scheduled"
+)
 
 // The names of the files of an archive.
 const (
@@ -39,6 +44,12 @@ const entryPerm = 0o600
 // timestampLayout is the UTC time in the name of an archive, without the colons that Windows
 // refuses in file names.
 const timestampLayout = "20060102T150405Z"
+
+// The start and the end of the name of an archive, around its version, timestamp and reason.
+const (
+	archivePrefix = "verve-"
+	archiveSuffix = ".tar.zst"
+)
 
 // tmpPrefix starts the name of the temporary directory of a backup in progress. The next backups
 // remove those of the backups that crashed.
@@ -124,7 +135,7 @@ func (b *Backups) create(ctx context.Context, s store.Store, reason Reason) (pat
 		return "", err
 	}
 
-	name := fmt.Sprintf("verve-%s-%s-%s.tar.zst", b.cfg.Version, now.Format(timestampLayout), reason)
+	name := fmt.Sprintf("%s%s-%s-%s%s", archivePrefix, b.cfg.Version, now.Format(timestampLayout), reason, archiveSuffix)
 	path = filepath.Join(b.cfg.Dir, name)
 
 	// A link rather than a rename, which would replace the archive of a backup made in the same

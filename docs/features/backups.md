@@ -32,13 +32,24 @@ Verve backs up its database on a schedule, before every migration and on demand,
 
 - **FR-1**: A backup is produced with `VACUUM INTO` into a temporary file, then packed into a zstd-compressed tar archive and atomically renamed to `backups/verve-<version>-<UTC timestamp>-<reason>.tar.zst`, where reason is `scheduled`, `pre-migration` or `manual`.
 - **FR-2**: Scheduled backups run daily at 03:00 in the instance timezone by default. Schedule configurable with a cron expression (`VERVE_BACKUP_SCHEDULE`) or disabled.
+
+  | Variable | YAML key | Default | Purpose |
+  |---|---|---|---|
+  | `VERVE_BACKUP_SCHEDULE` | `backup.schedule` | `0 3 * * *` | When scheduled backups run: a cron expression with the five standard fields, or `off` |
+  | `VERVE_BACKUP_KEEP` | `backup.keep` | `7` | Number of scheduled backups kept, a whole number of at least 1 |
+
+  The cron expression is read in the local time of the process. In a container, that is UTC unless `TZ` is set, for example `TZ=Europe/Paris`: the binary embeds the time zone database, so the image needs none. Descriptors such as `@daily` and time zone prefixes such as `CRON_TZ=` are refused, and so is an expression that no date matches, such as `0 3 30 2 *`: configuration validation fails and names the setting. `off` disables scheduled backups and forgets their next run. The schedule follows the recurring jobs of [Background jobs](platform-jobs.md): a run missed during downtime happens once after startup.
 - **FR-3**: Retention: keep the last 7 scheduled backups by default (`VERVE_BACKUP_KEEP`). Pre-migration backups are kept for the last 3 migrations. Manual backups are never deleted automatically.
+
+  A scheduled backup is the recurring job `backup.run`. Once its archive is in place, it removes the scheduled archives of the backups directory but the newest `VERVE_BACKUP_KEEP`, the new one included. It reads the reason and the UTC timestamp from the name of each file, orders by that timestamp whatever the version, and never removes a manual or pre-migration archive, a directory, or a file whose name it cannot parse, such as an archive renamed by hand. A failed backup runs no retention. The retention of pre-migration backups comes with them, and is separate: scheduled backups never count against it.
 - **FR-4**: The archive contains the database and `secret.key`, because encrypted settings are useless without it. The documentation warns that backup files are therefore sensitive.
 - **FR-5**: `verve backup` creates a manual backup and prints its path. It works while the server is running.
 - **FR-6**: `verve restore <file>` refuses to run while the server holds the data directory lock. It validates the archive, keeps a copy of the current database as `pre-restore`, restores, then runs migrations if the backup comes from an older version.
 - **FR-7**: Backups from a newer Verve version than the binary are refused.
 - **FR-8**: Admin UI shows the list of backups (date, reason, size), a "Back up now" button and the next scheduled run. Download of a backup is available to admins.
 - **FR-9**: A failed backup creates a failed job visible to admins. From M3, it also triggers an admin notification when notifications are configured.
+
+  The job `backup.run` has a single attempt: a failure marks it `failed` at once, with its error, instead of retrying it, and the next scheduled run tries again. A failure of retention after the backup also fails the job, although the archive stays.
 - **FR-10**: Before a backup, Verve checks free disk space and aborts with a clear error if the estimated size does not fit.
 
 ## UX notes

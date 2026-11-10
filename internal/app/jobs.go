@@ -8,6 +8,7 @@ import (
 
 	"github.com/gauthier-se/verve/internal/audit"
 	"github.com/gauthier-se/verve/internal/auth"
+	"github.com/gauthier-se/verve/internal/backup"
 	"github.com/gauthier-se/verve/internal/clock"
 	"github.com/gauthier-se/verve/internal/config"
 	"github.com/gauthier-se/verve/internal/jobs"
@@ -49,9 +50,13 @@ func registerJobs(registry *jobs.Registry, st store.Store, clk clock.Clock, cfg 
 			return err
 		})
 
+	backup.Register(registry, newBackups(cfg, clk), st, cfg.Backup.Keep)
+
 	return []jobs.Schedule{
 		{Name: kindPurgeJobs, Kind: kindPurgeJobs, Every: 24 * time.Hour, Payload: json.RawMessage(`{}`)},
 		{Name: kindPurgeAudit, Kind: kindPurgeAudit, Every: 24 * time.Hour, Payload: json.RawMessage(`{}`)},
 		{Name: kindPurgeSessions, Kind: kindPurgeSessions, Every: 24 * time.Hour, Payload: json.RawMessage(`{}`)},
+		// Off leaves Cron empty, which disables the schedule and removes its stored next run.
+		{Name: backup.KindRun, Kind: backup.KindRun, Cron: cfg.Backup.Cron(), Payload: json.RawMessage(`{}`)},
 	}
 }

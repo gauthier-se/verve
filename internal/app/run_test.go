@@ -424,11 +424,42 @@ func storedSchedules(t *testing.T, cfg config.Config) map[string]time.Time {
 }
 
 // Given serve on a new database, then the purges of jobs, of audit events and of expired sessions
-// are scheduled daily, in a day, and no job is enqueued for them yet.
-func TestRun_SchedulesTheDailyPurges(t *testing.T) {
+// are scheduled daily, in a day, and no job is enqueued for them yet. Given the defaults, then the
+// backup is scheduled at the next 03:00 in the local time of the process.
+func TestRun_SchedulesTheDailyPurgesAndBackups(t *testing.T) {
 	t.Parallel()
 
 	cfg := testConfig(t.TempDir())
+	before := time.Now()
+	_, _, stop := startRun(t, cfg)
+
+	require.Eventually(t, func() bool {
+		return len(storedSchedules(t, cfg)) == 4
+	}, 5*time.Second, 10*time.Millisecond, "the server must schedule the purges and the backup")
+
+	stop()
+
+	schedules := storedSchedules(t, cfg)
+	for _, name := range []string{"jobs.purge", "audit.purge", "cleanup.sessions"} {
+		require.WithinDuration(t, time.Now().Add(24*time.Hour), schedules[name], time.Minute, name)
+	}
+
+	local := before.Local()
+
+	next := time.Date(local.Year(), local.Month(), local.Day(), 3, 0, 0, 0, time.Local)
+	if !next.After(local) {
+		next = time.Date(local.Year(), local.Month(), local.Day()+1, 3, 0, 0, 0, time.Local)
+	}
+
+	require.True(t, next.Equal(schedules["backup.run"]), "backup.run at %s, want %s", schedules["backup.run"], next)
+}
+
+// Given the backup schedule off, then serve schedules the purges and no backup.
+func TestRun_BackupScheduleOffSchedulesNoBackup(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig(t.TempDir())
+	cfg.Backup.Schedule = config.BackupScheduleOff
 	_, _, stop := startRun(t, cfg)
 
 	require.Eventually(t, func() bool {
@@ -437,10 +468,7 @@ func TestRun_SchedulesTheDailyPurges(t *testing.T) {
 
 	stop()
 
-	schedules := storedSchedules(t, cfg)
-	for _, name := range []string{"jobs.purge", "audit.purge", "cleanup.sessions"} {
-		require.WithinDuration(t, time.Now().Add(24*time.Hour), schedules[name], time.Minute, name)
-	}
+	require.NotContains(t, storedSchedules(t, cfg), "backup.run")
 }
 
 // Given an audit retention of 30 days and the purge of audit events missed during downtime, then it

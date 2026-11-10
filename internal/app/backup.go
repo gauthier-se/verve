@@ -15,12 +15,12 @@ import (
 // backups).
 func Backup(ctx context.Context, cfg config.Config) (string, error) {
 	return withSharedDB(ctx, cfg, func(s store.Store) (string, error) {
-		return newBackups(cfg).Create(ctx, s, backup.ReasonManual)
+		return newBackups(cfg, clock.Real()).Create(ctx, s, backup.ReasonManual)
 	})
 }
 
-// newBackups returns the backups of the data directory of cfg.
-func newBackups(cfg config.Config) *backup.Backups {
+// newBackups returns the backups of the data directory of cfg, timed by clk.
+func newBackups(cfg config.Config, clk clock.Clock) *backup.Backups {
 	layout := newLayout(cfg.DataDir)
 
 	// A configured key has no file to back up: the operator keeps it.
@@ -35,5 +35,5 @@ func newBackups(cfg config.Config) *backup.Backups {
 		SecretKey: secretKey,
 		Version:   version.Get().Version,
 		FreeSpace: backup.FreeSpace,
-	}, clock.Real())
+	}, clk)
 }

@@ -5,11 +5,14 @@ package config
 import (
 	"errors"
 	"fmt"
+	"math"
 	"reflect"
 	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/gauthier-se/verve/internal/jobs"
 )
 
 // envPrefix is the prefix of every environment variable.
@@ -26,16 +29,17 @@ const maxAuditRetentionDays = 36_500
 // the environment variables without envPrefix. A setting with `yaml:"-"` and an env tag
 // is set by the environment only.
 type Config struct {
-	DataDir        string      `yaml:"data_dir"        env:"DATA_DIR"`
-	ListenAddr     string      `yaml:"listen_addr"     env:"LISTEN_ADDR"`
-	PublicURL      PublicURL   `yaml:"public_url"      env:"PUBLIC_URL"`
-	TrustedProxies Prefixes    `yaml:"trusted_proxies" env:"TRUSTED_PROXIES"`
-	SecretKey      string      `yaml:"-"               env:"SECRET_KEY" secret:"true"`
-	Log            LogConfig   `yaml:"log"             envPrefix:"LOG_"`
-	MaxUploadSize  ByteSize    `yaml:"max_upload_size" env:"MAX_UPLOAD_SIZE"`
-	MaxIngestBody  ByteSize    `yaml:"max_ingest_body" env:"MAX_INGEST_BODY"`
-	MetricsAddr    string      `yaml:"metrics_addr"    env:"METRICS_ADDR"`
-	Audit          AuditConfig `yaml:"audit"           envPrefix:"AUDIT_"`
+	DataDir        string       `yaml:"data_dir"        env:"DATA_DIR"`
+	ListenAddr     string       `yaml:"listen_addr"     env:"LISTEN_ADDR"`
+	PublicURL      PublicURL    `yaml:"public_url"      env:"PUBLIC_URL"`
+	TrustedProxies Prefixes     `yaml:"trusted_proxies" env:"TRUSTED_PROXIES"`
+	SecretKey      string       `yaml:"-"               env:"SECRET_KEY" secret:"true"`
+	Log            LogConfig    `yaml:"log"             envPrefix:"LOG_"`
+	MaxUploadSize  ByteSize     `yaml:"max_upload_size" env:"MAX_UPLOAD_SIZE"`
+	MaxIngestBody  ByteSize     `yaml:"max_ingest_body" env:"MAX_INGEST_BODY"`
+	MetricsAddr    string       `yaml:"metrics_addr"    env:"METRICS_ADDR"`
+	Audit          AuditConfig  `yaml:"audit"           envPrefix:"AUDIT_"`
+	Backup         BackupConfig `yaml:"backup"          envPrefix:"BACKUP_"`
 
 	// Sources tells where each setting comes from, keyed by YAML path. Set by Load.
 	Sources Sources `yaml:"-" env:"-"`
@@ -51,6 +55,27 @@ type LogConfig struct {
 type AuditConfig struct {
 	// RetentionDays is the number of days an audit event is kept after its last occurrence.
 	RetentionDays int `yaml:"retention_days" env:"RETENTION_DAYS"`
+}
+
+// BackupConfig configures the scheduled backups.
+type BackupConfig struct {
+	// Schedule is a cron expression with the standard five fields, read in the local time of the
+	// process, or BackupScheduleOff.
+	Schedule string `yaml:"schedule" env:"SCHEDULE"`
+	// Keep is the number of scheduled backups that retention keeps.
+	Keep int `yaml:"keep" env:"KEEP"`
+}
+
+// BackupScheduleOff is the schedule of an instance without scheduled backups.
+const BackupScheduleOff = "off"
+
+// Cron returns the cron expression of the scheduled backups, or an empty string when they are off.
+func (b BackupConfig) Cron() string {
+	if b.Schedule == BackupScheduleOff {
+		return ""
+	}
+
+	return b.Schedule
 }
 
 // Log formats.
@@ -74,6 +99,7 @@ func Default() Config {
 		MaxUploadSize: 10_000_000_000,
 		MaxIngestBody: 1_000_000_000,
 		Audit:         AuditConfig{RetentionDays: 365},
+		Backup:        BackupConfig{Schedule: "0 3 * * *", Keep: 7},
 	}
 }
 
@@ -115,6 +141,13 @@ func (c Config) validate(settings map[string]setting) []error {
 	positive("max_upload_size", c.MaxUploadSize)
 	positive("max_ingest_body", c.MaxIngestBody)
 	between("audit.retention_days", c.Audit.RetentionDays, 1, maxAuditRetentionDays)
+	between("backup.keep", c.Backup.Keep, 1, math.MaxInt)
+
+	if c.Backup.Schedule != BackupScheduleOff {
+		if err := jobs.CheckCron(c.Backup.Schedule); err != nil {
+			invalid("backup.schedule", c.Backup.Schedule, "must be "+BackupScheduleOff+" or a cron expression with five fields ("+err.Error()+")")
+		}
+	}
 
 	// Not through invalid, which would print the key.
 	if c.SecretKey != "" {
