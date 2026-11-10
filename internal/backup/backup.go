@@ -111,21 +111,20 @@ func New(cfg Config, clk clock.Clock) *Backups {
 // s, which it never holds off, and next to other backups. On failure it leaves no archive and no
 // temporary file. It first removes the temporary files that crashed backups left.
 func (b *Backups) Create(ctx context.Context, s store.Store, reason Reason) (string, error) {
-	path, err := b.create(ctx, s, reason, func(name string) error {
-		return audit.Record(ctx, s.AuditEvents(), audit.BackupCreated(string(reason), name))
-	})
-	if err != nil {
-		return "", fmt.Errorf("back up: %w", err)
-	}
-
-	return path, nil
+	return b.createRecorded(ctx, s, reason, 0)
 }
 
 // CreateManual backs up s for the admin of actorID, like Create for a manual backup, with the admin
 // as the actor of its audit event.
 func (b *Backups) CreateManual(ctx context.Context, s store.Store, actorID int64) (string, error) {
-	path, err := b.create(ctx, s, ReasonManual, func(name string) error {
-		return audit.Record(ctx, s.AuditEvents(), audit.BackupCreatedBy(actorID, string(ReasonManual), name))
+	return b.createRecorded(ctx, s, ReasonManual, actorID)
+}
+
+// createRecorded backs up s for reason, and records the backup in s with the user of actorID as its
+// actor, or the system for 0.
+func (b *Backups) createRecorded(ctx context.Context, s store.Store, reason Reason, actorID int64) (string, error) {
+	path, err := b.create(ctx, s, reason, func(name string) error {
+		return audit.Record(ctx, s.AuditEvents(), audit.BackupCreatedBy(actorID, string(reason), name))
 	})
 	if err != nil {
 		return "", fmt.Errorf("back up: %w", err)
