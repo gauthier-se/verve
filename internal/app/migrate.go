@@ -60,13 +60,17 @@ func MigrationStatus(ctx context.Context, cfg config.Config) ([]MigrationState, 
 }
 
 // migrateDB applies the migrations of plan to db, the database of the data directory of cfg. Before
-// the first pending migration of a database that has data, it creates a pre-migration backup, which
-// it records in the audit log once the migrations are applied: the schema before them may not hold
-// the event. A failed backup applies no migration. A failure to record it keeps the archive, the way
-// back from migrations that are already applied.
+// the first pending migration of a database that has data, it creates a pre-migration backup. A
+// failed backup applies no migration. Once the migrations are applied, it records the backup in the
+// audit log, since the schema before them may not hold the event, then keeps the pre-migration
+// backups of the last 3 migrations. A migration that fails leaves every backup in place, so that
+// retries never remove the one from before the upgrade. A failure after the migrations keeps the
+// archive, the way back from migrations that are already applied.
 func migrateDB(ctx context.Context, cfg config.Config, db *sqlite.DB, clk clock.Clock, logger *slog.Logger,
 	plan migrationPlan,
 ) (MigrateResult, error) {
+	backups := newBackups(cfg, clk)
+
 	var archive string
 
 	before := plan.before
@@ -74,7 +78,7 @@ func migrateDB(ctx context.Context, cfg config.Config, db *sqlite.DB, clk clock.
 		before = func(ctx context.Context, _ []int64) error {
 			var err error
 
-			archive, err = backUpBeforeMigrating(ctx, cfg, db, clk, logger)
+			archive, err = backUpBeforeMigrating(ctx, backups, db, logger)
 
 			return err
 		}
@@ -90,15 +94,16 @@ func migrateDB(ctx context.Context, cfg config.Config, db *sqlite.DB, clk clock.
 		return res, fmt.Errorf("record pre-migration backup %s: %w", archive, err)
 	}
 
+	if err := backups.ApplyPreMigrationRetention(ctx); err != nil {
+		return res, err
+	}
+
 	return res, nil
 }
 
-// backUpBeforeMigrating creates the pre-migration backup of db, the database of the data directory
-// of cfg, and returns the name of its archive. A new database, at version 0, has nothing to back
-// up: it returns an empty name.
-func backUpBeforeMigrating(ctx context.Context, cfg config.Config, db *sqlite.DB, clk clock.Clock,
-	logger *slog.Logger,
-) (string, error) {
+// backUpBeforeMigrating creates the pre-migration backup of db with backups and returns the name of
+// its archive. A new database, at version 0, has nothing to back up: it returns an empty name.
+func backUpBeforeMigrating(ctx context.Context, backups *backup.Backups, db *sqlite.DB, logger *slog.Logger) (string, error) {
 	current, err := sqlite.CurrentVersion(ctx, db)
 	if err != nil || current == 0 {
 		return "", err
@@ -106,7 +111,7 @@ func backUpBeforeMigrating(ctx context.Context, cfg config.Config, db *sqlite.DB
 
 	logger.InfoContext(ctx, "backing up the database before migrating")
 
-	path, err := newBackups(cfg, clk).CreatePreMigration(ctx, db)
+	path, err := backups.CreatePreMigration(ctx, db)
 	if err != nil {
 		return "", err
 	}

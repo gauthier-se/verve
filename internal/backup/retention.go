@@ -58,6 +58,12 @@ func (b *Backups) ApplyRetention(ctx context.Context, keep int) error {
 	return b.applyRetention(ctx, ReasonScheduled, keep)
 }
 
+// ApplyPreMigrationRetention removes the pre-migration archives of the backups directory but those
+// of the last 3 migrations (preMigrationKeep), as ApplyRetention does for the scheduled ones.
+func (b *Backups) ApplyPreMigrationRetention(ctx context.Context) error {
+	return b.applyRetention(ctx, ReasonPreMigration, preMigrationKeep)
+}
+
 // applyRetention removes the archives of reason of the backups directory but the keep newest, as
 // ApplyRetention does for the scheduled ones.
 func (b *Backups) applyRetention(ctx context.Context, reason Reason, keep int) error {

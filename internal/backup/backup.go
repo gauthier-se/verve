@@ -118,21 +118,14 @@ func (b *Backups) Create(ctx context.Context, s store.Store, reason Reason) (str
 	return path, nil
 }
 
-// CreatePreMigration backs up db before its migrations and returns the path of the archive. Once
-// the archive is in place, it removes the pre-migration archives of the backups directory but the
-// preMigrationKeep newest, the new one included, like ApplyRetention. A failed backup runs no
-// retention.
-//
-// It records no audit event: the schema of db is not migrated yet, and may not hold it. The caller
-// records it once the migrations are applied.
+// CreatePreMigration backs up db before its migrations and returns the path of the archive, like
+// Create. It records no audit event and removes no other archive: the caller records the event and
+// calls ApplyPreMigrationRetention once the migrations are applied, since the schema of db may not
+// hold the event yet, and a migration that fails does not count as one of the last migrations.
 func (b *Backups) CreatePreMigration(ctx context.Context, db Snapshotter) (string, error) {
 	path, err := b.create(ctx, db, ReasonPreMigration, func(string) error { return nil })
 	if err != nil {
 		return "", fmt.Errorf("back up: %w", err)
-	}
-
-	if err := b.applyRetention(ctx, ReasonPreMigration, preMigrationKeep); err != nil {
-		return "", err
 	}
 
 	return path, nil
