@@ -1,10 +1,12 @@
 package httpapi
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -226,7 +228,7 @@ func TestBearer_RejectedTokenIsUnauthorized(t *testing.T) {
 		{
 			name: "unknown",
 			token: func(*testing.T, authTest, store.User) string {
-				return "vrv_0000000000000000000000000000000000000000000"
+				return unknownToken
 			},
 			want: "unauthorized",
 		},
@@ -253,8 +255,12 @@ func TestBearer_RejectedTokenIsUnauthorized(t *testing.T) {
 	}
 }
 
+// unknownToken has the shape of an API token, but no token has it.
+const unknownToken = "vrv_0000000000000000000000000000000000000000000"
+
 // Given a token in the query string, then 400 token_in_query, with or without an Authorization
-// header, on any path under /api/: the token is never used, so its last use stays unwritten.
+// header, on any path under /api/ and for any method, before the CSRF checks: the token is never
+// used, so its last use stays unwritten.
 func TestBearer_TokenInQueryIsRejected(t *testing.T) {
 	t.Parallel()
 
@@ -264,13 +270,17 @@ func TestBearer_TokenInQueryIsRejected(t *testing.T) {
 		query func(token string) string
 		// authorized sends the token in the Authorization header too.
 		authorized bool
+		// method is the method of the request, GET when empty.
+		method string
 	}{
 		{name: "access_token", query: func(token string) string { return "access_token=" + token }},
 		{name: "access_token in another case", query: func(token string) string { return "Access_Token=" + token }},
 		{name: "any parameter", query: func(token string) string { return "page=2&token=" + token }},
-		{name: "unknown token", query: func(string) string { return "key=vrv_unknown" }},
+		{name: "as a parameter name", query: func(token string) string { return token }},
+		{name: "unknown token", query: func(string) string { return "key=" + unknownToken }},
 		{name: "empty access_token", query: func(string) string { return "access_token=" }},
 		{name: "with the header too", query: func(token string) string { return "access_token=" + token }, authorized: true},
+		{name: "POST without the CSRF header", query: func(token string) string { return "access_token=" + token }, method: http.MethodPost},
 	}
 
 	for _, tt := range tests {
@@ -284,7 +294,7 @@ func TestBearer_TokenInQueryIsRejected(t *testing.T) {
 
 				var got auth.Principal
 
-				r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path+"?"+tt.query(token), nil)
+				r := httptest.NewRequestWithContext(t.Context(), cmp.Or(tt.method, http.MethodGet), path+"?"+tt.query(token), nil)
 				if tt.authorized {
 					r.Header.Set("Authorization", "Bearer "+token)
 				}
@@ -304,7 +314,8 @@ func TestBearer_TokenInQueryIsRejected(t *testing.T) {
 	}
 }
 
-// Given query parameters that hold no token, then the request goes on.
+// Given query parameters that hold no token, such as a search for vrv_ or a value shorter than a
+// token, then the request goes on.
 func TestBearer_QueryWithoutTokenGoesOn(t *testing.T) {
 	t.Parallel()
 
@@ -313,9 +324,19 @@ func TestBearer_QueryWithoutTokenGoesOn(t *testing.T) {
 
 	var got auth.Principal
 
-	rec := getWithAuthorization(t, scopedAPIHandler(t, a, &got), "/api/v1/test/ingest?page=2&name=vrv", "Bearer "+token)
+	h := scopedAPIHandler(t, a, &got)
 
-	require.Equal(t, http.StatusNoContent, rec.Code, rec.Body.String())
+	for _, query := range []string{
+		"page=2&name=vrv",
+		"q=vrv_",
+		"q=vrv_short",
+		"q=" + unknownToken + "0",
+		"q=" + strings.Replace(unknownToken, "0", "-", 1),
+	} {
+		rec := getWithAuthorization(t, h, "/api/v1/test/ingest?"+query, "Bearer "+token)
+
+		require.Equal(t, http.StatusNoContent, rec.Code, "%s: %s", query, rec.Body.String())
+	}
 }
 
 // Given a valid token on an operation that accepts sessions only, such as GET /api/v1/auth/me or an
