@@ -13,12 +13,6 @@ import (
 	"time"
 )
 
-// The start and the end of the name of an archive, around its version, timestamp and reason.
-const (
-	archivePrefix = "verve-"
-	archiveSuffix = ".tar.zst"
-)
-
 // archiveName is what the name of an archive tells.
 type archiveName struct {
 	name   string

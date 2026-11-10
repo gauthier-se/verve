@@ -45,6 +45,12 @@ const entryPerm = 0o600
 // refuses in file names.
 const timestampLayout = "20060102T150405Z"
 
+// The start and the end of the name of an archive, around its version, timestamp and reason.
+const (
+	archivePrefix = "verve-"
+	archiveSuffix = ".tar.zst"
+)
+
 // tmpPrefix starts the name of the temporary directory of a backup in progress. The next backups
 // remove those of the backups that crashed.
 const tmpPrefix = ".verve-backup-"
@@ -129,7 +135,7 @@ func (b *Backups) create(ctx context.Context, s store.Store, reason Reason) (pat
 		return "", err
 	}
 
-	name := fmt.Sprintf("verve-%s-%s-%s.tar.zst", b.cfg.Version, now.Format(timestampLayout), reason)
+	name := fmt.Sprintf("%s%s-%s-%s%s", archivePrefix, b.cfg.Version, now.Format(timestampLayout), reason, archiveSuffix)
 	path = filepath.Join(b.cfg.Dir, name)
 
 	// A link rather than a rename, which would replace the archive of a backup made in the same
