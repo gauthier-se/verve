@@ -129,6 +129,9 @@ type JobsRepository interface {
 	DeleteSchedule(ctx context.Context, name string) error
 	// HasActiveJob reports whether a job of serialKey is queued or running.
 	HasActiveJob(ctx context.Context, serialKey string) (bool, error)
+	// ActiveJob returns the oldest job of serialKey that is queued or running, or ErrNotFound when
+	// there is none.
+	ActiveJob(ctx context.Context, serialKey string) (Job, error)
 	// PurgeFinished removes the completed and cancelled jobs that ended before completedBefore, and
 	// the failed jobs that ended before failedBefore. Queued and running jobs are never removed.
 	PurgeFinished(ctx context.Context, completedBefore, failedBefore time.Time) error

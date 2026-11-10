@@ -183,7 +183,7 @@ export const listAdminBackups = <ThrowOnError extends boolean = false>(options?:
 /**
  * Back up now
  *
- * Queues a manual backup, which retention never removes, and returns the id of its job. A backup that fails marks its job failed. Manual backups run one at a time.
+ * Queues a manual backup, which retention never removes, and returns the id of its job. A backup that fails marks its job failed. Manual backups run one at a time: while a manual backup is queued or running, a new request queues nothing and returns the id of its job.
  */
 export const createAdminBackup = <ThrowOnError extends boolean = false>(options?: Options<CreateAdminBackupData, ThrowOnError>): RequestResult<CreateAdminBackupResponses, CreateAdminBackupErrors, ThrowOnError> => (options?.client ?? client).post<CreateAdminBackupResponses, CreateAdminBackupErrors, ThrowOnError>({
     security: [{

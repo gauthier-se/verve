@@ -1744,7 +1744,7 @@
         ]
       },
       "post": {
-        "description": "Queues a manual backup, which retention never removes, and returns the id of its job. A backup that fails marks its job failed. Manual backups run one at a time.",
+        "description": "Queues a manual backup, which retention never removes, and returns the id of its job. A backup that fails marks its job failed. Manual backups run one at a time: while a manual backup is queued or running, a new request queues nothing and returns the id of its job.",
         "operationId": "create-admin-backup",
         "responses": {
           "202": {

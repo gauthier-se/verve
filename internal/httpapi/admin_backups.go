@@ -15,6 +15,7 @@ import (
 	"github.com/gauthier-se/verve/internal/audit"
 	"github.com/gauthier-se/verve/internal/backup"
 	"github.com/gauthier-se/verve/internal/logging"
+	"github.com/gauthier-se/verve/internal/store"
 )
 
 // archiveContentType is the media type of a backup archive, a zstd-compressed tar.
@@ -113,7 +114,8 @@ func registerAdminBackups(api huma.API, deps APIDeps) {
 		Path:        "/api/v1/admin/backups",
 		Summary:     "Back up now",
 		Description: "Queues a manual backup, which retention never removes, and returns the id of its job. " +
-			"A backup that fails marks its job failed. Manual backups run one at a time.",
+			"A backup that fails marks its job failed. Manual backups run one at a time: while a manual " +
+			"backup is queued or running, a new request queues nothing and returns the id of its job.",
 		Tags:          []string{"Backups"},
 		Security:      sessionSecurity(),
 		DefaultStatus: http.StatusAccepted,
@@ -129,7 +131,23 @@ func registerAdminBackups(api huma.API, deps APIDeps) {
 			return nil, err
 		}
 
-		queued, err := deps.Jobs.Enqueue(ctx, deps.Store, job)
+		var queued store.Job
+
+		// In one transaction, so that concurrent requests, such as a double click, queue one job: a
+		// second job would start within the same second, and fail on the name of the first archive.
+		err = deps.Store.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
+			var err error
+
+			// A job queued or running answers the request.
+			queued, err = tx.Jobs().ActiveJob(ctx, job.SerialKey)
+			if !errors.Is(err, store.ErrNotFound) {
+				return err
+			}
+
+			queued, err = deps.Jobs.Enqueue(ctx, tx, job)
+
+			return err
+		})
 		if err != nil {
 			return nil, fmt.Errorf("queue manual backup: %w", err)
 		}

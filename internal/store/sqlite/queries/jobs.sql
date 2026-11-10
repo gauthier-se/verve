@@ -147,6 +147,15 @@ SELECT EXISTS (
       AND status IN ('queued', 'running')
 );
 
+-- name: ActiveJob :one
+-- The oldest job of the serial key that is queued or running.
+SELECT *
+FROM jobs
+WHERE serial_key = ?
+  AND status IN ('queued', 'running')
+ORDER BY id
+LIMIT 1;
+
 -- name: ListJobsByStatus :many
 -- The jobs of a finished status, newest first by the time they ended, after a position: those that
 -- ended before it, or at the same time with a smaller id. The position is always set, the first
