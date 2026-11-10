@@ -41,6 +41,7 @@ func eventsByConstructor() map[string]Event {
 		"BackupRestored":           BackupRestored("verve-1.2.3-20261110T140305Z-manual.tar.zst"),
 		"BackupCreatedBy":          BackupCreatedBy(1, "manual", "verve-1.2.3-20261110T140305Z-manual.tar.zst"),
 		"BackupDownloaded":         BackupDownloaded(1, "verve-1.2.3-20261110T140305Z-manual.tar.zst"),
+		"TokenRejected":            TokenRejected(7, 3, TokenRevoked),
 	}
 }
 
@@ -517,5 +518,54 @@ func TestAdminActions(t *testing.T) {
 			require.NoError(t, err)
 			require.JSONEq(t, tt.want, string(data))
 		})
+	}
+}
+
+// Given a request with a revoked or expired token, or a token of a disabled user, then the event is
+// token.rejected, without actor, about the owner of the token, with the token id and the reason in
+// the payload.
+func TestTokenRejected(t *testing.T) {
+	t.Parallel()
+
+	for reason, want := range map[TokenRejection]string{ //nolint:gosec // G101: audit payloads, not credentials
+		TokenRevoked:      `{"id":3,"reason":"revoked"}`,
+		TokenExpired:      `{"id":3,"reason":"expired"}`,
+		TokenUserDisabled: `{"id":3,"reason":"user_disabled"}`,
+	} {
+		event := TokenRejected(7, 3, reason)
+
+		require.Equal(t, "token.rejected", event.eventType)
+		require.Zero(t, event.actorID)
+		require.Equal(t, int64(7), event.subjectID)
+
+		data, err := json.Marshal(event.payload)
+		require.NoError(t, err)
+		require.JSONEq(t, want, string(data))
+	}
+}
+
+// Given rejections of two tokens, with or without a request, then their bursts are aggregated on the
+// token and the reason, whatever the client IP, so that an automation retrying a revoked token from
+// changing addresses fills one row.
+func TestTokenRejected_IsAggregatedOnTheTokenAndTheReason(t *testing.T) {
+	t.Parallel()
+
+	for _, meta := range []Meta{{IP: netip.MustParseAddr("203.0.113.7")}, {}} {
+		ctx := WithMeta(t.Context(), meta)
+		events := &fakeEvents{}
+
+		for _, event := range []Event{
+			TokenRejected(7, 3, TokenRevoked), TokenRejected(7, 3, TokenRevoked),
+			TokenRejected(7, 3, TokenExpired), TokenRejected(7, 4, TokenRevoked),
+		} {
+			require.NoError(t, Record(ctx, events, event))
+		}
+
+		keys := make([]string, 0, len(events.appended))
+		for _, event := range events.appended {
+			keys = append(keys, event.AggregationKey)
+		}
+
+		require.Equal(t, []string{"token 3 revoked", "token 3 revoked", "token 3 expired", "token 4 revoked"}, keys)
 	}
 }

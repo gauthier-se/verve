@@ -4,8 +4,14 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"errors"
+	"fmt"
+	"net/netip"
+	"strings"
 	"time"
 
+	"github.com/gauthier-se/verve/internal/audit"
+	"github.com/gauthier-se/verve/internal/clock"
 	"github.com/gauthier-se/verve/internal/store"
 )
 
@@ -86,4 +92,98 @@ func hashAPIToken(token string) []byte {
 	hash := sha256.Sum256([]byte(token))
 
 	return hash[:]
+}
+
+// tokenTouchInterval is the shortest time between two writes of the last use of a token, so that
+// the requests of a sync do not each write (FR-7 of API tokens).
+const tokenTouchInterval = time.Minute
+
+// The rejections of a known API token, whose messages are the codes of their problems: the owner
+// of the token can tell them apart (FR-5 of API tokens).
+var (
+	// ErrTokenRevoked is returned for a revoked token.
+	ErrTokenRevoked = errors.New("token_revoked")
+	// ErrTokenExpired is returned for a token past its expiry.
+	ErrTokenExpired = errors.New("token_expired")
+	// ErrUserDisabled is returned for a token of a user who is not active.
+	ErrUserDisabled = errors.New("user_disabled")
+)
+
+// Tokens authenticates the requests of machine clients by their API token.
+type Tokens struct {
+	clk clock.Clock
+}
+
+// NewTokens returns the tokens service, which takes the current time from clk.
+func NewTokens(clk clock.Clock) Tokens {
+	return Tokens{clk: clk}
+}
+
+// Authenticate returns the API token token, as the client sends it, and its user, read in repos,
+// for a request from clientIP, which is the zero netip.Addr when unknown. It returns
+// store.ErrNotFound for an unknown token, and ErrTokenRevoked, ErrTokenExpired or ErrUserDisabled,
+// in that order of precedence, for a known token that is rejected, after recording the
+// token.rejected event of the reason. A token stays valid until its expiry included.
+//
+// It writes the last use of a valid token, with clientIP, at most once per minute, and returns the
+// token as written.
+func (t Tokens) Authenticate(ctx context.Context, repos store.Repositories, token string, clientIP netip.Addr) (store.APIToken, store.User, error) {
+	found, user, err := repos.APITokens().GetByHash(ctx, hashAPIToken(token))
+	if errors.Is(err, store.ErrNotFound) {
+		return store.APIToken{}, store.User{}, store.ErrNotFound
+	}
+
+	if err != nil {
+		return store.APIToken{}, store.User{}, fmt.Errorf("authenticate token: %w", err)
+	}
+
+	now := t.clk.Now()
+
+	var (
+		reason   audit.TokenRejection
+		rejected error
+	)
+
+	switch {
+	case !found.RevokedAt.IsZero():
+		reason, rejected = audit.TokenRevoked, ErrTokenRevoked
+	case !found.ExpiresAt.IsZero() && now.After(found.ExpiresAt):
+		reason, rejected = audit.TokenExpired, ErrTokenExpired
+	case user.Status != store.UserActive:
+		reason, rejected = audit.TokenUserDisabled, ErrUserDisabled
+	}
+
+	if rejected != nil {
+		if err := audit.Record(ctx, repos.AuditEvents(), audit.TokenRejected(user.ID, found.ID, reason)); err != nil {
+			return store.APIToken{}, store.User{}, fmt.Errorf("authenticate token %d: %w", found.ID, err)
+		}
+
+		return store.APIToken{}, store.User{}, rejected
+	}
+
+	if !found.LastUsedAt.IsZero() && now.Sub(found.LastUsedAt) < tokenTouchInterval {
+		return found, user, nil
+	}
+
+	// The token is gone when its user was deleted since it was read.
+	touched, err := repos.APITokens().Touch(ctx, found.ID, ipText(clientIP))
+	if errors.Is(err, store.ErrNotFound) {
+		return store.APIToken{}, store.User{}, store.ErrNotFound
+	}
+
+	if err != nil {
+		return store.APIToken{}, store.User{}, fmt.Errorf("authenticate token %d: %w", found.ID, err)
+	}
+
+	return touched, user, nil
+}
+
+// LooksLikeAPIToken reports whether s has the shape of an API token, vrv_ and tokenRandomLength
+// base62 characters, so that a token sent where it does not belong, such as in a URL, is
+// recognized, while a text that only starts like one, such as a search for vrv_, is not.
+func LooksLikeAPIToken(s string) bool {
+	random, found := strings.CutPrefix(s, tokenMarker)
+
+	return found && len(random) == tokenRandomLength &&
+		strings.Trim(random, tokenAlphabet) == ""
 }

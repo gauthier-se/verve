@@ -108,6 +108,30 @@ func (r apiTokens) Revoke(ctx context.Context, userID, id int64) (store.APIToken
 	return apiTokenOf(row), nil
 }
 
+func (r apiTokens) Touch(ctx context.Context, id int64, ip string) (store.APIToken, error) {
+	var row sqlcgen.ApiToken
+
+	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
+		var err error
+
+		row, err = q.TouchAPIToken(ctx, sqlcgen.TouchAPITokenParams{
+			LastUsedAt: nullMillis(r.clk.Now()),
+			LastUsedIp: sql.NullString{String: ip, Valid: ip != ""},
+			ID:         id,
+		})
+		if errors.Is(err, sql.ErrNoRows) {
+			return store.ErrNotFound
+		}
+
+		return err
+	})
+	if err != nil {
+		return store.APIToken{}, fmt.Errorf("touch token %d: %w", id, err)
+	}
+
+	return apiTokenOf(row), nil
+}
+
 // validScopes reports whether scopes holds one or more distinct known scopes.
 func validScopes(scopes []store.TokenScope) bool {
 	if len(scopes) == 0 {

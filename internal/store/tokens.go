@@ -71,4 +71,7 @@ type APITokensRepository interface {
 	// returns the token. A revoked token keeps its first RevokedAt. It returns ErrNotFound when no
 	// token of userID has id, also when the token is of another user.
 	Revoke(ctx context.Context, userID, id int64) (APIToken, error)
+	// Touch sets the LastUsedAt of the token of id to the current time and its LastUsedIP to ip,
+	// empty for an unknown address, and returns the token, or returns ErrNotFound.
+	Touch(ctx context.Context, id int64, ip string) (APIToken, error)
 }

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -43,6 +45,20 @@ func sessionCookieScheme() *huma.SecurityScheme {
 		Description: "The session cookie set at login, named `" + hostSessionCookieName + "` when the public " +
 			"URL uses https. A `POST`, `PUT`, `PATCH` or `DELETE` must also send the header `Verve-Csrf: 1` " +
 			"and an `Origin` matching the public URL.",
+	}
+}
+
+// bearerTokenSchemeName names bearerTokenScheme in the OpenAPI document.
+const bearerTokenSchemeName = "bearerToken"
+
+// bearerTokenScheme describes the API tokens in the OpenAPI document.
+func bearerTokenScheme() *huma.SecurityScheme {
+	return &huma.SecurityScheme{
+		Type:   "http",
+		Scheme: "bearer",
+		Description: "An API token, `vrv_` followed by 43 base62 characters, sent as `Authorization: Bearer " +
+			"<token>`, never in the URL. A token has the scopes `ingest`, `read` or both, and is accepted " +
+			"only by the operations that name one of its scopes.",
 	}
 }
 
@@ -110,28 +126,38 @@ func sessionPublicIDFrom(ctx context.Context) string {
 	return id
 }
 
-// AuthenticationMiddleware authenticates the requests under /api/ by the session cookie of an
-// instance at publicURL, looked up with sessions in repos, and stores their principal in their
-// context. A request without a valid session goes on without a principal: the operations that need
-// one answer 401. A request with Authorization: Bearer is never authenticated by its cookie, since
-// the CSRF checks do not apply to it.
+// AuthenticationMiddleware authenticates the requests under /api/ by their API token, looked up
+// with tokens in repos, or by the session cookie of an instance at publicURL, looked up with
+// sessions in repos, and stores their principal in their context.
 //
-// When the lookup renews the session, the response sends the cookie again with the new expiry, so
-// that the browser keeps it as long as the session lives.
+// A request with Authorization: Bearer is authenticated by its token alone, never by its cookie,
+// since the CSRF checks do not apply to it. A token that does not authenticate answers 401 on any
+// operation, so that the client learns that its credential no longer works: unauthorized for an
+// unknown token, and token_revoked, token_expired or user_disabled for a known one.
 //
-// A lookup that fails with another error than an invalid session is logged, and the request goes
-// on without a principal: the operations that need one answer 500, and the others, such as GET
-// /api/v1/meta, answer as usual.
+// A request without a valid session goes on without a principal: the operations that need one
+// answer 401. When the lookup renews the session, the response sends the cookie again with the new
+// expiry, so that the browser keeps it as long as the session lives.
+//
+// A session lookup that fails with another error than an invalid session is logged, and the
+// request goes on without a principal: the operations that need one answer 500, and the others,
+// such as GET /api/v1/meta, answer as usual. A token lookup that fails answers 500 on any operation.
 //
 // It must run behind the gate, since the lookup needs a migrated database, and behind
 // CSRFMiddleware.
-func AuthenticationMiddleware(repos store.Repositories, sessions auth.Sessions, publicURL config.PublicURL) func(http.Handler) http.Handler {
+func AuthenticationMiddleware(repos store.Repositories, sessions auth.Sessions, tokens auth.Tokens, publicURL config.PublicURL) func(http.Handler) http.Handler {
 	cookieName := sessionCookieNameFor(publicURL)
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if !strings.HasPrefix(r.URL.Path, apiPrefix) || hasBearer(r) {
+			if !strings.HasPrefix(r.URL.Path, apiPrefix) {
 				next.ServeHTTP(w, r)
+
+				return
+			}
+
+			if token, ok := bearerToken(r); ok {
+				authenticateToken(w, r, next, repos, tokens, token)
 
 				return
 			}
@@ -166,16 +192,107 @@ func AuthenticationMiddleware(repos store.Repositories, sessions auth.Sessions, 
 	}
 }
 
-// hasBearer reports whether r carries Authorization: Bearer, whose scheme is case-insensitive.
-func hasBearer(r *http.Request) bool {
-	scheme, _, found := strings.Cut(r.Header.Get("Authorization"), " ")
+// tokenRejections are the errors of auth.Tokens.Authenticate for a known token, whose messages are
+// the codes of their 401 problems.
+var tokenRejections = []error{auth.ErrTokenRevoked, auth.ErrTokenExpired, auth.ErrUserDisabled}
 
-	return found && strings.EqualFold(scheme, "Bearer")
+// authenticateToken authenticates r by the API token token, looked up with tokens in repos, and
+// serves it on next with the principal of the token, or answers 401 when the token does not
+// authenticate. A lookup that fails otherwise, such as the audit event of a rejection that cannot be
+// recorded, is logged and answers 500: unlike a cookie, a token is sent on purpose, and the request
+// must not go on as if it were fine.
+func authenticateToken(w http.ResponseWriter, r *http.Request, next http.Handler, repos store.Repositories, tokens auth.Tokens, token string) {
+	ctx := r.Context()
+	found, user, err := tokens.Authenticate(ctx, repos, token, ClientInfoFrom(ctx).IP)
+
+	if errors.Is(err, store.ErrNotFound) {
+		WriteProblem(w, Problem{Status: http.StatusUnauthorized, Code: defaultCode(http.StatusUnauthorized)})
+
+		return
+	}
+
+	for _, rejected := range tokenRejections {
+		if errors.Is(err, rejected) {
+			WriteProblem(w, Problem{Status: http.StatusUnauthorized, Code: rejected.Error()})
+
+			return
+		}
+	}
+
+	if err != nil {
+		logging.FromContext(ctx).ErrorContext(ctx, "look up token", slog.Any("error", err))
+		WriteProblem(w, Problem{Status: http.StatusInternalServerError, Code: defaultCode(http.StatusInternalServerError), Detail: "unexpected error occurred"})
+
+		return
+	}
+
+	principal := auth.Principal{UserID: user.ID, Method: auth.MethodToken, TokenID: found.ID, Scopes: found.Scopes}
+	next.ServeHTTP(w, r.WithContext(context.WithValue(ctx, principalKey{}, principal)))
 }
 
-// requireUser returns the principal of the request of ctx, a 401 problem when it is not
-// authenticated, or the error of its session lookup, which Huma answers with 500.
-func requireUser(ctx context.Context) (auth.Principal, error) {
+// hasBearer reports whether r carries Authorization: Bearer, whose scheme is case-insensitive.
+func hasBearer(r *http.Request) bool {
+	_, ok := bearerToken(r)
+
+	return ok
+}
+
+// bearerToken returns the token of the header Authorization: Bearer of r, and false when r has no
+// such header. The scheme is case-insensitive, and the spaces around the token and a second Bearer
+// prefix are dropped, since apps such as Health Auto Export take the whole value of the header,
+// where the token is pasted with them.
+func bearerToken(r *http.Request) (string, bool) {
+	scheme, token, found := strings.Cut(strings.TrimSpace(r.Header.Get("Authorization")), " ")
+	if !found || !strings.EqualFold(scheme, "Bearer") {
+		return "", false
+	}
+
+	token = strings.TrimSpace(token)
+
+	if scheme, rest, found := strings.Cut(token, " "); found && strings.EqualFold(scheme, "Bearer") {
+		token = strings.TrimSpace(rest)
+	}
+
+	return token, true
+}
+
+// TokenInQueryMiddleware answers 400 token_in_query to the requests under /api/ whose query string
+// holds an API token (FR-4 of API tokens), whatever their method and Authorization header, so that
+// the token is never used. It runs before CSRFMiddleware, whose 403 would hide the cause from a
+// script that sends the token in the URL.
+func TokenInQueryMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, apiPrefix) && hasTokenInQuery(r.URL) {
+			WriteProblem(w, Problem{
+				Status: http.StatusBadRequest,
+				Code:   "token_in_query",
+				Detail: "an API token goes in the header Authorization: Bearer, never in the URL",
+			})
+
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+// hasTokenInQuery reports whether the query string of u holds an API token: the parameter
+// access_token of RFC 6750, in any case and even empty, or a parameter or a value that has the shape
+// of an API token.
+func hasTokenInQuery(u *url.URL) bool {
+	for key, values := range u.Query() {
+		if strings.EqualFold(key, "access_token") || auth.LooksLikeAPIToken(key) ||
+			slices.ContainsFunc(values, auth.LooksLikeAPIToken) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// authenticated returns the principal of the request of ctx, a 401 problem when it is not
+// authenticated, or the error of its lookup, which Huma answers with 500.
+func authenticated(ctx context.Context) (auth.Principal, error) {
 	if err, ok := ctx.Value(lookupErrorKey{}).(error); ok {
 		return auth.Principal{}, err
 	}
@@ -183,6 +300,45 @@ func requireUser(ctx context.Context) (auth.Principal, error) {
 	principal, ok := PrincipalFrom(ctx)
 	if !ok {
 		return auth.Principal{}, huma.NewError(http.StatusUnauthorized, "")
+	}
+
+	return principal, nil
+}
+
+// requireUser returns the principal of the request of ctx when it has a session, a 401 problem when
+// it has none, also for a request authenticated by a token, or the error of its lookup, which Huma
+// answers with 500. The operations accept sessions only unless they call requireScope.
+func requireUser(ctx context.Context) (auth.Principal, error) {
+	principal, err := authenticated(ctx)
+	if err != nil {
+		return auth.Principal{}, err
+	}
+
+	if principal.Method != auth.MethodSession {
+		return auth.Principal{}, huma.NewError(http.StatusUnauthorized, "")
+	}
+
+	return principal, nil
+}
+
+// requireScope returns the principal of the request of ctx when it has a session, or a token with
+// scope: the operations of the public API accept both. It returns a 401 problem when the request is
+// not authenticated, a 403 scope_missing problem for a token without scope, or the error of the
+// lookup.
+func requireScope(ctx context.Context, scope store.TokenScope) (auth.Principal, error) {
+	principal, err := authenticated(ctx)
+	if err != nil {
+		return auth.Principal{}, err
+	}
+
+	if principal.Method == auth.MethodToken && !slices.Contains(principal.Scopes, scope) {
+		return auth.Principal{}, &Problem{
+			Type:   "about:blank",
+			Title:  http.StatusText(http.StatusForbidden),
+			Status: http.StatusForbidden,
+			Detail: "the token lacks the scope " + string(scope),
+			Code:   "scope_missing",
+		}
 	}
 
 	return principal, nil

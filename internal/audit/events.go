@@ -32,6 +32,7 @@ const (
 	TypeBackupCreated                = "backup.created"
 	TypeBackupRestored               = "backup.restored"
 	TypeBackupDownloaded             = "backup.downloaded"
+	TypeTokenRejected                = "token.rejected"
 )
 
 // Event is an audit event to record, built by a constructor of this package.
@@ -44,6 +45,8 @@ type Event struct {
 	// aggregateOnClientIP aggregates the bursts of the event on the client IP of the request, and on
 	// the subject when there is one.
 	aggregateOnClientIP bool
+	// aggregationKey, when not empty, aggregates the bursts of the event on it, whatever the client.
+	aggregationKey string
 	// payload is a struct of the constructor, never a free map.
 	payload any
 }
@@ -315,6 +318,34 @@ func BackupRestored(file string) Event {
 	}
 }
 
+// TokenRejection is why a request with a known API token was rejected.
+type TokenRejection string
+
+// The reasons of a rejected token.
+const (
+	TokenRevoked      TokenRejection = "revoked"
+	TokenExpired      TokenRejection = "expired"
+	TokenUserDisabled TokenRejection = "user_disabled"
+)
+
+type tokenRejectedPayload struct {
+	ID     int64          `json:"id"`
+	Reason TokenRejection `json:"reason"`
+}
+
+// TokenRejected is a request with the API token of tokenID, owned by the user of userID, rejected
+// for reason. It has no actor: whoever sent the token is unknown. Its bursts are aggregated on the
+// token and the reason, whatever the client IP, so that an automation that retries a revoked token
+// fills one row.
+func TokenRejected(userID, tokenID int64, reason TokenRejection) Event {
+	return Event{
+		eventType:      TypeTokenRejected,
+		subjectID:      userID,
+		aggregationKey: "token " + strconv.FormatInt(tokenID, 10) + " " + string(reason),
+		payload:        tokenRejectedPayload{ID: tokenID, Reason: reason},
+	}
+}
+
 // Record appends event to repo, with the client of ctx. For the event to commit with the action it
 // describes, repo is tx.AuditEvents() inside the WithTx of that action.
 func Record(ctx context.Context, repo store.AuditEventsRepository, event Event) error {
@@ -338,6 +369,8 @@ func Record(ctx context.Context, repo store.AuditEventsRepository, event Event) 
 	var aggregationKey string
 
 	switch {
+	case event.aggregationKey != "":
+		aggregationKey = event.aggregationKey
 	case !event.aggregateOnClientIP || clientIP == "":
 	case event.subjectID != 0:
 		aggregationKey = clientIP + " user " + strconv.FormatInt(event.subjectID, 10)

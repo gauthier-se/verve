@@ -39,8 +39,8 @@ func TestOpenAPICommand_PrintsSpec(t *testing.T) {
 }
 
 // Given `verve openapi`, which builds the API with the zero value of its dependencies, then the spec
-// describes the session cookie scheme, and GET /api/v1/auth/me requires it while GET /api/v1/meta
-// requires nothing.
+// describes the session cookie and Bearer token schemes, and GET /api/v1/auth/me requires the
+// cookie while GET /api/v1/meta requires nothing.
 func TestOpenAPICommand_DescribesSecuritySchemes(t *testing.T) {
 	t.Parallel()
 
@@ -49,9 +49,10 @@ func TestOpenAPICommand_DescribesSecuritySchemes(t *testing.T) {
 	require.Empty(t, res.stderr)
 
 	type securityScheme struct {
-		Type string `json:"type"`
-		In   string `json:"in"`
-		Name string `json:"name"`
+		Type   string `json:"type"`
+		In     string `json:"in"`
+		Name   string `json:"name"`
+		Scheme string `json:"scheme"`
 	}
 
 	var spec struct {
@@ -66,6 +67,7 @@ func TestOpenAPICommand_DescribesSecuritySchemes(t *testing.T) {
 
 	require.Equal(t, map[string]securityScheme{
 		"sessionCookie": {Type: "apiKey", In: "cookie", Name: "verve_session"},
+		"bearerToken":   {Type: "http", Scheme: "bearer"},
 	}, spec.Components.SecuritySchemes)
 	require.Equal(t, []map[string][]string{{"sessionCookie": {}}}, spec.Paths["/api/v1/auth/me"]["get"].Security)
 	require.Empty(t, spec.Paths["/api/v1/meta"]["get"].Security)

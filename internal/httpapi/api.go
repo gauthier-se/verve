@@ -71,6 +71,7 @@ func NewAPI(mux *http.ServeMux, deps APIDeps) huma.API {
 	config.SchemasPath = ""
 	config.Components.SecuritySchemes = map[string]*huma.SecurityScheme{
 		sessionCookieSchemeName: sessionCookieScheme(),
+		bearerTokenSchemeName:   bearerTokenScheme(),
 	}
 
 	api := humago.New(mux, config)

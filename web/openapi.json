@@ -965,6 +965,11 @@
       }
     },
     "securitySchemes": {
+      "bearerToken": {
+        "description": "An API token, `vrv_` followed by 43 base62 characters, sent as `Authorization: Bearer \u003ctoken\u003e`, never in the URL. A token has the scopes `ingest`, `read` or both, and is accepted only by the operations that name one of its scopes.",
+        "scheme": "bearer",
+        "type": "http"
+      },
       "sessionCookie": {
         "description": "The session cookie set at login, named `__Host-verve_session` when the public URL uses https. A `POST`, `PUT`, `PATCH` or `DELETE` must also send the header `Verve-Csrf: 1` and an `Origin` matching the public URL.",
         "in": "cookie",

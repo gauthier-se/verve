@@ -55,6 +55,15 @@ Personal, scoped Bearer tokens for machine clients: Health Auto Export, the futu
 - The name of a token is not empty, and its scopes are one or more distinct known scopes. The scopes keep the order they were given in.
 - A revoked token stays, with its revocation time, so that FR-5 can tell it apart from an unknown token. A second revocation keeps the first time. Account deletion removes the tokens of the user. The repository returns revoked and expired tokens, and the tokens of disabled users: the authentication decides.
 - Endpoints: `GET /api/v1/account/tokens`, `POST /api/v1/account/tokens`, `DELETE /api/v1/account/tokens/{id}`.
+- Authentication, in the middleware that also reads the session cookie:
+  - A request with `Authorization: Bearer` is authenticated by its token alone, never by its cookie. The scheme is case-insensitive, and the spaces around the token and a second `Bearer ` prefix are dropped (Edge cases).
+  - The principal of a token has its user, the token id, its scopes and the method `token`, but no role: a token never carries the privileges of an admin.
+  - A token that does not authenticate answers 401 on any operation under `/api/`, also on those that need no authentication, so that the client learns that its credential no longer works. The codes, in this order of precedence: `token_revoked`, `token_expired` (a token is valid until its expiry included), `user_disabled` (also for an account being deleted), and `unauthorized` for an unknown token, which cannot be told apart from a mistyped one.
+  - A query string with the parameter `access_token` (RFC 6750), in any case and even empty, or with a parameter or a value that has the shape of a token (`vrv_` and 43 base62 characters), answers 400 `token_in_query` on any path under `/api/`, whatever the method and the `Authorization` header, before the CSRF checks. A text that only starts with `vrv_`, such as a search, goes on. The token is never looked up, so its last use is not written.
+  - Operations accept sessions only by default, and answer 401 `unauthorized` to a token. An operation of the public API or of the ingestion accepts a session or a token with its scope, and answers 403 `scope_missing` to a token without it. The OpenAPI document declares the `bearerToken` security scheme.
+  - The last used date and IP are written by the first request after a minute without a write (FR-7). A request without a known client IP writes an empty IP.
+  - A rejected known token records `token.rejected`, see [Audit log](audit-log.md). An unknown token records nothing: it names no user.
+  - A token that cannot be checked, because its lookup fails or because the audit event of its rejection cannot be recorded, answers 500 `internal` on any operation. Unlike a cookie, a token is sent on purpose: the request never goes on as if it were fine.
 
 ## Edge cases
 
