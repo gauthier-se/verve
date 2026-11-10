@@ -50,6 +50,18 @@ var userRowSeeders = map[string]func(ctx context.Context, t *testing.T, s store.
 		})
 		require.NoError(t, err)
 	},
+	"api_tokens": func(ctx context.Context, t *testing.T, s store.Store, user store.User) {
+		t.Helper()
+
+		_, err := s.APITokens().Create(ctx, store.NewAPIToken{
+			UserID:    user.ID,
+			Name:      "sync",
+			Scopes:    []store.TokenScope{store.ScopeIngest},
+			Prefix:    "vrv_" + user.Username,
+			TokenHash: []byte("token of " + user.Username),
+		})
+		require.NoError(t, err)
+	},
 	"jobs": func(ctx context.Context, t *testing.T, s store.Store, user store.User) {
 		t.Helper()
 
