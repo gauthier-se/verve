@@ -120,10 +120,10 @@ func NewTokens(clk clock.Clock) Tokens {
 }
 
 // Authenticate returns the API token token, as the client sends it, and its user, read in repos,
-// for a request from clientIP, invalid when unknown. It returns store.ErrNotFound for an unknown
-// token, and ErrTokenRevoked, ErrTokenExpired or ErrUserDisabled, in that order of precedence,
-// for a known token that is rejected, after recording the token.rejected event of the reason. A
-// token stays valid until its expiry included.
+// for a request from clientIP, which is the zero netip.Addr when unknown. It returns
+// store.ErrNotFound for an unknown token, and ErrTokenRevoked, ErrTokenExpired or ErrUserDisabled,
+// in that order of precedence, for a known token that is rejected, after recording the
+// token.rejected event of the reason. A token stays valid until its expiry included.
 //
 // It writes the last use of a valid token, with clientIP, at most once per minute, and returns the
 // token as written.
@@ -134,7 +134,7 @@ func (t Tokens) Authenticate(ctx context.Context, repos store.Repositories, toke
 	}
 
 	if err != nil {
-		return store.APIToken{}, store.User{}, err
+		return store.APIToken{}, store.User{}, fmt.Errorf("authenticate token: %w", err)
 	}
 
 	now := t.clk.Now()
@@ -178,8 +178,12 @@ func (t Tokens) Authenticate(ctx context.Context, repos store.Repositories, toke
 	return touched, user, nil
 }
 
-// LooksLikeAPIToken reports whether s starts like an API token, so that a token sent where it does
-// not belong, such as in a URL, is recognized.
+// LooksLikeAPIToken reports whether s has the shape of an API token, vrv_ and tokenRandomLength
+// base62 characters, so that a token sent where it does not belong, such as in a URL, is
+// recognized, while a text that only starts like one, such as a search for vrv_, is not.
 func LooksLikeAPIToken(s string) bool {
-	return strings.HasPrefix(s, tokenMarker)
+	random, found := strings.CutPrefix(s, tokenMarker)
+
+	return found && len(random) == tokenRandomLength &&
+		strings.Trim(random, tokenAlphabet) == ""
 }

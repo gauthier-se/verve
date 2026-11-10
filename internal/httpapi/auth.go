@@ -133,8 +133,7 @@ func sessionPublicIDFrom(ctx context.Context) string {
 // A request with Authorization: Bearer is authenticated by its token alone, never by its cookie,
 // since the CSRF checks do not apply to it. A token that does not authenticate answers 401 on any
 // operation, so that the client learns that its credential no longer works: unauthorized for an
-// unknown token, and token_revoked, token_expired or user_disabled for a known one. A request with
-// a token in its query string answers 400 token_in_query, and the token is never used.
+// unknown token, and token_revoked, token_expired or user_disabled for a known one.
 //
 // A request without a valid session goes on without a principal: the operations that need one
 // answer 401. When the lookup renews the session, the response sends the cookie again with the new
@@ -153,16 +152,6 @@ func AuthenticationMiddleware(repos store.Repositories, sessions auth.Sessions, 
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if !strings.HasPrefix(r.URL.Path, apiPrefix) {
 				next.ServeHTTP(w, r)
-
-				return
-			}
-
-			if hasTokenInQuery(r.URL) {
-				WriteProblem(w, Problem{
-					Status: http.StatusBadRequest,
-					Code:   "token_in_query",
-					Detail: "an API token goes in the header Authorization: Bearer, never in the URL",
-				})
 
 				return
 			}
@@ -265,9 +254,29 @@ func bearerToken(r *http.Request) (string, bool) {
 	return token, true
 }
 
+// TokenInQueryMiddleware answers 400 token_in_query to the requests under /api/ whose query string
+// holds an API token (FR-4 of API tokens), whatever their method and Authorization header, so that
+// the token is never used. It runs before CSRFMiddleware, whose 403 would hide the cause from a
+// script that sends the token in the URL.
+func TokenInQueryMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, apiPrefix) && hasTokenInQuery(r.URL) {
+			WriteProblem(w, Problem{
+				Status: http.StatusBadRequest,
+				Code:   "token_in_query",
+				Detail: "an API token goes in the header Authorization: Bearer, never in the URL",
+			})
+
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
 // hasTokenInQuery reports whether the query string of u holds an API token: the parameter
-// access_token of RFC 6750, in any case and even empty, or a parameter or a value that starts like
-// an API token.
+// access_token of RFC 6750, in any case and even empty, or a parameter or a value that has the shape
+// of an API token.
 func hasTokenInQuery(u *url.URL) bool {
 	for key, values := range u.Query() {
 		if strings.EqualFold(key, "access_token") || auth.LooksLikeAPIToken(key) ||

@@ -116,9 +116,10 @@ func outsideAPI(next http.Handler) http.Handler {
 }
 
 // newHandler wraps routes with the middleware chain. Order, outermost first: recovery, client
-// info, audit metadata, request logging, security headers, gate, CSRF, authentication, router.
-// The gate comes before the CSRF checks and the authentication, whose session lookup needs a
-// migrated database. Middlewares added later keep this order.
+// info, audit metadata, request logging, security headers, gate, tokens in query strings, CSRF,
+// authentication, router. The gate comes before the CSRF checks and the authentication, whose
+// session lookup needs a migrated database. Tokens in query strings are refused before the CSRF
+// checks, whose 403 would hide the cause. Middlewares added later keep this order.
 func newHandler(d Deps, routes http.Handler) http.Handler {
 	middlewares := []middleware{
 		RecoverMiddleware(d.Logger),
@@ -132,7 +133,7 @@ func newHandler(d Deps, routes http.Handler) http.Handler {
 		middlewares = append(middlewares, d.Gate)
 	}
 
-	middlewares = append(middlewares, CSRFMiddleware(d.PublicURL))
+	middlewares = append(middlewares, TokenInQueryMiddleware, CSRFMiddleware(d.PublicURL))
 
 	if d.Store != nil {
 		middlewares = append(middlewares, AuthenticationMiddleware(d.Store, auth.NewSessions(d.Clock), auth.NewTokens(d.Clock), d.PublicURL))

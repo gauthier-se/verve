@@ -81,7 +81,7 @@ An append-only record of security-relevant and data management events: logins, t
 
 ## Edge cases
 
-- Bursts of failed logins (brute force): events are recorded but aggregated after a threshold to avoid filling the table. Once 20 events of the same type and aggregation key happened in the last 10 minutes, the next one increments the `count` and updates the `last_at` of their latest row instead of adding one. The events of a row count as recent while its `last_at` is, so a burst whose latest row holds 20 events goes on until a quiet period of 10 minutes. Another client IP, another event type or, for a failed login, another user is never aggregated with it.
+- Bursts of failed logins (brute force): events are recorded but aggregated after a threshold to avoid filling the table. Once 20 events of the same type and aggregation key happened in the last 10 minutes, the next one increments the `count` and updates the `last_at` of their latest row instead of adding one. The events of a row count as recent while its `last_at` is, so a burst whose latest row holds 20 events goes on until a quiet period of 10 minutes. Another event type is never aggregated with it, nor, for a failed login, another client IP or another user, nor, for a rejected API token, another token or another reason.
 - Deleted user: their events are kept with the user id, displayed as "deleted user".
 
 ## Acceptance criteria
