@@ -47,6 +47,13 @@ const tmpPrefix = ".verve-backup-"
 // tmpLockFile is the lock of a temporary directory, held by its backup while it runs.
 const tmpLockFile = "lock"
 
+// guardLockFile is the lock of the backups directory, held while a backup removes the temporary
+// directories of crashed backups and creates its own. Its name does not start with tmpPrefix.
+const guardLockFile = ".verve-backup.lock"
+
+// guardRetryDelay is how often a backup tries to take the lock of the backups directory again.
+const guardRetryDelay = 10 * time.Millisecond
+
 // Config locates what a backup copies and where it goes.
 type Config struct {
 	// Dir is the directory of the archives, which exists.
@@ -77,10 +84,6 @@ func New(cfg Config, clk clock.Clock) *Backups {
 // s, which it never holds off, and next to other backups. On failure it leaves no archive and no
 // temporary file. It first removes the temporary files that crashed backups left.
 func (b *Backups) Create(ctx context.Context, s store.Store, reason Reason) (string, error) {
-	if err := removeCrashed(b.cfg.Dir); err != nil {
-		return "", fmt.Errorf("back up: %w", err)
-	}
-
 	path, err := b.create(ctx, s, reason)
 	if err != nil {
 		return "", fmt.Errorf("back up: %w", err)
@@ -90,16 +93,22 @@ func (b *Backups) Create(ctx context.Context, s store.Store, reason Reason) (str
 }
 
 func (b *Backups) create(ctx context.Context, s store.Store, reason Reason) (path string, err error) {
-	if err := b.checkSpace(); err != nil {
-		return "", err
-	}
-
-	tmpDir, unlock, err := createTmpDir(b.cfg.Dir)
+	tmpDir, release, err := startBackup(ctx, b.cfg.Dir)
 	if err != nil {
 		return "", err
 	}
 
-	defer func() { err = errors.Join(err, unlock(), os.RemoveAll(tmpDir)) }()
+	// Once the archive is in place, a temporary directory that stays does not fail the backup: the
+	// next one removes it, as it does for a crash.
+	defer func() {
+		if cleanupErr := release(); err != nil {
+			err = errors.Join(err, cleanupErr)
+		}
+	}()
+
+	if err := b.checkSpace(); err != nil {
+		return "", err
+	}
 
 	// The time of the backup is the one of the snapshot, the state it holds.
 	now := b.clock.Now().UTC()
@@ -111,14 +120,21 @@ func (b *Backups) create(ctx context.Context, s store.Store, reason Reason) (pat
 
 	archive := filepath.Join(tmpDir, "archive")
 
-	if err := b.writeArchive(archive, snapshot, now); err != nil {
+	if err := b.writeArchive(ctx, archive, snapshot, now); err != nil {
 		return "", err
 	}
 
 	name := fmt.Sprintf("verve-%s-%s-%s.tar.zst", b.cfg.Version, now.Format(timestampLayout), reason)
 	path = filepath.Join(b.cfg.Dir, name)
 
-	if err := os.Rename(archive, path); err != nil {
+	// A link rather than a rename, which would replace the archive of a backup made in the same
+	// second. The temporary name goes with the temporary directory.
+	err = os.Link(archive, path)
+	if errors.Is(err, fs.ErrExist) {
+		return "", fmt.Errorf("archive %s exists", name)
+	}
+
+	if err != nil {
 		return "", fmt.Errorf("move archive: %w", err)
 	}
 
@@ -131,7 +147,7 @@ func (b *Backups) create(ctx context.Context, s store.Store, reason Reason) (pat
 
 // writeArchive writes to path the archive of the database snapshot and of the secret key, its files
 // dated now.
-func (b *Backups) writeArchive(path, snapshot string, now time.Time) (err error) {
+func (b *Backups) writeArchive(ctx context.Context, path, snapshot string, now time.Time) (err error) {
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, entryPerm) //nolint:gosec // G304: the path is in the backups directory
 	if err != nil {
 		return fmt.Errorf("create archive: %w", err)
@@ -147,12 +163,12 @@ func (b *Backups) writeArchive(path, snapshot string, now time.Time) (err error)
 
 	tw := tar.NewWriter(zw)
 
-	if err := addFile(tw, dbEntry, snapshot, now); err != nil {
+	if err := addFile(ctx, tw, dbEntry, snapshot, now); err != nil {
 		return errors.Join(err, zw.Close())
 	}
 
 	if b.cfg.SecretKey != "" {
-		err := addFile(tw, secretKeyEntry, b.cfg.SecretKey, now)
+		err := addFile(ctx, tw, secretKeyEntry, b.cfg.SecretKey, now)
 		if err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return errors.Join(err, zw.Close())
 		}
@@ -165,8 +181,8 @@ func (b *Backups) writeArchive(path, snapshot string, now time.Time) (err error)
 	return nil
 }
 
-// addFile streams the regular file at path into tw as name.
-func addFile(tw *tar.Writer, name, path string, now time.Time) (err error) {
+// addFile streams the regular file at path into tw as name, until ctx is done.
+func addFile(ctx context.Context, tw *tar.Writer, name, path string, now time.Time) (err error) {
 	f, err := os.Open(path) //nolint:gosec // G304: the path comes from the configured data directory
 	if err != nil {
 		return fmt.Errorf("archive %s: %w", name, err)
@@ -196,26 +212,68 @@ func addFile(tw *tar.Writer, name, path string, now time.Time) (err error) {
 		return fmt.Errorf("archive %s: %w", name, err)
 	}
 
-	if _, err := io.Copy(tw, f); err != nil {
+	if _, err := io.Copy(tw, ctxReader{ctx: ctx, r: f}); err != nil {
 		return fmt.Errorf("archive %s: %w", name, err)
 	}
 
 	return nil
 }
 
-// createTmpDir creates the temporary directory of a backup in dir, with the permissions 0700 of
-// os.MkdirTemp, since the snapshot has those of a new file. It returns the directory and the
-// function that releases its lock, held until then so that other backups keep it.
+// ctxReader reads r until ctx is done.
+type ctxReader struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (c ctxReader) Read(p []byte) (int, error) {
+	if err := c.ctx.Err(); err != nil {
+		return 0, err
+	}
+
+	return c.r.Read(p)
+}
+
+// startBackup removes the temporary directories of crashed backups from dir, then creates the
+// temporary directory of a new backup, with the permissions 0700 of os.MkdirTemp, since the
+// snapshot has those of a new file, and locks it. It returns the directory and the function that
+// unlocks and removes it.
+//
+// Both steps run under the lock of dir, so that a backup never removes the directory of another
+// one that has not locked it yet.
+func startBackup(ctx context.Context, dir string) (string, func() error, error) {
+	guard := flock.New(filepath.Join(dir, guardLockFile))
+
+	if _, err := guard.TryLockContext(ctx, guardRetryDelay); err != nil {
+		return "", nil, fmt.Errorf("lock backups directory: %w", err)
+	}
+
+	tmpDir, release, err := createTmpDir(dir)
+
+	if err := errors.Join(err, guard.Unlock()); err != nil {
+		if release != nil {
+			err = errors.Join(err, release())
+		}
+
+		return "", nil, err
+	}
+
+	return tmpDir, release, nil
+}
+
+// createTmpDir removes the temporary directories of crashed backups from dir and creates the one of
+// a new backup, locked.
 func createTmpDir(dir string) (string, func() error, error) {
+	if err := removeCrashed(dir); err != nil {
+		return "", nil, err
+	}
+
 	tmpDir, err := os.MkdirTemp(dir, tmpPrefix+"*")
 	if err != nil {
 		return "", nil, fmt.Errorf("create temporary directory: %w", err)
 	}
 
-	lock := flock.New(filepath.Join(tmpDir, tmpLockFile))
-
-	locked, err := lock.TryLock()
-	if err == nil && !locked {
+	lock, err := lockTmpDir(tmpDir)
+	if err == nil && lock == nil {
 		err = errors.New("taken by another backup")
 	}
 
@@ -223,7 +281,7 @@ func createTmpDir(dir string) (string, func() error, error) {
 		return "", nil, errors.Join(fmt.Errorf("lock temporary directory: %w", err), os.RemoveAll(tmpDir))
 	}
 
-	return tmpDir, lock.Unlock, nil
+	return tmpDir, func() error { return errors.Join(lock.Unlock(), os.RemoveAll(tmpDir)) }, nil
 }
 
 // removeCrashed removes the temporary directories of dir whose backup no longer runs: the operating
@@ -235,14 +293,12 @@ func removeCrashed(dir string) error {
 	}
 
 	for _, tmpDir := range tmpDirs {
-		lock := flock.New(filepath.Join(tmpDir, tmpLockFile))
-
-		locked, err := lock.TryLock()
+		lock, err := lockTmpDir(tmpDir)
 		if err != nil {
 			return fmt.Errorf("remove temporary files %s: %w", tmpDir, err)
 		}
 
-		if !locked {
+		if lock == nil {
 			continue
 		}
 
@@ -252,4 +308,17 @@ func removeCrashed(dir string) error {
 	}
 
 	return nil
+}
+
+// lockTmpDir takes the lock of the temporary directory tmpDir without waiting. It returns nil when
+// the backup of tmpDir holds it.
+func lockTmpDir(tmpDir string) (*flock.Flock, error) {
+	lock := flock.New(filepath.Join(tmpDir, tmpLockFile))
+
+	locked, err := lock.TryLock()
+	if err != nil || !locked {
+		return nil, err
+	}
+
+	return lock, nil
 }

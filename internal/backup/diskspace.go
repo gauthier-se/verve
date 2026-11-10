@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"math"
 	"os"
 )
 
@@ -51,7 +52,10 @@ func estimateSize(db string) (uint64, error) {
 
 // formatSize returns size in bytes with a decimal unit and one decimal, for example "4.5 MB".
 func formatSize(size uint64) string {
-	const unit = 1000
+	const (
+		unit     = 1000
+		prefixes = "kMGTPE"
+	)
 
 	if size < unit {
 		return fmt.Sprintf("%d B", size)
@@ -60,10 +64,11 @@ func formatSize(size uint64) string {
 	value := float64(size) / unit
 	prefix := 0
 
-	for value >= unit && prefix < len("MGTPE")-1 {
+	// Compared once rounded to one decimal, so that 999,999 bytes are 1.0 MB rather than 1000.0 kB.
+	for math.Round(value*10)/10 >= unit && prefix < len(prefixes)-1 {
 		value /= unit
 		prefix++
 	}
 
-	return fmt.Sprintf("%.1f %cB", value, "kMGTPE"[prefix])
+	return fmt.Sprintf("%.1f %cB", value, prefixes[prefix])
 }

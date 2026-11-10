@@ -26,9 +26,12 @@ const dbFilePerm = 0o600
 // descriptors.
 const connMaxIdleTime = 5 * time.Minute
 
+// busyTimeout makes a connection wait for a lock rather than fail with SQLITE_BUSY.
+const busyTimeout = "_pragma=busy_timeout(5000)"
+
 // pragmas apply to every connection of both pools.
 const pragmas = "_pragma=journal_mode(WAL)" +
-	"&_pragma=busy_timeout(5000)" +
+	"&" + busyTimeout +
 	"&_pragma=foreign_keys(ON)" +
 	"&_pragma=synchronous(NORMAL)"
 
@@ -155,7 +158,7 @@ func (db *DB) checkpoint(ctx context.Context) error {
 // and the readers are query_only, which refuses VACUUM INTO. In WAL mode, its read transaction
 // blocks no writer.
 func (db *DB) Snapshot(ctx context.Context, path string) error {
-	conn, err := openPool(ctx, fileURI(db.path, "_pragma=busy_timeout(5000)"), 1)
+	conn, err := openPool(ctx, fileURI(db.path, busyTimeout), 1)
 	if err != nil {
 		return fmt.Errorf("snapshot database: %w", err)
 	}
