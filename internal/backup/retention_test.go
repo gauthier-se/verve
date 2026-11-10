@@ -192,3 +192,51 @@ func TestCreatePreMigration_RemovesNothingAndRecordsNoEvent(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, events)
 }
+
+// Given pre-restore backups, when either retention runs, then it removes none of them, however old
+// and many: they are never deleted automatically.
+func TestRetention_NeverRemovesPreRestoreBackups(t *testing.T) {
+	t.Parallel()
+
+	preRestore := []string{
+		"verve-1.0.0-20260101T120000Z-pre-restore.tar.zst",
+		"verve-1.0.0-20260201T120000Z-pre-restore.tar.zst",
+		"verve-1.1.0-20260301T120000Z-pre-restore.tar.zst",
+		"verve-1.2.3-20260401T120000Z-pre-restore.tar.zst",
+	}
+
+	dir := t.TempDir()
+	writeArchives(t, dir, preRestore...)
+	writeArchives(t, dir, "verve-1.2.3-20261109T030000Z-scheduled.tar.zst", "verve-1.2.3-20261110T030000Z-pre-migration.tar.zst")
+
+	backups := backup.New(backup.Config{Dir: dir}, clock.NewFake(backupTime))
+	require.NoError(t, backups.ApplyRetention(t.Context(), 1))
+	require.NoError(t, backups.ApplyPreMigrationRetention(t.Context()))
+
+	require.Subset(t, dirNames(t, dir), preRestore)
+}
+
+// Given a pre-restore backup, then its archive is named after the reason pre-restore, holds the
+// database, removes no other archive and records no audit event, since the database it describes is
+// about to be replaced.
+func TestCreatePreRestore_RemovesNothingAndRecordsNoEvent(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t)
+	old := []string{"verve-1.0.0-20260801T120000Z-pre-restore.tar.zst"}
+	writeArchives(t, f.config.Dir, old...)
+
+	path, err := f.backups.CreatePreRestore(t.Context(), f.store)
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join(f.config.Dir, "verve-1.2.3-20261110T140305Z-pre-restore.tar.zst"), path)
+
+	require.ElementsMatch(t, append(old, filepath.Base(path)), dirNames(t, f.config.Dir))
+
+	entries := readArchive(t, path)
+	openArchivedDB(t, entries)
+	require.Contains(t, entries, "secret.key")
+
+	events, err := f.store.AuditEvents().List(t.Context(), store.AuditEventsFilter{}, store.PageRequest{Limit: 10})
+	require.NoError(t, err)
+	require.Empty(t, events)
+}

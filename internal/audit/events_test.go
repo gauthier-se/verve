@@ -38,6 +38,7 @@ func eventsByConstructor() map[string]Event {
 		"UserDeletionRequested":    UserDeletionRequested(1, 7),
 		"UserDeletionCompleted":    UserDeletionCompleted(7),
 		"BackupCreated":            BackupCreated("manual", "verve-1.2.3-20261110T140305Z-manual.tar.zst"),
+		"BackupRestored":           BackupRestored("verve-1.2.3-20261110T140305Z-manual.tar.zst"),
 	}
 }
 
@@ -424,6 +425,23 @@ func TestBackupCreated(t *testing.T) {
 	data, err := json.Marshal(event.payload)
 	require.NoError(t, err)
 	require.JSONEq(t, `{"reason":"manual","file":"verve-1.2.3-20261110T140305Z-manual.tar.zst"}`, string(data))
+}
+
+// Given a restore, then the event has the restore type, no actor and no subject, and the file name
+// of the archive.
+func TestBackupRestored(t *testing.T) {
+	t.Parallel()
+
+	event := BackupRestored("verve-1.2.3-20261110T140305Z-manual.tar.zst")
+
+	require.Equal(t, "backup.restored", event.eventType)
+	require.Zero(t, event.actorID)
+	require.Zero(t, event.subjectID)
+	require.False(t, event.aggregateOnClientIP)
+
+	data, err := json.Marshal(event.payload)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"file":"verve-1.2.3-20261110T140305Z-manual.tar.zst"}`, string(data))
 }
 
 // Given an admin action on an account, then the event has its type, the admin as actor, or the
