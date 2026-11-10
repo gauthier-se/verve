@@ -119,8 +119,8 @@ func (b *Backups) Create(ctx context.Context, s store.Store, reason Reason) (str
 }
 
 // CreatePreMigration backs up db before its migrations and returns the path of the archive. Once
-// the archive is in place, it removes the pre-migration archives of the backups directory but those
-// of the last 3 migrations, the new one included, like ApplyRetention. A failed backup runs no
+// the archive is in place, it removes the pre-migration archives of the backups directory but the
+// preMigrationKeep newest, the new one included, like ApplyRetention. A failed backup runs no
 // retention.
 //
 // It records no audit event: the schema of db is not migrated yet, and may not hold it. The caller
