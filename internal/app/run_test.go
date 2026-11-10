@@ -42,7 +42,7 @@ func testConfig(dataDir string) config.Config {
 func startRun(t *testing.T, cfg config.Config) (string, *syncBuffer, func()) {
 	t.Helper()
 
-	addr, logs, stop := startRunWith(t, cfg, beforeMigrate, jobs.NewRegistry())
+	addr, logs, stop := startRunWith(t, cfg, migrationPlan{}, jobs.NewRegistry())
 
 	require.Eventually(t, func() bool {
 		return strings.Contains(logs.String(), `msg="server ready"`)
@@ -51,31 +51,30 @@ func startRun(t *testing.T, cfg config.Config) (string, *syncBuffer, func()) {
 	return addr, logs, stop
 }
 
-// startRunWith runs Run, with hook called before the pending migrations and the job kinds of
-// registry, until it listens. It returns the bound address, the logs, which stderr shares, and a
+// startRunWith runs Run, with the migrations of plan and the job kinds of registry, until it
+// listens. It returns the bound address, the logs, which stderr shares, and a
 // function that stops Run and checks that it returned without error.
-func startRunWith(t *testing.T, cfg config.Config, hook beforeMigrateFunc, registry *jobs.Registry) (string, *syncBuffer, func()) {
+func startRunWith(t *testing.T, cfg config.Config, plan migrationPlan, registry *jobs.Registry) (string, *syncBuffer, func()) {
 	t.Helper()
 
 	logger, logs := testLogger()
-	addr, stop := runUntilListening(t, cfg, logger, logs, logs, hook, registry)
+	addr, stop := runUntilListening(t, cfg, logger, logs, logs, plan, registry)
 
 	return addr, logs, stop
 }
 
-// runUntilListening runs Run with logger and stderr, hook called before the pending migrations and
-// the job kinds of registry, until trace, a text log that logger writes to, shows the bound
-// address. It returns that address and a function that stops Run and checks that it returned
-// without error.
+// runUntilListening runs Run with logger and stderr, the migrations of plan and the job kinds of
+// registry, until trace, a text log that logger writes to, shows the bound address. It returns that
+// address and a function that stops Run and checks that it returned without error.
 func runUntilListening(t *testing.T, cfg config.Config, logger *slog.Logger, stderr io.Writer, trace *syncBuffer,
-	hook beforeMigrateFunc, registry *jobs.Registry,
+	plan migrationPlan, registry *jobs.Registry,
 ) (string, func()) {
 	t.Helper()
 
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
 
-	go func() { done <- run(ctx, cfg, logger, stderr, hook, registry) }()
+	go func() { done <- run(ctx, cfg, logger, stderr, plan, registry) }()
 
 	var addr string
 
@@ -335,7 +334,7 @@ func TestRun_StartsWorkerAfterMigrationsAndStopsItBeforeTheDatabaseCloses(t *tes
 		}
 	}
 
-	_, logs, stop := startRunWith(t, testConfig(t.TempDir()), hook, jobs.NewRegistry())
+	_, logs, stop := startRunWith(t, testConfig(t.TempDir()), migrationPlan{before: hook}, jobs.NewRegistry())
 
 	select {
 	case <-migrating:
@@ -392,7 +391,7 @@ func TestRun_ShutdownWaitsForARunningJobBeforeClosingTheDatabase(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, _, stop := startRunWith(t, cfg, beforeMigrate, registry)
+	_, _, stop := startRunWith(t, cfg, migrationPlan{}, registry)
 
 	select {
 	case <-started:
@@ -660,6 +659,60 @@ func TestRun_NewerDatabaseFails(t *testing.T) {
 	require.NotContains(t, logs.String(), `msg="server ready"`)
 }
 
+// Given pending migrations on a database with data, when serve starts, then it creates a
+// pre-migration backup before the first migration. Given the backup runs, then /readyz keeps
+// answering 503 with the reason `starting: applying migrations`.
+func TestRun_BacksUpBeforeMigratingWhileStarting(t *testing.T) {
+	t.Parallel()
+
+	cfg := dataDirWithData(t)
+
+	// The backup waits for the lock of the backups directory until the test releases it.
+	unlock := lockBackupsDir(t, cfg.DataDir)
+
+	addr, logs, stop := startRunWith(t, cfg, migrationPlan{source: upgradeMigrations(t)}, jobs.NewRegistry())
+
+	require.Eventually(t, func() bool {
+		return strings.Contains(logs.String(), `msg="backing up the database before migrating"`)
+	}, 5*time.Second, 10*time.Millisecond, "Run must start the backup")
+
+	res := fetch(t, "http://"+addr+"/readyz")
+	require.Equal(t, http.StatusServiceUnavailable, res.status)
+	require.JSONEq(t, `{"status":"not_ready","version":"`+version.Get().Version+`","reasons":["starting: applying migrations"]}`,
+		res.body)
+	require.Empty(t, backupArchives(t, cfg.DataDir))
+
+	unlock()
+
+	require.Eventually(t, func() bool {
+		return strings.Contains(logs.String(), `msg="server ready"`)
+	}, 5*time.Second, 10*time.Millisecond, "Run must be ready once the backup and the migrations complete")
+
+	stop()
+
+	archives := backupArchives(t, cfg.DataDir)
+	require.Len(t, archives, 1)
+	require.Regexp(t, preMigrationArchive, archives[0])
+	require.False(t, hasUpgradeTable(t, archivedDB(t, filepath.Join(newLayout(cfg.DataDir).Backups, archives[0]))))
+	require.True(t, hasUpgradeTable(t, openDataDirDB(t, cfg.DataDir)))
+}
+
+// Given pending migrations and a failing backup, when serve starts, then no migration runs and
+// startup fails with the reason, without ever being ready.
+func TestRun_FailingBackupFailsStartup(t *testing.T) {
+	t.Parallel()
+
+	cfg := dataDirWithData(t)
+	breakBackups(t, cfg.DataDir)
+
+	logger, logs := testLogger()
+
+	err := run(t.Context(), cfg, logger, logs, migrationPlan{source: upgradeMigrations(t)}, jobs.NewRegistry())
+	require.ErrorContains(t, err, failingBackupError)
+	require.NotContains(t, logs.String(), `msg="server ready"`)
+	require.False(t, hasUpgradeTable(t, openDataDirDB(t, cfg.DataDir)))
+}
+
 // fetched is a response read in full.
 type fetched struct {
 	status int
@@ -704,7 +757,7 @@ func TestRun_GatesApplicationRoutesWhileMigrating(t *testing.T) {
 		}
 	}
 
-	addr, _, stop := startRunWith(t, testConfig(t.TempDir()), hook, jobs.NewRegistry())
+	addr, _, stop := startRunWith(t, testConfig(t.TempDir()), migrationPlan{before: hook}, jobs.NewRegistry())
 	base := "http://" + addr
 	wantVersion := version.Get().Version
 

@@ -30,7 +30,14 @@ const (
 	ReasonManual Reason = "manual"
 	// ReasonScheduled is a backup of the schedule, which retention removes once newer ones replace it.
 	ReasonScheduled Reason = "scheduled"
+	// ReasonPreMigration is a backup before migrations, which retention removes once the backups of
+	// newer migrations replace it.
+	ReasonPreMigration Reason = "pre-migration"
 )
+
+// preMigrationKeep is the number of pre-migration backups kept: those of the last 3 migrations
+// (FR-3 of backups).
+const preMigrationKeep = 3
 
 // The names of the files of an archive.
 const (
@@ -80,6 +87,12 @@ type Config struct {
 	FreeSpace func(dir string) (uint64, error)
 }
 
+// Snapshotter copies a database, as store.Store does.
+type Snapshotter interface {
+	// Snapshot writes a consistent copy of the database to a new file at path, see store.Store.
+	Snapshot(ctx context.Context, path string) error
+}
+
 // Backups creates the backups of Config.
 type Backups struct {
 	cfg   Config
@@ -95,7 +108,9 @@ func New(cfg Config, clk clock.Clock) *Backups {
 // s, which it never holds off, and next to other backups. On failure it leaves no archive and no
 // temporary file. It first removes the temporary files that crashed backups left.
 func (b *Backups) Create(ctx context.Context, s store.Store, reason Reason) (string, error) {
-	path, err := b.create(ctx, s, reason)
+	path, err := b.create(ctx, s, reason, func(name string) error {
+		return audit.Record(ctx, s.AuditEvents(), audit.BackupCreated(string(reason), name))
+	})
 	if err != nil {
 		return "", fmt.Errorf("back up: %w", err)
 	}
@@ -103,7 +118,22 @@ func (b *Backups) Create(ctx context.Context, s store.Store, reason Reason) (str
 	return path, nil
 }
 
-func (b *Backups) create(ctx context.Context, s store.Store, reason Reason) (path string, err error) {
+// CreatePreMigration backs up db before its migrations and returns the path of the archive, like
+// Create. It records no audit event and removes no other archive: the caller records the event and
+// calls ApplyPreMigrationRetention once the migrations are applied, since the schema of db may not
+// hold the event yet, and a migration that fails does not count as one of the last migrations.
+func (b *Backups) CreatePreMigration(ctx context.Context, db Snapshotter) (string, error) {
+	path, err := b.create(ctx, db, ReasonPreMigration, func(string) error { return nil })
+	if err != nil {
+		return "", fmt.Errorf("back up: %w", err)
+	}
+
+	return path, nil
+}
+
+// create backs up db for reason, then calls record with the name of the archive in place. A failure
+// of record removes the archive.
+func (b *Backups) create(ctx context.Context, db Snapshotter, reason Reason, record func(name string) error) (path string, err error) {
 	tmpDir, release, err := startBackup(ctx, b.cfg.Dir)
 	if err != nil {
 		return "", err
@@ -125,7 +155,7 @@ func (b *Backups) create(ctx context.Context, s store.Store, reason Reason) (pat
 	now := b.clock.Now().UTC()
 
 	snapshot := filepath.Join(tmpDir, dbEntry)
-	if err := s.Snapshot(ctx, snapshot); err != nil {
+	if err := db.Snapshot(ctx, snapshot); err != nil {
 		return "", err
 	}
 
@@ -149,7 +179,7 @@ func (b *Backups) create(ctx context.Context, s store.Store, reason Reason) (pat
 		return "", fmt.Errorf("move archive: %w", err)
 	}
 
-	if err := audit.Record(ctx, s.AuditEvents(), audit.BackupCreated(string(reason), name)); err != nil {
+	if err := record(name); err != nil {
 		return "", errors.Join(err, os.Remove(path))
 	}
 

@@ -10,6 +10,7 @@ import (
 
 	"github.com/gauthier-se/verve/internal/backup"
 	"github.com/gauthier-se/verve/internal/clock"
+	"github.com/gauthier-se/verve/internal/store"
 )
 
 // Given the files of a backups directory, when retention keeps a number of scheduled backups, then
@@ -134,4 +135,60 @@ func TestApplyRetention_LeavesDirectoriesAlone(t *testing.T) {
 	require.NoError(t, backups.ApplyRetention(t.Context(), 1))
 
 	require.ElementsMatch(t, []string{folder, archive}, dirNames(t, dir))
+}
+
+// Given pre-migration backups, when retention keeps those of the last 3 migrations, then only the 3
+// newest pre-migration archives stay, by the timestamp of their name whatever their version.
+// Scheduled and manual backups are untouched.
+func TestApplyPreMigrationRetention_KeepsTheBackupsOfTheLastThreeMigrations(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeArchives(t, dir,
+		"verve-1.0.0-20260801T120000Z-pre-migration.tar.zst",
+		"verve-1.10.0-20260901T120000Z-pre-migration.tar.zst",
+		"verve-1.1.0-20261001T120000Z-pre-migration.tar.zst",
+		"verve-1.2.0-20261101T120000Z-pre-migration.tar.zst",
+		"verve-1.2.3-20261110T140305Z-pre-migration.tar.zst",
+		"verve-1.0.0-20260101T030000Z-scheduled.tar.zst",
+		"verve-1.0.0-20260101T120000Z-manual.tar.zst",
+	)
+
+	backups := backup.New(backup.Config{Dir: dir}, clock.NewFake(backupTime))
+	require.NoError(t, backups.ApplyPreMigrationRetention(t.Context()))
+
+	require.ElementsMatch(t, []string{
+		"verve-1.1.0-20261001T120000Z-pre-migration.tar.zst",
+		"verve-1.2.0-20261101T120000Z-pre-migration.tar.zst",
+		"verve-1.2.3-20261110T140305Z-pre-migration.tar.zst",
+		"verve-1.0.0-20260101T030000Z-scheduled.tar.zst",
+		"verve-1.0.0-20260101T120000Z-manual.tar.zst",
+	}, dirNames(t, dir))
+}
+
+// Given a pre-migration backup, then it holds the database, removes no other archive, since
+// retention waits for the migrations to succeed, and records no audit event, since the schema is
+// not migrated yet.
+func TestCreatePreMigration_RemovesNothingAndRecordsNoEvent(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t)
+	old := []string{
+		"verve-1.0.0-20260801T120000Z-pre-migration.tar.zst",
+		"verve-1.1.0-20260901T120000Z-pre-migration.tar.zst",
+		"verve-1.1.0-20261001T120000Z-pre-migration.tar.zst",
+	}
+	writeArchives(t, f.config.Dir, old...)
+
+	path, err := f.backups.CreatePreMigration(t.Context(), f.store)
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join(f.config.Dir, "verve-1.2.3-20261110T140305Z-pre-migration.tar.zst"), path)
+
+	require.ElementsMatch(t, append(old, filepath.Base(path)), dirNames(t, f.config.Dir))
+
+	openArchivedDB(t, readArchive(t, path))
+
+	events, err := f.store.AuditEvents().List(t.Context(), store.AuditEventsFilter{}, store.PageRequest{Limit: 10})
+	require.NoError(t, err)
+	require.Empty(t, events)
 }

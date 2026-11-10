@@ -2,13 +2,17 @@ package app
 
 import (
 	"archive/tar"
+	"context"
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/require"
+
+	"github.com/gauthier-se/verve/internal/store/sqlite"
 )
 
 // archiveNames returns the names of the files of the archive at path.
@@ -73,5 +77,43 @@ func TestBackup_HoldsTheKeyFileUnlessTheKeyIsConfigured(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tt.want, archiveNames(t, path))
 		})
+	}
+}
+
+// archivedDB opens the database of the archive at path.
+func archivedDB(t *testing.T, path string) *sqlite.DB {
+	t.Helper()
+
+	f, err := os.Open(path) //nolint:gosec // G304: the path is in the temporary directory of the test
+	require.NoError(t, err)
+
+	defer func() { require.NoError(t, f.Close()) }()
+
+	zr, err := zstd.NewReader(f)
+	require.NoError(t, err)
+
+	defer zr.Close()
+
+	tr := tar.NewReader(zr)
+
+	for {
+		header, err := tr.Next()
+		require.NoError(t, err, "the archive must hold verve.db")
+
+		if header.Name != dbFile {
+			continue
+		}
+
+		content, err := io.ReadAll(tr)
+		require.NoError(t, err)
+
+		dbPath := filepath.Join(t.TempDir(), dbFile)
+		require.NoError(t, os.WriteFile(dbPath, content, 0o600))
+
+		db, err := sqlite.Open(t.Context(), dbPath)
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, db.Close(context.Background())) })
+
+		return db
 	}
 }

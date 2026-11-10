@@ -34,6 +34,8 @@ type MigrationState struct {
 
 // MigrateOptions configures Migrate.
 type MigrateOptions struct {
+	// Source holds the migrations, named like the embedded ones. Nil applies the embedded migrations.
+	Source fs.FS
 	// BeforeMigrate runs before the first pending migration, with the pending versions. When it
 	// returns an error, no migration runs. It is not called when the schema is up to date.
 	BeforeMigrate func(ctx context.Context, pending []int64) error
@@ -47,10 +49,16 @@ type MigrateResult struct {
 	Version int64
 }
 
-// Migrate applies the pending embedded migrations on the writer connection, each in its own
-// transaction. It refuses a database whose schema version is newer than LatestVersion.
+// Migrate applies the pending migrations of opts.Source, the embedded ones by default, on the writer
+// connection, each in its own transaction. It refuses a database whose schema version is newer than
+// the latest of these migrations.
 func Migrate(ctx context.Context, db *DB, opts MigrateOptions) (MigrateResult, error) {
-	return migrate(ctx, db, migrationsFS(), opts)
+	fsys := opts.Source
+	if fsys == nil {
+		fsys = migrationsFS()
+	}
+
+	return migrate(ctx, db, fsys, opts)
 }
 
 // MigrationStatus lists every embedded migration with the time it was applied, in version order.
@@ -81,6 +89,12 @@ func NewerSchemaError(current, latest int64) error {
 	return fmt.Errorf(
 		"database schema version %d is newer than this binary supports (%d); upgrade Verve or restore a backup",
 		current, latest)
+}
+
+// EmbeddedMigrations returns the migrations that Migrate applies by default, as a Source would hold
+// them.
+func EmbeddedMigrations() fs.FS {
+	return migrationsFS()
 }
 
 // migrationsFS returns the embedded migrations directory.

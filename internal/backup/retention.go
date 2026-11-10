@@ -55,31 +55,43 @@ func parseArchiveName(name string) (archiveName, bool) {
 // the timestamp of their name. It never removes another archive, or a file whose name does not
 // parse. It stops at the first archive to remove once ctx is done.
 func (b *Backups) ApplyRetention(ctx context.Context, keep int) error {
+	return b.applyRetention(ctx, ReasonScheduled, keep)
+}
+
+// ApplyPreMigrationRetention removes the pre-migration archives of the backups directory but those
+// of the last 3 migrations (preMigrationKeep), as ApplyRetention does for the scheduled ones.
+func (b *Backups) ApplyPreMigrationRetention(ctx context.Context) error {
+	return b.applyRetention(ctx, ReasonPreMigration, preMigrationKeep)
+}
+
+// applyRetention removes the archives of reason of the backups directory but the keep newest, as
+// ApplyRetention does for the scheduled ones.
+func (b *Backups) applyRetention(ctx context.Context, reason Reason, keep int) error {
 	entries, err := os.ReadDir(b.cfg.Dir)
 	if err != nil {
 		return fmt.Errorf("apply retention: %w", err)
 	}
 
-	var scheduled []archiveName
+	var archives []archiveName
 
 	for _, entry := range entries {
 		if !entry.Type().IsRegular() {
 			continue
 		}
 
-		if archive, ok := parseArchiveName(entry.Name()); ok && archive.reason == ReasonScheduled {
-			scheduled = append(scheduled, archive)
+		if archive, ok := parseArchiveName(entry.Name()); ok && archive.reason == reason {
+			archives = append(archives, archive)
 		}
 	}
 
 	// Newest first. The name breaks the tie between archives of different versions.
-	slices.SortFunc(scheduled, func(a, b archiveName) int {
+	slices.SortFunc(archives, func(a, b archiveName) int {
 		return cmp.Or(b.time.Compare(a.time), strings.Compare(b.name, a.name))
 	})
 
 	var errs []error
 
-	for _, archive := range scheduled[min(keep, len(scheduled)):] {
+	for _, archive := range archives[min(keep, len(archives)):] {
 		if err := ctx.Err(); err != nil {
 			errs = append(errs, err)
 
