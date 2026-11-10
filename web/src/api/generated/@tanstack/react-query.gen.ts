@@ -330,7 +330,7 @@ export const listAdminBackupsOptions = (options?: Options<ListAdminBackupsData>)
 /**
  * Back up now
  *
- * Queues a manual backup, which retention never removes, and returns the id of its job. A backup that fails marks its job failed. Manual backups run one at a time.
+ * Queues a manual backup, which retention never removes, and returns the id of its job. A backup that fails marks its job failed. Manual backups run one at a time: while a manual backup is queued or running, a new request queues nothing and returns the id of its job.
  */
 export const createAdminBackupMutation = (options?: Partial<Options<CreateAdminBackupData>>): UseMutationOptions<CreateAdminBackupResponse, CreateAdminBackupError, Options<CreateAdminBackupData>> => {
     const mutationOptions: UseMutationOptions<CreateAdminBackupResponse, CreateAdminBackupError, Options<CreateAdminBackupData>> = {

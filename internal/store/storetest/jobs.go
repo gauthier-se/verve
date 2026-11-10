@@ -577,73 +577,105 @@ func runJobsActive(t *testing.T, newStore NewStoreFunc) {
 		return mustClaim(ctx, t, jobs)
 	}
 
+	// Each prepare returns the id of the job of the serial key that is queued or running, or zero
+	// when there is none.
 	tests := []struct {
 		name    string
-		prepare func(ctx context.Context, t *testing.T, jobs store.JobsRepository)
-		want    bool
+		prepare func(ctx context.Context, t *testing.T, jobs store.JobsRepository) int64
 	}{
 		{
 			name:    "NoJob",
-			prepare: func(context.Context, *testing.T, store.JobsRepository) {},
+			prepare: func(context.Context, *testing.T, store.JobsRepository) int64 { return 0 },
 		},
 		{
 			name: "QueuedJob",
-			prepare: func(ctx context.Context, t *testing.T, jobs store.JobsRepository) {
+			prepare: func(ctx context.Context, t *testing.T, jobs store.JobsRepository) int64 {
 				t.Helper()
-				mustEnqueue(ctx, t, jobs, dueJob(jobsTime, key))
+
+				return mustEnqueue(ctx, t, jobs, dueJob(jobsTime, key)).ID
 			},
-			want: true,
 		},
 		{
 			name: "JobWaitingForItsRetry",
-			prepare: func(ctx context.Context, t *testing.T, jobs store.JobsRepository) {
+			prepare: func(ctx context.Context, t *testing.T, jobs store.JobsRepository) int64 {
 				t.Helper()
 
 				job := claimed(ctx, t, jobs)
 				require.NoError(t, jobs.Retry(ctx, job.ID, job.Claims, "handler failed", jobsTime.Add(time.Hour)))
+
+				return job.ID
 			},
-			want: true,
 		},
 		{
 			name: "RunningJob",
-			prepare: func(ctx context.Context, t *testing.T, jobs store.JobsRepository) {
+			prepare: func(ctx context.Context, t *testing.T, jobs store.JobsRepository) int64 {
 				t.Helper()
-				claimed(ctx, t, jobs)
+
+				return claimed(ctx, t, jobs).ID
 			},
-			want: true,
 		},
 		{
 			name: "CompletedJob",
-			prepare: func(ctx context.Context, t *testing.T, jobs store.JobsRepository) {
+			prepare: func(ctx context.Context, t *testing.T, jobs store.JobsRepository) int64 {
 				t.Helper()
 
 				job := claimed(ctx, t, jobs)
 				require.NoError(t, jobs.Complete(ctx, job.ID, job.Claims))
+
+				return 0
 			},
 		},
 		{
 			name: "FailedJob",
-			prepare: func(ctx context.Context, t *testing.T, jobs store.JobsRepository) {
+			prepare: func(ctx context.Context, t *testing.T, jobs store.JobsRepository) int64 {
 				t.Helper()
 
 				job := claimed(ctx, t, jobs)
 				require.NoError(t, jobs.Fail(ctx, job.ID, job.Claims, "handler failed"))
+
+				return 0
 			},
 		},
 		{
 			name: "CancelledJob",
-			prepare: func(ctx context.Context, t *testing.T, jobs store.JobsRepository) {
+			prepare: func(ctx context.Context, t *testing.T, jobs store.JobsRepository) int64 {
 				t.Helper()
 
 				job := mustEnqueue(ctx, t, jobs, dueJob(jobsTime, key))
 				require.NoError(t, jobs.Cancel(ctx, job.ID))
+
+				return 0
 			},
 		},
 		{
 			name: "ActiveJobOfAnotherKey",
-			prepare: func(ctx context.Context, t *testing.T, jobs store.JobsRepository) {
+			prepare: func(ctx context.Context, t *testing.T, jobs store.JobsRepository) int64 {
 				t.Helper()
 				mustEnqueue(ctx, t, jobs, dueJob(jobsTime, "schedule:backup.run"))
+
+				return 0
+			},
+		},
+		{
+			name: "FinishedJobAndQueuedJob",
+			prepare: func(ctx context.Context, t *testing.T, jobs store.JobsRepository) int64 {
+				t.Helper()
+
+				job := claimed(ctx, t, jobs)
+				require.NoError(t, jobs.Complete(ctx, job.ID, job.Claims))
+
+				return mustEnqueue(ctx, t, jobs, dueJob(jobsTime, key)).ID
+			},
+		},
+		{
+			name: "RunningJobAndQueuedJob",
+			prepare: func(ctx context.Context, t *testing.T, jobs store.JobsRepository) int64 {
+				t.Helper()
+
+				job := claimed(ctx, t, jobs)
+				mustEnqueue(ctx, t, jobs, dueJob(jobsTime, key))
+
+				return job.ID
 			},
 		},
 	}
@@ -657,11 +689,32 @@ func runJobsActive(t *testing.T, newStore NewStoreFunc) {
 			jobs := newStore(t, clock.NewFake(jobsTime)).Jobs()
 			ctx := t.Context()
 
-			tt.prepare(ctx, t, jobs)
+			want := tt.prepare(ctx, t, jobs)
 
 			got, err := jobs.HasActiveJob(ctx, key)
 			require.NoError(t, err)
-			require.Equal(t, tt.want, got)
+			require.Equal(t, want != 0, got)
+		})
+
+		// Given jobs in a given state, then ActiveJob returns the oldest job of the serial key that is
+		// queued or running, or ErrNotFound when there is none.
+		t.Run("ActiveJobWith"+tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			jobs := newStore(t, clock.NewFake(jobsTime)).Jobs()
+			ctx := t.Context()
+
+			want := tt.prepare(ctx, t, jobs)
+
+			got, err := jobs.ActiveJob(ctx, key)
+			if want == 0 {
+				require.ErrorIs(t, err, store.ErrNotFound)
+
+				return
+			}
+
+			require.NoError(t, err)
+			require.Equal(t, mustGet(ctx, t, jobs, want), got)
 		})
 	}
 
@@ -679,6 +732,25 @@ func runJobsActive(t *testing.T, newStore NewStoreFunc) {
 			require.True(t, got)
 
 			return err
+		})
+		require.NoError(t, err)
+	})
+
+	// Given ActiveJob through the repositories of WithTx, then it sees a job of the transaction.
+	t.Run("ActiveJobSeesTheJobsOfItsTransaction", func(t *testing.T) {
+		t.Parallel()
+
+		s := newStore(t, clock.NewFake(jobsTime))
+		ctx := t.Context()
+
+		err := s.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
+			job := mustEnqueue(ctx, t, tx.Jobs(), dueJob(jobsTime, key))
+
+			got, err := tx.Jobs().ActiveJob(ctx, key)
+			require.NoError(t, err)
+			require.Equal(t, job.ID, got.ID)
+
+			return nil
 		})
 		require.NoError(t, err)
 	})

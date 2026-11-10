@@ -318,6 +318,19 @@ func (r jobs) HasActiveJob(ctx context.Context, serialKey string) (bool, error) 
 	return active, nil
 }
 
+func (r jobs) ActiveJob(ctx context.Context, serialKey string) (store.Job, error) {
+	row, err := r.q.read().ActiveJob(ctx, sql.NullString{String: serialKey, Valid: true})
+	if errors.Is(err, sql.ErrNoRows) {
+		err = store.ErrNotFound
+	}
+
+	if err != nil {
+		return store.Job{}, fmt.Errorf("get active job of serial key %q: %w", serialKey, err)
+	}
+
+	return jobOf(row), nil
+}
+
 func (r jobs) PurgeFinished(ctx context.Context, completedBefore, failedBefore time.Time) error {
 	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
 		return q.PurgeFinishedJobs(ctx, sqlcgen.PurgeFinishedJobsParams{

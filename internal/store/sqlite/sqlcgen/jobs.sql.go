@@ -69,6 +69,39 @@ func (q *Queries) AbandonJobs(ctx context.Context, arg AbandonJobsParams) ([]Job
 	return items, nil
 }
 
+const activeJob = `-- name: ActiveJob :one
+SELECT id, kind, payload, status, attempts, claims, lost_leases, run_at, locked_until, user_id, serial_key, last_error, created_at, finished_at, cancel_requested
+FROM jobs
+WHERE serial_key = ?
+  AND status IN ('queued', 'running')
+ORDER BY id
+LIMIT 1
+`
+
+// The oldest job of the serial key that is queued or running.
+func (q *Queries) ActiveJob(ctx context.Context, serialKey sql.NullString) (Job, error) {
+	row := q.db.QueryRowContext(ctx, activeJob, serialKey)
+	var i Job
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.Payload,
+		&i.Status,
+		&i.Attempts,
+		&i.Claims,
+		&i.LostLeases,
+		&i.RunAt,
+		&i.LockedUntil,
+		&i.UserID,
+		&i.SerialKey,
+		&i.LastError,
+		&i.CreatedAt,
+		&i.FinishedAt,
+		&i.CancelRequested,
+	)
+	return i, err
+}
+
 const cancelJob = `-- name: CancelJob :execrows
 UPDATE jobs
 SET status = CASE WHEN status = 'queued' THEN 'cancelled' ELSE status END,
