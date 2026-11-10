@@ -186,13 +186,13 @@ func backupArchives(t *testing.T, dataDir string) []string {
 	return names
 }
 
-// hasTable reports whether the database db has the table name.
-func hasTable(t *testing.T, db *sqlite.DB, name string) bool {
+// hasUpgradeTable reports whether the database db has upgradeTable, which the upgrade migration creates.
+func hasUpgradeTable(t *testing.T, db *sqlite.DB) bool {
 	t.Helper()
 
 	var n int
 	require.NoError(t, db.Read().QueryRowContext(t.Context(),
-		"SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name = ?", name).Scan(&n))
+		"SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name = ?", upgradeTable).Scan(&n))
 
 	return n == 1
 }
@@ -247,7 +247,7 @@ func TestMigrate_PendingMigrationsOnADatabaseWithData_BacksUpFirst(t *testing.T)
 	require.Regexp(t, preMigrationArchive, archives[0])
 
 	archived := archivedDB(t, filepath.Join(newLayout(cfg.DataDir).Backups, archives[0]))
-	require.False(t, hasTable(t, archived, upgradeTable), "the backup must hold the database before the migration")
+	require.False(t, hasUpgradeTable(t, archived), "the backup must hold the database before the migration")
 
 	version, err := sqlite.CurrentVersion(t.Context(), archived)
 	require.NoError(t, err)
@@ -302,6 +302,6 @@ func TestMigrate_FailingBackup_RunsNoMigrationAndFails(t *testing.T) {
 	require.ErrorContains(t, err, failingBackupError)
 
 	require.Equal(t, sqlite.LatestVersion(), schemaVersion(t, cfg.DataDir))
-	require.False(t, hasTable(t, openDataDirDB(t, cfg.DataDir), upgradeTable))
+	require.False(t, hasUpgradeTable(t, openDataDirDB(t, cfg.DataDir)))
 	require.Empty(t, backupArchives(t, cfg.DataDir))
 }

@@ -693,8 +693,8 @@ func TestRun_BacksUpBeforeMigratingWhileStarting(t *testing.T) {
 	archives := backupArchives(t, cfg.DataDir)
 	require.Len(t, archives, 1)
 	require.Regexp(t, preMigrationArchive, archives[0])
-	require.False(t, hasTable(t, archivedDB(t, filepath.Join(newLayout(cfg.DataDir).Backups, archives[0])), upgradeTable))
-	require.True(t, hasTable(t, openDataDirDB(t, cfg.DataDir), upgradeTable))
+	require.False(t, hasUpgradeTable(t, archivedDB(t, filepath.Join(newLayout(cfg.DataDir).Backups, archives[0]))))
+	require.True(t, hasUpgradeTable(t, openDataDirDB(t, cfg.DataDir)))
 }
 
 // Given pending migrations and a failing backup, when serve starts, then no migration runs and
@@ -710,7 +710,7 @@ func TestRun_FailingBackupFailsStartup(t *testing.T) {
 	err := run(t.Context(), cfg, logger, logs, migrationPlan{source: upgradeMigrations(t)}, jobs.NewRegistry())
 	require.ErrorContains(t, err, failingBackupError)
 	require.NotContains(t, logs.String(), `msg="server ready"`)
-	require.False(t, hasTable(t, openDataDirDB(t, cfg.DataDir), upgradeTable))
+	require.False(t, hasUpgradeTable(t, openDataDirDB(t, cfg.DataDir)))
 }
 
 // fetched is a response read in full.
