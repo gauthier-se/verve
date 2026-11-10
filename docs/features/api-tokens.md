@@ -51,7 +51,9 @@ Personal, scoped Bearer tokens for machine clients: Health Auto Export, the futu
 
 ## Data and API notes
 
-- `api_tokens` table.
+- `api_tokens` table. A token is `vrv_` followed by 43 base62 characters (256 bits), each drawn from `crypto/rand` by rejection sampling, so that the alphabet carries no modulo bias. The display prefix is its first 8 characters, such as `vrv_3fK9`.
+- The name of a token is not empty, and its scopes are one or more distinct known scopes. The scopes keep the order they were given in.
+- A revoked token stays, with its revocation time, so that FR-5 can tell it apart from an unknown token. A second revocation keeps the first time. Account deletion removes the tokens of the user. The repository returns revoked and expired tokens, and the tokens of disabled users: the authentication decides.
 - Endpoints: `GET /api/v1/account/tokens`, `POST /api/v1/account/tokens`, `DELETE /api/v1/account/tokens/{id}`.
 
 ## Edge cases

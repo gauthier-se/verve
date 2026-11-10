@@ -85,6 +85,10 @@ func (r repositories) Invitations() store.InvitationsRepository {
 	return invitations(r)
 }
 
+func (r repositories) APITokens() store.APITokensRepository {
+	return apiTokens(r)
+}
+
 func (r repositories) AfterCommit(fn func()) {
 	r.q.afterCommit(fn)
 }
