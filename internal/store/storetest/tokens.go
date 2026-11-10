@@ -309,6 +309,53 @@ func RunTokens(t *testing.T, newStore NewStoreFunc) {
 		require.Equal(t, bobToken, got)
 	})
 
+	// Given a token, when the clock moves and Touch runs with an IP, then the token holds the clock's
+	// now as LastUsedAt and that IP as LastUsedIP, the rest unchanged, and GetByHash returns the
+	// same. Given a later Touch without an IP, then LastUsedIP is empty again.
+	t.Run("TouchRecordsTheLastUse", func(t *testing.T) {
+		t.Parallel()
+
+		clk := clock.NewFake(tokensTime)
+		s := newStore(t, clk)
+		ctx := t.Context()
+		user := mustCreateUser(ctx, t, s.Users(), newUser("alice", ""))
+		created := mustCreateAPIToken(ctx, t, s.APITokens(), newAPIToken(user.ID, "sync", "vrv_secret"))
+
+		clk.Advance(time.Hour)
+		touched, err := s.APITokens().Touch(ctx, created.ID, "203.0.113.7")
+		require.NoError(t, err)
+
+		want := created
+		want.LastUsedAt = tokensUTC.Add(time.Hour)
+		want.LastUsedIP = "203.0.113.7"
+		require.Equal(t, want, touched)
+
+		got, _, err := s.APITokens().GetByHash(ctx, apiTokenHash("vrv_secret"))
+		require.NoError(t, err)
+		require.Equal(t, want, got)
+
+		clk.Advance(time.Hour)
+		touched, err = s.APITokens().Touch(ctx, created.ID, "")
+		require.NoError(t, err)
+
+		want.LastUsedAt = tokensUTC.Add(2 * time.Hour)
+		want.LastUsedIP = ""
+		require.Equal(t, want, touched)
+	})
+
+	// Given an id that no token has, then Touch returns store.ErrNotFound.
+	t.Run("TouchOfAnUnknownTokenReturnsErrNotFound", func(t *testing.T) {
+		t.Parallel()
+
+		s := newStore(t, clock.NewFake(tokensTime))
+		ctx := t.Context()
+		user := mustCreateUser(ctx, t, s.Users(), newUser("alice", ""))
+		created := mustCreateAPIToken(ctx, t, s.APITokens(), newAPIToken(user.ID, "sync", "vrv_secret"))
+
+		_, err := s.APITokens().Touch(ctx, created.ID+100, "203.0.113.7")
+		require.ErrorIs(t, err, store.ErrNotFound)
+	})
+
 	// Given a token created through the repositories of WithTx, when the transaction rolls back,
 	// then no token exists.
 	t.Run("RolledBackTransactionLeavesNoToken", func(t *testing.T) {
