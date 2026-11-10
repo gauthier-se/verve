@@ -133,6 +133,21 @@ const upgradeTable = "upgrade"
 func upgradeMigrations(t *testing.T) fs.FS {
 	t.Helper()
 
+	return embeddedMigrationsAnd(t, "CREATE TABLE "+upgradeTable+" (id INTEGER PRIMARY KEY) STRICT;")
+}
+
+// failingUpgradeMigrations returns the embedded migrations followed by one more, which fails.
+func failingUpgradeMigrations(t *testing.T) fs.FS {
+	t.Helper()
+
+	return embeddedMigrationsAnd(t, "INSERT INTO no_such_table VALUES (1);")
+}
+
+// embeddedMigrationsAnd returns the embedded migrations followed by one more, named after
+// upgradeTable, which runs statement.
+func embeddedMigrationsAnd(t *testing.T, statement string) fs.FS {
+	t.Helper()
+
 	embedded := sqlite.EmbeddedMigrations()
 	names, err := fs.Glob(embedded, "*.sql")
 	require.NoError(t, err)
@@ -147,7 +162,7 @@ func upgradeMigrations(t *testing.T) fs.FS {
 	}
 
 	fsys[fmt.Sprintf("%05d_%s.sql", sqlite.LatestVersion()+1, upgradeTable)] = &fstest.MapFile{
-		Data: []byte("-- +goose Up\nCREATE TABLE " + upgradeTable + " (id INTEGER PRIMARY KEY) STRICT;\n"),
+		Data: []byte("-- +goose Up\n" + statement + "\n"),
 	}
 
 	return fsys
@@ -304,4 +319,56 @@ func TestMigrate_FailingBackup_RunsNoMigrationAndFails(t *testing.T) {
 	require.Equal(t, sqlite.LatestVersion(), schemaVersion(t, cfg.DataDir))
 	require.False(t, hasUpgradeTable(t, openDataDirDB(t, cfg.DataDir)))
 	require.Empty(t, backupArchives(t, cfg.DataDir))
+}
+
+// olderPreMigrationArchives are pre-migration archives of earlier upgrades, oldest first.
+var olderPreMigrationArchives = []string{
+	"verve-0.1.0-20250101T120000Z-pre-migration.tar.zst",
+	"verve-0.2.0-20250201T120000Z-pre-migration.tar.zst",
+	"verve-0.3.0-20250301T120000Z-pre-migration.tar.zst",
+}
+
+// writeOlderPreMigrationArchives writes olderPreMigrationArchives, empty, in the backups directory
+// of dataDir.
+func writeOlderPreMigrationArchives(t *testing.T, dataDir string) {
+	t.Helper()
+
+	for _, name := range olderPreMigrationArchives {
+		require.NoError(t, os.WriteFile(filepath.Join(newLayout(dataDir).Backups, name), nil, 0o600))
+	}
+}
+
+// Given the pre-migration backups of 3 earlier upgrades, when the migrations succeed, then only
+// the backups of the last 3 migrations stay, the new one included.
+func TestMigrate_SuccessfulMigrations_KeepTheBackupsOfTheLastThreeMigrations(t *testing.T) {
+	t.Parallel()
+
+	cfg := dataDirWithData(t)
+	writeOlderPreMigrationArchives(t, cfg.DataDir)
+
+	_, err := migrate(t.Context(), cfg, discardLogger(), migrationPlan{source: upgradeMigrations(t)})
+	require.NoError(t, err)
+
+	archives := backupArchives(t, cfg.DataDir)
+	require.Len(t, archives, 3)
+	require.Equal(t, olderPreMigrationArchives[1:], archives[:2])
+	require.Regexp(t, preMigrationArchive, archives[2])
+}
+
+// Given the pre-migration backups of 3 earlier upgrades, when a migration fails after the backup,
+// then every pre-migration backup stays: retention counts only the migrations that succeed, so
+// that restarts that keep failing never remove the backup from before the upgrade.
+func TestMigrate_FailingMigration_KeepsEveryPreMigrationBackup(t *testing.T) {
+	t.Parallel()
+
+	cfg := dataDirWithData(t)
+	writeOlderPreMigrationArchives(t, cfg.DataDir)
+
+	_, err := migrate(t.Context(), cfg, discardLogger(), migrationPlan{source: failingUpgradeMigrations(t)})
+	require.ErrorContains(t, err, "no such table")
+
+	archives := backupArchives(t, cfg.DataDir)
+	require.Len(t, archives, 4)
+	require.Equal(t, olderPreMigrationArchives, archives[:3])
+	require.Regexp(t, preMigrationArchive, archives[3])
 }
