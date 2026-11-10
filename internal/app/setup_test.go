@@ -37,7 +37,7 @@ func startServe(t *testing.T, cfg config.Config) (string, *syncBuffer, func()) {
 	traceLogger, trace := testLogger()
 	logger := slog.New(slog.NewMultiHandler(logging.New(&stderr, cfg.Log).Handler(), traceLogger.Handler()))
 
-	addr, stop := runUntilListening(t, cfg, logger, &stderr, trace, beforeMigrate, jobs.NewRegistry())
+	addr, stop := runUntilListening(t, cfg, logger, &stderr, trace, migrationPlan{}, jobs.NewRegistry())
 
 	require.Eventually(t, func() bool {
 		return strings.Contains(trace.String(), `msg="server ready"`)

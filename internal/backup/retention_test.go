@@ -1,6 +1,7 @@
 package backup_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/gauthier-se/verve/internal/backup"
 	"github.com/gauthier-se/verve/internal/clock"
+	"github.com/gauthier-se/verve/internal/store"
 )
 
 // Given the files of a backups directory, when retention keeps a number of scheduled backups, then
@@ -134,4 +136,59 @@ func TestApplyRetention_LeavesDirectoriesAlone(t *testing.T) {
 	require.NoError(t, backups.ApplyRetention(t.Context(), 1))
 
 	require.ElementsMatch(t, []string{folder, archive}, dirNames(t, dir))
+}
+
+// Given a successful pre-migration backup, then only the pre-migration backups of the last 3
+// migrations stay, the new one included, by the timestamp of their name whatever their version.
+// Scheduled and manual backups are untouched, and no audit event is recorded: the schema is not
+// migrated yet.
+func TestCreatePreMigration_KeepsTheBackupsOfTheLastThreeMigrations(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t)
+	writeArchives(t, f.config.Dir,
+		"verve-1.0.0-20260801T120000Z-pre-migration.tar.zst",
+		"verve-1.10.0-20260901T120000Z-pre-migration.tar.zst",
+		"verve-1.1.0-20261001T120000Z-pre-migration.tar.zst",
+		"verve-1.2.0-20261101T120000Z-pre-migration.tar.zst",
+		"verve-1.0.0-20260101T030000Z-scheduled.tar.zst",
+		"verve-1.0.0-20260101T120000Z-manual.tar.zst",
+	)
+
+	path, err := f.backups.CreatePreMigration(t.Context(), f.store)
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join(f.config.Dir, "verve-1.2.3-20261110T140305Z-pre-migration.tar.zst"), path)
+
+	require.ElementsMatch(t, []string{
+		"verve-1.1.0-20261001T120000Z-pre-migration.tar.zst",
+		"verve-1.2.0-20261101T120000Z-pre-migration.tar.zst",
+		"verve-1.2.3-20261110T140305Z-pre-migration.tar.zst",
+		"verve-1.0.0-20260101T030000Z-scheduled.tar.zst",
+		"verve-1.0.0-20260101T120000Z-manual.tar.zst",
+	}, dirNames(t, f.config.Dir))
+
+	openArchivedDB(t, readArchive(t, path))
+
+	events, err := f.store.AuditEvents().List(t.Context(), store.AuditEventsFilter{}, store.PageRequest{Limit: 10})
+	require.NoError(t, err)
+	require.Empty(t, events)
+}
+
+// Given a failed pre-migration backup, then it fails and runs no retention.
+func TestCreatePreMigration_FailedBackupRunsNoRetention(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t)
+	old := []string{
+		"verve-1.0.0-20260801T120000Z-pre-migration.tar.zst",
+		"verve-1.1.0-20260901T120000Z-pre-migration.tar.zst",
+		"verve-1.1.0-20261001T120000Z-pre-migration.tar.zst",
+	}
+	writeArchives(t, f.config.Dir, old...)
+
+	snapshotErr := errors.New("disk on fire")
+
+	_, err := f.backups.CreatePreMigration(t.Context(), failingStore{Store: f.store, snapshotErr: snapshotErr})
+	require.ErrorIs(t, err, snapshotErr)
+	require.ElementsMatch(t, old, dirNames(t, f.config.Dir))
 }
