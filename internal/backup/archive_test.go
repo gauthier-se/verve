@@ -130,7 +130,8 @@ func openArchivedDB(t *testing.T, entries map[string]entry) store.Store {
 	return s
 }
 
-// dirNames returns the names of the entries of dir.
+// dirNames returns the names of the entries of the backups directory dir, but for the lock of the
+// directory, which stays like the lock of the data directory.
 func dirNames(t *testing.T, dir string) []string {
 	t.Helper()
 
@@ -139,7 +140,9 @@ func dirNames(t *testing.T, dir string) []string {
 
 	names := []string{}
 	for _, e := range entries {
-		names = append(names, e.Name())
+		if e.Name() != ".verve-backup.lock" {
+			names = append(names, e.Name())
+		}
 	}
 
 	return names
@@ -289,6 +292,26 @@ func TestCreate_Failure_LeavesNoFile(t *testing.T) {
 			require.Equal(t, before, dirNames(t, f.config.Dir))
 		})
 	}
+}
+
+// Given an archive of the same name, as two backups in the same second make, then the backup fails
+// and keeps that archive.
+func TestCreate_ArchiveOfTheSameName_FailsAndKeepsIt(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t)
+
+	taken := filepath.Join(f.config.Dir, "verve-1.2.3-20261110T140305Z-manual.tar.zst")
+	require.NoError(t, os.WriteFile(taken, []byte("first"), 0o600))
+
+	path, err := f.backups.Create(t.Context(), f.store, backup.ReasonManual)
+	require.ErrorContains(t, err, "verve-1.2.3-20261110T140305Z-manual.tar.zst exists")
+	require.Empty(t, path)
+
+	content, err := os.ReadFile(taken) //nolint:gosec // G304: the path is in the temporary directory of the test
+	require.NoError(t, err)
+	require.Equal(t, "first", string(content))
+	require.Equal(t, []string{filepath.Base(taken)}, dirNames(t, f.config.Dir))
 }
 
 // Given the temporary files of a backup that crashed, then the next backup removes them.

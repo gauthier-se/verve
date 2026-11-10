@@ -35,6 +35,8 @@ func TestCreate_NotEnoughFreeSpace_Aborts(t *testing.T) {
 			wantErr: "back up: not enough free space: the backup needs about 4.5 MB, 1.2 MB available in "},
 		{name: "without a WAL", wal: -1, free: 999,
 			wantErr: "back up: not enough free space: the backup needs about 3.5 MB, 999 B available in "},
+		{name: "rounded up to the next unit", wal: -1, free: 999_999,
+			wantErr: "back up: not enough free space: the backup needs about 3.5 MB, 1.0 MB available in "},
 	}
 
 	for _, tt := range tests {
