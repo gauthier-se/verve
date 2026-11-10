@@ -95,6 +95,8 @@ The logs in the journal show the startup warnings and one line per request.
 
 Schema migrations run automatically at startup, and downgrades are not supported. Automatic backups arrive with the [backups feature](../features/backups.md) in milestone M1. Until then, copy the data directory when you upgrade.
 
+`verve backup` writes a consistent backup of the database and the secret key to the `backups` directory of the data directory while the server runs, and prints its path. Run it as the user of the service, so that it can read the data directory. A backup holds the secret key, which decrypts the secrets stored in the database: keep it as safe as the data directory. With the key in `VERVE_SECRET_KEY`, the backup holds only the database, and you keep the key yourself.
+
 Download and extract the new version as in [Install the binary](#install-the-binary), then replace the running one:
 
 ```sh
