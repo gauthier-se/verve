@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 
 	"github.com/gauthier-se/verve/internal/audit"
 	"github.com/gauthier-se/verve/internal/store"
@@ -100,9 +101,12 @@ func (d Deletions) DeleteOwn(ctx context.Context, st store.Store, deletion OwnDe
 // DeleteAsAdmin requests, for the admin of deletion, the deletion of the account of deletion
 // through st, and returns the account, being deleted. See request for what it changes.
 //
+// For an account already being deleted whose account.delete job failed for good, it queues the job
+// again, so that the account is not left deleting forever.
+//
 // It returns ErrConfirmationMismatch when the confirmation is not the exact username of the
-// account, ErrLastAdmin for the last active admin, ErrUserDeleting for an account already being
-// deleted, and store.ErrNotFound for an unknown user.
+// account, ErrLastAdmin for the last active admin, ErrUserDeleting for an account whose
+// account.delete job is queued or running, and store.ErrNotFound for an unknown user.
 func (d Deletions) DeleteAsAdmin(ctx context.Context, st store.Store, deletion AdminDeletion) (store.User, error) {
 	return d.request(ctx, st, deletion.ActorID, deletion.UserID, func(user store.User) error {
 		if deletion.Confirmation != user.Username {
@@ -118,6 +122,8 @@ func (d Deletions) DeleteAsAdmin(ctx context.Context, st store.Store, deletion A
 // logins and sessions and keeps its username taken, revokes its sessions, cancels its jobs, queues
 // the account.delete job and records the audit event, with the client of ctx. The last active admin
 // is never deleted, checked in the transaction so that of concurrent deletions, one keeps an admin.
+// An account already being deleted takes a new job only once its job has ended, so that it never
+// has two.
 func (d Deletions) request(ctx context.Context, st store.Store, actorID, userID int64, check func(store.User) error) (store.User, error) {
 	job, err := deleteAccountJob(userID)
 	if err != nil {
@@ -127,9 +133,20 @@ func (d Deletions) request(ctx context.Context, st store.Store, actorID, userID 
 	var deleting store.User
 
 	err = st.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
-		user, err := changeableUser(ctx, tx.Users(), userID)
+		user, err := tx.Users().Get(ctx, userID)
 		if err != nil {
 			return err
+		}
+
+		if user.Status == store.UserDeleting {
+			active, err := tx.Jobs().HasActiveJob(ctx, job.SerialKey)
+			if err != nil {
+				return err
+			}
+
+			if active {
+				return ErrUserDeleting
+			}
 		}
 
 		if err := check(user); err != nil {
@@ -163,14 +180,19 @@ func (d Deletions) request(ctx context.Context, st store.Store, actorID, userID 
 	return deleting, err
 }
 
-// deleteAccountJob returns the account.delete job of the user of userID.
+// deleteAccountJob returns the account.delete job of the user of userID. Its serial key names the
+// user, so that a request finds whether the account already has a deletion job queued or running.
 func deleteAccountJob(userID int64) (store.NewJob, error) {
 	payload, err := json.Marshal(DeleteAccountPayload{UserID: userID})
 	if err != nil {
 		return store.NewJob{}, fmt.Errorf("encode payload of job kind %q: %w", KindDeleteAccount, err)
 	}
 
-	return store.NewJob{Kind: KindDeleteAccount, Payload: payload}, nil
+	return store.NewJob{
+		Kind:      KindDeleteAccount,
+		Payload:   payload,
+		SerialKey: KindDeleteAccount + ":" + strconv.FormatInt(userID, 10),
+	}, nil
 }
 
 // DeleteAccount is the handler of the account.delete job of the user of userID: it removes the

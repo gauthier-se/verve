@@ -217,7 +217,7 @@ export const listAdminUsers = <ThrowOnError extends boolean = false>(options?: O
 /**
  * Delete a user
  *
- * Disables the account at once and revokes every session of the user, then removes the account and all its data in a background job, and returns the user, being deleted. The confirmation must be the exact username of the user, or the request answers 422 `confirmation_mismatch`. The last active admin answers 409 `last_admin`, and an account already being deleted 409 `user_deleting`.
+ * Disables the account at once and revokes every session of the user, then removes the account and all its data in a background job, and returns the user, being deleted. The confirmation must be the exact username of the user, or the request answers 422 `confirmation_mismatch`. The last active admin answers 409 `last_admin`, and an account whose deletion job is queued or running 409 `user_deleting`. Once that job has failed for good, a new request queues it again.
  */
 export const deleteUser = <ThrowOnError extends boolean = false>(options: Options<DeleteUserData, ThrowOnError>): RequestResult<DeleteUserResponses, DeleteUserErrors, ThrowOnError> => (options.client ?? client).delete<DeleteUserResponses, DeleteUserErrors, ThrowOnError>({
     security: [{

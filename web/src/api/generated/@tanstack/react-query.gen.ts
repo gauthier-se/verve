@@ -433,7 +433,7 @@ export const listAdminUsersInfiniteOptions = (options?: Options<ListAdminUsersDa
 /**
  * Delete a user
  *
- * Disables the account at once and revokes every session of the user, then removes the account and all its data in a background job, and returns the user, being deleted. The confirmation must be the exact username of the user, or the request answers 422 `confirmation_mismatch`. The last active admin answers 409 `last_admin`, and an account already being deleted 409 `user_deleting`.
+ * Disables the account at once and revokes every session of the user, then removes the account and all its data in a background job, and returns the user, being deleted. The confirmation must be the exact username of the user, or the request answers 422 `confirmation_mismatch`. The last active admin answers 409 `last_admin`, and an account whose deletion job is queued or running 409 `user_deleting`. Once that job has failed for good, a new request queues it again.
  */
 export const deleteUserMutation = (options?: Partial<Options<DeleteUserData>>): UseMutationOptions<DeleteUserResponse, DeleteUserError, Options<DeleteUserData>> => {
     const mutationOptions: UseMutationOptions<DeleteUserResponse, DeleteUserError, Options<DeleteUserData>> = {

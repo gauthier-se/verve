@@ -207,6 +207,42 @@ func TestDeletions_SecondRequestAndUnknownUserAreRefused(t *testing.T) {
 	require.ErrorIs(t, err, store.ErrNotFound)
 }
 
+// Given an account being deleted whose account.delete job failed for good, then an admin requesting
+// its deletion again queues a new job, recorded as a new request, so that the account is not left
+// deleting forever.
+func TestDeletions_AdminRequestAfterAFailedJobQueuesItAgain(t *testing.T) {
+	t.Parallel()
+
+	dt := newDeletionTest(t)
+	admin := dt.mustCreateRole(t, "admin", store.RoleAdmin)
+	bob := dt.mustCreateRole(t, "bob", store.RoleMember)
+	ctx := t.Context()
+
+	dt.mustRequestOwnDeletion(t, bob)
+
+	claimed, _, err := dt.store.Jobs().Claim(ctx, time.Minute)
+	require.NoError(t, err)
+	require.Equal(t, dt.queue.queued[0].ID, claimed.ID)
+
+	_, err = dt.deletions.DeleteAsAdmin(ctx, dt.store, AdminDeletion{ActorID: admin.ID, UserID: bob.ID, Confirmation: "bob"})
+	require.ErrorIs(t, err, ErrUserDeleting, "the job still runs")
+
+	require.NoError(t, dt.store.Jobs().Fail(ctx, claimed.ID, claimed.Claims, "jobs of the account still running"))
+
+	deleting, err := dt.deletions.DeleteAsAdmin(ctx, dt.store, AdminDeletion{ActorID: admin.ID, UserID: bob.ID, Confirmation: "bob"})
+	require.NoError(t, err)
+	require.Equal(t, store.UserDeleting, deleting.Status)
+
+	require.Len(t, dt.queue.queued, 2)
+
+	job, err := dt.store.Jobs().Get(ctx, dt.queue.queued[1].ID)
+	require.NoError(t, err)
+	require.Equal(t, store.JobQueued, job.Status)
+	require.Equal(t, KindDeleteAccount, job.Kind)
+
+	require.Len(t, dt.eventsOfType(t, audit.TypeUserDeletionRequested), 2)
+}
+
 // Given a pending deletion, then the username and the email stay taken and the status is deleting
 // until the job has finished, and are free once it has.
 func TestDeletions_UsernameStaysTakenUntilTheJobHasFinished(t *testing.T) {
