@@ -207,8 +207,8 @@ func deleteAccount(ctx context.Context, st store.Store, userID int64, batchSize 
 		return fmt.Errorf("delete account %d: %w", userID, ErrJobsStillRunning)
 	}
 
-	// The large tables of the user are removed here, in batches, before the user, whose foreign keys
-	// remove the small ones in the transaction that records the completion.
+	// The large tables of later milestones go here, removed in batches before the user, whose foreign
+	// keys remove the small tables in the transaction that records the completion.
 	err = st.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
 		if err := tx.Users().Delete(ctx, userID); err != nil {
 			return err

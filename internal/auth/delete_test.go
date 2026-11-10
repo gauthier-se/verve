@@ -207,8 +207,8 @@ func TestDeletions_SecondRequestAndUnknownUserAreRefused(t *testing.T) {
 	require.ErrorIs(t, err, store.ErrNotFound)
 }
 
-// Given a pending deletion, then the username stays taken and the status is deleting until the job
-// has finished, and is free once it has.
+// Given a pending deletion, then the username and the email stay taken and the status is deleting
+// until the job has finished, and are free once it has.
 func TestDeletions_UsernameStaysTakenUntilTheJobHasFinished(t *testing.T) {
 	t.Parallel()
 
@@ -218,36 +218,48 @@ func TestDeletions_UsernameStaysTakenUntilTheJobHasFinished(t *testing.T) {
 	dt.mustRequestOwnDeletion(t, bob)
 	dt.requireStatus(t, bob.ID, store.UserDeleting)
 
-	_, err := dt.store.Users().Create(t.Context(), store.NewUser{Username: "BOB", Role: store.RoleMember})
-	require.ErrorIs(t, err, store.ErrConflict)
+	for _, taken := range []store.NewUser{
+		{Username: "BOB", Role: store.RoleMember},
+		{Username: "robert", Email: "Bob@Example.com", Role: store.RoleMember},
+	} {
+		_, err := dt.store.Users().Create(t.Context(), taken)
+		require.ErrorIs(t, err, store.ErrConflict, taken.Username)
+	}
 
 	require.NoError(t, DeleteAccount(t.Context(), dt.store, bob.ID))
 
-	_, err = dt.store.Users().Create(t.Context(), store.NewUser{Username: "BOB", Role: store.RoleMember})
+	_, err := dt.store.Users().Create(t.Context(), store.NewUser{Username: "BOB", Email: "Bob@Example.com", Role: store.RoleMember})
 	require.NoError(t, err)
 }
 
-// countingStore records the limits of the calls of Jobs().DeleteByUser on the store it wraps.
+// deleteBatch is a call of Jobs().DeleteByUser: its limit and how many jobs it removed.
+type deleteBatch struct {
+	limit   int
+	deleted int64
+}
+
+// countingStore records the calls of Jobs().DeleteByUser on the store it wraps.
 type countingStore struct {
 	store.Store
 
-	limits *[]int
+	batches *[]deleteBatch
 }
 
 func (s countingStore) Jobs() store.JobsRepository {
-	return countingJobs{JobsRepository: s.Store.Jobs(), limits: s.limits}
+	return countingJobs{JobsRepository: s.Store.Jobs(), batches: s.batches}
 }
 
 type countingJobs struct {
 	store.JobsRepository
 
-	limits *[]int
+	batches *[]deleteBatch
 }
 
 func (j countingJobs) DeleteByUser(ctx context.Context, userID int64, limit int) (int64, error) {
-	*j.limits = append(*j.limits, limit)
+	deleted, err := j.JobsRepository.DeleteByUser(ctx, userID, limit)
+	*j.batches = append(*j.batches, deleteBatch{limit: limit, deleted: deleted})
 
-	return j.JobsRepository.DeleteByUser(ctx, userID, limit)
+	return deleted, err
 }
 
 // Given the account.delete job, then every row of the user is removed, the jobs in batches of at
@@ -269,19 +281,18 @@ func TestDeleteAccount_RemovesTheRowsInBoundedBatchesAndIsSafeToRunTwice(t *test
 
 	dt.mustRequestOwnDeletion(t, bob)
 
-	var limits []int
+	var batches []deleteBatch
 
-	counting := countingStore{Store: dt.store, limits: &limits}
+	counting := countingStore{Store: dt.store, batches: &batches}
 
-	for range 2 {
-		require.NoError(t, deleteAccount(t.Context(), counting, bob.ID, 2))
-	}
+	require.NoError(t, deleteAccount(t.Context(), counting, bob.ID, 2))
+	require.Equal(t, []deleteBatch{{limit: 2, deleted: 2}, {limit: 2, deleted: 2}, {limit: 2, deleted: 1}}, batches,
+		"five jobs in batches of at most two")
 
-	require.GreaterOrEqual(t, len(limits), 3, "five jobs in batches of two")
+	batches = nil
 
-	for _, limit := range limits {
-		require.Equal(t, 2, limit)
-	}
+	require.NoError(t, deleteAccount(t.Context(), counting, bob.ID, 2), "a second run succeeds")
+	require.Equal(t, []deleteBatch{{limit: 2, deleted: 0}}, batches)
 
 	_, err := dt.store.Users().Get(t.Context(), bob.ID)
 	require.ErrorIs(t, err, store.ErrNotFound)
@@ -297,6 +308,10 @@ func TestDeleteAccount_RemovesTheRowsInBoundedBatchesAndIsSafeToRunTwice(t *test
 	require.Equal(t, int64(1), stillThere, "the jobs of the other user stay")
 
 	require.Len(t, dt.eventsOfType(t, audit.TypeUserDeletionRequested), 1, "the events about the user stay")
+
+	logins := dt.eventsOfType(t, audit.TypeLoginSucceeded)
+	require.Len(t, logins, 2, "the events about the user from before the request stay")
+	require.ElementsMatch(t, []int64{alice.ID, bob.ID}, []int64{logins[0].ActorID, logins[1].ActorID})
 
 	completed := dt.eventsOfType(t, audit.TypeUserDeletionCompleted)
 	require.Len(t, completed, 1)

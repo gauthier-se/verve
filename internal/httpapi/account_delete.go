@@ -119,7 +119,7 @@ func registerAccountDeletion(api huma.API, deps APIDeps) {
 }
 
 // deleteAccountError returns the problem of the error of the deletion of one's own account: those of
-// a wrong password, as for a password change, and 409 last_admin.
+// a wrong password, as for a password change, and 409 last_admin or user_deleting.
 func deleteAccountError(err error) error {
 	if errors.Is(err, auth.ErrLastAdmin) || errors.Is(err, auth.ErrUserDeleting) {
 		return codedProblem(http.StatusConflict, err)
