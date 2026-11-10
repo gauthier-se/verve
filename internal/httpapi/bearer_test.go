@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -397,4 +398,79 @@ func TestBearer_RejectionsAreAggregatedInTheAuditLog(t *testing.T) {
 	}
 
 	require.Equal(t, int64(30), count)
+}
+
+// failingAuditStore is a store whose audit events fail to append.
+type failingAuditStore struct {
+	store.Store
+}
+
+func (failingAuditStore) AuditEvents() store.AuditEventsRepository {
+	return failingAuditEvents{}
+}
+
+type failingAuditEvents struct {
+	store.AuditEventsRepository
+}
+
+func (failingAuditEvents) Append(context.Context, store.NewAuditEvent) (store.AuditEvent, error) {
+	return store.AuditEvent{}, errors.New("disk I/O error")
+}
+
+// failingTokensStore is a store whose token lookups fail with a database error.
+type failingTokensStore struct {
+	store.Store
+}
+
+func (failingTokensStore) APITokens() store.APITokensRepository {
+	return failingTokens{}
+}
+
+type failingTokens struct {
+	store.APITokensRepository
+}
+
+func (failingTokens) GetByHash(context.Context, []byte) (store.APIToken, store.User, error) {
+	return store.APIToken{}, store.User{}, errors.New("disk I/O error")
+}
+
+// Given a token that cannot be checked, because its lookup fails or because the audit event of its
+// rejection cannot be recorded, then 500 internal on any operation, also on one that needs no
+// authentication: the request never goes on as if the token were fine.
+func TestBearer_UncheckableTokenFailsTheRequest(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// wrap returns the store of the server around the store of the test.
+		wrap func(s store.Store) store.Store
+	}{
+		{name: "lookup fails", wrap: func(s store.Store) store.Store { return failingTokensStore{s} }},
+		{name: "audit of the rejection fails", wrap: func(s store.Store) store.Store { return failingAuditStore{s} }},
+	}
+
+	for _, tt := range tests {
+		for _, target := range []string{"/api/v1/meta", "/api/v1/auth/me"} {
+			t.Run(tt.name+" on "+target, func(t *testing.T) {
+				t.Parallel()
+
+				a := newAuthTest(t)
+				alice := a.mustCreateUser(t, "alice", store.RoleMember)
+				token, created := a.mustCreateToken(t, alice, time.Time{}, store.ScopeIngest)
+
+				_, err := a.store.APITokens().Revoke(t.Context(), alice.ID, created.ID)
+				require.NoError(t, err)
+
+				deps := a.deps(t, "")
+				deps.Store = tt.wrap(a.store)
+
+				rec := getWithAuthorization(t, NewHandler(deps), target, "Bearer "+token)
+
+				require.Equal(t, http.StatusInternalServerError, rec.Code)
+				require.JSONEq(t, `{"type":"about:blank","title":"Internal Server Error","status":500,`+
+					`"detail":"unexpected error occurred","code":"internal"}`,
+					rec.Body.String())
+			})
+		}
+	}
 }
