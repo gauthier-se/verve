@@ -45,8 +45,7 @@ type APIDeps struct {
 	PublicURL config.PublicURL
 	// Backups lists, opens and creates the backups of the instance.
 	Backups *backup.Backups
-	// Jobs queues the jobs of the API and wakes the worker. Nil means the jobs are written to the
-	// store, where the worker finds them at its next poll.
+	// Jobs queues the jobs of the API, such as manual backups.
 	Jobs auth.JobQueue
 }
 

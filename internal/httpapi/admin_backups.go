@@ -13,10 +13,8 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/gauthier-se/verve/internal/audit"
-	"github.com/gauthier-se/verve/internal/auth"
 	"github.com/gauthier-se/verve/internal/backup"
 	"github.com/gauthier-se/verve/internal/logging"
-	"github.com/gauthier-se/verve/internal/store"
 )
 
 // archiveContentType is the media type of a backup archive, a zstd-compressed tar.
@@ -131,7 +129,7 @@ func registerAdminBackups(api huma.API, deps APIDeps) {
 			return nil, err
 		}
 
-		queued, err := enqueue(ctx, deps.Jobs, deps.Store, job)
+		queued, err := deps.Jobs.Enqueue(ctx, deps.Store, job)
 		if err != nil {
 			return nil, fmt.Errorf("queue manual backup: %w", err)
 		}
@@ -167,7 +165,7 @@ func registerAdminBackups(api huma.API, deps APIDeps) {
 			return nil, err
 		}
 
-		f, archive, err := deps.Backups.Open(in.Name)
+		f, archive, err := deps.Backups.Open(ctx, in.Name)
 		if errors.Is(err, backup.ErrArchiveNotFound) {
 			return nil, huma.NewError(http.StatusNotFound, "")
 		}
@@ -200,14 +198,4 @@ func registerAdminBackups(api huma.API, deps APIDeps) {
 			},
 		}, nil
 	})
-}
-
-// enqueue queues job through repos on queue, or writes it to repos without waking a worker when
-// queue is nil.
-func enqueue(ctx context.Context, queue auth.JobQueue, repos store.Repositories, job store.NewJob) (store.Job, error) {
-	if queue == nil {
-		return repos.Jobs().Enqueue(ctx, job)
-	}
-
-	return queue.Enqueue(ctx, repos, job)
 }
