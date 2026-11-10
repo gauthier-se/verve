@@ -76,6 +76,10 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger, stderr io.
 	// Issued once the schema is migrated, when no user exists.
 	setupToken := new(auth.SetupToken)
 
+	// Built before the routes, which queue jobs on it, and started once the schema is migrated.
+	schedules := registerJobs(registry, st, clk, cfg)
+	worker := jobs.NewWorker(st, registry, clk, logger, jobs.Options{Schedules: schedules})
+
 	handler := httpapi.NewHandler(httpapi.Deps{
 		Logger:         logger,
 		Clock:          clk,
@@ -88,6 +92,7 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger, stderr io.
 		HSTS:           cfg.PublicURL.HTTPS(),
 		PublicURL:      cfg.PublicURL,
 		SetupToken:     setupToken,
+		Jobs:           worker,
 	})
 	srv := NewServer(ServerConfig{Addr: cfg.ListenAddr}, handler, logger)
 
@@ -115,9 +120,6 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger, stderr io.
 
 		return errors.Join(err, <-served)
 	}
-
-	schedules := registerJobs(registry, st, clk, cfg)
-	worker := jobs.NewWorker(st, registry, clk, logger, jobs.Options{Schedules: schedules})
 
 	var workerDone sync.WaitGroup
 

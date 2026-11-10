@@ -208,6 +208,27 @@ func (r users) CountActiveAdmins(ctx context.Context) (int64, error) {
 	return count, nil
 }
 
+// Delete relies on the foreign keys of the tables of the user, which cascade.
+func (r users) Delete(ctx context.Context, id int64) error {
+	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
+		deleted, err := q.DeleteUser(ctx, id)
+		if err != nil {
+			return err
+		}
+
+		if deleted == 0 {
+			return store.ErrNotFound
+		}
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("delete user %d: %w", id, err)
+	}
+
+	return nil
+}
+
 // constraintError returns the store error of a failed constraint, or err for any other error.
 func constraintError(err error) error {
 	var sqliteErr *sqlite.Error

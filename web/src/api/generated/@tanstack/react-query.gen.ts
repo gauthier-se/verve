@@ -3,8 +3,27 @@
 import { type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { acceptInvitation, changePassword, createFirstAdmin, createInvitation, createPasswordResetLink, getCurrentUser, getMeta, getPreferences, getSetupStatus, inspectInvitation, listAccountAuditEvents, listAdminAuditEvents, listAdminJobs, listAdminUsers, listSessions, login, logout, type Options, resetPassword, revokeOtherSessions, revokeSession, setUserRole, setUserStatus, updatePreferences } from '../sdk.gen';
-import type { AcceptInvitationData, AcceptInvitationError, AcceptInvitationResponse, ChangePasswordData, ChangePasswordError, ChangePasswordResponse, CreateFirstAdminData, CreateFirstAdminError, CreateFirstAdminResponse, CreateInvitationData, CreateInvitationError, CreateInvitationResponse, CreatePasswordResetLinkData, CreatePasswordResetLinkError, CreatePasswordResetLinkResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetMetaData, GetMetaError, GetMetaResponse, GetPreferencesData, GetPreferencesError, GetPreferencesResponse, GetSetupStatusData, GetSetupStatusError, GetSetupStatusResponse, InspectInvitationData, InspectInvitationError, InspectInvitationResponse, ListAccountAuditEventsData, ListAccountAuditEventsError, ListAccountAuditEventsResponse, ListAdminAuditEventsData, ListAdminAuditEventsError, ListAdminAuditEventsResponse, ListAdminJobsData, ListAdminJobsError, ListAdminJobsResponse, ListAdminUsersData, ListAdminUsersError, ListAdminUsersResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutError, LogoutResponse, ResetPasswordData, ResetPasswordError, ResetPasswordResponse, RevokeOtherSessionsData, RevokeOtherSessionsError, RevokeOtherSessionsResponse, RevokeSessionData, RevokeSessionError, RevokeSessionResponse, SetUserRoleData, SetUserRoleError, SetUserRoleResponse, SetUserStatusData, SetUserStatusError, SetUserStatusResponse, UpdatePreferencesData, UpdatePreferencesError, UpdatePreferencesResponse } from '../types.gen';
+import { acceptInvitation, changePassword, createFirstAdmin, createInvitation, createPasswordResetLink, deleteAccount, deleteUser, getCurrentUser, getMeta, getPreferences, getSetupStatus, inspectInvitation, listAccountAuditEvents, listAdminAuditEvents, listAdminJobs, listAdminUsers, listSessions, login, logout, type Options, resetPassword, revokeOtherSessions, revokeSession, setUserRole, setUserStatus, updatePreferences } from '../sdk.gen';
+import type { AcceptInvitationData, AcceptInvitationError, AcceptInvitationResponse, ChangePasswordData, ChangePasswordError, ChangePasswordResponse, CreateFirstAdminData, CreateFirstAdminError, CreateFirstAdminResponse, CreateInvitationData, CreateInvitationError, CreateInvitationResponse, CreatePasswordResetLinkData, CreatePasswordResetLinkError, CreatePasswordResetLinkResponse, DeleteAccountData, DeleteAccountError, DeleteUserData, DeleteUserError, DeleteUserResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetMetaData, GetMetaError, GetMetaResponse, GetPreferencesData, GetPreferencesError, GetPreferencesResponse, GetSetupStatusData, GetSetupStatusError, GetSetupStatusResponse, InspectInvitationData, InspectInvitationError, InspectInvitationResponse, ListAccountAuditEventsData, ListAccountAuditEventsError, ListAccountAuditEventsResponse, ListAdminAuditEventsData, ListAdminAuditEventsError, ListAdminAuditEventsResponse, ListAdminJobsData, ListAdminJobsError, ListAdminJobsResponse, ListAdminUsersData, ListAdminUsersError, ListAdminUsersResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutError, LogoutResponse, ResetPasswordData, ResetPasswordError, ResetPasswordResponse, RevokeOtherSessionsData, RevokeOtherSessionsError, RevokeOtherSessionsResponse, RevokeSessionData, RevokeSessionError, RevokeSessionResponse, SetUserRoleData, SetUserRoleError, SetUserRoleResponse, SetUserStatusData, SetUserStatusError, SetUserStatusResponse, UpdatePreferencesData, UpdatePreferencesError, UpdatePreferencesResponse } from '../types.gen';
+
+/**
+ * Delete the account of the current user
+ *
+ * Disables the account at once, revokes every session of the user and clears the session cookie, then removes the account and all its data in a background job. The username stays taken until the job has finished. A wrong password answers 403 `invalid_credentials` and counts as a failed login of the user, which delays their attempts with 429 `rate_limited` as the login does. The last active admin answers 409 `last_admin`.
+ */
+export const deleteAccountMutation = (options?: Partial<Options<DeleteAccountData>>): UseMutationOptions<unknown, DeleteAccountError, Options<DeleteAccountData>> => {
+    const mutationOptions: UseMutationOptions<unknown, DeleteAccountError, Options<DeleteAccountData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await deleteAccount({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -409,6 +428,25 @@ export const listAdminUsersInfiniteOptions = (options?: Options<ListAdminUsersDa
         queryKey: listAdminUsersInfiniteQueryKey(options)
     });
     return opts as Omit<typeof opts, 'initialData'>;
+};
+
+/**
+ * Delete a user
+ *
+ * Disables the account at once and revokes every session of the user, then removes the account and all its data in a background job, and returns the user, being deleted. The confirmation must be the exact username of the user, or the request answers 422 `confirmation_mismatch`. The last active admin answers 409 `last_admin`, and an account whose deletion job is queued or running 409 `user_deleting`. Once that job has failed for good, a new request queues it again.
+ */
+export const deleteUserMutation = (options?: Partial<Options<DeleteUserData>>): UseMutationOptions<DeleteUserResponse, DeleteUserError, Options<DeleteUserData>> => {
+    const mutationOptions: UseMutationOptions<DeleteUserResponse, DeleteUserError, Options<DeleteUserData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await deleteUser({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
 };
 
 /**

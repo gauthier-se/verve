@@ -115,16 +115,24 @@ func (p Passwords) attempt(ctx context.Context, st store.Store, change PasswordC
 }
 
 // verifyAndHash verifies the current password of change against the hash of user and returns the
-// hash of the new password, in a hashing slot. It returns ErrInvalidCredentials for a wrong current
-// password or a user without a password, and counts the failure before it frees the slot, so that
-// the attempts waiting for one see it.
+// hash of the new password, in a hashing slot. See verifyInSlot for its errors.
 func (p Passwords) verifyAndHash(ctx context.Context, user store.User, change PasswordChange, ip netip.Addr) (string, error) {
-	l := p.logins
-
 	var hash string
 
-	err := l.inHashingSlot(ctx, user.Username, ip, func() error {
-		ok, err := p.verifyCurrent(user, change.Current)
+	err := p.verifyInSlot(ctx, user, change.Current, ip, func() { hash = p.logins.hasher.Hash(change.New) })
+
+	return hash, err
+}
+
+// verifyInSlot verifies password against the hash of user in a hashing slot, for the client at ip,
+// and calls then in the same slot once it matches. It returns ErrInvalidCredentials for a wrong
+// password or a user without one, and counts the failure before it frees the slot, so that the
+// attempts waiting for one see it.
+func (p Passwords) verifyInSlot(ctx context.Context, user store.User, password string, ip netip.Addr, then func()) error {
+	l := p.logins
+
+	return l.inHashingSlot(ctx, user.Username, ip, func() error {
+		ok, err := p.verifyCurrent(user, password)
 		if err != nil {
 			return err
 		}
@@ -135,12 +143,30 @@ func (p Passwords) verifyAndHash(ctx context.Context, user store.User, change Pa
 			return ErrInvalidCredentials
 		}
 
-		hash = l.hasher.Hash(change.New)
+		then()
 
 		return nil
 	})
+}
 
-	return hash, err
+// confirm verifies that password is the one of the user of userID, read through st, for the client
+// of ctx, before an action that requires it again, such as deleting the account. A wrong password
+// counts as a failed login of the user, as in Change. It returns ErrInvalidCredentials for a wrong
+// password or a user without one, a *RateLimitedError while the user or the client IP is delayed,
+// and store.ErrNotFound for a user who no longer exists.
+func (p Passwords) confirm(ctx context.Context, st store.Store, userID int64, password string) error {
+	ip := audit.MetaFrom(ctx).IP
+
+	user, err := st.Users().Get(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	if err := p.logins.checkLimit(user.Username, ip); err != nil {
+		return err
+	}
+
+	return p.verifyInSlot(ctx, user, password, ip, func() {})
 }
 
 // verifyCurrent reports whether current is the password of user, false for a user without one.

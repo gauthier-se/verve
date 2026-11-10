@@ -332,6 +332,52 @@ func (r jobs) PurgeFinished(ctx context.Context, completedBefore, failedBefore t
 	return nil
 }
 
+func (r jobs) CancelByUser(ctx context.Context, userID int64) (int64, error) {
+	owner := sql.NullInt64{Int64: userID, Valid: true}
+
+	var running int64
+
+	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
+		err := q.CancelJobsOfUser(ctx, sqlcgen.CancelJobsOfUserParams{FinishedAt: nullMillis(r.clk.Now()), UserID: owner})
+		if err != nil {
+			return err
+		}
+
+		running, err = q.CountRunningJobsOfUser(ctx, owner)
+
+		return err
+	})
+	if err != nil {
+		return 0, fmt.Errorf("cancel jobs of user %d: %w", userID, err)
+	}
+
+	return running, nil
+}
+
+func (r jobs) DeleteByUser(ctx context.Context, userID int64, limit int) (int64, error) {
+	if limit < 1 {
+		return 0, fmt.Errorf("delete jobs of user %d: limit %d below 1: %w", userID, limit, store.ErrInvalid)
+	}
+
+	var deleted int64
+
+	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
+		var err error
+
+		deleted, err = q.DeleteJobsOfUser(ctx, sqlcgen.DeleteJobsOfUserParams{
+			UserID:    sql.NullInt64{Int64: userID, Valid: true},
+			BatchSize: int64(limit),
+		})
+
+		return err
+	})
+	if err != nil {
+		return 0, fmt.Errorf("delete jobs of user %d: %w", userID, err)
+	}
+
+	return deleted, nil
+}
+
 func (r jobs) ListByStatus(ctx context.Context, status store.JobStatus, page store.PageRequest) ([]store.Job, error) {
 	if page.Limit < 1 {
 		return nil, fmt.Errorf("list %s jobs: limit %d below 1: %w", status, page.Limit, store.ErrInvalid)

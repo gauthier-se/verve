@@ -57,3 +57,8 @@ SELECT count(*)
 FROM users
 WHERE role = 'admin'
   AND status = 'active';
+
+-- name: DeleteUser :execrows
+DELETE
+FROM users
+WHERE id = ?;

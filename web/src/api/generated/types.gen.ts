@@ -153,6 +153,20 @@ export type CurrentUser = {
     username: string;
 };
 
+export type DeleteAccountInputBody = {
+    /**
+     * The password of the user.
+     */
+    password: string;
+};
+
+export type DeleteUserInputBody = {
+    /**
+     * The exact username of the user, as the admin typed it to confirm.
+     */
+    confirmation: string;
+};
+
 export type ErrorDetail = {
     /**
      * Where the error occurred, e.g. 'body.items[3].tags' or 'path.thing-id'
@@ -450,6 +464,53 @@ export type UpdatePreferencesInputBody = {
      * The IANA name of the timezone of the user. Left out, it is unchanged.
      */
     timezone?: string;
+};
+
+export type DeleteAccountData = {
+    body: DeleteAccountInputBody;
+    path?: never;
+    query?: never;
+    url: '/api/v1/account';
+};
+
+export type DeleteAccountErrors = {
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Forbidden
+     */
+    403: Problem;
+    /**
+     * Conflict
+     */
+    409: Problem;
+    /**
+     * Request Entity Too Large
+     */
+    413: Problem;
+    /**
+     * Unprocessable Entity
+     */
+    422: Problem;
+    /**
+     * Too Many Requests
+     */
+    429: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type DeleteAccountError = DeleteAccountErrors[keyof DeleteAccountErrors];
+
+export type DeleteAccountResponses = {
+    /**
+     * Accepted
+     */
+    202: unknown;
 };
 
 export type ListAccountAuditEventsData = {
@@ -907,6 +968,60 @@ export type ListAdminUsersResponses = {
 };
 
 export type ListAdminUsersResponse = ListAdminUsersResponses[keyof ListAdminUsersResponses];
+
+export type DeleteUserData = {
+    body: DeleteUserInputBody;
+    path: {
+        /**
+         * The id of the user.
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/api/v1/admin/users/{id}';
+};
+
+export type DeleteUserErrors = {
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Forbidden
+     */
+    403: Problem;
+    /**
+     * Not Found
+     */
+    404: Problem;
+    /**
+     * Conflict
+     */
+    409: Problem;
+    /**
+     * Request Entity Too Large
+     */
+    413: Problem;
+    /**
+     * Unprocessable Entity
+     */
+    422: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type DeleteUserError = DeleteUserErrors[keyof DeleteUserErrors];
+
+export type DeleteUserResponses = {
+    /**
+     * Accepted
+     */
+    202: AdminUser;
+};
+
+export type DeleteUserResponse = DeleteUserResponses[keyof DeleteUserResponses];
 
 export type CreatePasswordResetLinkData = {
     body?: never;

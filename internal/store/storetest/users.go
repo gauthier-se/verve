@@ -436,6 +436,31 @@ func RunUsers(t *testing.T, newStore NewStoreFunc) {
 		requireActiveAdmins(1)
 	})
 
+	// Given Delete, then the user is gone, their username is free again and the other users stay.
+	// Given a missing id, then store.ErrNotFound.
+	t.Run("DeleteRemovesTheUserAndFreesTheirUsername", func(t *testing.T) {
+		t.Parallel()
+
+		users := newStore(t, clock.NewFake(usersTime)).Users()
+		ctx := t.Context()
+
+		alice := mustCreateUser(ctx, t, users, newUser("alice", "alice@example.com"))
+		bob := mustCreateUser(ctx, t, users, newUser("bob", ""))
+
+		require.NoError(t, users.Delete(ctx, alice.ID))
+
+		_, err := users.Get(ctx, alice.ID)
+		require.ErrorIs(t, err, store.ErrNotFound)
+
+		got, err := users.Get(ctx, bob.ID)
+		require.NoError(t, err)
+		require.Equal(t, bob, got)
+
+		mustCreateUser(ctx, t, users, newUser("ALICE", "alice@example.com"))
+
+		require.ErrorIs(t, users.Delete(ctx, alice.ID), store.ErrNotFound)
+	})
+
 	// Given a user created through the repositories of WithTx, when the transaction rolls back, then
 	// no user exists.
 	t.Run("RolledBackTransactionLeavesNoUser", func(t *testing.T) {

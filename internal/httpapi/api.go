@@ -36,6 +36,8 @@ type APIDeps struct {
 	PasswordResets auth.PasswordResets
 	// Admin holds the rules of the administration of accounts: status and role changes here.
 	Admin auth.Admin
+	// Deletions requests the deletion of accounts, by their user or by an admin.
+	Deletions auth.Deletions
 	// Setup creates the first admin.
 	Setup *auth.Setup
 	// PublicURL names the session cookie that login sets and logout clears.
@@ -79,6 +81,7 @@ func NewAPI(mux *http.ServeMux, deps APIDeps) huma.API {
 	registerAudit(api, deps.Store)
 	registerAdminJobs(api, deps.Store)
 	registerAdminUsers(api, deps)
+	registerAccountDeletion(api, deps)
 
 	return api
 }

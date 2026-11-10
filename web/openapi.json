@@ -295,6 +295,35 @@
         ],
         "type": "object"
       },
+      "DeleteAccountInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "password": {
+            "description": "The password of the user.",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "password"
+        ],
+        "type": "object"
+      },
+      "DeleteUserInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "confirmation": {
+            "description": "The exact username of the user, as the admin typed it to confirm.",
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        "required": [
+          "confirmation"
+        ],
+        "type": "object"
+      },
       "ErrorDetail": {
         "additionalProperties": false,
         "properties": {
@@ -867,6 +896,114 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/account": {
+      "delete": {
+        "description": "Disables the account at once, revokes every session of the user and clears the session cookie, then removes the account and all its data in a background job. The username stays taken until the job has finished. A wrong password answers 403 `invalid_credentials` and counts as a failed login of the user, which delays their attempts with 429 `rate_limited` as the login does. The last active admin answers 409 `last_admin`.",
+        "operationId": "delete-account",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteAccountInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "headers": {
+              "Set-Cookie": {
+                "schema": {
+                  "description": "The session cookie, cleared: the deletion revokes every session of the user.",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Delete the account of the current user",
+        "tags": [
+          "Account"
+        ]
+      }
+    },
     "/api/v1/account/audit": {
       "get": {
         "description": "Returns the audit events whose actor or subject is the user of the session, newest first.",
@@ -1762,6 +1899,134 @@
           }
         ],
         "summary": "List the users",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/v1/admin/users/{id}": {
+      "delete": {
+        "description": "Disables the account at once and revokes every session of the user, then removes the account and all its data in a background job, and returns the user, being deleted. The confirmation must be the exact username of the user, or the request answers 422 `confirmation_mismatch`. The last active admin answers 409 `last_admin`, and an account whose deletion job is queued or running 409 `user_deleting`. Once that job has failed for good, a new request queues it again.",
+        "operationId": "delete-user",
+        "parameters": [
+          {
+            "description": "The id of the user.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "The id of the user.",
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteUserInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUser"
+                }
+              }
+            },
+            "description": "Accepted",
+            "headers": {
+              "Set-Cookie": {
+                "schema": {
+                  "description": "The session cookie, cleared, when the admin deletes their own account.",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Delete a user",
         "tags": [
           "Admin"
         ]

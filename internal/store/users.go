@@ -88,6 +88,9 @@ type UsersRepository interface {
 	SetStatus(ctx context.Context, id int64, status UserStatus) (User, error)
 	// CountActiveAdmins returns the number of active users whose role is admin.
 	CountActiveAdmins(ctx context.Context) (int64, error)
+	// Delete removes the user of id, with their sessions, preferences and links, or returns
+	// ErrNotFound. Their jobs and audit events stay: account deletion removes the jobs on its own.
+	Delete(ctx context.Context, id int64) error
 }
 
 // Cursor returns the position of the user in the lists of UsersRepository.List.

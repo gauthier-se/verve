@@ -91,6 +91,26 @@ func (q *Queries) CancelJob(ctx context.Context, arg CancelJobParams) (int64, er
 	return result.RowsAffected()
 }
 
+const cancelJobsOfUser = `-- name: CancelJobsOfUser :exec
+UPDATE jobs
+SET status = CASE WHEN status = 'queued' THEN 'cancelled' ELSE status END,
+    cancel_requested = 1,
+    finished_at = CASE WHEN status = 'queued' THEN ?1 ELSE finished_at END
+WHERE user_id = ?2
+  AND status IN ('queued', 'running')
+`
+
+type CancelJobsOfUserParams struct {
+	FinishedAt sql.NullInt64
+	UserID     sql.NullInt64
+}
+
+// As CancelJob, on every queued or running job of a user.
+func (q *Queries) CancelJobsOfUser(ctx context.Context, arg CancelJobsOfUserParams) error {
+	_, err := q.db.ExecContext(ctx, cancelJobsOfUser, arg.FinishedAt, arg.UserID)
+	return err
+}
+
 const cancelUnconfirmedJobs = `-- name: CancelUnconfirmedJobs :exec
 UPDATE jobs
 SET status = 'cancelled',
@@ -208,6 +228,20 @@ func (q *Queries) ConfirmCancelJob(ctx context.Context, arg ConfirmCancelJobPara
 	return result.RowsAffected()
 }
 
+const countRunningJobsOfUser = `-- name: CountRunningJobsOfUser :one
+SELECT count(*)
+FROM jobs
+WHERE user_id = ?
+  AND status = 'running'
+`
+
+func (q *Queries) CountRunningJobsOfUser(ctx context.Context, userID sql.NullInt64) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countRunningJobsOfUser, userID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const deleteJobSchedule = `-- name: DeleteJobSchedule :execrows
 DELETE FROM job_schedules
 WHERE name = ?
@@ -215,6 +249,28 @@ WHERE name = ?
 
 func (q *Queries) DeleteJobSchedule(ctx context.Context, name string) (int64, error) {
 	result, err := q.db.ExecContext(ctx, deleteJobSchedule, name)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const deleteJobsOfUser = `-- name: DeleteJobsOfUser :execrows
+DELETE
+FROM jobs
+WHERE id IN (SELECT id
+             FROM jobs AS owned
+             WHERE owned.user_id = ?1
+             LIMIT ?2)
+`
+
+type DeleteJobsOfUserParams struct {
+	UserID    sql.NullInt64
+	BatchSize int64
+}
+
+func (q *Queries) DeleteJobsOfUser(ctx context.Context, arg DeleteJobsOfUserParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteJobsOfUser, arg.UserID, arg.BatchSize)
 	if err != nil {
 		return 0, err
 	}
