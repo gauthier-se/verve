@@ -235,8 +235,19 @@ func (b adminBackupsTest) createBackup(t *testing.T) int64 {
 	return createdJobID(t, accountRequest(t, b.handler, http.MethodPost, adminBackupsPath, "", b.rootCookie))
 }
 
-// requireOnlyJob checks that the job of id is the only one queued or running: once it has ended, no
-// job is left to claim.
+// mustClaim claims the next queued job, checks that it is the job of id, and returns it running.
+func (b adminBackupsTest) mustClaim(t *testing.T, id int64) store.Job {
+	t.Helper()
+
+	job, _, err := b.store.Jobs().Claim(t.Context(), time.Minute)
+	require.NoError(t, err)
+	require.Equal(t, id, job.ID)
+
+	return job
+}
+
+// requireOnlyJob checks that the job of id is the only one queued or running. It claims the job if
+// it is queued, completes it, then checks that no other job is left to claim.
 func (b adminBackupsTest) requireOnlyJob(t *testing.T, id int64) {
 	t.Helper()
 
@@ -246,9 +257,7 @@ func (b adminBackupsTest) requireOnlyJob(t *testing.T, id int64) {
 	require.NoError(t, err)
 
 	if job.Status == store.JobQueued {
-		job, _, err = b.store.Jobs().Claim(ctx, time.Minute)
-		require.NoError(t, err)
-		require.Equal(t, id, job.ID)
+		job = b.mustClaim(t, id)
 	}
 
 	require.Equal(t, store.JobRunning, job.Status)
@@ -271,10 +280,7 @@ func TestAdminBackups_CreateWhileABackupIsActiveAnswersItsJob(t *testing.T) {
 		{name: "Queued", prepare: func(*testing.T, adminBackupsTest, int64) {}},
 		{name: "Running", prepare: func(t *testing.T, b adminBackupsTest, id int64) {
 			t.Helper()
-
-			job, _, err := b.store.Jobs().Claim(t.Context(), time.Minute)
-			require.NoError(t, err)
-			require.Equal(t, id, job.ID)
+			b.mustClaim(t, id)
 		}},
 	}
 
@@ -298,15 +304,6 @@ func TestAdminBackups_CreateWhileABackupIsActiveAnswersItsJob(t *testing.T) {
 func TestAdminBackups_CreateAfterTheLastBackupEndedQueuesANewJob(t *testing.T) {
 	t.Parallel()
 
-	claim := func(t *testing.T, b adminBackupsTest) store.Job {
-		t.Helper()
-
-		job, _, err := b.store.Jobs().Claim(t.Context(), time.Minute)
-		require.NoError(t, err)
-
-		return job
-	}
-
 	tests := []struct {
 		name string
 		// end ends the job of id.
@@ -316,10 +313,10 @@ func TestAdminBackups_CreateAfterTheLastBackupEndedQueuesANewJob(t *testing.T) {
 			t.Helper()
 			b.mustRunJob(t, id)
 		}},
-		{name: "Failed", end: func(t *testing.T, b adminBackupsTest, _ int64) {
+		{name: "Failed", end: func(t *testing.T, b adminBackupsTest, id int64) {
 			t.Helper()
 
-			job := claim(t, b)
+			job := b.mustClaim(t, id)
 			require.NoError(t, b.store.Jobs().Fail(t.Context(), job.ID, job.Claims, "disk full"))
 		}},
 		{name: "Cancelled", end: func(t *testing.T, b adminBackupsTest, id int64) {

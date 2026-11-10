@@ -747,9 +747,10 @@ func runJobsActive(t *testing.T, newStore NewStoreFunc) {
 			job := mustEnqueue(ctx, t, tx.Jobs(), dueJob(jobsTime, key))
 
 			got, err := tx.Jobs().ActiveJob(ctx, key)
+			require.NoError(t, err)
 			require.Equal(t, job.ID, got.ID)
 
-			return err
+			return nil
 		})
 		require.NoError(t, err)
 	})

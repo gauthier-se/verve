@@ -136,10 +136,14 @@ func registerAdminBackups(api huma.API, deps APIDeps) {
 		// In one transaction, so that concurrent requests, such as a double click, queue one job: a
 		// second job would start within the same second, and fail on the name of the first archive.
 		err = deps.Store.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
-			var err error
+			active, err := tx.Jobs().ActiveJob(ctx, job.SerialKey)
+			if err == nil {
+				// A job queued or running answers the request.
+				queued = active
 
-			// A job queued or running answers the request.
-			queued, err = tx.Jobs().ActiveJob(ctx, job.SerialKey)
+				return nil
+			}
+
 			if !errors.Is(err, store.ErrNotFound) {
 				return err
 			}
