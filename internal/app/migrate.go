@@ -127,11 +127,7 @@ func backUpBeforeMigrating(ctx context.Context, backups *backup.Backups, db *sql
 func withOfflineDB[T any](ctx context.Context, cfg config.Config, fn func(db *sqlite.DB) (T, error)) (res T, err error) {
 	db, closeDB, err := openDatabase(ctx, cfg.DataDir)
 	if err != nil {
-		if _, inUse := errors.AsType[*dataDirInUseError](err); inUse {
-			err = fmt.Errorf("%w: stop verve serve before running migrations", err)
-		}
-
-		return res, err
+		return res, stopServeFirst(err, "running migrations")
 	}
 
 	defer func() { err = errors.Join(err, closeDB(context.WithoutCancel(ctx))) }()

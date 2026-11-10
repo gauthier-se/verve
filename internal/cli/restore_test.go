@@ -105,17 +105,27 @@ func TestRestore_ErrorExitsNonZero(t *testing.T) {
 func TestRestore_NeedsOneFile(t *testing.T) {
 	t.Parallel()
 
-	for args, want := range map[string]string{
-		"":                    "Error: accepts 1 arg(s), received 0\n",
-		"a.tar.zst b.tar.zst": "Error: accepts 1 arg(s), received 2\n",
-	} {
-		r := &fakeRestorer{}
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "no file", want: "Error: accepts 1 arg(s), received 0\n"},
+		{name: "two files", args: []string{"a.tar.zst", "b.tar.zst"}, want: "Error: accepts 1 arg(s), received 2\n"},
+	}
 
-		res := run(t, depsWithRestorer(nil, r), append([]string{"restore"}, strings.Fields(args)...)...)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-		require.Equal(t, 1, res.code)
-		require.Equal(t, want, res.stderr, args)
-		require.Zero(t, r.calls)
+			r := &fakeRestorer{}
+
+			res := run(t, depsWithRestorer(nil, r), append([]string{"restore"}, tt.args...)...)
+
+			require.Equal(t, 1, res.code)
+			require.Equal(t, tt.want, res.stderr)
+			require.Zero(t, r.calls)
+		})
 	}
 }
 

@@ -172,7 +172,7 @@ func (db *DB) Snapshot(ctx context.Context, path string) error {
 }
 
 // CheckRestorable checks the database file at path, extracted from a backup: it fails unless the
-// database passes PRAGMA integrity_check and its schema is not newer than LatestVersion, read from
+// database passes PRAGMA integrity_check and has a schema, not newer than LatestVersion, read from
 // the database rather than from the name of the archive.
 func CheckRestorable(ctx context.Context, path string) (err error) {
 	db, err := Open(ctx, path)
@@ -189,6 +189,12 @@ func CheckRestorable(ctx context.Context, path string) (err error) {
 	current, err := CurrentVersion(ctx, db)
 	if err != nil {
 		return err
+	}
+
+	// A backup holds a schema: verve backup needs one, and a pre-migration backup skips a new
+	// database.
+	if current == 0 {
+		return errors.New("the database has no Verve schema")
 	}
 
 	if latest := LatestVersion(); current > latest {

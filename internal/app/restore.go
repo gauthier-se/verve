@@ -52,11 +52,7 @@ func Restore(ctx context.Context, cfg config.Config, archive string, logger *slo
 
 	lock, err := AcquireLock(layout.Root)
 	if err != nil {
-		if _, inUse := errors.AsType[*dataDirInUseError](err); inUse {
-			err = fmt.Errorf("%w: stop verve serve before restoring a backup", err)
-		}
-
-		return res, err
+		return res, stopServeFirst(err, "restoring a backup")
 	}
 
 	defer func() { err = errors.Join(err, lock.Release()) }()
@@ -161,12 +157,12 @@ func backUpBeforeRestoring(ctx context.Context, backups *backup.Backups, path st
 func moveIntoPlace(layout Layout, extracted backup.Extracted) error {
 	for _, suffix := range []string{"-wal", "-shm"} {
 		if err := os.Remove(layout.DB + suffix); err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return fmt.Errorf("restore: %w", err)
+			return fmt.Errorf("remove the %s file of the replaced database: %w", suffix, err)
 		}
 	}
 
 	if err := os.Rename(extracted.DB, layout.DB); err != nil {
-		return fmt.Errorf("restore: %w", err)
+		return fmt.Errorf("restore database: %w", err)
 	}
 
 	if extracted.SecretKey == "" {

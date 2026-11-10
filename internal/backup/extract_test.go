@@ -212,6 +212,7 @@ func TestExtract_InvalidArchive_IsRefused(t *testing.T) {
 		{name: "empty file", archive: nil, err: "archive holds no verve.db"},
 		{name: "database failing the integrity check", archive: buildArchive(t, regular("verve.db", corruptDB(t))), err: "check verve.db: check database integrity: "},
 		{name: "database that is not one", archive: buildArchive(t, regular("verve.db", []byte("not a database"))), err: "check verve.db"},
+		{name: "database without the schema of Verve", archive: buildArchive(t, regular("verve.db", emptyDB(t))), err: "check verve.db: the database has no Verve schema"},
 		{name: "no database", archive: buildArchive(t, regular("secret.key", key)), err: "archive holds no verve.db"},
 		{name: "another name", archive: buildArchive(t, regular("verve.db", db), regular("notes.txt", key)), err: `unexpected entry "notes.txt"`},
 		{name: "directory path", archive: buildArchive(t, regular("data/verve.db", db)), err: `unexpected entry "data/verve.db"`},
@@ -250,4 +251,24 @@ func flipLastByte(data []byte) []byte {
 	flipped[len(flipped)-1] ^= 0xff
 
 	return flipped
+}
+
+// emptyDB returns the content of a valid SQLite database with a table but no migration: a database
+// that is not one of Verve.
+func emptyDB(t *testing.T) []byte {
+	t.Helper()
+
+	path := filepath.Join(t.TempDir(), "other.db")
+
+	db, err := sqlite.Open(t.Context(), path)
+	require.NoError(t, err)
+
+	_, err = db.Write().ExecContext(t.Context(), "CREATE TABLE notes (body TEXT)")
+	require.NoError(t, err)
+	require.NoError(t, db.Close(t.Context()))
+
+	content, err := os.ReadFile(path) //nolint:gosec // G304: the path is in the temporary directory of the test
+	require.NoError(t, err)
+
+	return content
 }

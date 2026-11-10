@@ -105,11 +105,11 @@ sudo install -m 0755 verve /usr/local/bin/verve
 sudo systemctl start verve
 ```
 
-`verve restore` restores a backup. It needs the service stopped, and first keeps the current database as a `pre-restore` backup. A backup from an older version is migrated, and one from a newer version is refused. To roll back an upgrade, install the previous binary, then restore the `pre-migration` backup that the new version took before migrating, named after the new version:
+`verve restore` restores a backup. It needs the service stopped, and first keeps the current database as a `pre-restore` backup. A backup from an older version is migrated, and one from a newer version is refused. To roll back an upgrade, install the previous binary, here `verve-previous`, then restore the `pre-migration` backup that the new version took before migrating, named after the new version. Run the restore as the user of the service, with the settings of `/etc/verve/verve.env` that matter to it, such as `VERVE_SECRET_KEY`:
 
 ```sh
 sudo systemctl stop verve
-sudo install -m 0755 verve /usr/local/bin/verve
+sudo install -m 0755 verve-previous /usr/local/bin/verve
 sudo -u verve VERVE_DATA_DIR=/var/lib/verve verve restore /var/lib/verve/backups/verve-0.5.0-20261110T140305Z-pre-migration.tar.zst
 sudo systemctl start verve
 ```
