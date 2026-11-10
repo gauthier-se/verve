@@ -164,3 +164,26 @@ LIMIT sqlc.arg(max_jobs);
 DELETE FROM jobs
 WHERE (status IN ('completed', 'cancelled') AND finished_at < sqlc.arg(completed_before))
    OR (status = 'failed' AND finished_at < sqlc.arg(failed_before));
+
+-- name: CancelJobsOfUser :exec
+-- As CancelJob, on every queued or running job of a user.
+UPDATE jobs
+SET status = CASE WHEN status = 'queued' THEN 'cancelled' ELSE status END,
+    cancel_requested = 1,
+    finished_at = CASE WHEN status = 'queued' THEN sqlc.arg(finished_at) ELSE finished_at END
+WHERE user_id = sqlc.arg(user_id)
+  AND status IN ('queued', 'running');
+
+-- name: CountRunningJobsOfUser :one
+SELECT count(*)
+FROM jobs
+WHERE user_id = ?
+  AND status = 'running';
+
+-- name: DeleteJobsOfUser :execrows
+DELETE
+FROM jobs
+WHERE id IN (SELECT id
+             FROM jobs AS owned
+             WHERE owned.user_id = sqlc.arg(user_id)
+             LIMIT sqlc.arg(batch_size));

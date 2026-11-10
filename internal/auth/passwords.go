@@ -143,6 +143,41 @@ func (p Passwords) verifyAndHash(ctx context.Context, user store.User, change Pa
 	return hash, err
 }
 
+// confirm verifies that password is the one of the user of userID, read through st, for the client
+// of ctx, before an action that requires it again, such as deleting the account. A wrong password
+// counts as a failed login of the user, as in Change. It returns ErrInvalidCredentials for a wrong
+// password or a user without one, a *RateLimitedError while the user or the client IP is delayed,
+// and store.ErrNotFound for a user who no longer exists.
+func (p Passwords) confirm(ctx context.Context, st store.Store, userID int64, password string) error {
+	ip := audit.MetaFrom(ctx).IP
+
+	user, err := st.Users().Get(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	l := p.logins
+
+	if err := l.checkLimit(user.Username, ip); err != nil {
+		return err
+	}
+
+	return l.inHashingSlot(ctx, user.Username, ip, func() error {
+		ok, err := p.verifyCurrent(user, password)
+		if err != nil {
+			return err
+		}
+
+		if !ok {
+			l.limiter.Fail(user.Username, ip)
+
+			return ErrInvalidCredentials
+		}
+
+		return nil
+	})
+}
+
 // verifyCurrent reports whether current is the password of user, false for a user without one.
 func (p Passwords) verifyCurrent(user store.User, current string) (bool, error) {
 	if user.PasswordHash == "" {

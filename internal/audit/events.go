@@ -27,6 +27,8 @@ const (
 	TypeUserPasswordReset            = "user.password_reset"
 	TypeUserPasswordResetLinkCreated = "user.password_reset_link_created"
 	TypePasswordResetCompleted       = "auth.password_reset_completed"
+	TypeUserDeletionRequested        = "user.deletion_requested"
+	TypeUserDeletionCompleted        = "user.deletion_completed"
 )
 
 // Event is an audit event to record, built by a constructor of this package.
@@ -233,6 +235,31 @@ func PasswordResetCompleted(userID int64) Event {
 		eventType: TypePasswordResetCompleted,
 		actorID:   userID,
 		payload:   passwordResetCompletedPayload{},
+	}
+}
+
+type userDeletionRequestedPayload struct{}
+
+// UserDeletionRequested is the user of actorID, themselves or an admin, requesting the deletion of
+// the account of userID, which disabled it and revoked its sessions.
+func UserDeletionRequested(actorID, userID int64) Event {
+	return Event{
+		eventType: TypeUserDeletionRequested,
+		actorID:   actorID,
+		subjectID: userID,
+		payload:   userDeletionRequestedPayload{},
+	}
+}
+
+type userDeletionCompletedPayload struct{}
+
+// UserDeletionCompleted is the system having removed the account of userID and their data. It
+// outlives the user, as every event does.
+func UserDeletionCompleted(userID int64) Event {
+	return Event{
+		eventType: TypeUserDeletionCompleted,
+		subjectID: userID,
+		payload:   userDeletionCompletedPayload{},
 	}
 }
 

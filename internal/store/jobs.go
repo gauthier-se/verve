@@ -138,4 +138,11 @@ type JobsRepository interface {
 	// even while jobs end: they are newer than the first page. It returns ErrInvalid for another
 	// status, whose jobs have no end to sort them by, and when page.Limit is below 1.
 	ListByStatus(ctx context.Context, status JobStatus, page PageRequest) ([]Job, error)
+	// CancelByUser cancels every queued job of the user of userID at once, and requests the
+	// cancellation of their running jobs, as Cancel does. It returns the number of jobs of the user
+	// still running, whose handlers have not confirmed their cancellation yet.
+	CancelByUser(ctx context.Context, userID int64) (running int64, err error)
+	// DeleteByUser removes at most limit jobs of the user of userID, whatever their status, and
+	// returns how many it removed. It returns ErrInvalid when limit is below 1.
+	DeleteByUser(ctx context.Context, userID int64, limit int) (int64, error)
 }
