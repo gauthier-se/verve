@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -34,12 +35,7 @@ func (s Schedule) Next(now time.Time) (time.Time, error) {
 		return now.Add(s.Every), nil
 	}
 
-	// A TZ= prefix would escape the location of now, and the parser panics on one without a space.
-	if strings.Contains(s.Cron, "=") {
-		return time.Time{}, fmt.Errorf("parse cron expression %q: time zones are not supported", s.Cron)
-	}
-
-	expression, err := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow).Parse(s.Cron)
+	expression, err := parseCron(s.Cron)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("parse cron expression %q: %w", s.Cron, err)
 	}
@@ -50,4 +46,30 @@ func (s Schedule) Next(now time.Time) (time.Time, error) {
 	}
 
 	return next, nil
+}
+
+// CheckCron tells why a Schedule would refuse the cron expression, or returns nil. The error does
+// not quote the expression.
+func CheckCron(expression string) error {
+	parsed, err := parseCron(expression)
+	if err != nil {
+		return err
+	}
+
+	// A date matches within the 5 years that the parser searches, from any start: February 29 too.
+	if parsed.Next(time.Unix(0, 0).UTC()).IsZero() {
+		return errors.New("never runs")
+	}
+
+	return nil
+}
+
+// parseCron parses a cron expression with the standard five fields.
+func parseCron(expression string) (cron.Schedule, error) {
+	// A TZ= prefix would escape the location of now, and the parser panics on one without a space.
+	if strings.Contains(expression, "=") {
+		return nil, errors.New("time zones are not supported")
+	}
+
+	return cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow).Parse(expression)
 }

@@ -24,8 +24,13 @@ import (
 // Reason is why a backup was made. It ends the name of the archive.
 type Reason string
 
-// ReasonManual is a backup asked for by an operator.
-const ReasonManual Reason = "manual"
+// Reasons of a backup.
+const (
+	// ReasonManual is a backup asked for by an operator.
+	ReasonManual Reason = "manual"
+	// ReasonScheduled is a backup of the schedule, which retention removes once newer ones replace it.
+	ReasonScheduled Reason = "scheduled"
+)
 
 // The names of the files of an archive.
 const (
