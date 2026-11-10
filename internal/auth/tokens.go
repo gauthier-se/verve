@@ -24,8 +24,8 @@ const (
 	tokenByteLimit = 256 - 256%len(tokenAlphabet)
 )
 
-// NewToken is what a user sends to create an API token.
-type NewToken struct {
+// NewAPIToken is what a user sends to create an API token.
+type NewAPIToken struct {
 	UserID int64
 	Name   string
 	Scopes []store.TokenScope
@@ -33,11 +33,11 @@ type NewToken struct {
 	ExpiresAt time.Time
 }
 
-// CreateToken stores a new API token through repos, and returns the token and its record. The token
-// is returned once: the store only holds its hash and display prefix. It returns the errors of
-// store.APITokensRepository.Create, such as store.ErrInvalid for empty or unknown scopes.
-func CreateToken(ctx context.Context, repos store.Repositories, token NewToken) (string, store.APIToken, error) {
-	secret := generateToken()
+// CreateAPIToken stores a new API token through repos, and returns the token and its record. The
+// token is returned once: the store only holds its hash and display prefix. It returns the errors
+// of store.APITokensRepository.Create, such as store.ErrInvalid for empty or unknown scopes.
+func CreateAPIToken(ctx context.Context, repos store.Repositories, token NewAPIToken) (string, store.APIToken, error) {
+	secret := generateAPIToken()
 
 	created, err := repos.APITokens().Create(ctx, store.NewAPIToken{
 		UserID:    token.UserID,
@@ -54,9 +54,9 @@ func CreateToken(ctx context.Context, repos store.Repositories, token NewToken) 
 	return secret, created, nil
 }
 
-// generateToken returns a new API token: vrv_ and tokenRandomLength base62 characters, each drawn
-// uniformly from crypto/rand by rejection sampling.
-func generateToken() string {
+// generateAPIToken returns a new API token: vrv_ and tokenRandomLength base62 characters, each
+// drawn uniformly from crypto/rand by rejection sampling.
+func generateAPIToken() string {
 	length := len(tokenMarker) + tokenRandomLength
 
 	token := make([]byte, 0, length)

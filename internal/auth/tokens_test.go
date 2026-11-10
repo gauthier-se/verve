@@ -14,8 +14,8 @@ import (
 const base62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 
 // homeAssistant is a read-only token of userID for a Home Assistant sensor, valid one year.
-func homeAssistant(userID int64) NewToken {
-	return NewToken{
+func homeAssistant(userID int64) NewAPIToken {
+	return NewAPIToken{
 		UserID:    userID,
 		Name:      "Home Assistant",
 		Scopes:    []store.TokenScope{store.ScopeRead},
@@ -25,32 +25,32 @@ func homeAssistant(userID int64) NewToken {
 
 // Given a new token, then it is vrv_ followed by 43 base62 characters, which hold at least 32
 // random bytes, and two tokens differ.
-func TestCreateToken_IsVrvFollowedByBase62Characters(t *testing.T) {
+func TestCreateAPIToken_IsVrvFollowedByBase62Characters(t *testing.T) {
 	t.Parallel()
 
 	s, _, _ := newTestSessions(t)
 	ctx := t.Context()
 	user := mustCreateUser(ctx, t, s, "alice")
 
-	token, _, err := CreateToken(ctx, s, homeAssistant(user.ID))
+	token, _, err := CreateAPIToken(ctx, s, homeAssistant(user.ID))
 	require.NoError(t, err)
 	require.Regexp(t, `^vrv_[0-9A-Za-z]{43}$`, token)
 
-	other, _, err := CreateToken(ctx, s, homeAssistant(user.ID))
+	other, _, err := CreateAPIToken(ctx, s, homeAssistant(user.ID))
 	require.NoError(t, err)
 	require.NotEqual(t, token, other)
 }
 
 // Given a new token, then the store holds it under its SHA-256 hash, with its first 8 characters
 // as display prefix, and the name, scopes and expiry of the request.
-func TestCreateToken_StoresOnlyTheHashAndADisplayPrefix(t *testing.T) {
+func TestCreateAPIToken_StoresOnlyTheHashAndADisplayPrefix(t *testing.T) {
 	t.Parallel()
 
 	s, _, _ := newTestSessions(t)
 	ctx := t.Context()
 	user := mustCreateUser(ctx, t, s, "alice")
 
-	token, created, err := CreateToken(ctx, s, homeAssistant(user.ID))
+	token, created, err := CreateAPIToken(ctx, s, homeAssistant(user.ID))
 	require.NoError(t, err)
 
 	hash := sha256.Sum256([]byte(token))
@@ -67,8 +67,8 @@ func TestCreateToken_StoresOnlyTheHashAndADisplayPrefix(t *testing.T) {
 	require.Equal(t, sessionsTestNow.Add(365*day), stored.ExpiresAt)
 }
 
-// Given a token without scopes, then CreateToken returns store.ErrInvalid and no token.
-func TestCreateToken_WithoutScopesReturnsErrInvalid(t *testing.T) {
+// Given a token without scopes, then CreateAPIToken returns store.ErrInvalid and no token.
+func TestCreateAPIToken_WithoutScopesReturnsErrInvalid(t *testing.T) {
 	t.Parallel()
 
 	s, _, _ := newTestSessions(t)
@@ -78,7 +78,7 @@ func TestCreateToken_WithoutScopesReturnsErrInvalid(t *testing.T) {
 	request := homeAssistant(user.ID)
 	request.Scopes = nil
 
-	token, _, err := CreateToken(ctx, s, request)
+	token, _, err := CreateAPIToken(ctx, s, request)
 	require.ErrorIs(t, err, store.ErrInvalid)
 	require.Empty(t, token)
 }
@@ -86,7 +86,7 @@ func TestCreateToken_WithoutScopesReturnsErrInvalid(t *testing.T) {
 // Given many tokens, then their random parts only hold base62 characters, and each of the 62
 // appears within 10% of the mean, which a modulo bias breaks: 256 mod 62 makes 8 characters 25%
 // more frequent. With 5000 tokens, an unbiased count leaves the band about once in 10^7 runs.
-func TestGenerateToken_DrawsTheBase62AlphabetUniformly(t *testing.T) {
+func TestGenerateAPIToken_DrawsTheBase62AlphabetUniformly(t *testing.T) {
 	t.Parallel()
 
 	const tokens = 5000
@@ -94,7 +94,7 @@ func TestGenerateToken_DrawsTheBase62AlphabetUniformly(t *testing.T) {
 	counts := make(map[rune]int, len(base62))
 
 	for range tokens {
-		token := generateToken()
+		token := generateAPIToken()
 		require.True(t, strings.HasPrefix(token, "vrv_"), token)
 
 		for _, c := range token[len("vrv_"):] {
