@@ -63,6 +63,7 @@ Personal, scoped Bearer tokens for machine clients: Health Auto Export, the futu
   - Operations accept sessions only by default, and answer 401 `unauthorized` to a token. An operation of the public API or of the ingestion accepts a session or a token with its scope, and answers 403 `scope_missing` to a token without it. The OpenAPI document declares the `bearerToken` security scheme.
   - The last used date and IP are written by the first request after a minute without a write (FR-7). A request without a known client IP writes an empty IP.
   - A rejected known token records `token.rejected`, see [Audit log](audit-log.md). An unknown token records nothing: it names no user.
+  - A token that cannot be checked, because its lookup fails or because the audit event of its rejection cannot be recorded, answers 500 `internal` on any operation. Unlike a cookie, a token is sent on purpose: the request never goes on as if it were fine.
 
 ## Edge cases
 

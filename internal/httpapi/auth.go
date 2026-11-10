@@ -139,9 +139,9 @@ func sessionPublicIDFrom(ctx context.Context) string {
 // answer 401. When the lookup renews the session, the response sends the cookie again with the new
 // expiry, so that the browser keeps it as long as the session lives.
 //
-// A lookup that fails with another error than an invalid credential is logged, and the request
-// goes on without a principal: the operations that need one answer 500, and the others, such as
-// GET /api/v1/meta, answer as usual.
+// A session lookup that fails with another error than an invalid session is logged, and the
+// request goes on without a principal: the operations that need one answer 500, and the others,
+// such as GET /api/v1/meta, answer as usual. A token lookup that fails answers 500 on any operation.
 //
 // It must run behind the gate, since the lookup needs a migrated database, and behind
 // CSRFMiddleware.
@@ -198,7 +198,9 @@ var tokenRejections = []error{auth.ErrTokenRevoked, auth.ErrTokenExpired, auth.E
 
 // authenticateToken authenticates r by the API token token, looked up with tokens in repos, and
 // serves it on next with the principal of the token, or answers 401 when the token does not
-// authenticate. A lookup that fails otherwise is logged, and r goes on without a principal.
+// authenticate. A lookup that fails otherwise, such as the audit event of a rejection that cannot be
+// recorded, is logged and answers 500: unlike a cookie, a token is sent on purpose, and the request
+// must not go on as if it were fine.
 func authenticateToken(w http.ResponseWriter, r *http.Request, next http.Handler, repos store.Repositories, tokens auth.Tokens, token string) {
 	ctx := r.Context()
 	found, user, err := tokens.Authenticate(ctx, repos, token, ClientInfoFrom(ctx).IP)
@@ -219,7 +221,7 @@ func authenticateToken(w http.ResponseWriter, r *http.Request, next http.Handler
 
 	if err != nil {
 		logging.FromContext(ctx).ErrorContext(ctx, "look up token", slog.Any("error", err))
-		next.ServeHTTP(w, r.WithContext(context.WithValue(ctx, lookupErrorKey{}, fmt.Errorf("look up token: %w", err))))
+		WriteProblem(w, Problem{Status: http.StatusInternalServerError, Code: defaultCode(http.StatusInternalServerError), Detail: "unexpected error occurred"})
 
 		return
 	}
