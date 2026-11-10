@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -210,6 +211,175 @@ func TestAdminBackups_CreateEnqueuesAManualBackupJob(t *testing.T) {
 	require.Equal(t, b.root.ID, events[0].ActorID)
 	require.Zero(t, events[0].SubjectID)
 	require.JSONEq(t, `{"reason":"manual","file":"`+name+`"}`, string(events[0].Payload))
+}
+
+// createdJobID checks that rec answers 202 to POST /api/v1/admin/backups, and returns its job id.
+func createdJobID(t *testing.T, rec *httptest.ResponseRecorder) int64 {
+	t.Helper()
+
+	require.Equal(t, http.StatusAccepted, rec.Code, rec.Body.String())
+
+	var created struct {
+		JobID int64 `json:"jobId"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &created))
+
+	return created.JobID
+}
+
+// createBackup serves POST /api/v1/admin/backups as root, checks that it answers 202, and returns
+// its job id.
+func (b adminBackupsTest) createBackup(t *testing.T) int64 {
+	t.Helper()
+
+	return createdJobID(t, accountRequest(t, b.handler, http.MethodPost, adminBackupsPath, "", b.rootCookie))
+}
+
+// requireOnlyJob checks that the job of id is the only one queued or running: once it has ended, no
+// job is left to claim.
+func (b adminBackupsTest) requireOnlyJob(t *testing.T, id int64) {
+	t.Helper()
+
+	ctx := t.Context()
+
+	job, err := b.store.Jobs().Get(ctx, id)
+	require.NoError(t, err)
+
+	if job.Status == store.JobQueued {
+		job, _, err = b.store.Jobs().Claim(ctx, time.Minute)
+		require.NoError(t, err)
+		require.Equal(t, id, job.ID)
+	}
+
+	require.Equal(t, store.JobRunning, job.Status)
+	require.NoError(t, b.store.Jobs().Complete(ctx, job.ID, job.Claims))
+
+	_, _, err = b.store.Jobs().Claim(ctx, time.Minute)
+	require.ErrorIs(t, err, store.ErrNotFound, "no other job is queued")
+}
+
+// Given a backup.create job queued or running, when an admin calls POST /api/v1/admin/backups, then
+// the answer is 202 with the id of that job, and no job is queued.
+func TestAdminBackups_CreateWhileABackupIsActiveAnswersItsJob(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// prepare brings the job of id to its state.
+		prepare func(t *testing.T, b adminBackupsTest, id int64)
+	}{
+		{name: "Queued", prepare: func(*testing.T, adminBackupsTest, int64) {}},
+		{name: "Running", prepare: func(t *testing.T, b adminBackupsTest, id int64) {
+			t.Helper()
+
+			job, _, err := b.store.Jobs().Claim(t.Context(), time.Minute)
+			require.NoError(t, err)
+			require.Equal(t, id, job.ID)
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			b := newAdminBackupsTest(t)
+
+			first := b.createBackup(t)
+			tt.prepare(t, b, first)
+
+			require.Equal(t, first, b.createBackup(t))
+			b.requireOnlyJob(t, first)
+		})
+	}
+}
+
+// Given that the last backup.create job has ended (completed, failed or cancelled), when an admin
+// calls POST /api/v1/admin/backups, then a new job is queued and its id returned.
+func TestAdminBackups_CreateAfterTheLastBackupEndedQueuesANewJob(t *testing.T) {
+	t.Parallel()
+
+	claim := func(t *testing.T, b adminBackupsTest) store.Job {
+		t.Helper()
+
+		job, _, err := b.store.Jobs().Claim(t.Context(), time.Minute)
+		require.NoError(t, err)
+
+		return job
+	}
+
+	tests := []struct {
+		name string
+		// end ends the job of id.
+		end func(t *testing.T, b adminBackupsTest, id int64)
+	}{
+		{name: "Completed", end: func(t *testing.T, b adminBackupsTest, id int64) {
+			t.Helper()
+			b.mustRunJob(t, id)
+		}},
+		{name: "Failed", end: func(t *testing.T, b adminBackupsTest, _ int64) {
+			t.Helper()
+
+			job := claim(t, b)
+			require.NoError(t, b.store.Jobs().Fail(t.Context(), job.ID, job.Claims, "disk full"))
+		}},
+		{name: "Cancelled", end: func(t *testing.T, b adminBackupsTest, id int64) {
+			t.Helper()
+			require.NoError(t, b.store.Jobs().Cancel(t.Context(), id))
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			b := newAdminBackupsTest(t)
+
+			first := b.createBackup(t)
+			tt.end(t, b, first)
+
+			second := b.createBackup(t)
+			require.NotEqual(t, first, second)
+
+			job, err := b.store.Jobs().Get(t.Context(), second)
+			require.NoError(t, err)
+			require.Equal(t, store.JobQueued, job.Status)
+			require.Equal(t, backup.KindCreate, job.Kind)
+			b.requireOnlyJob(t, second)
+		})
+	}
+}
+
+// Given two concurrent POST /api/v1/admin/backups, then exactly one job is queued, and both answers
+// hold its id.
+func TestAdminBackups_ConcurrentCreatesQueueOneJob(t *testing.T) {
+	t.Parallel()
+
+	b := newAdminBackupsTest(t)
+
+	const requests = 2
+
+	recs := make([]*httptest.ResponseRecorder, requests)
+	start := make(chan struct{})
+
+	var wg sync.WaitGroup
+
+	for i := range recs {
+		wg.Go(func() {
+			<-start
+
+			recs[i] = accountRequest(t, b.handler, http.MethodPost, adminBackupsPath, "", b.rootCookie)
+		})
+	}
+
+	close(start)
+	wg.Wait()
+
+	id := createdJobID(t, recs[0])
+	for _, rec := range recs[1:] {
+		require.Equal(t, id, createdJobID(t, rec))
+	}
+
+	b.requireOnlyJob(t, id)
 }
 
 // Given GET /api/v1/admin/backups/{name}/download, then the archive is streamed as an attachment,
