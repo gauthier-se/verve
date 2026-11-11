@@ -89,6 +89,10 @@ func (r repositories) APITokens() store.APITokensRepository {
 	return apiTokens(r)
 }
 
+func (r repositories) MetricTypes() store.MetricTypesRepository {
+	return metricTypes(r)
+}
+
 func (r repositories) AfterCommit(fn func()) {
 	r.q.afterCommit(fn)
 }

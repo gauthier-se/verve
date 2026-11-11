@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/gauthier-se/verve/internal/auth"
+	"github.com/gauthier-se/verve/internal/catalog"
 	"github.com/gauthier-se/verve/internal/clock"
 	"github.com/gauthier-se/verve/internal/config"
 	"github.com/gauthier-se/verve/internal/jobs"
@@ -360,6 +361,39 @@ func TestRun_StartsWorkerAfterMigrationsAndStopsItBeforeTheDatabaseCloses(t *tes
 	require.Less(t, strings.LastIndex(out, `msg="applied migration"`), workerStarted)
 	require.NotEqual(t, -1, workerStopped, "the worker must log its stop")
 	require.Less(t, workerStopped, dbClosed, "the worker must stop before the database closes")
+}
+
+// Given a start, then the types of the shipped catalog are stored once the migrations are applied
+// and before the worker starts.
+func TestRun_SyncsTheMetricTypesAfterMigrationsAndBeforeTheWorker(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	cfg := testConfig(t.TempDir())
+
+	_, logs, stop := startRun(t, cfg)
+	stop()
+
+	out := logs.String()
+	synced := strings.Index(out, `msg="metric types synchronized"`)
+
+	require.NotEqual(t, -1, synced, "Run must log that the metric types are synchronized")
+	require.Less(t, strings.LastIndex(out, `msg="applied migration"`), synced)
+	require.Less(t, synced, strings.Index(out, `msg="worker started"`))
+
+	shipped, err := catalog.Shipped()
+	require.NoError(t, err)
+
+	stored, err := withSharedDB(ctx, cfg, func(s store.Store) ([]store.MetricType, error) {
+		return s.MetricTypes().List(ctx)
+	})
+	require.NoError(t, err)
+	require.Len(t, stored, len(shipped.Types()))
+
+	for i, want := range shipped.Types() {
+		require.Equal(t, want.Identifier, stored[i].Identifier)
+		require.True(t, stored[i].Curated, want.Identifier)
+	}
 }
 
 // Given shutdown and a handler that takes time to stop, then the database closes after it returned,

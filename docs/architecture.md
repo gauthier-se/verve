@@ -184,7 +184,7 @@ Every user-owned row carries a `user_id`. All queries are scoped by user, and th
 | `sessions` | Server-side sessions (hashed id, public id, method, expiry, last seen, IP, user agent) |
 | `api_tokens` | Hashed tokens with scopes and usage metadata |
 | `oidc_identities`, `totp_secrets`, `recovery_codes` | Advanced authentication |
-| `metric_types` | Instance-wide catalog, without `user_id` and without health data: key, HealthKit identifier, kind (quantity or category), canonical unit, aggregation style (cumulative or discrete), uncurated flag |
+| `metric_types` | Instance-wide catalog, without `user_id` and without health data: key, HealthKit identifier, kind (quantity or category), canonical unit, aggregation style (cumulative or discrete), display group, uncurated flag |
 | `sources` | Devices and apps that produced data, identified by name and device model, with a detected kind (watch, phone, scale, app, aggregated) |
 | `samples` | Generic quantity and category samples: type, source, start, end, original UTC offset, value, optional min and max for pre-aggregated points, category value, origin, import id (referencing no table, so that purging import reports leaves samples alone), natural key, metadata |
 | `sample_stats` | Data availability per user and type: first start, last start, count, maintained in the transaction of every write that adds, removes or moves samples |

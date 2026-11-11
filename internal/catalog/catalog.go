@@ -23,6 +23,11 @@ const (
 	KindCategory Kind = "category"
 )
 
+// Known reports whether k is one of the kinds of FR-1.
+func (k Kind) Known() bool {
+	return k == KindQuantity || k == KindCategory
+}
+
 // Aggregation is the aggregation style of a type, the one of HealthKit.
 type Aggregation string
 
@@ -207,7 +212,7 @@ func (t Type) validate() error {
 		return errors.New("key is not in snake case")
 	case t.Identifier == "":
 		return errors.New("identifier is missing")
-	case t.Kind != KindQuantity && t.Kind != KindCategory:
+	case !t.Kind.Known():
 		return fmt.Errorf("kind %q is not quantity or category", t.Kind)
 	case !canonicalUnit(t.Unit):
 		return fmt.Errorf("unit %q is not a canonical unit", t.Unit)
