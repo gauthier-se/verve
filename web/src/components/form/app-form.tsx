@@ -52,8 +52,11 @@ function TextField({ label, className, ...props }: TextFieldProps) {
   );
 }
 
-/** The form hook of the app, whose fields render with `field.TextField`. */
-export const { useAppForm } = createFormHook({
+/**
+ * The form hook of the app, whose fields render with `field.TextField`, and
+ * `withFieldGroup`, which builds fields shared by several forms.
+ */
+export const { useAppForm, withFieldGroup } = createFormHook({
   fieldContext,
   formContext,
   fieldComponents: { TextField },

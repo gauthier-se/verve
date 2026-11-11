@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -7,6 +7,8 @@ import { errorMessage, hasProblemCode } from "@/api/errors";
 import { inspectInvitation } from "@/api/generated";
 import { acceptInvitationMutation } from "@/api/generated/@tanstack/react-query.gen";
 import { useAppForm } from "@/components/form/app-form";
+import { InvalidLink } from "@/components/form/invalid-link";
+import { NewPasswordFields } from "@/components/form/new-password-fields";
 import { Button } from "@/components/ui/button";
 import { enterSession } from "@/lib/session";
 
@@ -55,7 +57,10 @@ function Invite() {
         {t("invite.title")}
       </h1>
       {token === undefined || invitation === undefined || gone ? (
-        <InvalidInvitation />
+        <InvalidLink
+          message={t("errors.invitation_invalid")}
+          loginLabel={t("invite.goToLogin")}
+        />
       ) : (
         <PasswordForm
           token={token}
@@ -65,21 +70,6 @@ function Invite() {
           }}
         />
       )}
-    </div>
-  );
-}
-
-/** Says that the link is not valid, and leads to the login page. */
-function InvalidInvitation() {
-  const { t } = useTranslation();
-  return (
-    <div className="flex flex-col gap-4">
-      <p role="alert" className="text-sm text-destructive">
-        {t("errors.invitation_invalid")}
-      </p>
-      <Button asChild variant="outline" size="lg" className="min-h-11">
-        <Link to="/login">{t("invite.goToLogin")}</Link>
-      </Button>
     </div>
   );
 }
@@ -140,41 +130,14 @@ function PasswordForm({ token, username, onGone }: PasswordFormProps) {
             ` ${t("invite.askNewInvitation")}`}
         </p>
       )}
-      <form.AppField
-        name="password"
-        validators={{
-          onChange: ({ value }) =>
-            value === "" ? t("invite.passwordRequired") : undefined,
-        }}
-      >
-        {(field) => (
-          <field.TextField
-            label={t("invite.password")}
-            type="password"
-            autoComplete="new-password"
-            maxLength={128}
-          />
-        )}
-      </form.AppField>
-      <form.AppField
-        name="confirmation"
-        validators={{
-          onChangeListenTo: ["password"],
-          onChange: ({ value, fieldApi }) =>
-            value === fieldApi.form.getFieldValue("password")
-              ? undefined
-              : t("invite.passwordMismatch"),
-        }}
-      >
-        {(field) => (
-          <field.TextField
-            label={t("invite.confirmation")}
-            type="password"
-            autoComplete="new-password"
-            maxLength={128}
-          />
-        )}
-      </form.AppField>
+      <NewPasswordFields
+        form={form}
+        fields={{ password: "password", confirmation: "confirmation" }}
+        passwordLabel={t("invite.password")}
+        confirmationLabel={t("invite.confirmation")}
+        requiredMessage={t("invite.passwordRequired")}
+        mismatchMessage={t("invite.passwordMismatch")}
+      />
       <Button
         type="submit"
         size="lg"
