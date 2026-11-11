@@ -56,37 +56,6 @@ export type AcceptInvitationInputBody = {
 
 export type AdminUser = {
     /**
-     * When the account was created.
-     */
-    createdAt: string;
-    /**
-     * The email address, left out when the user has none.
-     */
-    email?: string;
-    /**
-     * The id of the user.
-     */
-    id: number;
-    /**
-     * When the user last logged in, left out when they never did.
-     */
-    lastLoginAt?: string;
-    /**
-     * The role of the user.
-     */
-    role: 'admin' | 'member';
-    /**
-     * The status of the account. A disabled user cannot log in.
-     */
-    status: 'active' | 'disabled' | 'deleting';
-    /**
-     * The username, in the case it was created with.
-     */
-    username: string;
-};
-
-export type AdminUserListItem = {
-    /**
      * The number of API tokens of the user that are neither revoked nor expired.
      */
     activeTokens: number;
@@ -457,11 +426,11 @@ export type Meta = {
     version: string;
 };
 
-export type PageAdminUserListItem = {
+export type PageAdminUser = {
     /**
      * The items of the page, newest first.
      */
-    items: Array<AdminUserListItem>;
+    items: Array<AdminUser>;
     /**
      * The cursor of the next page, left out on the last page.
      */
@@ -1360,7 +1329,7 @@ export type ListAdminUsersResponses = {
     /**
      * OK
      */
-    200: PageAdminUserListItem;
+    200: PageAdminUser;
 };
 
 export type ListAdminUsersResponse = ListAdminUsersResponses[keyof ListAdminUsersResponses];

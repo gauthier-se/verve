@@ -110,7 +110,12 @@ func registerAccountDeletion(api huma.API, deps APIDeps) {
 			return nil, adminUserError("delete user", err)
 		}
 
-		out := &deleteUserOutput{Body: adminUserOf(user)}
+		deleted, err := adminUserWithTokens(ctx, deps.Store, user)
+		if err != nil {
+			return nil, err
+		}
+
+		out := &deleteUserOutput{Body: deleted}
 		if user.ID == principal.UserID {
 			out.SetCookie = clearedSessionCookie(deps.PublicURL).String()
 		}

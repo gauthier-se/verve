@@ -19,13 +19,14 @@ const maxAdminUserBodyBytes = 1024
 // AdminUser is what an admin sees of an account: its metadata, never its health data (FR-9 and
 // FR-10 of accounts and administration).
 type AdminUser struct {
-	ID          int64      `json:"id" example:"2" doc:"The id of the user."`
-	Username    string     `json:"username" example:"bob" doc:"The username, in the case it was created with."`
-	Email       string     `json:"email,omitempty" example:"bob@example.com" doc:"The email address, left out when the user has none."`
-	Role        string     `json:"role" enum:"admin,member" example:"member" doc:"The role of the user."`
-	Status      string     `json:"status" enum:"active,disabled,deleting" example:"active" doc:"The status of the account. A disabled user cannot log in."`
-	CreatedAt   time.Time  `json:"createdAt" doc:"When the account was created."`
-	LastLoginAt *time.Time `json:"lastLoginAt,omitempty" doc:"When the user last logged in, left out when they never did."`
+	ID           int64      `json:"id" example:"2" doc:"The id of the user."`
+	Username     string     `json:"username" example:"bob" doc:"The username, in the case it was created with."`
+	Email        string     `json:"email,omitempty" example:"bob@example.com" doc:"The email address, left out when the user has none."`
+	Role         string     `json:"role" enum:"admin,member" example:"member" doc:"The role of the user."`
+	Status       string     `json:"status" enum:"active,disabled,deleting" example:"active" doc:"The status of the account. A disabled user cannot log in."`
+	CreatedAt    time.Time  `json:"createdAt" doc:"When the account was created."`
+	LastLoginAt  *time.Time `json:"lastLoginAt,omitempty" doc:"When the user last logged in, left out when they never did."`
+	ActiveTokens int64      `json:"activeTokens" example:"2" doc:"The number of API tokens of the user that are neither revoked nor expired."`
 }
 
 // adminUsersInput is the input of GET /api/v1/admin/users.
@@ -33,17 +34,9 @@ type adminUsersInput struct {
 	PageParams
 }
 
-// AdminUserListItem is a user of the admin user list: what an admin sees of the account, and the
-// number of its API tokens, never the tokens (FR-8 of API tokens).
-type AdminUserListItem struct {
-	AdminUser
-
-	ActiveTokens int64 `json:"activeTokens" example:"2" doc:"The number of API tokens of the user that are neither revoked nor expired."`
-}
-
 // adminUsersOutput is the response of GET /api/v1/admin/users.
 type adminUsersOutput struct {
-	Body Page[AdminUserListItem]
+	Body Page[AdminUser]
 }
 
 // setUserStatusInput is the input of PUT /api/v1/admin/users/{id}/status.
@@ -103,12 +96,12 @@ func registerAdminUsers(api huma.API, deps APIDeps) {
 			return nil, fmt.Errorf("count tokens of users: %w", err)
 		}
 
-		items := make([]AdminUserListItem, 0, len(users))
+		items := make([]AdminUser, 0, len(users))
 		for _, user := range users {
-			items = append(items, AdminUserListItem{AdminUser: adminUserOf(user), ActiveTokens: tokens[user.ID]})
+			items = append(items, adminUserOf(user, tokens[user.ID]))
 		}
 
-		return &adminUsersOutput{Body: Page[AdminUserListItem]{Items: items, NextCursor: next}}, nil
+		return &adminUsersOutput{Body: Page[AdminUser]{Items: items, NextCursor: next}}, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -141,7 +134,12 @@ func registerAdminUsers(api huma.API, deps APIDeps) {
 			return nil, adminUserError("set user status", err)
 		}
 
-		return &adminUserOutput{Body: adminUserOf(user)}, nil
+		out, err := adminUserWithTokens(ctx, deps.Store, user)
+		if err != nil {
+			return nil, err
+		}
+
+		return &adminUserOutput{Body: out}, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -174,21 +172,38 @@ func registerAdminUsers(api huma.API, deps APIDeps) {
 			return nil, adminUserError("set user role", err)
 		}
 
-		return &adminUserOutput{Body: adminUserOf(user)}, nil
+		out, err := adminUserWithTokens(ctx, deps.Store, user)
+		if err != nil {
+			return nil, err
+		}
+
+		return &adminUserOutput{Body: out}, nil
 	})
 }
 
-// adminUserOf returns what an admin sees of user.
-func adminUserOf(user store.User) AdminUser {
+// adminUserOf returns what an admin sees of user, who has activeTokens active API tokens.
+func adminUserOf(user store.User, activeTokens int64) AdminUser {
 	return AdminUser{
-		ID:          user.ID,
-		Username:    user.Username,
-		Email:       user.Email,
-		Role:        string(user.Role),
-		Status:      string(user.Status),
-		CreatedAt:   user.CreatedAt,
-		LastLoginAt: optionalTime(user.LastLoginAt),
+		ID:           user.ID,
+		Username:     user.Username,
+		Email:        user.Email,
+		Role:         string(user.Role),
+		Status:       string(user.Status),
+		CreatedAt:    user.CreatedAt,
+		LastLoginAt:  optionalTime(user.LastLoginAt),
+		ActiveTokens: activeTokens,
 	}
+}
+
+// adminUserWithTokens returns what an admin sees of user, with the number of their active API
+// tokens read in repos, as the user list shows them.
+func adminUserWithTokens(ctx context.Context, repos store.Repositories, user store.User) (AdminUser, error) {
+	tokens, err := repos.APITokens().CountActiveByUsers(ctx, []int64{user.ID})
+	if err != nil {
+		return AdminUser{}, fmt.Errorf("count tokens of user %d: %w", user.ID, err)
+	}
+
+	return adminUserOf(user, tokens[user.ID]), nil
 }
 
 // adminUserError returns the problem of the error of a change of a user: 404 for an unknown user

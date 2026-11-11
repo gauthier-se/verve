@@ -100,74 +100,6 @@
       "AdminUser": {
         "additionalProperties": false,
         "properties": {
-          "createdAt": {
-            "description": "When the account was created.",
-            "format": "date-time",
-            "type": "string"
-          },
-          "email": {
-            "description": "The email address, left out when the user has none.",
-            "examples": [
-              "bob@example.com"
-            ],
-            "type": "string"
-          },
-          "id": {
-            "description": "The id of the user.",
-            "examples": [
-              2
-            ],
-            "format": "int64",
-            "type": "integer"
-          },
-          "lastLoginAt": {
-            "description": "When the user last logged in, left out when they never did.",
-            "format": "date-time",
-            "type": "string"
-          },
-          "role": {
-            "description": "The role of the user.",
-            "enum": [
-              "admin",
-              "member"
-            ],
-            "examples": [
-              "member"
-            ],
-            "type": "string"
-          },
-          "status": {
-            "description": "The status of the account. A disabled user cannot log in.",
-            "enum": [
-              "active",
-              "disabled",
-              "deleting"
-            ],
-            "examples": [
-              "active"
-            ],
-            "type": "string"
-          },
-          "username": {
-            "description": "The username, in the case it was created with.",
-            "examples": [
-              "bob"
-            ],
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "username",
-          "role",
-          "status",
-          "createdAt"
-        ],
-        "type": "object"
-      },
-      "AdminUserListItem": {
-        "additionalProperties": false,
-        "properties": {
           "activeTokens": {
             "description": "The number of API tokens of the user that are neither revoked nor expired.",
             "examples": [
@@ -233,12 +165,12 @@
           }
         },
         "required": [
-          "activeTokens",
           "id",
           "username",
           "role",
           "status",
-          "createdAt"
+          "createdAt",
+          "activeTokens"
         ],
         "type": "object"
       },
@@ -919,13 +851,13 @@
         ],
         "type": "object"
       },
-      "PageAdminUserListItem": {
+      "PageAdminUser": {
         "additionalProperties": false,
         "properties": {
           "items": {
             "description": "The items of the page, newest first.",
             "items": {
-              "$ref": "#/components/schemas/AdminUserListItem"
+              "$ref": "#/components/schemas/AdminUser"
             },
             "type": "array"
           },
@@ -2657,7 +2589,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PageAdminUserListItem"
+                  "$ref": "#/components/schemas/PageAdminUser"
                 }
               }
             },
