@@ -93,4 +93,17 @@ describe("i18n:extract script", { timeout: 30_000 }, () => {
 
     expect(await generatedTypes()).toContain(`"title": "Nothing here"`);
   });
+
+  it("given the metrics namespace, which code reads by the keys of the catalog, when the script runs, then its texts stay", async () => {
+    const metricsPath = (lng: string) =>
+      join(workspace, "src", "locales", lng, "metrics.json");
+    const english = await readFile(metricsPath("en"), "utf8");
+    const french = await readFile(metricsPath("fr"), "utf8");
+
+    runScript();
+
+    expect(await readFile(metricsPath("en"), "utf8")).toBe(english);
+    expect(await readFile(metricsPath("fr"), "utf8")).toBe(french);
+    expect(await generatedTypes()).toContain(`"name": "Heart rate"`);
+  });
 });

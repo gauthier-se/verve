@@ -74,4 +74,20 @@ describe("translations", () => {
       expect(i18n.t("days", { count })).toBe(expected);
     },
   );
+
+  it.each([
+    { lng: "en", name: "Heart rate", value: "Core sleep" },
+    { lng: "fr", name: "Fréquence cardiaque", value: "Sommeil léger" },
+  ])(
+    "given a metric key, when $lng translates it in the metrics namespace, then it shows its name and the names of its values",
+    async ({ lng, name, value }) => {
+      const i18n = await initI18n();
+      await i18n.changeLanguage(lng);
+
+      expect(i18n.t("heart_rate.name", { ns: "metrics" })).toBe(name);
+      expect(
+        i18n.t("sleep_analysis.values.asleep_core", { ns: "metrics" }),
+      ).toBe(value);
+    },
+  );
 });
