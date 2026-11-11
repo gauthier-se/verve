@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -49,13 +50,22 @@ func mustCreateTokenThroughAPI(t *testing.T, h http.Handler, body string, cookie
 	return created
 }
 
-// bearerRequest sends method target on h with the token in Authorization: Bearer, without cookie
-// nor CSRF header, and returns the response.
-func bearerRequest(t *testing.T, h http.Handler, method, target, token string) *httptest.ResponseRecorder {
+// bearerRequest sends method target on h with the token in Authorization: Bearer and the JSON body,
+// or none when it is empty, without cookie nor CSRF header, and returns the response.
+func bearerRequest(t *testing.T, h http.Handler, method, target, body, token string) *httptest.ResponseRecorder {
 	t.Helper()
 
-	r := httptest.NewRequestWithContext(t.Context(), method, target, nil)
+	var reader io.Reader
+	if body != "" {
+		reader = strings.NewReader(body)
+	}
+
+	r := httptest.NewRequestWithContext(t.Context(), method, target, reader)
 	r.Header.Set("Authorization", "Bearer "+token)
+
+	if body != "" {
+		r.Header.Set("Content-Type", "application/json")
+	}
 
 	return serveWith(h, r)
 }
@@ -184,12 +194,12 @@ func TestRevokeToken_RevokesATokenOfTheUserOnly(t *testing.T) {
 	aliceToken := mustCreateTokenThroughAPI(t, a.handler, `{"name":"sync","scopes":["read"]}`, a.aliceCookie)
 	bobToken := mustCreateTokenThroughAPI(t, a.handler, `{"name":"sync","scopes":["read"]}`, a.bobCookie)
 
-	require.Equal(t, http.StatusOK, bearerRequest(t, a.handler, http.MethodGet, "/api/v1/meta", aliceToken.Token).Code)
+	require.Equal(t, http.StatusOK, bearerRequest(t, a.handler, http.MethodGet, "/api/v1/meta", "", aliceToken.Token).Code)
 
 	rec := accountRequest(t, a.handler, http.MethodDelete, tokenPath(aliceToken.ID), "", a.aliceCookie)
 	require.Equal(t, http.StatusNoContent, rec.Code, rec.Body.String())
 
-	status, code := problemCode(t, bearerRequest(t, a.handler, http.MethodGet, "/api/v1/meta", aliceToken.Token))
+	status, code := problemCode(t, bearerRequest(t, a.handler, http.MethodGet, "/api/v1/meta", "", aliceToken.Token))
 	require.Equal(t, http.StatusUnauthorized, status)
 	require.Equal(t, "token_revoked", code)
 
@@ -202,7 +212,7 @@ func TestRevokeToken_RevokesATokenOfTheUserOnly(t *testing.T) {
 		require.Equal(t, "not_found", code)
 	}
 
-	require.Equal(t, http.StatusOK, bearerRequest(t, a.handler, http.MethodGet, "/api/v1/meta", bobToken.Token).Code)
+	require.Equal(t, http.StatusOK, bearerRequest(t, a.handler, http.MethodGet, "/api/v1/meta", "", bobToken.Token).Code)
 }
 
 // Given an unknown, missing or repeated scope, an empty or too long name, or an expiry that is not
@@ -244,9 +254,9 @@ func TestCreateToken_InvalidScopesAndPastExpiryAre422(t *testing.T) {
 	}
 }
 
-// Given a request authenticated by a token, even with every scope, then the token operations answer
-// 401 unauthorized: a token cannot create, list or revoke tokens. Given no authentication, then 401
-// too.
+// Given a request authenticated by a token, even with every scope and a valid body, then the token
+// operations answer 401 unauthorized: a token cannot create, list or revoke tokens. Given no
+// authentication, then 401 too.
 func TestTokens_RequireASession(t *testing.T) {
 	t.Parallel()
 
@@ -258,7 +268,7 @@ func TestTokens_RequireASession(t *testing.T) {
 		{http.MethodGet, tokensPath, ""},
 		{http.MethodDelete, tokenPath(created.ID), ""},
 	} {
-		status, code := problemCode(t, bearerRequest(t, a.handler, op.method, op.target, created.Token))
+		status, code := problemCode(t, bearerRequest(t, a.handler, op.method, op.target, op.body, created.Token))
 		require.Equal(t, http.StatusUnauthorized, status, op)
 		require.Equal(t, "unauthorized", code, op)
 
