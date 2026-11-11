@@ -3,7 +3,9 @@ import LanguageDetector from "i18next-browser-languagedetector";
 import { initReactI18next } from "react-i18next";
 
 import enCommon from "@/locales/en/common.json";
+import enMetrics from "@/locales/en/metrics.json";
 import frCommon from "@/locales/fr/common.json";
+import frMetrics from "@/locales/fr/metrics.json";
 
 export const supportedLanguages = ["en", "fr"] as const;
 
@@ -46,14 +48,14 @@ export async function initI18n(): Promise<i18n> {
     .use(initReactI18next)
     .init({
       resources: {
-        en: { common: enCommon },
-        fr: { common: frCommon },
+        en: { common: enCommon, metrics: enMetrics },
+        fr: { common: frCommon, metrics: frMetrics },
       },
       supportedLngs: supportedLanguages,
       fallbackLng: "en",
       load: "languageOnly",
       defaultNS: "common",
-      ns: ["common"],
+      ns: ["common", "metrics"],
       interpolation: { escapeValue: false },
       detection: {
         order: ["localStorage", "navigator"],

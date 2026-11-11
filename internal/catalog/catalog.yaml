@@ -1,0 +1,390 @@
+# The metric type catalog: the HealthKit quantity and category types that Verve knows, described in
+# docs/features/data-storage-and-aggregates.md FR-1.
+#
+# - The types come from the Apple documentation of HKQuantityTypeIdentifier and
+#   HKCategoryTypeIdentifier, and the values of a category type from its HKCategoryValue enum.
+# - unit is a canonical unit of the Units table of docs/architecture.md. A category type has the unit
+#   count, since its samples are counted.
+# - aggregation is the aggregation style of HealthKit: cumulative for cumulative types, discrete
+#   otherwise. A category type is discrete.
+# - group is a display group of FR-1.
+# - Names and descriptions live in web/src/locales/<language>/metrics.json, keyed by the type key.
+#
+# A key is what the API and the samples store: never change the key of a type or a value once
+# released.
+
+types:
+  # Activity
+  - {key: step_count, identifier: HKQuantityTypeIdentifierStepCount, kind: quantity, unit: count, aggregation: cumulative, group: activity}
+  - {key: distance_walking_running, identifier: HKQuantityTypeIdentifierDistanceWalkingRunning, kind: quantity, unit: m, aggregation: cumulative, group: activity}
+  - {key: distance_cycling, identifier: HKQuantityTypeIdentifierDistanceCycling, kind: quantity, unit: m, aggregation: cumulative, group: activity}
+  - {key: distance_wheelchair, identifier: HKQuantityTypeIdentifierDistanceWheelchair, kind: quantity, unit: m, aggregation: cumulative, group: activity}
+  - {key: distance_swimming, identifier: HKQuantityTypeIdentifierDistanceSwimming, kind: quantity, unit: m, aggregation: cumulative, group: activity}
+  - {key: distance_downhill_snow_sports, identifier: HKQuantityTypeIdentifierDistanceDownhillSnowSports, kind: quantity, unit: m, aggregation: cumulative, group: activity}
+  - {key: distance_cross_country_skiing, identifier: HKQuantityTypeIdentifierDistanceCrossCountrySkiing, kind: quantity, unit: m, aggregation: cumulative, group: activity}
+  - {key: distance_paddle_sports, identifier: HKQuantityTypeIdentifierDistancePaddleSports, kind: quantity, unit: m, aggregation: cumulative, group: activity}
+  - {key: distance_rowing, identifier: HKQuantityTypeIdentifierDistanceRowing, kind: quantity, unit: m, aggregation: cumulative, group: activity}
+  - {key: distance_skating_sports, identifier: HKQuantityTypeIdentifierDistanceSkatingSports, kind: quantity, unit: m, aggregation: cumulative, group: activity}
+  - {key: push_count, identifier: HKQuantityTypeIdentifierPushCount, kind: quantity, unit: count, aggregation: cumulative, group: activity}
+  - {key: swimming_stroke_count, identifier: HKQuantityTypeIdentifierSwimmingStrokeCount, kind: quantity, unit: count, aggregation: cumulative, group: activity}
+  - {key: flights_climbed, identifier: HKQuantityTypeIdentifierFlightsClimbed, kind: quantity, unit: count, aggregation: cumulative, group: activity}
+  - {key: active_energy_burned, identifier: HKQuantityTypeIdentifierActiveEnergyBurned, kind: quantity, unit: kcal, aggregation: cumulative, group: activity}
+  - {key: basal_energy_burned, identifier: HKQuantityTypeIdentifierBasalEnergyBurned, kind: quantity, unit: kcal, aggregation: cumulative, group: activity}
+  - {key: exercise_time, identifier: HKQuantityTypeIdentifierAppleExerciseTime, kind: quantity, unit: s, aggregation: cumulative, group: activity}
+  - {key: move_time, identifier: HKQuantityTypeIdentifierAppleMoveTime, kind: quantity, unit: s, aggregation: cumulative, group: activity}
+  - {key: stand_time, identifier: HKQuantityTypeIdentifierAppleStandTime, kind: quantity, unit: s, aggregation: cumulative, group: activity}
+  - {key: nike_fuel, identifier: HKQuantityTypeIdentifierNikeFuel, kind: quantity, unit: count, aggregation: cumulative, group: activity}
+  - {key: physical_effort, identifier: HKQuantityTypeIdentifierPhysicalEffort, kind: quantity, unit: kcal/(kg.h), aggregation: discrete, group: activity}
+  - {key: workout_effort_score, identifier: HKQuantityTypeIdentifierWorkoutEffortScore, kind: quantity, unit: appleEffortScore, aggregation: discrete, group: activity}
+  - {key: estimated_workout_effort_score, identifier: HKQuantityTypeIdentifierEstimatedWorkoutEffortScore, kind: quantity, unit: appleEffortScore, aggregation: discrete, group: activity}
+  - {key: running_speed, identifier: HKQuantityTypeIdentifierRunningSpeed, kind: quantity, unit: m/s, aggregation: discrete, group: activity}
+  - {key: running_power, identifier: HKQuantityTypeIdentifierRunningPower, kind: quantity, unit: W, aggregation: discrete, group: activity}
+  - {key: running_stride_length, identifier: HKQuantityTypeIdentifierRunningStrideLength, kind: quantity, unit: m, aggregation: discrete, group: activity}
+  - {key: running_vertical_oscillation, identifier: HKQuantityTypeIdentifierRunningVerticalOscillation, kind: quantity, unit: m, aggregation: discrete, group: activity}
+  - {key: running_ground_contact_time, identifier: HKQuantityTypeIdentifierRunningGroundContactTime, kind: quantity, unit: ms, aggregation: discrete, group: activity}
+  - {key: cycling_speed, identifier: HKQuantityTypeIdentifierCyclingSpeed, kind: quantity, unit: m/s, aggregation: discrete, group: activity}
+  - {key: cycling_power, identifier: HKQuantityTypeIdentifierCyclingPower, kind: quantity, unit: W, aggregation: discrete, group: activity}
+  - {key: cycling_functional_threshold_power, identifier: HKQuantityTypeIdentifierCyclingFunctionalThresholdPower, kind: quantity, unit: W, aggregation: discrete, group: activity}
+  - {key: cycling_cadence, identifier: HKQuantityTypeIdentifierCyclingCadence, kind: quantity, unit: count/min, aggregation: discrete, group: activity}
+  - {key: cross_country_skiing_speed, identifier: HKQuantityTypeIdentifierCrossCountrySkiingSpeed, kind: quantity, unit: m/s, aggregation: discrete, group: activity}
+  # The Apple documentation calls this speed cumulative, unlike every other speed: a copy of the
+  # text of the paddle sports distance. A speed does not add up, so it is discrete.
+  - {key: paddle_sports_speed, identifier: HKQuantityTypeIdentifierPaddleSportsSpeed, kind: quantity, unit: m/s, aggregation: discrete, group: activity}
+  - {key: rowing_speed, identifier: HKQuantityTypeIdentifierRowingSpeed, kind: quantity, unit: m/s, aggregation: discrete, group: activity}
+  - key: stand_hour
+    identifier: HKCategoryTypeIdentifierAppleStandHour
+    kind: category
+    unit: count
+    aggregation: discrete
+    group: activity
+    values:
+      - {key: stood, identifier: HKCategoryValueAppleStandHourStood}
+      - {key: idle, identifier: HKCategoryValueAppleStandHourIdle}
+
+  # Heart
+  - {key: heart_rate, identifier: HKQuantityTypeIdentifierHeartRate, kind: quantity, unit: count/min, aggregation: discrete, group: heart}
+  - {key: resting_heart_rate, identifier: HKQuantityTypeIdentifierRestingHeartRate, kind: quantity, unit: count/min, aggregation: discrete, group: heart}
+  - {key: walking_heart_rate_average, identifier: HKQuantityTypeIdentifierWalkingHeartRateAverage, kind: quantity, unit: count/min, aggregation: discrete, group: heart}
+  - {key: heart_rate_variability_sdnn, identifier: HKQuantityTypeIdentifierHeartRateVariabilitySDNN, kind: quantity, unit: ms, aggregation: discrete, group: heart}
+  - {key: heart_rate_variability_rmssd, identifier: HKQuantityTypeIdentifierHeartRateVariabilityRMSSD, kind: quantity, unit: ms, aggregation: discrete, group: heart}
+  - {key: heart_rate_recovery_one_minute, identifier: HKQuantityTypeIdentifierHeartRateRecoveryOneMinute, kind: quantity, unit: count/min, aggregation: discrete, group: heart}
+  - {key: atrial_fibrillation_burden, identifier: HKQuantityTypeIdentifierAtrialFibrillationBurden, kind: quantity, unit: fraction, aggregation: discrete, group: heart}
+  - {key: vo2_max, identifier: HKQuantityTypeIdentifierVO2Max, kind: quantity, unit: mL/(kg.min), aggregation: discrete, group: heart}
+  - &event
+    key: high_heart_rate_event
+    identifier: HKCategoryTypeIdentifierHighHeartRateEvent
+    kind: category
+    unit: count
+    aggregation: discrete
+    group: heart
+    values: &not_applicable
+      - {key: not_applicable, identifier: HKCategoryValueNotApplicable}
+  - {<<: *event, key: low_heart_rate_event, identifier: HKCategoryTypeIdentifierLowHeartRateEvent}
+  - {<<: *event, key: irregular_heart_rhythm_event, identifier: HKCategoryTypeIdentifierIrregularHeartRhythmEvent}
+  - {<<: *event, key: hypertension_event, identifier: HKCategoryTypeIdentifierHypertensionEvent}
+  - <<: *event
+    key: low_cardio_fitness_event
+    identifier: HKCategoryTypeIdentifierLowCardioFitnessEvent
+    values:
+      - {key: low_fitness, identifier: HKCategoryValueLowCardioFitnessEventLowFitness}
+
+  # Body
+  - {key: height, identifier: HKQuantityTypeIdentifierHeight, kind: quantity, unit: m, aggregation: discrete, group: body}
+  - {key: body_mass, identifier: HKQuantityTypeIdentifierBodyMass, kind: quantity, unit: kg, aggregation: discrete, group: body}
+  - {key: body_mass_index, identifier: HKQuantityTypeIdentifierBodyMassIndex, kind: quantity, unit: count, aggregation: discrete, group: body}
+  - {key: lean_body_mass, identifier: HKQuantityTypeIdentifierLeanBodyMass, kind: quantity, unit: kg, aggregation: discrete, group: body}
+  - {key: body_fat_percentage, identifier: HKQuantityTypeIdentifierBodyFatPercentage, kind: quantity, unit: fraction, aggregation: discrete, group: body}
+  - {key: waist_circumference, identifier: HKQuantityTypeIdentifierWaistCircumference, kind: quantity, unit: m, aggregation: discrete, group: body}
+  - {key: hip_circumference, identifier: HKQuantityTypeIdentifierHipCircumference, kind: quantity, unit: m, aggregation: discrete, group: body}
+  - {key: sleeping_wrist_temperature, identifier: HKQuantityTypeIdentifierAppleSleepingWristTemperature, kind: quantity, unit: degC, aggregation: discrete, group: body}
+
+  # Sleep
+  - key: sleep_analysis
+    identifier: HKCategoryTypeIdentifierSleepAnalysis
+    kind: category
+    unit: count
+    aggregation: discrete
+    group: sleep
+    values:
+      - {key: in_bed, identifier: HKCategoryValueSleepAnalysisInBed}
+      - {key: awake, identifier: HKCategoryValueSleepAnalysisAwake}
+      - {key: asleep_core, identifier: HKCategoryValueSleepAnalysisAsleepCore}
+      - {key: asleep_deep, identifier: HKCategoryValueSleepAnalysisAsleepDeep}
+      - {key: asleep_rem, identifier: HKCategoryValueSleepAnalysisAsleepREM}
+      - {key: asleep_unspecified, identifier: HKCategoryValueSleepAnalysisAsleepUnspecified}
+
+  # Nutrition
+  - {key: dietary_energy_consumed, identifier: HKQuantityTypeIdentifierDietaryEnergyConsumed, kind: quantity, unit: kcal, aggregation: cumulative, group: nutrition}
+  - {key: dietary_water, identifier: HKQuantityTypeIdentifierDietaryWater, kind: quantity, unit: L, aggregation: cumulative, group: nutrition}
+  - {key: dietary_protein, identifier: HKQuantityTypeIdentifierDietaryProtein, kind: quantity, unit: kg, aggregation: cumulative, group: nutrition}
+  - {key: dietary_carbohydrates, identifier: HKQuantityTypeIdentifierDietaryCarbohydrates, kind: quantity, unit: kg, aggregation: cumulative, group: nutrition}
+  - {key: dietary_sugar, identifier: HKQuantityTypeIdentifierDietarySugar, kind: quantity, unit: kg, aggregation: cumulative, group: nutrition}
+  - {key: dietary_fiber, identifier: HKQuantityTypeIdentifierDietaryFiber, kind: quantity, unit: kg, aggregation: cumulative, group: nutrition}
+  - {key: dietary_fat_total, identifier: HKQuantityTypeIdentifierDietaryFatTotal, kind: quantity, unit: kg, aggregation: cumulative, group: nutrition}
+  - {key: dietary_fat_saturated, identifier: HKQuantityTypeIdentifierDietaryFatSaturated, kind: quantity, unit: kg, aggregation: cumulative, group: nutrition}
+  - {key: dietary_fat_monounsaturated, identifier: HKQuantityTypeIdentifierDietaryFatMonounsaturated, kind: quantity, unit: kg, aggregation: cumulative, group: nutrition}
+  - {key: dietary_fat_polyunsaturated, identifier: HKQuantityTypeIdentifierDietaryFatPolyunsaturated, kind: quantity, unit: kg, aggregation: cumulative, group: nutrition}
+  - {key: dietary_cholesterol, identifier: HKQuantityTypeIdentifierDietaryCholesterol, kind: quantity, unit: kg, aggregation: cumulative, group: nutrition}
+  - {key: dietary_sodium, identifier: HKQuantityTypeIdentifierDietarySodium, kind: quantity, unit: kg, aggregation: cumulative, group: nutrition}
+  - {key: dietary_potassium, identifier: HKQuantityTypeIdentifierDietaryPotassium, kind: quantity, unit: kg, aggregation: cumulative, group: nutrition}
+  - {key: dietary_calcium, identifier: HKQuantityTypeIdentifierDietaryCalcium, kind: quantity, unit: kg, aggregation: cumulative, group: nutrition}
+  - {key: dietary_iron, identifier: HKQuantityTypeIdentifierDietaryIron, kind: quantity, unit: kg, aggregation: cumulative, group: nutrition}
+  - {key: dietary_magnesium, identifier: HKQuantityTypeIdentifierDietaryMagnesium, kind: quantity, unit: kg, aggregation: cumulative, group: nutrition}
+  - {key: dietary_phosphorus, identifier: HKQuantityTypeIdentifierDietaryPhosphorus, kind: quantity, unit: kg, aggregation: cumulative, group: nutrition}
+  - {key: dietary_zinc, identifier: HKQuantityTypeIdentifierDietaryZinc, kind: quantity, unit: kg, aggregation: cumulative, group: nutrition}
+  - {key: dietary_copper, identifier: HKQuantityTypeIdentifierDietaryCopper, kind: quantity, unit: kg, aggregation: cumulative, group: nutrition}
+  - {key: dietary_manganese, identifier: HKQuantityTypeIdentifierDietaryManganese, kind: quantity, unit: kg, aggregation: cumulative, group: nutrition}
+  - {key: dietary_selenium, identifier: HKQuantityTypeIdentifierDietarySelenium, kind: quantity, unit: kg, aggregation: cumulative, group: nutrition}
+  - {key: dietary_iodine, identifier: HKQuantityTypeIdentifierDietaryIodine, kind: quantity, unit: kg, aggregation: cumulative, group: nutrition}
+  - {key: dietary_chromium, identifier: HKQuantityTypeIdentifierDietaryChromium, kind: quantity, unit: kg, aggregation: cumulative, group: nutrition}
+  - {key: dietary_molybdenum, identifier: HKQuantityTypeIdentifierDietaryMolybdenum, kind: quantity, unit: kg, aggregation: cumulative, group: nutrition}
+  - {key: dietary_chloride, identifier: HKQuantityTypeIdentifierDietaryChloride, kind: quantity, unit: kg, aggregation: cumulative, group: nutrition}
+  - {key: dietary_vitamin_a, identifier: HKQuantityTypeIdentifierDietaryVitaminA, kind: quantity, unit: kg, aggregation: cumulative, group: nutrition}
+  - {key: dietary_thiamin, identifier: HKQuantityTypeIdentifierDietaryThiamin, kind: quantity, unit: kg, aggregation: cumulative, group: nutrition}
+  - {key: dietary_riboflavin, identifier: HKQuantityTypeIdentifierDietaryRiboflavin, kind: quantity, unit: kg, aggregation: cumulative, group: nutrition}
+  - {key: dietary_niacin, identifier: HKQuantityTypeIdentifierDietaryNiacin, kind: quantity, unit: kg, aggregation: cumulative, group: nutrition}
+  - {key: dietary_pantothenic_acid, identifier: HKQuantityTypeIdentifierDietaryPantothenicAcid, kind: quantity, unit: kg, aggregation: cumulative, group: nutrition}
+  - {key: dietary_vitamin_b6, identifier: HKQuantityTypeIdentifierDietaryVitaminB6, kind: quantity, unit: kg, aggregation: cumulative, group: nutrition}
+  - {key: dietary_biotin, identifier: HKQuantityTypeIdentifierDietaryBiotin, kind: quantity, unit: kg, aggregation: cumulative, group: nutrition}
+  - {key: dietary_folate, identifier: HKQuantityTypeIdentifierDietaryFolate, kind: quantity, unit: kg, aggregation: cumulative, group: nutrition}
+  - {key: dietary_vitamin_b12, identifier: HKQuantityTypeIdentifierDietaryVitaminB12, kind: quantity, unit: kg, aggregation: cumulative, group: nutrition}
+  - {key: dietary_vitamin_c, identifier: HKQuantityTypeIdentifierDietaryVitaminC, kind: quantity, unit: kg, aggregation: cumulative, group: nutrition}
+  - {key: dietary_vitamin_d, identifier: HKQuantityTypeIdentifierDietaryVitaminD, kind: quantity, unit: kg, aggregation: cumulative, group: nutrition}
+  - {key: dietary_vitamin_e, identifier: HKQuantityTypeIdentifierDietaryVitaminE, kind: quantity, unit: kg, aggregation: cumulative, group: nutrition}
+  - {key: dietary_vitamin_k, identifier: HKQuantityTypeIdentifierDietaryVitaminK, kind: quantity, unit: kg, aggregation: cumulative, group: nutrition}
+  - {key: dietary_caffeine, identifier: HKQuantityTypeIdentifierDietaryCaffeine, kind: quantity, unit: kg, aggregation: cumulative, group: nutrition}
+  - {key: number_of_alcoholic_beverages, identifier: HKQuantityTypeIdentifierNumberOfAlcoholicBeverages, kind: quantity, unit: count, aggregation: cumulative, group: nutrition}
+
+  # Respiratory
+  - {key: respiratory_rate, identifier: HKQuantityTypeIdentifierRespiratoryRate, kind: quantity, unit: count/min, aggregation: discrete, group: respiratory}
+  - {key: oxygen_saturation, identifier: HKQuantityTypeIdentifierOxygenSaturation, kind: quantity, unit: fraction, aggregation: discrete, group: respiratory}
+  - {key: sleeping_breathing_disturbances, identifier: HKQuantityTypeIdentifierAppleSleepingBreathingDisturbances, kind: quantity, unit: count, aggregation: discrete, group: respiratory}
+  - {key: forced_vital_capacity, identifier: HKQuantityTypeIdentifierForcedVitalCapacity, kind: quantity, unit: L, aggregation: discrete, group: respiratory}
+  - {key: forced_expiratory_volume_1, identifier: HKQuantityTypeIdentifierForcedExpiratoryVolume1, kind: quantity, unit: L, aggregation: discrete, group: respiratory}
+  - {key: peak_expiratory_flow_rate, identifier: HKQuantityTypeIdentifierPeakExpiratoryFlowRate, kind: quantity, unit: L/min, aggregation: discrete, group: respiratory}
+  - {key: inhaler_usage, identifier: HKQuantityTypeIdentifierInhalerUsage, kind: quantity, unit: count, aggregation: cumulative, group: respiratory}
+
+  # Vitals
+  - {key: body_temperature, identifier: HKQuantityTypeIdentifierBodyTemperature, kind: quantity, unit: degC, aggregation: discrete, group: vitals}
+  - {key: blood_pressure_systolic, identifier: HKQuantityTypeIdentifierBloodPressureSystolic, kind: quantity, unit: mmHg, aggregation: discrete, group: vitals}
+  - {key: blood_pressure_diastolic, identifier: HKQuantityTypeIdentifierBloodPressureDiastolic, kind: quantity, unit: mmHg, aggregation: discrete, group: vitals}
+  - {key: blood_glucose, identifier: HKQuantityTypeIdentifierBloodGlucose, kind: quantity, unit: mg/dL, aggregation: discrete, group: vitals}
+  - {key: peripheral_perfusion_index, identifier: HKQuantityTypeIdentifierPeripheralPerfusionIndex, kind: quantity, unit: fraction, aggregation: discrete, group: vitals}
+
+  # Mobility
+  - {key: walking_speed, identifier: HKQuantityTypeIdentifierWalkingSpeed, kind: quantity, unit: m/s, aggregation: discrete, group: mobility}
+  - {key: walking_step_length, identifier: HKQuantityTypeIdentifierWalkingStepLength, kind: quantity, unit: m, aggregation: discrete, group: mobility}
+  - {key: walking_asymmetry_percentage, identifier: HKQuantityTypeIdentifierWalkingAsymmetryPercentage, kind: quantity, unit: fraction, aggregation: discrete, group: mobility}
+  - {key: walking_double_support_percentage, identifier: HKQuantityTypeIdentifierWalkingDoubleSupportPercentage, kind: quantity, unit: fraction, aggregation: discrete, group: mobility}
+  - {key: walking_steadiness, identifier: HKQuantityTypeIdentifierAppleWalkingSteadiness, kind: quantity, unit: fraction, aggregation: discrete, group: mobility}
+  - {key: stair_ascent_speed, identifier: HKQuantityTypeIdentifierStairAscentSpeed, kind: quantity, unit: m/s, aggregation: discrete, group: mobility}
+  - {key: stair_descent_speed, identifier: HKQuantityTypeIdentifierStairDescentSpeed, kind: quantity, unit: m/s, aggregation: discrete, group: mobility}
+  - {key: six_minute_walk_test_distance, identifier: HKQuantityTypeIdentifierSixMinuteWalkTestDistance, kind: quantity, unit: m, aggregation: discrete, group: mobility}
+  - key: walking_steadiness_event
+    identifier: HKCategoryTypeIdentifierAppleWalkingSteadinessEvent
+    kind: category
+    unit: count
+    aggregation: discrete
+    group: mobility
+    values:
+      - {key: initial_low, identifier: HKCategoryValueAppleWalkingSteadinessEventInitialLow}
+      - {key: initial_very_low, identifier: HKCategoryValueAppleWalkingSteadinessEventInitialVeryLow}
+      - {key: repeat_low, identifier: HKCategoryValueAppleWalkingSteadinessEventRepeatLow}
+      - {key: repeat_very_low, identifier: HKCategoryValueAppleWalkingSteadinessEventRepeatVeryLow}
+
+  # Hearing
+  - {key: environmental_audio_exposure, identifier: HKQuantityTypeIdentifierEnvironmentalAudioExposure, kind: quantity, unit: dBASPL, aggregation: discrete, group: hearing}
+  - {key: headphone_audio_exposure, identifier: HKQuantityTypeIdentifierHeadphoneAudioExposure, kind: quantity, unit: dBASPL, aggregation: discrete, group: hearing}
+  - {key: environmental_sound_reduction, identifier: HKQuantityTypeIdentifierEnvironmentalSoundReduction, kind: quantity, unit: dBASPL, aggregation: discrete, group: hearing}
+  - &hearing_event
+    key: environmental_audio_exposure_event
+    identifier: HKCategoryTypeIdentifierEnvironmentalAudioExposureEvent
+    kind: category
+    unit: count
+    aggregation: discrete
+    group: hearing
+    values:
+      - {key: momentary_limit, identifier: HKCategoryValueEnvironmentalAudioExposureEventMomentaryLimit}
+  - <<: *hearing_event
+    key: headphone_audio_exposure_event
+    identifier: HKCategoryTypeIdentifierHeadphoneAudioExposureEvent
+    values:
+      - {key: seven_day_limit, identifier: HKCategoryValueHeadphoneAudioExposureEventSevenDayLimit}
+  # Deprecated since iOS 14 for environmental_audio_exposure_event, still in older exports.
+  - <<: *hearing_event
+    key: audio_exposure_event
+    identifier: HKCategoryTypeIdentifierAudioExposureEvent
+    values:
+      - {key: loud_environment, identifier: HKCategoryValueAudioExposureEventLoudEnvironment}
+
+  # Cycle
+  - {key: basal_body_temperature, identifier: HKQuantityTypeIdentifierBasalBodyTemperature, kind: quantity, unit: degC, aggregation: discrete, group: cycle}
+  # Menstrual flow takes the values of HKCategoryValueVaginalBleeding, which replaced those of
+  # HKCategoryValueMenstrualFlow in iOS 18.
+  - &cycle
+    key: menstrual_flow
+    identifier: HKCategoryTypeIdentifierMenstrualFlow
+    kind: category
+    unit: count
+    aggregation: discrete
+    group: cycle
+    values:
+      - {key: unspecified, identifier: HKCategoryValueVaginalBleedingUnspecified}
+      - {key: light, identifier: HKCategoryValueVaginalBleedingLight}
+      - {key: medium, identifier: HKCategoryValueVaginalBleedingMedium}
+      - {key: heavy, identifier: HKCategoryValueVaginalBleedingHeavy}
+      - {key: none, identifier: HKCategoryValueVaginalBleedingNone}
+  - {<<: *cycle, key: intermenstrual_bleeding, identifier: HKCategoryTypeIdentifierIntermenstrualBleeding, values: *not_applicable}
+  - {<<: *cycle, key: infrequent_menstrual_cycles, identifier: HKCategoryTypeIdentifierInfrequentMenstrualCycles, values: *not_applicable}
+  - {<<: *cycle, key: irregular_menstrual_cycles, identifier: HKCategoryTypeIdentifierIrregularMenstrualCycles, values: *not_applicable}
+  - {<<: *cycle, key: persistent_intermenstrual_bleeding, identifier: HKCategoryTypeIdentifierPersistentIntermenstrualBleeding, values: *not_applicable}
+  - {<<: *cycle, key: prolonged_menstrual_periods, identifier: HKCategoryTypeIdentifierProlongedMenstrualPeriods, values: *not_applicable}
+  - <<: *cycle
+    key: cervical_mucus_quality
+    identifier: HKCategoryTypeIdentifierCervicalMucusQuality
+    values:
+      - {key: dry, identifier: HKCategoryValueCervicalMucusQualityDry}
+      - {key: sticky, identifier: HKCategoryValueCervicalMucusQualitySticky}
+      - {key: creamy, identifier: HKCategoryValueCervicalMucusQualityCreamy}
+      - {key: watery, identifier: HKCategoryValueCervicalMucusQualityWatery}
+      - {key: egg_white, identifier: HKCategoryValueCervicalMucusQualityEggWhite}
+  - <<: *cycle
+    key: ovulation_test_result
+    identifier: HKCategoryTypeIdentifierOvulationTestResult
+    values:
+      - {key: negative, identifier: HKCategoryValueOvulationTestResultNegative}
+      - {key: luteinizing_hormone_surge, identifier: HKCategoryValueOvulationTestResultLuteinizingHormoneSurge}
+      - {key: indeterminate, identifier: HKCategoryValueOvulationTestResultIndeterminate}
+      - {key: estrogen_surge, identifier: HKCategoryValueOvulationTestResultEstrogenSurge}
+  - <<: *cycle
+    key: pregnancy_test_result
+    identifier: HKCategoryTypeIdentifierPregnancyTestResult
+    values:
+      - {key: positive, identifier: HKCategoryValuePregnancyTestResultPositive}
+      - {key: negative, identifier: HKCategoryValuePregnancyTestResultNegative}
+      - {key: indeterminate, identifier: HKCategoryValuePregnancyTestResultIndeterminate}
+  - <<: *cycle
+    key: progesterone_test_result
+    identifier: HKCategoryTypeIdentifierProgesteroneTestResult
+    values:
+      - {key: positive, identifier: HKCategoryValueProgesteroneTestResultPositive}
+      - {key: negative, identifier: HKCategoryValueProgesteroneTestResultNegative}
+      - {key: indeterminate, identifier: HKCategoryValueProgesteroneTestResultIndeterminate}
+  - {<<: *cycle, key: sexual_activity, identifier: HKCategoryTypeIdentifierSexualActivity, values: *not_applicable}
+  - <<: *cycle
+    key: contraceptive
+    identifier: HKCategoryTypeIdentifierContraceptive
+    values:
+      - {key: unspecified, identifier: HKCategoryValueContraceptiveUnspecified}
+      - {key: implant, identifier: HKCategoryValueContraceptiveImplant}
+      - {key: injection, identifier: HKCategoryValueContraceptiveInjection}
+      - {key: intrauterine_device, identifier: HKCategoryValueContraceptiveIntrauterineDevice}
+      - {key: intravaginal_ring, identifier: HKCategoryValueContraceptiveIntravaginalRing}
+      - {key: oral, identifier: HKCategoryValueContraceptiveOral}
+      - {key: patch, identifier: HKCategoryValueContraceptivePatch}
+  - {<<: *cycle, key: pregnancy, identifier: HKCategoryTypeIdentifierPregnancy, values: *not_applicable}
+  - {<<: *cycle, key: lactation, identifier: HKCategoryTypeIdentifierLactation, values: *not_applicable}
+  - <<: *cycle
+    key: menopausal_state
+    identifier: HKCategoryTypeIdentifierMenopausalState
+    values:
+      - {key: none, identifier: HKCategoryValueMenopausalStateNone}
+      - {key: perimenopause, identifier: HKCategoryValueMenopausalStatePerimenopause}
+      - {key: menopause, identifier: HKCategoryValueMenopausalStateMenopause}
+  - {<<: *cycle, key: bleeding_after_menopause, identifier: HKCategoryTypeIdentifierBleedingAfterMenopause}
+
+  # Symptoms
+  - &symptom
+    key: abdominal_cramps
+    identifier: HKCategoryTypeIdentifierAbdominalCramps
+    kind: category
+    unit: count
+    aggregation: discrete
+    group: symptoms
+    values:
+      - {key: not_present, identifier: HKCategoryValueSeverityNotPresent}
+      - {key: mild, identifier: HKCategoryValueSeverityMild}
+      - {key: moderate, identifier: HKCategoryValueSeverityModerate}
+      - {key: severe, identifier: HKCategoryValueSeveritySevere}
+      - {key: unspecified, identifier: HKCategoryValueSeverityUnspecified}
+  - {<<: *symptom, key: acne, identifier: HKCategoryTypeIdentifierAcne}
+  - {<<: *symptom, key: bladder_incontinence, identifier: HKCategoryTypeIdentifierBladderIncontinence}
+  - {<<: *symptom, key: bloating, identifier: HKCategoryTypeIdentifierBloating}
+  - {<<: *symptom, key: breast_pain, identifier: HKCategoryTypeIdentifierBreastPain}
+  - {<<: *symptom, key: chest_tightness_or_pain, identifier: HKCategoryTypeIdentifierChestTightnessOrPain}
+  - {<<: *symptom, key: chills, identifier: HKCategoryTypeIdentifierChills}
+  - {<<: *symptom, key: constipation, identifier: HKCategoryTypeIdentifierConstipation}
+  - {<<: *symptom, key: coughing, identifier: HKCategoryTypeIdentifierCoughing}
+  - {<<: *symptom, key: diarrhea, identifier: HKCategoryTypeIdentifierDiarrhea}
+  - {<<: *symptom, key: dizziness, identifier: HKCategoryTypeIdentifierDizziness}
+  - {<<: *symptom, key: dry_skin, identifier: HKCategoryTypeIdentifierDrySkin}
+  - {<<: *symptom, key: fainting, identifier: HKCategoryTypeIdentifierFainting}
+  - {<<: *symptom, key: fatigue, identifier: HKCategoryTypeIdentifierFatigue}
+  - {<<: *symptom, key: fever, identifier: HKCategoryTypeIdentifierFever}
+  - {<<: *symptom, key: generalized_body_ache, identifier: HKCategoryTypeIdentifierGeneralizedBodyAche}
+  - {<<: *symptom, key: hair_loss, identifier: HKCategoryTypeIdentifierHairLoss}
+  - {<<: *symptom, key: headache, identifier: HKCategoryTypeIdentifierHeadache}
+  - {<<: *symptom, key: heartburn, identifier: HKCategoryTypeIdentifierHeartburn}
+  - {<<: *symptom, key: hot_flashes, identifier: HKCategoryTypeIdentifierHotFlashes}
+  - {<<: *symptom, key: loss_of_smell, identifier: HKCategoryTypeIdentifierLossOfSmell}
+  - {<<: *symptom, key: loss_of_taste, identifier: HKCategoryTypeIdentifierLossOfTaste}
+  - {<<: *symptom, key: lower_back_pain, identifier: HKCategoryTypeIdentifierLowerBackPain}
+  - {<<: *symptom, key: memory_lapse, identifier: HKCategoryTypeIdentifierMemoryLapse}
+  - {<<: *symptom, key: nausea, identifier: HKCategoryTypeIdentifierNausea}
+  - {<<: *symptom, key: night_sweats, identifier: HKCategoryTypeIdentifierNightSweats}
+  - {<<: *symptom, key: pelvic_pain, identifier: HKCategoryTypeIdentifierPelvicPain}
+  - {<<: *symptom, key: rapid_pounding_or_fluttering_heartbeat, identifier: HKCategoryTypeIdentifierRapidPoundingOrFlutteringHeartbeat}
+  - {<<: *symptom, key: runny_nose, identifier: HKCategoryTypeIdentifierRunnyNose}
+  - {<<: *symptom, key: shortness_of_breath, identifier: HKCategoryTypeIdentifierShortnessOfBreath}
+  - {<<: *symptom, key: sinus_congestion, identifier: HKCategoryTypeIdentifierSinusCongestion}
+  - {<<: *symptom, key: skipped_heartbeat, identifier: HKCategoryTypeIdentifierSkippedHeartbeat}
+  - {<<: *symptom, key: sore_throat, identifier: HKCategoryTypeIdentifierSoreThroat}
+  - {<<: *symptom, key: vaginal_dryness, identifier: HKCategoryTypeIdentifierVaginalDryness}
+  - {<<: *symptom, key: vomiting, identifier: HKCategoryTypeIdentifierVomiting}
+  - {<<: *symptom, key: wheezing, identifier: HKCategoryTypeIdentifierWheezing}
+  - <<: *symptom
+    key: appetite_changes
+    identifier: HKCategoryTypeIdentifierAppetiteChanges
+    values:
+      - {key: unspecified, identifier: HKCategoryValueAppetiteChangesUnspecified}
+      - {key: no_change, identifier: HKCategoryValueAppetiteChangesNoChange}
+      - {key: decreased, identifier: HKCategoryValueAppetiteChangesDecreased}
+      - {key: increased, identifier: HKCategoryValueAppetiteChangesIncreased}
+  - <<: *symptom
+    key: mood_changes
+    identifier: HKCategoryTypeIdentifierMoodChanges
+    values: &presence
+      - {key: present, identifier: HKCategoryValuePresencePresent}
+      - {key: not_present, identifier: HKCategoryValuePresenceNotPresent}
+  - {<<: *symptom, key: sleep_changes, identifier: HKCategoryTypeIdentifierSleepChanges, values: *presence}
+
+  # Other
+  - {key: blood_alcohol_content, identifier: HKQuantityTypeIdentifierBloodAlcoholContent, kind: quantity, unit: fraction, aggregation: discrete, group: other}
+  - {key: electrodermal_activity, identifier: HKQuantityTypeIdentifierElectrodermalActivity, kind: quantity, unit: S, aggregation: discrete, group: other}
+  - {key: insulin_delivery, identifier: HKQuantityTypeIdentifierInsulinDelivery, kind: quantity, unit: IU, aggregation: cumulative, group: other}
+  - {key: number_of_times_fallen, identifier: HKQuantityTypeIdentifierNumberOfTimesFallen, kind: quantity, unit: count, aggregation: cumulative, group: other}
+  - {key: uv_exposure, identifier: HKQuantityTypeIdentifierUVExposure, kind: quantity, unit: count, aggregation: discrete, group: other}
+  - {key: time_in_daylight, identifier: HKQuantityTypeIdentifierTimeInDaylight, kind: quantity, unit: s, aggregation: cumulative, group: other}
+  - {key: underwater_depth, identifier: HKQuantityTypeIdentifierUnderwaterDepth, kind: quantity, unit: m, aggregation: discrete, group: other}
+  - {key: water_temperature, identifier: HKQuantityTypeIdentifierWaterTemperature, kind: quantity, unit: degC, aggregation: discrete, group: other}
+  - &other_event
+    key: mindful_session
+    identifier: HKCategoryTypeIdentifierMindfulSession
+    kind: category
+    unit: count
+    aggregation: discrete
+    group: other
+    values: *not_applicable
+  - {<<: *other_event, key: toothbrushing_event, identifier: HKCategoryTypeIdentifierToothbrushingEvent}
+  - {<<: *other_event, key: handwashing_event, identifier: HKCategoryTypeIdentifierHandwashingEvent}
+
+# Data that Verve does not store yet: its records count as unsupported, and never create an
+# uncurated type (FR-1).
+unsupported:
+  identifiers:
+    - HKDataTypeIdentifierElectrocardiogram
+    - HKDataTypeIdentifierAudiogram
+    - HKDataTypeIdentifierStateOfMind
+    - HKMedicationDoseEventTypeIdentifierMedicationDoseEvent
+  prefixes:
+    - HKClinicalTypeIdentifier
