@@ -132,7 +132,7 @@ func TestAdminUsers_StatusChangeAnswersTheUserAndRevokesTheirSessions(t *testing
 
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	require.JSONEq(t, fmt.Sprintf(`{"id":%d,"username":"bob","email":"bob@example.com","role":"member",
-		"status":"disabled","createdAt":"2026-11-04T08:00:00Z"}`, u.bob.ID), rec.Body.String())
+		"status":"disabled","createdAt":"2026-11-04T08:00:00Z","activeTokens":0}`, u.bob.ID), rec.Body.String())
 
 	require.Equal(t, http.StatusUnauthorized, getWith(t, u.handler, "/api/v1/auth/me", u.bobCookie).Code)
 

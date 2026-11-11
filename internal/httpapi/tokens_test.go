@@ -382,3 +382,29 @@ func TestTokens_RecordAuditEvents(t *testing.T) {
 		},
 	}, a.recordedEvents(t))
 }
+
+// Given a user with tokens, then the status change, the role change and the deletion of the user by
+// an admin answer the user as the list shows them, with the number of their active tokens, which
+// none of these changes revokes.
+func TestAdminUsers_ChangesAnswerTheNumberOfTokensAsTheListDoes(t *testing.T) {
+	t.Parallel()
+
+	u := newAdminUsersTest(t)
+
+	mustCreateTokenThroughAPI(t, u.handler, `{"name":"sync","scopes":["ingest"]}`, u.bobCookie)
+	mustCreateTokenThroughAPI(t, u.handler, `{"name":"sensor","scopes":["read"]}`, u.bobCookie)
+
+	for _, change := range []struct {
+		method, target, body string
+		status               int
+	}{
+		{http.MethodPut, userRolePath(u.bob.ID), `{"role":"admin"}`, http.StatusOK},
+		{http.MethodPut, userStatusPath(u.bob.ID), `{"status":"disabled"}`, http.StatusOK},
+		{http.MethodDelete, adminUserPath(u.bob.ID), `{"confirmation":"bob"}`, http.StatusAccepted},
+	} {
+		rec := accountRequest(t, u.handler, change.method, change.target, change.body, u.adminCookie)
+
+		require.Equal(t, change.status, rec.Code, rec.Body.String())
+		require.JSONEq(t, `2`, mustField(t, rec.Body.Bytes(), "activeTokens"), change.target)
+	}
+}

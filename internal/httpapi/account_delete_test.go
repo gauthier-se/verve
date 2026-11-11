@@ -123,7 +123,7 @@ func TestAdminUserDelete_ExactUsernameAnswers202WithTheUserBeingDeleted(t *testi
 
 	require.Equal(t, http.StatusAccepted, rec.Code, rec.Body.String())
 	require.JSONEq(t, fmt.Sprintf(`{"id":%d,"username":"bob","email":"bob@example.com","role":"member",
-		"status":"deleting","createdAt":"2026-11-04T08:00:00Z"}`, u.bob.ID), rec.Body.String())
+		"status":"deleting","createdAt":"2026-11-04T08:00:00Z","activeTokens":0}`, u.bob.ID), rec.Body.String())
 	require.Empty(t, rec.Header().Values("Set-Cookie"))
 
 	require.Equal(t, http.StatusUnauthorized, getWith(t, u.handler, mePath, u.bobCookie).Code)
