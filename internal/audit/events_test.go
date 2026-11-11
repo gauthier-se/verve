@@ -42,6 +42,8 @@ func eventsByConstructor() map[string]Event {
 		"BackupCreatedBy":          BackupCreatedBy(1, "manual", "verve-1.2.3-20261110T140305Z-manual.tar.zst"),
 		"BackupDownloaded":         BackupDownloaded(1, "verve-1.2.3-20261110T140305Z-manual.tar.zst"),
 		"TokenRejected":            TokenRejected(7, 3, TokenRevoked),
+		"APITokenCreated":          APITokenCreated(7, 3, "sync", []store.TokenScope{store.ScopeIngest}),
+		"APITokenRevoked":          APITokenRevoked(7, 3, "sync"),
 	}
 }
 
@@ -568,4 +570,43 @@ func TestTokenRejected_IsAggregatedOnTheTokenAndTheReason(t *testing.T) {
 
 		require.Equal(t, []string{"token 3 revoked", "token 3 revoked", "token 3 expired", "token 4 revoked"}, keys)
 	}
+}
+
+// Given a token that a user created, then the event has the token creation type, the user as actor,
+// no subject, and the id, the name and the scopes of the token, never the token. It is never
+// aggregated.
+func TestAPITokenCreated(t *testing.T) {
+	t.Parallel()
+
+	event := APITokenCreated(7, 3, "Health Auto Export", []store.TokenScope{store.ScopeIngest, store.ScopeRead})
+
+	require.Equal(t, TypeTokenCreated, event.eventType)
+	require.Equal(t, "token.created", TypeTokenCreated)
+	require.Equal(t, int64(7), event.actorID)
+	require.Zero(t, event.subjectID)
+	require.False(t, event.aggregateOnClientIP)
+	require.Empty(t, event.aggregationKey)
+
+	data, err := json.Marshal(event.payload)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"id":3,"name":"Health Auto Export","scopes":["ingest","read"]}`, string(data))
+}
+
+// Given a token that a user revoked, then the event has the token revocation type, the user as
+// actor, no subject, and the id and the name of the token. It is never aggregated.
+func TestAPITokenRevoked(t *testing.T) {
+	t.Parallel()
+
+	event := APITokenRevoked(7, 3, "Health Auto Export")
+
+	require.Equal(t, TypeTokenRevoked, event.eventType)
+	require.Equal(t, "token.revoked", TypeTokenRevoked)
+	require.Equal(t, int64(7), event.actorID)
+	require.Zero(t, event.subjectID)
+	require.False(t, event.aggregateOnClientIP)
+	require.Empty(t, event.aggregationKey)
+
+	data, err := json.Marshal(event.payload)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"id":3,"name":"Health Auto Export"}`, string(data))
 }

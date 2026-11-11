@@ -73,11 +73,11 @@ func TestAdminUsers_AdminListsTheMetadataOfTheUsers(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	require.JSONEq(t, fmt.Sprintf(`{"items":[
-		{"id":%d,"username":"carol","role":"member","status":"disabled","createdAt":"2026-11-04T09:00:00Z"},
+		{"id":%d,"username":"carol","role":"member","status":"disabled","createdAt":"2026-11-04T09:00:00Z","activeTokens":0},
 		{"id":%d,"username":"bob","email":"bob@example.com","role":"member","status":"active",
-		 "createdAt":"2026-11-04T08:00:00Z","lastLoginAt":"2026-11-04T10:00:00Z"},
+		 "createdAt":"2026-11-04T08:00:00Z","lastLoginAt":"2026-11-04T10:00:00Z","activeTokens":0},
 		{"id":%d,"username":"admin","email":"admin@example.com","role":"admin","status":"active",
-		 "createdAt":"2026-11-04T08:00:00Z"}
+		 "createdAt":"2026-11-04T08:00:00Z","activeTokens":0}
 	]}`, carol.ID, u.bob.ID, u.admin.ID), rec.Body.String())
 }
 

@@ -257,6 +257,51 @@ func RunTokens(t *testing.T, newStore NewStoreFunc) {
 		require.Empty(t, got)
 	})
 
+	// Given users with active, revoked and expired tokens, then CountActiveByUsers returns, for the
+	// users asked for, the number of their tokens that are neither revoked nor expired, a token
+	// being valid until its expiry included. The users without such a token, and the users not
+	// asked for, are left out, and no user asked for returns an empty map.
+	t.Run("CountActiveByUsersLeavesOutRevokedAndExpiredTokens", func(t *testing.T) {
+		t.Parallel()
+
+		clk := clock.NewFake(tokensTime)
+		s := newStore(t, clk)
+		ctx := t.Context()
+		alice := mustCreateUser(ctx, t, s.Users(), newUser("alice", ""))
+		bob := mustCreateUser(ctx, t, s.Users(), newUser("bob", ""))
+		carol := mustCreateUser(ctx, t, s.Users(), newUser("carol", ""))
+		dave := mustCreateUser(ctx, t, s.Users(), newUser("dave", ""))
+
+		mustCreateAPIToken(ctx, t, s.APITokens(), newAPIToken(alice.ID, "active", "vrv_active"))
+		revoked := mustCreateAPIToken(ctx, t, s.APITokens(), newAPIToken(alice.ID, "revoked", "vrv_revoked"))
+
+		for name, expiresIn := range map[string]time.Duration{"expired": time.Hour, "expiring": 2 * time.Hour} {
+			token := newAPIToken(alice.ID, name, "vrv_"+name)
+			token.ExpiresAt = tokensTime.Add(expiresIn)
+			mustCreateAPIToken(ctx, t, s.APITokens(), token)
+		}
+
+		mustCreateAPIToken(ctx, t, s.APITokens(), newAPIToken(bob.ID, "bob", "vrv_bob"))
+		revokedOfCarol := mustCreateAPIToken(ctx, t, s.APITokens(), newAPIToken(carol.ID, "carol", "vrv_carol"))
+		mustCreateAPIToken(ctx, t, s.APITokens(), newAPIToken(dave.ID, "dave", "vrv_dave"))
+
+		_, err := s.APITokens().Revoke(ctx, alice.ID, revoked.ID)
+		require.NoError(t, err)
+
+		_, err = s.APITokens().Revoke(ctx, carol.ID, revokedOfCarol.ID)
+		require.NoError(t, err)
+
+		clk.Advance(2 * time.Hour)
+
+		got, err := s.APITokens().CountActiveByUsers(ctx, []int64{alice.ID, bob.ID, carol.ID})
+		require.NoError(t, err)
+		require.Equal(t, map[int64]int64{alice.ID: 2, bob.ID: 1}, got)
+
+		got, err = s.APITokens().CountActiveByUsers(ctx, nil)
+		require.NoError(t, err)
+		require.Empty(t, got)
+	})
+
 	// Given a token, when the clock moves and Revoke runs, then the token stays, with the clock's
 	// now as RevokedAt and the rest unchanged, and a second Revoke keeps the first RevokedAt.
 	t.Run("RevokeKeepsTheTokenAsRevoked", func(t *testing.T) {
