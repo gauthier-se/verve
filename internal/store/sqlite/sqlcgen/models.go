@@ -79,6 +79,18 @@ type JobSchedule struct {
 	NextRun int64
 }
 
+type MetricType struct {
+	ID           int64
+	Key          string
+	Identifier   string
+	Kind         string
+	Unit         string
+	Aggregation  string
+	DisplayGroup string
+	Curated      int64
+	CreatedAt    int64
+}
+
 type Session struct {
 	IDHash     []byte
 	PublicID   string

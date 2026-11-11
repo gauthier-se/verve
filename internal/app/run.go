@@ -20,8 +20,9 @@ import (
 // Run logs the configuration warnings, reads the embedded web app, creates the data directory
 // layout, takes its lock, opens the database, loads or generates the secret key and starts serving
 // HTTP. It then backs up the database and applies the pending migrations, during which only the
-// health probes are served, writes the setup link on stderr while no user exists, starts the job
-// worker, marks the server ready and serves until ctx is cancelled.
+// health probes are served, synchronizes the metric types with the shipped catalog, writes the
+// setup link on stderr while no user exists, starts the job worker, marks the server ready and
+// serves until ctx is cancelled.
 // Resources are released in reverse order: the database is closed once the server and the worker
 // have stopped.
 func Run(ctx context.Context, cfg config.Config, logger *slog.Logger, stderr io.Writer) error {
@@ -110,6 +111,12 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger, stderr io.
 	}
 
 	if _, err := migrateDB(ctx, cfg, db, clk, logger, plan); err != nil {
+		stopServer()
+
+		return errors.Join(err, <-served)
+	}
+
+	if err := syncMetricTypes(ctx, st.MetricTypes(), logger); err != nil {
 		stopServer()
 
 		return errors.Join(err, <-served)
