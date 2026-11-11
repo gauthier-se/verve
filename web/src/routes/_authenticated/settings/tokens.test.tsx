@@ -2,7 +2,15 @@ import type { QueryClient } from "@tanstack/react-query";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
 import { http } from "msw";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
 
 import type { ApiToken } from "@/api/generated";
 import { initI18n } from "@/i18n";
@@ -70,18 +78,24 @@ async function tabTo(user: UserEvent, target: HTMLElement) {
   expect(target).toHaveFocus();
 }
 
-/** Everything that the query and mutation caches of the app hold. */
-function cacheContents(queryClient: QueryClient) {
-  return JSON.stringify([
+/** Everything that the query cache of the app holds. */
+function queryCacheContents(queryClient: QueryClient) {
+  return JSON.stringify(
     queryClient
       .getQueryCache()
       .getAll()
       .map((query) => query.state),
+  );
+}
+
+/** Everything that the mutation cache of the app holds. */
+function mutationCacheContents(queryClient: QueryClient) {
+  return JSON.stringify(
     queryClient
       .getMutationCache()
       .getAll()
       .map((mutation) => mutation.state),
-  ]);
+  );
 }
 
 beforeEach(() => {
@@ -466,7 +480,8 @@ describe("tokens page", () => {
     it("given a created token, then the table lists it without the full token", async () => {
       const user = userEvent.setup();
       fakeTokens();
-      await createToken(user, /^Read only/);
+      const { dialog } = await createToken(user, /^Read only/);
+      await user.click(within(dialog).getByRole("button", { name: "Done" }));
 
       const row = await findTokenRow("iPhone");
       expect(cellTexts(row).slice(0, 3)).toEqual([
@@ -481,7 +496,7 @@ describe("tokens page", () => {
       const user = userEvent.setup();
       fakeTokens();
       const { dialog, queryClient } = await createToken(user, /^Read only/);
-      expect(cacheContents(queryClient)).not.toContain(createdSecret);
+      expect(queryCacheContents(queryClient)).not.toContain(createdSecret);
 
       await user.click(within(dialog).getByRole("button", { name: "Done" }));
 
@@ -489,8 +504,9 @@ describe("tokens page", () => {
         expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
       });
       await waitFor(() => {
-        expect(cacheContents(queryClient)).not.toContain(createdSecret);
+        expect(mutationCacheContents(queryClient)).not.toContain(createdSecret);
       });
+      expect(queryCacheContents(queryClient)).not.toContain(createdSecret);
       const reopened = await openCreationDialog(user);
       expect(
         within(reopened).getByRole("textbox", { name: "Name" }),
@@ -525,6 +541,29 @@ describe("tokens page", () => {
       expect(await navigator.clipboard.readText()).toBe(
         `Bearer ${createdSecret}`,
       );
+    });
+
+    it("given a browser without a clipboard, as over plain HTTP, when the user copies the token, then the dialog says to copy it by hand", async () => {
+      const user = userEvent.setup();
+      fakeTokens();
+      const { dialog } = await createToken(user, /^Read only/);
+      // The DOM types declare a clipboard in every context.
+      vi.spyOn(navigator, "clipboard", "get").mockReturnValue(
+        undefined as unknown as Clipboard,
+      );
+      onTestFinished(() => {
+        vi.restoreAllMocks();
+      });
+
+      await user.click(
+        within(dialog).getByRole("button", { name: "Copy token" }),
+      );
+
+      expect(
+        await within(dialog).findByText(
+          "Copying failed. Select the text and copy it.",
+        ),
+      ).toBeInTheDocument();
     });
 
     it("given a token of another preset, then the dialog shows no Health Auto Export setup", async () => {

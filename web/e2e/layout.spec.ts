@@ -98,7 +98,7 @@ test("given a phone screen and a user without a timezone, when a protected page 
   await expectTouchTarget(dialog.getByRole("button", { name: "Confirm" }));
 });
 
-test("given a phone screen and tokens, when the tokens page loads, then the page fits without horizontal scroll, the table scrolls on its own and the creation dialog fits", async ({
+test("given a phone screen and tokens, when the tokens page loads, then the page fits without horizontal scroll, the table scrolls on its own and the creation dialog fits, also once it shows the token", async ({
   page,
 }) => {
   await page.route("/api/v1/auth/me", (route) =>
@@ -113,22 +113,26 @@ test("given a phone screen and tokens, when the tokens page loads, then the page
   );
   // A long name checks that a cell cannot push the page wider.
   const name = "an-automation-with-a-name-longer-than-a-phone-screen";
+  const token = {
+    id: 1,
+    name,
+    scopes: ["ingest", "read"],
+    prefix: "vrv_7Tq2",
+    createdAt: "2026-10-01T09:00:00Z",
+    lastUsedAt: "2026-11-10T08:30:00Z",
+    expiresAt: "2027-10-01T09:00:00Z",
+  };
   await page.route("/api/v1/account/tokens", (route) =>
-    route.fulfill({
-      json: {
-        items: [
-          {
-            id: 1,
-            name,
-            scopes: ["ingest", "read"],
-            prefix: "vrv_7Tq2",
-            createdAt: "2026-10-01T09:00:00Z",
-            lastUsedAt: "2026-11-10T08:30:00Z",
-            expiresAt: "2027-10-01T09:00:00Z",
+    route.request().method() === "POST"
+      ? route.fulfill({
+          status: 201,
+          json: {
+            ...token,
+            id: 2,
+            token: "vrv_3fK9Qm7Lp2Xw8Rt4Vy6Bn1Cz5Dh0Gj3Ks9Ue2Fa7Ho4",
           },
-        ],
-      },
-    }),
+        })
+      : route.fulfill({ json: { items: [token] } }),
   );
 
   await page.goto("/settings/tokens");
@@ -157,4 +161,14 @@ test("given a phone screen and tokens, when the tokens page loads, then the page
   await expectNoHorizontalScroll(page);
   await expectTouchTarget(dialog.getByLabel("Name"));
   await expectTouchTarget(dialog.getByRole("button", { name: "Create" }));
+
+  await dialog.getByLabel("Name").fill("iPhone");
+  await dialog.getByRole("button", { name: "Create" }).click();
+  const created = page.getByRole("dialog", { name: "Token created" });
+  await expect(created).toBeVisible();
+  await expectNoHorizontalScroll(page);
+  await expectTouchTarget(created.getByLabel("Token"));
+  await expectTouchTarget(created.getByRole("button", { name: "Copy token" }));
+  await expectTouchTarget(created.getByLabel("URL"));
+  await expectTouchTarget(created.getByLabel("Header value"));
 });
