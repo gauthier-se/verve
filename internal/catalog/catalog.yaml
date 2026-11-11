@@ -163,6 +163,7 @@ types:
   - {key: forced_expiratory_volume_1, identifier: HKQuantityTypeIdentifierForcedExpiratoryVolume1, kind: quantity, unit: L, aggregation: discrete, group: respiratory}
   - {key: peak_expiratory_flow_rate, identifier: HKQuantityTypeIdentifierPeakExpiratoryFlowRate, kind: quantity, unit: L/min, aggregation: discrete, group: respiratory}
   - {key: inhaler_usage, identifier: HKQuantityTypeIdentifierInhalerUsage, kind: quantity, unit: count, aggregation: cumulative, group: respiratory}
+  - {<<: *event, key: sleep_apnea_event, identifier: HKCategoryTypeIdentifierSleepApneaEvent, group: respiratory}
 
   # Vitals
   - {key: body_temperature, identifier: HKQuantityTypeIdentifierBodyTemperature, kind: quantity, unit: degC, aggregation: discrete, group: vitals}
@@ -228,7 +229,7 @@ types:
     unit: count
     aggregation: discrete
     group: cycle
-    values:
+    values: &vaginal_bleeding
       - {key: unspecified, identifier: HKCategoryValueVaginalBleedingUnspecified}
       - {key: light, identifier: HKCategoryValueVaginalBleedingLight}
       - {key: medium, identifier: HKCategoryValueVaginalBleedingMedium}
@@ -291,7 +292,9 @@ types:
       - {key: none, identifier: HKCategoryValueMenopausalStateNone}
       - {key: perimenopause, identifier: HKCategoryValueMenopausalStatePerimenopause}
       - {key: menopause, identifier: HKCategoryValueMenopausalStateMenopause}
-  - {<<: *cycle, key: bleeding_after_menopause, identifier: HKCategoryTypeIdentifierBleedingAfterMenopause}
+  - {<<: *cycle, key: bleeding_during_pregnancy, identifier: HKCategoryTypeIdentifierBleedingDuringPregnancy, values: *vaginal_bleeding}
+  - {<<: *cycle, key: bleeding_after_pregnancy, identifier: HKCategoryTypeIdentifierBleedingAfterPregnancy, values: *vaginal_bleeding}
+  - {<<: *cycle, key: bleeding_after_menopause, identifier: HKCategoryTypeIdentifierBleedingAfterMenopause, values: *vaginal_bleeding}
 
   # Symptoms
   - &symptom

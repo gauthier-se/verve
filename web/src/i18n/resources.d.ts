@@ -291,6 +291,28 @@ export default interface Resources {
         "unspecified": "Unspecified"
       }
     },
+    "bleeding_after_pregnancy": {
+      "description": "Bleeding in the weeks after giving birth.",
+      "name": "Bleeding after pregnancy",
+      "values": {
+        "heavy": "Heavy",
+        "light": "Light",
+        "medium": "Medium",
+        "none": "None",
+        "unspecified": "Unspecified"
+      }
+    },
+    "bleeding_during_pregnancy": {
+      "description": "Bleeding while you were pregnant.",
+      "name": "Bleeding during pregnancy",
+      "values": {
+        "heavy": "Heavy",
+        "light": "Light",
+        "medium": "Medium",
+        "none": "None",
+        "unspecified": "Unspecified"
+      }
+    },
     "bloating": {
       "description": "The times you felt bloated, with the severity.",
       "name": "Bloating",
@@ -1211,6 +1233,13 @@ export default interface Resources {
         "asleep_unspecified": "Asleep",
         "awake": "Awake",
         "in_bed": "In bed"
+      }
+    },
+    "sleep_apnea_event": {
+      "description": "Times Apple Watch found signs of sleep apnea in your breathing disturbances.",
+      "name": "Sleep apnea notifications",
+      "values": {
+        "not_applicable": "Recorded"
       }
     },
     "sleep_changes": {

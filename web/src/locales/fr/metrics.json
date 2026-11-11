@@ -76,6 +76,28 @@
       "unspecified": "Non précisé"
     }
   },
+  "bleeding_after_pregnancy": {
+    "description": "Des saignements dans les semaines qui ont suivi l'accouchement.",
+    "name": "Saignements après l'accouchement",
+    "values": {
+      "heavy": "Abondant",
+      "light": "Léger",
+      "medium": "Moyen",
+      "none": "Aucun",
+      "unspecified": "Non précisé"
+    }
+  },
+  "bleeding_during_pregnancy": {
+    "description": "Des saignements pendant que vous étiez enceinte.",
+    "name": "Saignements pendant la grossesse",
+    "values": {
+      "heavy": "Abondant",
+      "light": "Léger",
+      "medium": "Moyen",
+      "none": "Aucun",
+      "unspecified": "Non précisé"
+    }
+  },
   "bloating": {
     "description": "Les fois où vous avez eu des ballonnements, avec leur intensité.",
     "name": "Ballonnements",
@@ -996,6 +1018,13 @@
       "asleep_unspecified": "Endormi",
       "awake": "Éveillé",
       "in_bed": "Au lit"
+    }
+  },
+  "sleep_apnea_event": {
+    "description": "Les fois où l'Apple Watch a détecté des signes d'apnée du sommeil dans vos troubles respiratoires.",
+    "name": "Notifications d'apnée du sommeil",
+    "values": {
+      "not_applicable": "Enregistré"
     }
   },
   "sleep_changes": {
