@@ -33,7 +33,7 @@ Every way of getting data into Verve goes through one pipeline that works on nor
 
 - **FR-1**: Adapters produce a stream of normalized records. They never write to storage directly.
 - **FR-2**: Pipeline stages, in order:
-  1. **Type mapping**: map the incoming identifier (HealthKit identifier, Health Auto Export name, native type) to a catalog metric type. Unknown types are added to the catalog with their kind and unit, flagged as "uncurated".
+  1. **Type mapping**: map the incoming identifier (HealthKit identifier, Health Auto Export name, native type) to a catalog metric type. Identifiers that the catalog lists as known but unsupported are counted as unsupported and dropped. Other unknown types are added to the catalog with their kind and unit, flagged as "uncurated" (see [Storage and aggregates](data-storage-and-aggregates.md) FR-1 and FR-2).
   2. **Unit conversion**: convert values to the canonical unit of the metric type. A value with an unknown or incompatible unit is rejected as invalid and counted.
   3. **Time parsing**: parse start and end with their UTC offset, store UTC plus the original offset. Records where end is before start are invalid.
   4. **Source resolution**: find or create the source for the user (see [Deduplication and source priority](data-deduplication-and-source-priority.md)).
@@ -42,7 +42,7 @@ Every way of getting data into Verve goes through one pipeline that works on nor
   7. **Batched writes**: write in transactions of bounded size (for example 5,000 records) to keep the single SQLite writer available for API requests.
   8. **Dirty ranges**: record affected `(type, time range)` per user and enqueue aggregate recomputation once the batch is committed.
   9. **Report**: update counters on the import record.
-- **FR-3**: Import report counters: received, inserted, updated, duplicates, blocked, invalid, unsupported (known but excluded types such as ECG), with up to 100 sample error messages kept for diagnosis.
+- **FR-3**: Import report counters: received, inserted, updated, duplicates, blocked, invalid, unsupported (known but excluded types such as ECG, listed by the catalog in [Storage and aggregates](data-storage-and-aggregates.md) FR-1), with up to 100 sample error messages kept for diagnosis.
 - **FR-4**: Only one import runs at a time per user. Concurrent pushes are queued as jobs and processed in arrival order, with a per-user serial key (see [Job worker](platform-jobs.md) FR-6). An import waiting for a retry does not hold back the next ones.
 - **FR-5**: Imports are resumable at batch granularity: if the process stops, the job restarts and duplicates are absorbed by idempotency.
 - **FR-6**: Native endpoint `POST /api/v1/ingest` (scope `ingest`):
@@ -62,7 +62,7 @@ Every way of getting data into Verve goes through one pipeline that works on nor
 - **FR-8**: Samples with a `uuid` are idempotent on `(user, uuid)`, workouts on `(user, origin, uuid)`, as in [Deduplication and source priority](data-deduplication-and-source-priority.md) FR-1. Deletions remove the matching samples or workouts and do not create block rules, since the deletion happened at the source.
 - **FR-9**: Each import records its origin (`xml`, `hae`, `native`, `cli`), the token used if any, client metadata, timestamps and status (`queued`, `running`, `completed`, `failed`, `cancelled`).
 - **FR-10**: Users can cancel a queued or running import. Data already committed stays.
-- **FR-11**: Import history keeps the last 200 imports per user, older reports are purged.
+- **FR-11**: Import history keeps the last 200 imports per user, older reports are purged. Samples keep their import id, which references no table, so purging a report never touches them.
 - **FR-12** (M3): When an import completes or fails, a notification event is emitted (see [Notifications](notifications.md)).
 
 ## UX notes

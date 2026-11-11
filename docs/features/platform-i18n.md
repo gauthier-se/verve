@@ -38,7 +38,7 @@ Verve is translated from day one, starting with English and French, so that the 
 - **FR-7**: Numbers, dates, times and relative times use the `Intl` APIs with the user's locale (`formatNumber` and `formatDate` in `web/src/i18n/format.ts`). Durations use a shared formatter, `formatDuration(seconds, lng)`, showing hours and minutes, minutes and seconds, or seconds alone, leaving out zero units, from translation keys (for example `7 h 32 min` in French, `7h 32m` in English, `45 s` and `45s`), so the output is the same in every browser.
 - **FR-8**: API errors carry a stable `code`. The SPA maps codes to translated messages. The server never returns pre-translated error text for the SPA.
 - **FR-9**: Notification and email templates exist per language and use the recipient's language.
-- **FR-10**: Metric type display names and descriptions from the catalog are translatable.
+- **FR-10**: Metric type display names, descriptions and category values from the catalog are translatable, in the namespace `metrics`, keyed by the metric key (see [Storage and aggregates](data-storage-and-aggregates.md) FR-1). Uncurated types are shown by their identifier.
 
 ## UX notes
 

@@ -2,7 +2,7 @@
 
 - **Status:** Planned
 - **Milestone:** M1
-- **Related:** [Ingestion pipeline](ingestion-pipeline.md), [Deduplication and source priority](data-deduplication-and-source-priority.md), [Metric explorer](page-metric-explorer.md), [ADR 0001](../decisions/0001-sqlite-behind-storage-interface.md), [ADR 0008](../decisions/0008-generic-sample-storage.md), [ADR 0012](../decisions/0012-local-hour-aggregates.md)
+- **Related:** [Ingestion pipeline](ingestion-pipeline.md), [Deduplication and source priority](data-deduplication-and-source-priority.md), [Metric explorer](page-metric-explorer.md), [ADR 0001](../decisions/0001-sqlite-behind-storage-interface.md), [ADR 0008](../decisions/0008-generic-sample-storage.md), [ADR 0012](../decisions/0012-local-hour-aggregates.md), [ADR 0014](../decisions/0014-route-encoding.md)
 
 ## Summary
 
@@ -30,11 +30,27 @@ All quantity and category samples are stored generically, workouts and routes ha
 
 ## Functional requirements
 
-- **FR-1**: The catalog ships with the binary and lists known HealthKit quantity and category types with: key (for example `heart_rate`), HealthKit identifier, kind (`quantity` or `category`), canonical unit, aggregation style (`cumulative` such as steps and energy, or `discrete` such as heart rate and weight), display group (Activity, Heart, Body, Sleep, Nutrition, Respiratory, Vitals, Mobility, Hearing, Cycle, Symptoms, Other), translatable name and description, and for categories the list of values.
-- **FR-2**: Types not in the catalog are created on first sight as "uncurated" with the received unit, kind inferred from the payload and a default aggregation style of `discrete`. They appear in the metric explorer under "Other".
+- **FR-1**: The catalog ships with the binary and lists known HealthKit quantity and category types with: key (for example `heart_rate`), HealthKit identifier, kind (`quantity` or `category`), canonical unit, aggregation style (`cumulative` such as steps and energy, or `discrete` such as heart rate and weight), display group (Activity, Heart, Body, Sleep, Nutrition, Respiratory, Vitals, Mobility, Hearing, Cycle, Symptoms, Other), and for categories the keys of their values (for example `asleep_core` for `HKCategoryValueSleepAnalysisAsleepCore`).
+  - Names, descriptions and category values are not stored in the catalog. The API returns the metric key and the value keys, and the web app translates them in the i18next namespace `metrics` (`web/src/locales/<language>/metrics.json`), keyed by the metric key: `<key>.name`, `<key>.description` and `<key>.values.<value>`. An uncurated type (FR-2) has no translation and is shown by its identifier, and its category values as received.
+  - The catalog also lists the identifiers that are known but unsupported, for data that Verve does not store yet. The pipeline counts their records as unsupported ([Ingestion pipeline](ingestion-pipeline.md) FR-3) and never creates an uncurated type for them:
+
+    | Data | Identifiers |
+    |---|---|
+    | Electrocardiograms | `HKDataTypeIdentifierElectrocardiogram` |
+    | Audiograms | `HKDataTypeIdentifierAudiogram` |
+    | State of mind | `HKDataTypeIdentifierStateOfMind` |
+    | Medications | `HKMedicationDoseEventTypeIdentifierMedicationDoseEvent` |
+    | Clinical records | every identifier starting with `HKClinicalTypeIdentifier` |
+
+- **FR-2**: Types not in the catalog are created on first sight as "uncurated" with the received identifier and unit, kind inferred from the payload and a default aggregation style of `discrete`. They appear in the metric explorer under "Other".
+  - The catalog is instance-wide: a type created on first sight is shared by every user, and holds no health data. An uncurated type is listed to a user only once they have samples of it, so that the apps of one user never show up in the list of another.
+  - The key of an uncurated type is derived from its identifier: the prefix `HKQuantityTypeIdentifier` or `HKCategoryTypeIdentifier` is stripped, and the rest is converted to snake case (`HKQuantityTypeIdentifierUVExposure` gives `uv_exposure`). Any other identifier, such as a Health Auto Export name, is converted to snake case in full. Snake case splits words where a lower case letter or a digit is followed by an upper case letter, and before the last upper case letter of a run that is followed by a lower case letter, replaces each run of characters other than ASCII letters and digits with one underscore, trims underscores and lowercases the result (`VO2Max` gives `vo2_max`, `Blood Oxygen` gives `blood_oxygen`). A key already taken by another type gets the suffix `_2`, then `_3` and so on. An identifier that leaves an empty key is keyed `uncurated`, with the same suffixes.
 - **FR-3**: A sample stores: user, type, source, start (UTC), end (UTC), original UTC offset, numeric value in canonical unit, optional min and max (pre-aggregated points), optional category value, origin, import id, optional external uuid, natural key hash and optional metadata (JSON).
+  - The category value is the key of a value listed by the type in the catalog (FR-1). A sample of an uncurated category type keeps the value as received.
+  - The import id references no table: it is kept for diagnosis, and purging import reports ([Ingestion pipeline](ingestion-pipeline.md) FR-11) never touches samples.
 - **FR-4**: A workout stores: user, source, external id, activity type, start, end, duration, distance, active energy, total energy, elevation gain and loss, average and max heart rate, indoor flag, location type, events (pauses, laps, segments), metadata.
-- **FR-5**: A route is stored once per workout as a compressed, columnar encoded blob (time, latitude, longitude, altitude, speed, accuracies), with its bounding box, total distance and a simplified polyline for list thumbnails.
+  - The activity type is a key from a catalog of activity types shipped with the binary (for example `running` for `HKWorkoutActivityTypeRunning`). Each activity type has a family from a closed list, which [Deduplication and source priority](data-deduplication-and-source-priority.md) FR-11 compares: `running`, `walking`, `hiking`, `cycling`, `swimming`, `rowing`, `strength`, `cardio`, `dance`, `mind_and_body`, `team_sport`, `racket_sport`, `winter_sport`, `water_sport`, `combat`, `other`. The list of families changes only with the code.
+- **FR-5**: A route is stored once per workout as a compressed, columnar encoded blob (time, latitude, longitude, altitude, speed, course, horizontal and vertical accuracies), with its bounding box, total distance and a simplified polyline for list thumbnails. The encoding is defined in [ADR 0014](../decisions/0014-route-encoding.md): a route round-trips through it exactly at the precisions of that record.
 - **FR-6**: Hourly buckets are aligned to the hours of the user's timezone (identical to UTC hours for whole-hour offsets). Daily buckets are the user's local days. Weekly, monthly and yearly values are computed on read from daily aggregates, using the user's week start.
 - **FR-7**: Each aggregate row stores, after source selection: sum, count, min, max, mean, last value and its time, the chosen source (or "combined"), and for daily rows the number of hours with data.
 - **FR-8**: Cumulative samples spanning several buckets are prorated by overlap duration. Discrete samples are assigned to the bucket containing their start.
@@ -51,7 +67,10 @@ All quantity and category samples are stored generically, workouts and routes ha
 ## Data and API notes
 
 - Indexes: `samples (user_id, type_id, start_at)`, `samples (user_id, natural_key)` unique, `samples (user_id, source_id, type_id)`, aggregates primary keys `(user_id, type_id, bucket_start)`.
-- Endpoints: `GET /api/v1/metrics` (catalog with per-user data availability: first and last sample, count), `GET /api/v1/metrics/{type}/series`, `GET /api/v1/metrics/{type}/samples`.
+- `metric_types` carries no `user_id`: it holds the catalog, which is instance-wide and holds no health data (FR-2).
+- `sample_stats` (user, type, first start, last start, count), primary key `(user_id, type_id)`, holds the data availability of each user and type. It is maintained in the transaction of every write that adds or removes samples, so that it never disagrees with `samples`: an insert updates the count and widens the first and last start, a removal lowers the count and, when it removed the first or last sample, reads the new bound from the index on `samples (user_id, type_id, start_at)`. A row whose count drops to zero is deleted. Counting the samples of ten years on each request would scan millions of index entries, while the first and last start alone are cheap through the index.
+- Translations: a Go test checks that `web/src/locales/en/metrics.json` holds a name and a description for every curated key, and a translation for every value of every curated category type.
+- Endpoints: `GET /api/v1/metrics` (the curated types, the uncurated types the user has samples of, and the data availability of the user from `sample_stats`: first and last sample, count), `GET /api/v1/metrics/{type}/series`, `GET /api/v1/metrics/{type}/samples`.
 
 ## Edge cases
 
