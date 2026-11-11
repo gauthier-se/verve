@@ -14,6 +14,10 @@
       "title": "Serveur injoignable"
     }
   },
+  "copy": {
+    "copied": "Copié dans le presse-papiers.",
+    "failed": "La copie a échoué. Sélectionnez le texte et copiez-le."
+  },
   "days_one": "{{count}} jour",
   "days_many": "{{count}} jours",
   "days_other": "{{count}} jours",
@@ -125,8 +129,86 @@
     "required": "Saisissez un fuseau horaire.",
     "title": "Confirmez votre fuseau horaire"
   },
+  "tokens": {
+    "columns": {
+      "actions": "Actions",
+      "created": "Création",
+      "expires": "Expiration",
+      "lastUsed": "Dernière utilisation",
+      "name": "Nom",
+      "prefix": "Préfixe",
+      "scopes": "Portées"
+    },
+    "create": {
+      "access": "Accès",
+      "cancel": "Annuler",
+      "description": "Choisissez ce que le jeton peut faire. Verve ne l'affiche qu'une fois, juste après sa création.",
+      "name": "Nom",
+      "nameRequired": "Saisissez un nom.",
+      "nameTooLong": "Utilisez au plus {{max}} caractères pour le nom.",
+      "open": "Créer un jeton",
+      "scopes": "Portées",
+      "scopesRequired": "Choisissez au moins une portée.",
+      "submit": "Créer",
+      "title": "Créer un jeton"
+    },
+    "created": {
+      "copyToken": "Copier le jeton",
+      "description": "Copiez le jeton maintenant : Verve ne l'affiche qu'une fois.",
+      "done": "Terminé",
+      "title": "Jeton créé",
+      "token": "Jeton"
+    },
+    "description": "Les jetons permettent à des applications comme Health Auto Export d'envoyer ou de lire vos données sans votre mot de passe.",
+    "empty": {
+      "description": "Créez un jeton pour connecter une application à Verve : Health Auto Export pour synchroniser les données de santé de votre iPhone, ou un script qui lit vos données. Un jeton ne fait que ce que ses portées autorisent, et vous pouvez le révoquer à tout moment.",
+      "title": "Aucun jeton"
+    },
+    "expired": "Expiré",
+    "healthAutoExport": {
+      "copyHeaderKey": "Copier la clé de l'en-tête",
+      "copyHeaderValue": "Copier la valeur de l'en-tête",
+      "copyUrl": "Copier l'URL",
+      "description": "Dans une automatisation REST API de Health Auto Export, saisissez cette URL et ajoutez cet en-tête.",
+      "headerKey": "Clé de l'en-tête",
+      "headerValue": "Valeur de l'en-tête",
+      "title": "Configurer Health Auto Export",
+      "url": "URL"
+    },
+    "never": "Jamais",
+    "presets": {
+      "custom": {
+        "description": "Choisissez vous-même les portées.",
+        "label": "Personnalisé"
+      },
+      "healthAutoExport": {
+        "description": "Envoie les données de santé de votre iPhone à Verve. Portée : ingest.",
+        "label": "Health Auto Export"
+      },
+      "readOnly": {
+        "description": "Lit vos données, pour un tableau de bord ou un script. Portée : read.",
+        "label": "Lecture seule"
+      }
+    },
+    "revoke": {
+      "action": "Révoquer",
+      "cancel": "Annuler",
+      "confirm": "Révoquer le jeton",
+      "description": "Les applications qui utilisent ce jeton cessent de fonctionner à leur prochaine requête. Cette action est définitive.",
+      "label": "Révoquer {{name}}",
+      "title": "Révoquer {{name}} ?"
+    },
+    "revoked": "Révoqué",
+    "scopes": {
+      "ingest": "Envoie des données à Verve.",
+      "read": "Lit vos données."
+    },
+    "title": "Jetons d'API",
+    "unused": "Inutilisé depuis 90 jours ou plus. Révoquez-le si aucune application n'en a plus besoin."
+  },
   "unexpectedError": "Une erreur s'est produite. Réessayez.",
   "userMenu": {
-    "logout": "Se déconnecter"
+    "logout": "Se déconnecter",
+    "tokens": "Jetons d'API"
   }
 }

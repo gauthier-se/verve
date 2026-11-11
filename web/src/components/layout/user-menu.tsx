@@ -1,6 +1,6 @@
 import { useMutation } from "@tanstack/react-query";
-import { useRouter } from "@tanstack/react-router";
-import { ChevronDownIcon, LogOutIcon } from "lucide-react";
+import { Link, useRouter } from "@tanstack/react-router";
+import { ChevronDownIcon, KeyRoundIcon, LogOutIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { errorMessage } from "@/api/errors";
@@ -24,8 +24,8 @@ interface UserMenuProps {
 }
 
 /**
- * A menu named after the user of the session, with their account and an item
- * to log out. Logging out leaves the session. A logout that fails keeps the
+ * A menu named after the user of the session, with their account, a link to
+ * their API tokens and an item to log out. Logging out leaves the session. A logout that fails keeps the
  * menu open with its error, since the session may still be valid.
  */
 export function UserMenu({ user, className }: UserMenuProps) {
@@ -56,6 +56,13 @@ export function UserMenu({ user, className }: UserMenuProps) {
           <span className="truncate text-foreground">{user.username}</span>
           {user.email && <span className="truncate">{user.email}</span>}
         </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild className="min-h-11">
+          <Link to="/settings/tokens">
+            <KeyRoundIcon aria-hidden />
+            {t("userMenu.tokens")}
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
           className="min-h-11"

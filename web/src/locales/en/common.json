@@ -14,6 +14,10 @@
       "title": "Server unreachable"
     }
   },
+  "copy": {
+    "copied": "Copied to the clipboard.",
+    "failed": "Copying failed. Select the text and copy it."
+  },
   "days_one": "{{count}} day",
   "days_other": "{{count}} days",
   "duration": {
@@ -124,8 +128,86 @@
     "required": "Enter a timezone.",
     "title": "Confirm your timezone"
   },
+  "tokens": {
+    "columns": {
+      "actions": "Actions",
+      "created": "Created",
+      "expires": "Expires",
+      "lastUsed": "Last used",
+      "name": "Name",
+      "prefix": "Prefix",
+      "scopes": "Scopes"
+    },
+    "create": {
+      "access": "Access",
+      "cancel": "Cancel",
+      "description": "Choose what the token can do. Verve shows it only once, right after it is created.",
+      "name": "Name",
+      "nameRequired": "Enter a name.",
+      "nameTooLong": "Use at most {{max}} characters for the name.",
+      "open": "Create token",
+      "scopes": "Scopes",
+      "scopesRequired": "Choose at least one scope.",
+      "submit": "Create",
+      "title": "Create a token"
+    },
+    "created": {
+      "copyToken": "Copy token",
+      "description": "Copy the token now: Verve shows it only once.",
+      "done": "Done",
+      "title": "Token created",
+      "token": "Token"
+    },
+    "description": "Tokens let apps such as Health Auto Export send or read your data without your password.",
+    "empty": {
+      "description": "Create a token to connect an app to Verve: Health Auto Export to sync the health data of your iPhone, or a script that reads your data. A token only does what its scopes allow, and you can revoke it at any time.",
+      "title": "No token yet"
+    },
+    "expired": "Expired",
+    "healthAutoExport": {
+      "copyHeaderKey": "Copy header key",
+      "copyHeaderValue": "Copy header value",
+      "copyUrl": "Copy URL",
+      "description": "In a REST API automation of Health Auto Export, enter this URL and add this header.",
+      "headerKey": "Header key",
+      "headerValue": "Header value",
+      "title": "Configure Health Auto Export",
+      "url": "URL"
+    },
+    "never": "Never",
+    "presets": {
+      "custom": {
+        "description": "Choose the scopes yourself.",
+        "label": "Custom"
+      },
+      "healthAutoExport": {
+        "description": "Sends the health data of your iPhone to Verve. Scope: ingest.",
+        "label": "Health Auto Export"
+      },
+      "readOnly": {
+        "description": "Reads your data, for a dashboard or a script. Scope: read.",
+        "label": "Read only"
+      }
+    },
+    "revoke": {
+      "action": "Revoke",
+      "cancel": "Cancel",
+      "confirm": "Revoke token",
+      "description": "The apps that use this token stop working at their next request. You cannot undo this.",
+      "label": "Revoke {{name}}",
+      "title": "Revoke {{name}}?"
+    },
+    "revoked": "Revoked",
+    "scopes": {
+      "ingest": "Sends data to Verve.",
+      "read": "Reads your data."
+    },
+    "title": "API tokens",
+    "unused": "Not used for 90 days or more. Revoke it if no app needs it anymore."
+  },
   "unexpectedError": "Something went wrong. Try again.",
   "userMenu": {
-    "logout": "Log out"
+    "logout": "Log out",
+    "tokens": "API tokens"
   }
 }
