@@ -492,27 +492,44 @@ describe("tokens page", () => {
       expect(row).not.toHaveTextContent(createdSecret);
     });
 
-    it("given a created token, when the dialog closes, then the token leaves the caches and the dialog shows the form again", async () => {
-      const user = userEvent.setup();
-      fakeTokens();
-      const { dialog, queryClient } = await createToken(user, /^Read only/);
-      expect(queryCacheContents(queryClient)).not.toContain(createdSecret);
+    it.each([
+      {
+        name: "chooses Done",
+        close: (user: UserEvent, dialog: HTMLElement) =>
+          user.click(within(dialog).getByRole("button", { name: "Done" })),
+      },
+      {
+        name: "presses Escape",
+        close: (user: UserEvent) => user.keyboard("{Escape}"),
+      },
+    ])(
+      "given a created token, when the user $name, then the token leaves the caches and the dialog shows the form again",
+      async ({ close }) => {
+        const user = userEvent.setup();
+        fakeTokens();
+        const { dialog, queryClient } = await createToken(user, /^Read only/);
+        expect(queryCacheContents(queryClient)).not.toContain(createdSecret);
 
-      await user.click(within(dialog).getByRole("button", { name: "Done" }));
+        await close(user, dialog);
 
-      await waitFor(() => {
-        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-      });
-      await waitFor(() => {
-        expect(mutationCacheContents(queryClient)).not.toContain(createdSecret);
-      });
-      expect(queryCacheContents(queryClient)).not.toContain(createdSecret);
-      const reopened = await openCreationDialog(user);
-      expect(
-        within(reopened).getByRole("textbox", { name: "Name" }),
-      ).toHaveValue("");
-      expect(screen.queryByDisplayValue(createdSecret)).not.toBeInTheDocument();
-    });
+        await waitFor(() => {
+          expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+        });
+        await waitFor(() => {
+          expect(mutationCacheContents(queryClient)).not.toContain(
+            createdSecret,
+          );
+        });
+        expect(queryCacheContents(queryClient)).not.toContain(createdSecret);
+        const reopened = await openCreationDialog(user);
+        expect(
+          within(reopened).getByRole("textbox", { name: "Name" }),
+        ).toHaveValue("");
+        expect(
+          screen.queryByDisplayValue(createdSecret),
+        ).not.toBeInTheDocument();
+      },
+    );
 
     it("given a Health Auto Export token, then the dialog shows the URL and the header to configure, each with a copy button", async () => {
       const user = userEvent.setup();
