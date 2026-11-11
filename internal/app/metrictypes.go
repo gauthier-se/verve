@@ -20,7 +20,7 @@ func syncMetricTypes(ctx context.Context, metricTypes store.MetricTypesRepositor
 		return err
 	}
 
-	logger.Info("metric types synchronized", slog.Int("types", len(shipped.Types())))
+	logger.InfoContext(ctx, "metric types synchronized", slog.Int("types", len(shipped.Types())))
 
 	return nil
 }
