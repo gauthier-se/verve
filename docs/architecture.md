@@ -187,11 +187,11 @@ Every user-owned row carries a `user_id`. All queries are scoped by user, and th
 | `metric_types` | Instance-wide catalog, without `user_id` and without health data: key, HealthKit identifier, kind (quantity or category), canonical unit, aggregation style (cumulative or discrete), uncurated flag |
 | `sources` | Devices and apps that produced data, identified by name and device model, with a detected kind (watch, phone, scale, app, aggregated) |
 | `samples` | Generic quantity and category samples: type, source, start, end, original UTC offset, value, optional min and max for pre-aggregated points, category value, origin, import id (referencing no table, so that purging import reports leaves samples alone), natural key, metadata |
-| `sample_stats` | Data availability per user and type: first start, last start, count, maintained in the transaction of every write that adds or removes samples |
+| `sample_stats` | Data availability per user and type: first start, last start, count, maintained in the transaction of every write that adds, removes or moves samples |
 | `workouts` | Activity type (a key from the activity type catalog shipped with the binary), time range, totals, source, external id, metadata |
 | `workout_routes` | One compressed, columnar encoded route per workout ([ADR 0014](decisions/0014-route-encoding.md)), plus bounding box and simplified polyline |
 | `agg_hourly`, `agg_daily` | Precomputed aggregates after source selection |
-| `source_aliases` | Merged sources (old and new device names) |
+| `source_aliases` | Merged sources (old and new device names), matched by the same name and device model as sources |
 | `source_priorities` | Per user, per metric ordered list of sources, ignored sources, combine flag |
 | `block_rules` | Sample, source, type or source and type rules, optional time range |
 | `imports`, `uploads` | Import history and resumable uploads |

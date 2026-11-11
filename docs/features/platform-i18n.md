@@ -47,7 +47,7 @@ Verve is translated from day one, starting with English and French, so that the 
 ## Data and API notes
 
 - Translation files live in `web/src/locales/<language>/<namespace>.json`. Server-side templates live next to the notification code.
-- The SPA uses a single `common` namespace for now, imported statically. Plurals use i18next JSON v4 suffixes (`days_one`, `days_other`; French also has `days_many`). Keys not used in code yet are kept by `extract.preservePatterns`.
+- The SPA uses a `common` namespace, imported statically, and a `metrics` namespace for the catalog (FR-10). The keys of `metrics` come from the API rather than from code, so the extractor must keep them all. Plurals use i18next JSON v4 suffixes (`days_one`, `days_other`; French also has `days_many`). Keys not used in code yet are kept by `extract.preservePatterns`.
 - `initI18n()` in `web/src/i18n/index.ts` initializes i18next before the first render and sets `<html lang>` on every language change.
 - Tooling: i18next 26, react-i18next 17, i18next-cli 1.x (see [ADR 0009](../decisions/0009-i18next.md)).
 

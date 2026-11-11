@@ -29,7 +29,7 @@ A workout route is stored once per workout as a blob ([Storage and aggregates](.
 
 ## Consequences
 
-- A route round-trips exactly at these precisions: decoding gives back every field rounded to its unit, and an absent field stays absent. 1e-7 degree is about 1 cm, below the accuracy of any GPS receiver.
+- A route round-trips exactly at these precisions: decoding gives back every field rounded to its unit, and an absent or invalid field comes back absent. 1e-7 degree is about 1 cm, below the accuracy of any GPS receiver.
 - Points one second apart differ by a few units in most columns, so most deltas fit in one or two bytes before compression, and zstd removes what is left, such as constant time steps and full bitmaps.
 - The blob is opaque to SQL. The bounding box and the total distance are stored in their own columns for the queries that need them.
 - A change of precision or layout needs a new version byte. Decoders keep reading the versions already stored.
