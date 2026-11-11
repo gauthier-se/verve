@@ -217,7 +217,7 @@ Every user-owned row carries a `user_id`. All queries are scoped by user, and th
 
 ### Units
 
-Values are stored in canonical units and converted only for display. The table covers every dimension of the HealthKit quantity types. An uncurated type keeps the unit it was received with.
+Values are stored in canonical units and converted only for display. The table covers every dimension of the HealthKit quantity types. An uncurated type keeps the unit it was received with. A category type has the unit count, since its samples are counted. The metric type catalog (`internal/catalog/catalog.yaml`) writes each unit as in the last column, without the range.
 
 | Dimension | Examples | Canonical unit |
 |---|---|---|

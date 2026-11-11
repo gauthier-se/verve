@@ -1,0 +1,1187 @@
+{
+  "abdominal_cramps": {
+    "description": "Les fois où vous avez eu des crampes abdominales, avec leur intensité.",
+    "name": "Crampes abdominales",
+    "values": {
+      "mild": "Léger",
+      "moderate": "Modéré",
+      "not_present": "Absent",
+      "severe": "Sévère",
+      "unspecified": "Présent"
+    }
+  },
+  "acne": {
+    "description": "Les fois où vous avez eu de l'acné, avec son intensité.",
+    "name": "Acné",
+    "values": {
+      "mild": "Léger",
+      "moderate": "Modéré",
+      "not_present": "Absent",
+      "severe": "Sévère",
+      "unspecified": "Présent"
+    }
+  },
+  "active_energy_burned": {
+    "description": "L'énergie que vous avez dépensée en bougeant et en faisant du sport, en plus de l'énergie au repos.",
+    "name": "Énergie active"
+  },
+  "appetite_changes": {
+    "description": "Les fois où votre appétit a changé.",
+    "name": "Changements d'appétit",
+    "values": {
+      "decreased": "Diminué",
+      "increased": "Augmenté",
+      "no_change": "Aucun changement",
+      "unspecified": "Changé"
+    }
+  },
+  "atrial_fibrillation_burden": {
+    "description": "La part du temps où votre cœur a montré des signes de fibrillation auriculaire.",
+    "name": "Historique de FA"
+  },
+  "audio_exposure_event": {
+    "description": "Les fois où les sons autour de vous étaient forts, selon d'anciennes versions d'iOS.",
+    "name": "Environnements bruyants",
+    "values": {
+      "loud_environment": "Environnement bruyant"
+    }
+  },
+  "basal_body_temperature": {
+    "description": "La température de votre corps au repos, juste après le réveil.",
+    "name": "Température basale"
+  },
+  "basal_energy_burned": {
+    "description": "L'énergie que votre corps dépense au repos pour fonctionner.",
+    "name": "Énergie au repos"
+  },
+  "bladder_incontinence": {
+    "description": "Les fois où vous avez eu des fuites urinaires, avec leur intensité.",
+    "name": "Incontinence urinaire",
+    "values": {
+      "mild": "Léger",
+      "moderate": "Modéré",
+      "not_present": "Absent",
+      "severe": "Sévère",
+      "unspecified": "Présent"
+    }
+  },
+  "bleeding_after_menopause": {
+    "description": "Des saignements après l'arrêt de vos règles à la ménopause.",
+    "name": "Saignements après la ménopause",
+    "values": {
+      "heavy": "Abondant",
+      "light": "Léger",
+      "medium": "Moyen",
+      "none": "Aucun",
+      "unspecified": "Non précisé"
+    }
+  },
+  "bleeding_after_pregnancy": {
+    "description": "Des saignements dans les semaines qui ont suivi l'accouchement.",
+    "name": "Saignements après l'accouchement",
+    "values": {
+      "heavy": "Abondant",
+      "light": "Léger",
+      "medium": "Moyen",
+      "none": "Aucun",
+      "unspecified": "Non précisé"
+    }
+  },
+  "bleeding_during_pregnancy": {
+    "description": "Des saignements pendant que vous étiez enceinte.",
+    "name": "Saignements pendant la grossesse",
+    "values": {
+      "heavy": "Abondant",
+      "light": "Léger",
+      "medium": "Moyen",
+      "none": "Aucun",
+      "unspecified": "Non précisé"
+    }
+  },
+  "bloating": {
+    "description": "Les fois où vous avez eu des ballonnements, avec leur intensité.",
+    "name": "Ballonnements",
+    "values": {
+      "mild": "Léger",
+      "moderate": "Modéré",
+      "not_present": "Absent",
+      "severe": "Sévère",
+      "unspecified": "Présent"
+    }
+  },
+  "blood_alcohol_content": {
+    "description": "La part d'alcool dans votre sang.",
+    "name": "Taux d'alcoolémie"
+  },
+  "blood_glucose": {
+    "description": "La quantité de sucre dans votre sang.",
+    "name": "Glycémie"
+  },
+  "blood_pressure_diastolic": {
+    "description": "La pression dans vos artères entre deux battements.",
+    "name": "Pression artérielle diastolique"
+  },
+  "blood_pressure_systolic": {
+    "description": "La pression dans vos artères quand votre cœur bat.",
+    "name": "Pression artérielle systolique"
+  },
+  "body_fat_percentage": {
+    "description": "La part de graisse dans votre poids.",
+    "name": "Masse grasse"
+  },
+  "body_mass": {
+    "description": "Votre poids.",
+    "name": "Poids"
+  },
+  "body_mass_index": {
+    "description": "Votre poids divisé par le carré de votre taille.",
+    "name": "Indice de masse corporelle"
+  },
+  "body_temperature": {
+    "description": "La température de votre corps.",
+    "name": "Température corporelle"
+  },
+  "breast_pain": {
+    "description": "Les fois où vous avez eu mal aux seins, avec l'intensité.",
+    "name": "Douleur mammaire",
+    "values": {
+      "mild": "Léger",
+      "moderate": "Modéré",
+      "not_present": "Absent",
+      "severe": "Sévère",
+      "unspecified": "Présent"
+    }
+  },
+  "cervical_mucus_quality": {
+    "description": "La consistance de votre glaire cervicale.",
+    "name": "Qualité de la glaire cervicale",
+    "values": {
+      "creamy": "Crémeuse",
+      "dry": "Sèche",
+      "egg_white": "Blanc d'œuf",
+      "sticky": "Collante",
+      "watery": "Aqueuse"
+    }
+  },
+  "chest_tightness_or_pain": {
+    "description": "Les fois où vous avez eu une oppression ou une douleur dans la poitrine, avec l'intensité.",
+    "name": "Oppression ou douleur thoracique",
+    "values": {
+      "mild": "Léger",
+      "moderate": "Modéré",
+      "not_present": "Absent",
+      "severe": "Sévère",
+      "unspecified": "Présent"
+    }
+  },
+  "chills": {
+    "description": "Les fois où vous avez eu des frissons, avec leur intensité.",
+    "name": "Frissons",
+    "values": {
+      "mild": "Léger",
+      "moderate": "Modéré",
+      "not_present": "Absent",
+      "severe": "Sévère",
+      "unspecified": "Présent"
+    }
+  },
+  "constipation": {
+    "description": "Les fois où vous avez été constipé, avec l'intensité.",
+    "name": "Constipation",
+    "values": {
+      "mild": "Léger",
+      "moderate": "Modéré",
+      "not_present": "Absent",
+      "severe": "Sévère",
+      "unspecified": "Présent"
+    }
+  },
+  "contraceptive": {
+    "description": "Les contraceptifs que vous avez utilisés.",
+    "name": "Contraception",
+    "values": {
+      "implant": "Implant",
+      "injection": "Injection",
+      "intrauterine_device": "Stérilet",
+      "intravaginal_ring": "Anneau vaginal",
+      "oral": "Pilule",
+      "patch": "Patch",
+      "unspecified": "Non précisé"
+    }
+  },
+  "coughing": {
+    "description": "Les fois où vous avez toussé, avec l'intensité.",
+    "name": "Toux",
+    "values": {
+      "mild": "Léger",
+      "moderate": "Modéré",
+      "not_present": "Absent",
+      "severe": "Sévère",
+      "unspecified": "Présent"
+    }
+  },
+  "cross_country_skiing_speed": {
+    "description": "La vitesse à laquelle vous avez skié en ski de fond.",
+    "name": "Vitesse en ski de fond"
+  },
+  "cycling_cadence": {
+    "description": "Le nombre de tours de pédalier par minute.",
+    "name": "Cadence de pédalage"
+  },
+  "cycling_functional_threshold_power": {
+    "description": "La plus haute puissance moyenne que vous pouviez tenir pendant une heure à vélo.",
+    "name": "Puissance au seuil fonctionnel"
+  },
+  "cycling_power": {
+    "description": "La puissance que vous avez produite en roulant.",
+    "name": "Puissance à vélo"
+  },
+  "cycling_speed": {
+    "description": "La vitesse à laquelle vous avez roulé.",
+    "name": "Vitesse à vélo"
+  },
+  "diarrhea": {
+    "description": "Les fois où vous avez eu la diarrhée, avec son intensité.",
+    "name": "Diarrhée",
+    "values": {
+      "mild": "Léger",
+      "moderate": "Modéré",
+      "not_present": "Absent",
+      "severe": "Sévère",
+      "unspecified": "Présent"
+    }
+  },
+  "dietary_biotin": {
+    "description": "La biotine que vous avez consommée.",
+    "name": "Biotine (vitamine B7)"
+  },
+  "dietary_caffeine": {
+    "description": "La caféine que vous avez consommée.",
+    "name": "Caféine"
+  },
+  "dietary_calcium": {
+    "description": "Le calcium que vous avez consommé.",
+    "name": "Calcium"
+  },
+  "dietary_carbohydrates": {
+    "description": "Les glucides que vous avez consommés.",
+    "name": "Glucides"
+  },
+  "dietary_chloride": {
+    "description": "Le chlorure que vous avez consommé.",
+    "name": "Chlorure"
+  },
+  "dietary_cholesterol": {
+    "description": "Le cholestérol que vous avez consommé.",
+    "name": "Cholestérol"
+  },
+  "dietary_chromium": {
+    "description": "Le chrome que vous avez consommé.",
+    "name": "Chrome"
+  },
+  "dietary_copper": {
+    "description": "Le cuivre que vous avez consommé.",
+    "name": "Cuivre"
+  },
+  "dietary_energy_consumed": {
+    "description": "L'énergie de ce que vous avez mangé et bu.",
+    "name": "Énergie alimentaire"
+  },
+  "dietary_fat_monounsaturated": {
+    "description": "Les acides gras monoinsaturés que vous avez consommés.",
+    "name": "Acides gras monoinsaturés"
+  },
+  "dietary_fat_polyunsaturated": {
+    "description": "Les acides gras polyinsaturés que vous avez consommés.",
+    "name": "Acides gras polyinsaturés"
+  },
+  "dietary_fat_saturated": {
+    "description": "Les acides gras saturés que vous avez consommés.",
+    "name": "Acides gras saturés"
+  },
+  "dietary_fat_total": {
+    "description": "Les lipides que vous avez consommés, de toutes sortes.",
+    "name": "Lipides"
+  },
+  "dietary_fiber": {
+    "description": "Les fibres que vous avez consommées.",
+    "name": "Fibres"
+  },
+  "dietary_folate": {
+    "description": "Les folates que vous avez consommés.",
+    "name": "Folates (vitamine B9)"
+  },
+  "dietary_iodine": {
+    "description": "L'iode que vous avez consommé.",
+    "name": "Iode"
+  },
+  "dietary_iron": {
+    "description": "Le fer que vous avez consommé.",
+    "name": "Fer"
+  },
+  "dietary_magnesium": {
+    "description": "Le magnésium que vous avez consommé.",
+    "name": "Magnésium"
+  },
+  "dietary_manganese": {
+    "description": "Le manganèse que vous avez consommé.",
+    "name": "Manganèse"
+  },
+  "dietary_molybdenum": {
+    "description": "Le molybdène que vous avez consommé.",
+    "name": "Molybdène"
+  },
+  "dietary_niacin": {
+    "description": "La niacine que vous avez consommée.",
+    "name": "Niacine (vitamine B3)"
+  },
+  "dietary_pantothenic_acid": {
+    "description": "L'acide pantothénique que vous avez consommé.",
+    "name": "Acide pantothénique (vitamine B5)"
+  },
+  "dietary_phosphorus": {
+    "description": "Le phosphore que vous avez consommé.",
+    "name": "Phosphore"
+  },
+  "dietary_potassium": {
+    "description": "Le potassium que vous avez consommé.",
+    "name": "Potassium"
+  },
+  "dietary_protein": {
+    "description": "Les protéines que vous avez consommées.",
+    "name": "Protéines"
+  },
+  "dietary_riboflavin": {
+    "description": "La riboflavine que vous avez consommée.",
+    "name": "Riboflavine (vitamine B2)"
+  },
+  "dietary_selenium": {
+    "description": "Le sélénium que vous avez consommé.",
+    "name": "Sélénium"
+  },
+  "dietary_sodium": {
+    "description": "Le sodium que vous avez consommé.",
+    "name": "Sodium"
+  },
+  "dietary_sugar": {
+    "description": "Les sucres que vous avez consommés.",
+    "name": "Sucres"
+  },
+  "dietary_thiamin": {
+    "description": "La thiamine que vous avez consommée.",
+    "name": "Thiamine (vitamine B1)"
+  },
+  "dietary_vitamin_a": {
+    "description": "La vitamine A que vous avez consommée.",
+    "name": "Vitamine A"
+  },
+  "dietary_vitamin_b12": {
+    "description": "La vitamine B12 que vous avez consommée.",
+    "name": "Vitamine B12"
+  },
+  "dietary_vitamin_b6": {
+    "description": "La vitamine B6 que vous avez consommée.",
+    "name": "Vitamine B6"
+  },
+  "dietary_vitamin_c": {
+    "description": "La vitamine C que vous avez consommée.",
+    "name": "Vitamine C"
+  },
+  "dietary_vitamin_d": {
+    "description": "La vitamine D que vous avez consommée.",
+    "name": "Vitamine D"
+  },
+  "dietary_vitamin_e": {
+    "description": "La vitamine E que vous avez consommée.",
+    "name": "Vitamine E"
+  },
+  "dietary_vitamin_k": {
+    "description": "La vitamine K que vous avez consommée.",
+    "name": "Vitamine K"
+  },
+  "dietary_water": {
+    "description": "L'eau que vous avez bue.",
+    "name": "Eau"
+  },
+  "dietary_zinc": {
+    "description": "Le zinc que vous avez consommé.",
+    "name": "Zinc"
+  },
+  "distance_cross_country_skiing": {
+    "description": "La distance que vous avez parcourue en ski de fond.",
+    "name": "Distance de ski de fond"
+  },
+  "distance_cycling": {
+    "description": "La distance que vous avez parcourue à vélo.",
+    "name": "Distance à vélo"
+  },
+  "distance_downhill_snow_sports": {
+    "description": "La distance que vous avez parcourue en ski ou en snowboard en descente.",
+    "name": "Distance de ski alpin"
+  },
+  "distance_paddle_sports": {
+    "description": "La distance que vous avez parcourue en pagayant, par exemple en kayak ou en canoë.",
+    "name": "Distance de pagaie"
+  },
+  "distance_rowing": {
+    "description": "La distance que vous avez parcourue à l'aviron.",
+    "name": "Distance d'aviron"
+  },
+  "distance_skating_sports": {
+    "description": "La distance que vous avez parcourue en patinant.",
+    "name": "Distance de patinage"
+  },
+  "distance_swimming": {
+    "description": "La distance que vous avez nagée.",
+    "name": "Distance de nage"
+  },
+  "distance_walking_running": {
+    "description": "La distance que vous avez parcourue à pied.",
+    "name": "Distance de marche et de course"
+  },
+  "distance_wheelchair": {
+    "description": "La distance que vous avez parcourue en fauteuil roulant.",
+    "name": "Distance en fauteuil roulant"
+  },
+  "dizziness": {
+    "description": "Les fois où vous avez eu des vertiges, avec leur intensité.",
+    "name": "Vertiges",
+    "values": {
+      "mild": "Léger",
+      "moderate": "Modéré",
+      "not_present": "Absent",
+      "severe": "Sévère",
+      "unspecified": "Présent"
+    }
+  },
+  "dry_skin": {
+    "description": "Les fois où vous avez eu la peau sèche, avec l'intensité.",
+    "name": "Peau sèche",
+    "values": {
+      "mild": "Léger",
+      "moderate": "Modéré",
+      "not_present": "Absent",
+      "severe": "Sévère",
+      "unspecified": "Présent"
+    }
+  },
+  "electrodermal_activity": {
+    "description": "La conductance électrique de votre peau, qui augmente quand vous transpirez.",
+    "name": "Activité électrodermale"
+  },
+  "environmental_audio_exposure": {
+    "description": "Le volume des sons autour de vous.",
+    "name": "Niveau sonore ambiant"
+  },
+  "environmental_audio_exposure_event": {
+    "description": "Les fois où les sons autour de vous étaient assez forts pour nuire à votre audition.",
+    "name": "Notifications de bruit",
+    "values": {
+      "momentary_limit": "Environnement bruyant"
+    }
+  },
+  "environmental_sound_reduction": {
+    "description": "De combien vos écouteurs ont atténué les sons autour de vous.",
+    "name": "Réduction du bruit ambiant"
+  },
+  "estimated_workout_effort_score": {
+    "description": "La difficulté d'un entraînement, de 1 à 10, estimée par l'Apple Watch.",
+    "name": "Effort estimé de l'entraînement"
+  },
+  "exercise_time": {
+    "description": "Le temps passé à bouger au moins aussi intensément qu'en marchant d'un bon pas.",
+    "name": "Minutes d'exercice"
+  },
+  "fainting": {
+    "description": "Les fois où vous vous êtes évanoui, avec l'intensité.",
+    "name": "Évanouissement",
+    "values": {
+      "mild": "Léger",
+      "moderate": "Modéré",
+      "not_present": "Absent",
+      "severe": "Sévère",
+      "unspecified": "Présent"
+    }
+  },
+  "fatigue": {
+    "description": "Les fois où vous vous êtes senti fatigué, avec l'intensité.",
+    "name": "Fatigue",
+    "values": {
+      "mild": "Léger",
+      "moderate": "Modéré",
+      "not_present": "Absent",
+      "severe": "Sévère",
+      "unspecified": "Présent"
+    }
+  },
+  "fever": {
+    "description": "Les fois où vous avez eu de la fièvre, avec son intensité.",
+    "name": "Fièvre",
+    "values": {
+      "mild": "Léger",
+      "moderate": "Modéré",
+      "not_present": "Absent",
+      "severe": "Sévère",
+      "unspecified": "Présent"
+    }
+  },
+  "flights_climbed": {
+    "description": "Le nombre d'étages que vous avez montés à pied.",
+    "name": "Étages montés"
+  },
+  "forced_expiratory_volume_1": {
+    "description": "Le volume d'air que vous pouviez expirer avec force pendant la première seconde.",
+    "name": "Volume expiratoire maximal en une seconde"
+  },
+  "forced_vital_capacity": {
+    "description": "Le volume d'air que vous pouviez expirer avec force après une inspiration profonde.",
+    "name": "Capacité vitale forcée"
+  },
+  "generalized_body_ache": {
+    "description": "Les fois où vous avez eu mal dans tout le corps, avec l'intensité.",
+    "name": "Courbatures",
+    "values": {
+      "mild": "Léger",
+      "moderate": "Modéré",
+      "not_present": "Absent",
+      "severe": "Sévère",
+      "unspecified": "Présent"
+    }
+  },
+  "hair_loss": {
+    "description": "Les fois où vous avez perdu des cheveux, avec l'intensité.",
+    "name": "Perte de cheveux",
+    "values": {
+      "mild": "Léger",
+      "moderate": "Modéré",
+      "not_present": "Absent",
+      "severe": "Sévère",
+      "unspecified": "Présent"
+    }
+  },
+  "handwashing_event": {
+    "description": "Les fois où vous vous êtes lavé les mains.",
+    "name": "Lavage des mains",
+    "values": {
+      "not_applicable": "Enregistré"
+    }
+  },
+  "headache": {
+    "description": "Les fois où vous avez eu mal à la tête, avec l'intensité.",
+    "name": "Maux de tête",
+    "values": {
+      "mild": "Léger",
+      "moderate": "Modéré",
+      "not_present": "Absent",
+      "severe": "Sévère",
+      "unspecified": "Présent"
+    }
+  },
+  "headphone_audio_exposure": {
+    "description": "Le volume du son dans vos écouteurs.",
+    "name": "Niveau sonore des écouteurs"
+  },
+  "headphone_audio_exposure_event": {
+    "description": "Les fois où le son de vos écouteurs a atteint la limite sûre sur sept jours.",
+    "name": "Notifications des écouteurs",
+    "values": {
+      "seven_day_limit": "Limite sur sept jours atteinte"
+    }
+  },
+  "heart_rate": {
+    "description": "Le nombre de battements de votre cœur par minute.",
+    "name": "Fréquence cardiaque"
+  },
+  "heart_rate_recovery_one_minute": {
+    "description": "De combien votre fréquence cardiaque a baissé dans la minute qui a suivi la fin d'un entraînement.",
+    "name": "Récupération cardio"
+  },
+  "heart_rate_variability_rmssd": {
+    "description": "La variation du temps entre deux battements successifs, en moyenne quadratique de leurs différences.",
+    "name": "Variabilité de la fréquence cardiaque (RMSSD)"
+  },
+  "heart_rate_variability_sdnn": {
+    "description": "La variation du temps entre deux battements, en écart type des intervalles.",
+    "name": "Variabilité de la fréquence cardiaque (SDNN)"
+  },
+  "heartburn": {
+    "description": "Les fois où vous avez eu des brûlures d'estomac, avec leur intensité.",
+    "name": "Brûlures d'estomac",
+    "values": {
+      "mild": "Léger",
+      "moderate": "Modéré",
+      "not_present": "Absent",
+      "severe": "Sévère",
+      "unspecified": "Présent"
+    }
+  },
+  "height": {
+    "description": "Votre taille.",
+    "name": "Taille"
+  },
+  "high_heart_rate_event": {
+    "description": "Les fois où votre fréquence cardiaque est restée au-dessus de votre seuil alors que vous sembliez inactif.",
+    "name": "Notifications de fréquence cardiaque élevée",
+    "values": {
+      "not_applicable": "Enregistré"
+    }
+  },
+  "hip_circumference": {
+    "description": "La mesure du tour de vos hanches.",
+    "name": "Tour de hanches"
+  },
+  "hot_flashes": {
+    "description": "Les fois où vous avez eu des bouffées de chaleur, avec leur intensité.",
+    "name": "Bouffées de chaleur",
+    "values": {
+      "mild": "Léger",
+      "moderate": "Modéré",
+      "not_present": "Absent",
+      "severe": "Sévère",
+      "unspecified": "Présent"
+    }
+  },
+  "hypertension_event": {
+    "description": "Les fois où l'Apple Watch a détecté des signes de pression artérielle élevée.",
+    "name": "Notifications d'hypertension",
+    "values": {
+      "not_applicable": "Enregistré"
+    }
+  },
+  "infrequent_menstrual_cycles": {
+    "description": "Vos règles sont arrivées moins souvent que d'habitude.",
+    "name": "Règles peu fréquentes",
+    "values": {
+      "not_applicable": "Enregistré"
+    }
+  },
+  "inhaler_usage": {
+    "description": "Le nombre de bouffées que vous avez prises de votre inhalateur.",
+    "name": "Utilisation de l'inhalateur"
+  },
+  "insulin_delivery": {
+    "description": "L'insuline que vous avez reçue.",
+    "name": "Administration d'insuline"
+  },
+  "intermenstrual_bleeding": {
+    "description": "Des saignements en dehors de vos règles.",
+    "name": "Spotting",
+    "values": {
+      "not_applicable": "Enregistré"
+    }
+  },
+  "irregular_heart_rhythm_event": {
+    "description": "Les fois où l'Apple Watch a détecté des signes de rythme cardiaque irrégulier.",
+    "name": "Notifications de rythme irrégulier",
+    "values": {
+      "not_applicable": "Enregistré"
+    }
+  },
+  "irregular_menstrual_cycles": {
+    "description": "La durée de vos cycles a beaucoup varié.",
+    "name": "Cycles irréguliers",
+    "values": {
+      "not_applicable": "Enregistré"
+    }
+  },
+  "lactation": {
+    "description": "La période où vous allaitiez.",
+    "name": "Allaitement",
+    "values": {
+      "not_applicable": "Enregistré"
+    }
+  },
+  "lean_body_mass": {
+    "description": "Votre poids sans la masse grasse.",
+    "name": "Masse maigre"
+  },
+  "loss_of_smell": {
+    "description": "Les fois où vous avez perdu l'odorat, avec l'intensité.",
+    "name": "Perte de l'odorat",
+    "values": {
+      "mild": "Léger",
+      "moderate": "Modéré",
+      "not_present": "Absent",
+      "severe": "Sévère",
+      "unspecified": "Présent"
+    }
+  },
+  "loss_of_taste": {
+    "description": "Les fois où vous avez perdu le goût, avec l'intensité.",
+    "name": "Perte du goût",
+    "values": {
+      "mild": "Léger",
+      "moderate": "Modéré",
+      "not_present": "Absent",
+      "severe": "Sévère",
+      "unspecified": "Présent"
+    }
+  },
+  "low_cardio_fitness_event": {
+    "description": "Les fois où votre forme cardio est restée basse.",
+    "name": "Notifications de forme cardio basse",
+    "values": {
+      "low_fitness": "Forme cardio basse"
+    }
+  },
+  "low_heart_rate_event": {
+    "description": "Les fois où votre fréquence cardiaque est restée sous votre seuil.",
+    "name": "Notifications de fréquence cardiaque basse",
+    "values": {
+      "not_applicable": "Enregistré"
+    }
+  },
+  "lower_back_pain": {
+    "description": "Les fois où vous avez eu mal au bas du dos, avec l'intensité.",
+    "name": "Douleurs lombaires",
+    "values": {
+      "mild": "Léger",
+      "moderate": "Modéré",
+      "not_present": "Absent",
+      "severe": "Sévère",
+      "unspecified": "Présent"
+    }
+  },
+  "memory_lapse": {
+    "description": "Les fois où vous avez eu des trous de mémoire, avec leur intensité.",
+    "name": "Trous de mémoire",
+    "values": {
+      "mild": "Léger",
+      "moderate": "Modéré",
+      "not_present": "Absent",
+      "severe": "Sévère",
+      "unspecified": "Présent"
+    }
+  },
+  "menopausal_state": {
+    "description": "Si vous étiez en périménopause ou ménopausée.",
+    "name": "Ménopause",
+    "values": {
+      "menopause": "Ménopause",
+      "none": "Aucune",
+      "perimenopause": "Périménopause"
+    }
+  },
+  "menstrual_flow": {
+    "description": "Votre flux menstruel.",
+    "name": "Règles",
+    "values": {
+      "heavy": "Abondant",
+      "light": "Léger",
+      "medium": "Moyen",
+      "none": "Aucun",
+      "unspecified": "Non précisé"
+    }
+  },
+  "mindful_session": {
+    "description": "Le temps passé en séances de pleine conscience.",
+    "name": "Minutes de pleine conscience",
+    "values": {
+      "not_applicable": "Enregistré"
+    }
+  },
+  "mood_changes": {
+    "description": "Les fois où votre humeur a changé.",
+    "name": "Changements d'humeur",
+    "values": {
+      "not_present": "Absent",
+      "present": "Présent"
+    }
+  },
+  "move_time": {
+    "description": "Le temps passé à bouger activement tout votre corps.",
+    "name": "Minutes de mouvement"
+  },
+  "nausea": {
+    "description": "Les fois où vous avez eu la nausée, avec l'intensité.",
+    "name": "Nausées",
+    "values": {
+      "mild": "Léger",
+      "moderate": "Modéré",
+      "not_present": "Absent",
+      "severe": "Sévère",
+      "unspecified": "Présent"
+    }
+  },
+  "night_sweats": {
+    "description": "Les fois où vous avez eu des sueurs nocturnes, avec leur intensité.",
+    "name": "Sueurs nocturnes",
+    "values": {
+      "mild": "Léger",
+      "moderate": "Modéré",
+      "not_present": "Absent",
+      "severe": "Sévère",
+      "unspecified": "Présent"
+    }
+  },
+  "nike_fuel": {
+    "description": "Les points NikeFuel que vous avez gagnés.",
+    "name": "NikeFuel"
+  },
+  "number_of_alcoholic_beverages": {
+    "description": "Le nombre de verres standard d'alcool que vous avez bus.",
+    "name": "Boissons alcoolisées"
+  },
+  "number_of_times_fallen": {
+    "description": "Le nombre de fois où vous êtes tombé.",
+    "name": "Chutes"
+  },
+  "ovulation_test_result": {
+    "description": "Les résultats de vos tests d'ovulation à domicile.",
+    "name": "Résultat du test d'ovulation",
+    "values": {
+      "estrogen_surge": "Pic d'œstrogènes",
+      "indeterminate": "Indéterminé",
+      "luteinizing_hormone_surge": "Pic de LH",
+      "negative": "Négatif"
+    }
+  },
+  "oxygen_saturation": {
+    "description": "La part d'oxygène dans votre sang.",
+    "name": "Oxygène sanguin"
+  },
+  "paddle_sports_speed": {
+    "description": "La vitesse à laquelle vous avez pagayé.",
+    "name": "Vitesse en pagaie"
+  },
+  "peak_expiratory_flow_rate": {
+    "description": "Le débit le plus rapide auquel vous pouviez expirer.",
+    "name": "Débit expiratoire de pointe"
+  },
+  "pelvic_pain": {
+    "description": "Les fois où vous avez eu une douleur pelvienne, avec son intensité.",
+    "name": "Douleur pelvienne",
+    "values": {
+      "mild": "Léger",
+      "moderate": "Modéré",
+      "not_present": "Absent",
+      "severe": "Sévère",
+      "unspecified": "Présent"
+    }
+  },
+  "peripheral_perfusion_index": {
+    "description": "La force de votre pouls à l'endroit de la mesure.",
+    "name": "Indice de perfusion"
+  },
+  "persistent_intermenstrual_bleeding": {
+    "description": "Vous avez eu du spotting pendant plusieurs cycles.",
+    "name": "Spotting persistant",
+    "values": {
+      "not_applicable": "Enregistré"
+    }
+  },
+  "physical_effort": {
+    "description": "L'intensité d'une activité pour votre corps, en MET.",
+    "name": "Effort physique"
+  },
+  "pregnancy": {
+    "description": "La période où vous étiez enceinte.",
+    "name": "Grossesse",
+    "values": {
+      "not_applicable": "Enregistré"
+    }
+  },
+  "pregnancy_test_result": {
+    "description": "Les résultats de vos tests de grossesse à domicile.",
+    "name": "Résultat du test de grossesse",
+    "values": {
+      "indeterminate": "Indéterminé",
+      "negative": "Négatif",
+      "positive": "Positif"
+    }
+  },
+  "progesterone_test_result": {
+    "description": "Les résultats de vos tests de progestérone à domicile.",
+    "name": "Résultat du test de progestérone",
+    "values": {
+      "indeterminate": "Indéterminé",
+      "negative": "Négatif",
+      "positive": "Positif"
+    }
+  },
+  "prolonged_menstrual_periods": {
+    "description": "Vos règles ont duré plus longtemps que d'habitude.",
+    "name": "Règles prolongées",
+    "values": {
+      "not_applicable": "Enregistré"
+    }
+  },
+  "push_count": {
+    "description": "Le nombre de poussées que vous avez faites en fauteuil roulant.",
+    "name": "Poussées en fauteuil roulant"
+  },
+  "rapid_pounding_or_fluttering_heartbeat": {
+    "description": "Les fois où votre cœur s'est emballé, a battu fort ou de façon irrégulière, avec l'intensité.",
+    "name": "Battements cardiaques rapides, forts ou irréguliers",
+    "values": {
+      "mild": "Léger",
+      "moderate": "Modéré",
+      "not_present": "Absent",
+      "severe": "Sévère",
+      "unspecified": "Présent"
+    }
+  },
+  "respiratory_rate": {
+    "description": "Le nombre de respirations par minute.",
+    "name": "Fréquence respiratoire"
+  },
+  "resting_heart_rate": {
+    "description": "Votre fréquence cardiaque quand vous étiez inactif et détendu.",
+    "name": "Fréquence cardiaque au repos"
+  },
+  "rowing_speed": {
+    "description": "La vitesse à laquelle vous avez ramé.",
+    "name": "Vitesse à l'aviron"
+  },
+  "running_ground_contact_time": {
+    "description": "Le temps que votre pied est resté au sol à chaque pas de course.",
+    "name": "Temps de contact au sol"
+  },
+  "running_power": {
+    "description": "La puissance que vous avez produite en courant.",
+    "name": "Puissance de course"
+  },
+  "running_speed": {
+    "description": "La vitesse à laquelle vous avez couru.",
+    "name": "Vitesse de course"
+  },
+  "running_stride_length": {
+    "description": "La distance parcourue en un pas de course.",
+    "name": "Longueur de foulée"
+  },
+  "running_vertical_oscillation": {
+    "description": "De combien votre corps est monté et descendu à chaque foulée de course.",
+    "name": "Oscillation verticale"
+  },
+  "runny_nose": {
+    "description": "Les fois où vous avez eu le nez qui coule, avec l'intensité.",
+    "name": "Nez qui coule",
+    "values": {
+      "mild": "Léger",
+      "moderate": "Modéré",
+      "not_present": "Absent",
+      "severe": "Sévère",
+      "unspecified": "Présent"
+    }
+  },
+  "sexual_activity": {
+    "description": "Les fois où vous avez enregistré une activité sexuelle.",
+    "name": "Activité sexuelle",
+    "values": {
+      "not_applicable": "Enregistré"
+    }
+  },
+  "shortness_of_breath": {
+    "description": "Les fois où vous avez été essoufflé, avec l'intensité.",
+    "name": "Essoufflement",
+    "values": {
+      "mild": "Léger",
+      "moderate": "Modéré",
+      "not_present": "Absent",
+      "severe": "Sévère",
+      "unspecified": "Présent"
+    }
+  },
+  "sinus_congestion": {
+    "description": "Les fois où vous avez eu les sinus congestionnés, avec l'intensité.",
+    "name": "Congestion des sinus",
+    "values": {
+      "mild": "Léger",
+      "moderate": "Modéré",
+      "not_present": "Absent",
+      "severe": "Sévère",
+      "unspecified": "Présent"
+    }
+  },
+  "six_minute_walk_test_distance": {
+    "description": "La distance que vous pouviez parcourir en six minutes de marche, estimée par l'Apple Watch.",
+    "name": "Marche de six minutes"
+  },
+  "skipped_heartbeat": {
+    "description": "Les fois où votre cœur a sauté un battement, avec l'intensité.",
+    "name": "Battements cardiaques manqués",
+    "values": {
+      "mild": "Léger",
+      "moderate": "Modéré",
+      "not_present": "Absent",
+      "severe": "Sévère",
+      "unspecified": "Présent"
+    }
+  },
+  "sleep_analysis": {
+    "description": "Le temps passé au lit, éveillé et dans chaque phase de sommeil.",
+    "name": "Sommeil",
+    "values": {
+      "asleep_core": "Sommeil léger",
+      "asleep_deep": "Sommeil profond",
+      "asleep_rem": "Sommeil paradoxal",
+      "asleep_unspecified": "Endormi",
+      "awake": "Éveillé",
+      "in_bed": "Au lit"
+    }
+  },
+  "sleep_apnea_event": {
+    "description": "Les fois où l'Apple Watch a détecté des signes d'apnée du sommeil dans vos troubles respiratoires.",
+    "name": "Notifications d'apnée du sommeil",
+    "values": {
+      "not_applicable": "Enregistré"
+    }
+  },
+  "sleep_changes": {
+    "description": "Les fois où votre sommeil a changé.",
+    "name": "Changements du sommeil",
+    "values": {
+      "not_present": "Absent",
+      "present": "Présent"
+    }
+  },
+  "sleeping_breathing_disturbances": {
+    "description": "Combien de fois par heure votre respiration a été perturbée pendant votre sommeil.",
+    "name": "Troubles respiratoires"
+  },
+  "sleeping_wrist_temperature": {
+    "description": "La température de votre poignet pendant que vous dormiez.",
+    "name": "Température du poignet pendant le sommeil"
+  },
+  "sore_throat": {
+    "description": "Les fois où vous avez eu mal à la gorge, avec l'intensité.",
+    "name": "Mal de gorge",
+    "values": {
+      "mild": "Léger",
+      "moderate": "Modéré",
+      "not_present": "Absent",
+      "severe": "Sévère",
+      "unspecified": "Présent"
+    }
+  },
+  "stair_ascent_speed": {
+    "description": "La vitesse à laquelle vous avez monté les escaliers.",
+    "name": "Vitesse de montée des escaliers"
+  },
+  "stair_descent_speed": {
+    "description": "La vitesse à laquelle vous avez descendu les escaliers.",
+    "name": "Vitesse de descente des escaliers"
+  },
+  "stand_hour": {
+    "description": "Les heures au cours desquelles vous vous êtes levé et avez bougé pendant au moins une minute.",
+    "name": "Heures debout",
+    "values": {
+      "idle": "Pas debout",
+      "stood": "Debout"
+    }
+  },
+  "stand_time": {
+    "description": "Le temps que vous avez passé debout.",
+    "name": "Temps debout"
+  },
+  "step_count": {
+    "description": "Le nombre de pas que vous avez faits.",
+    "name": "Pas"
+  },
+  "swimming_stroke_count": {
+    "description": "Le nombre de mouvements que vous avez faits en nageant.",
+    "name": "Mouvements de nage"
+  },
+  "time_in_daylight": {
+    "description": "Le temps que vous avez passé à la lumière du jour.",
+    "name": "Temps à la lumière du jour"
+  },
+  "toothbrushing_event": {
+    "description": "Les fois où vous vous êtes brossé les dents.",
+    "name": "Brossage des dents",
+    "values": {
+      "not_applicable": "Enregistré"
+    }
+  },
+  "underwater_depth": {
+    "description": "La profondeur à laquelle vous étiez sous l'eau.",
+    "name": "Profondeur sous l'eau"
+  },
+  "uv_exposure": {
+    "description": "L'indice UV auquel vous avez été exposé.",
+    "name": "Indice UV"
+  },
+  "vaginal_dryness": {
+    "description": "Les fois où vous avez eu une sécheresse vaginale, avec son intensité.",
+    "name": "Sécheresse vaginale",
+    "values": {
+      "mild": "Léger",
+      "moderate": "Modéré",
+      "not_present": "Absent",
+      "severe": "Sévère",
+      "unspecified": "Présent"
+    }
+  },
+  "vo2_max": {
+    "description": "Votre VO2 max : la plus grande quantité d'oxygène que votre corps peut utiliser pendant l'effort.",
+    "name": "Forme cardio"
+  },
+  "vomiting": {
+    "description": "Les fois où vous avez vomi, avec l'intensité.",
+    "name": "Vomissements",
+    "values": {
+      "mild": "Léger",
+      "moderate": "Modéré",
+      "not_present": "Absent",
+      "severe": "Sévère",
+      "unspecified": "Présent"
+    }
+  },
+  "waist_circumference": {
+    "description": "La mesure du tour de votre taille.",
+    "name": "Tour de taille"
+  },
+  "walking_asymmetry_percentage": {
+    "description": "La part des pas où un pied a été plus rapide ou plus lent que l'autre.",
+    "name": "Asymétrie de la marche"
+  },
+  "walking_double_support_percentage": {
+    "description": "La part du temps de marche avec les deux pieds au sol.",
+    "name": "Temps de double appui"
+  },
+  "walking_heart_rate_average": {
+    "description": "Votre fréquence cardiaque moyenne pendant la marche.",
+    "name": "Fréquence cardiaque moyenne en marchant"
+  },
+  "walking_speed": {
+    "description": "La vitesse à laquelle vous avez marché sur terrain plat.",
+    "name": "Vitesse de marche"
+  },
+  "walking_steadiness": {
+    "description": "La stabilité de votre marche, qui estime votre risque de chute.",
+    "name": "Stabilité de la marche"
+  },
+  "walking_steadiness_event": {
+    "description": "Les fois où la stabilité de votre marche était basse.",
+    "name": "Notifications de stabilité de la marche",
+    "values": {
+      "initial_low": "Basse",
+      "initial_very_low": "Très basse",
+      "repeat_low": "Toujours basse",
+      "repeat_very_low": "Toujours très basse"
+    }
+  },
+  "walking_step_length": {
+    "description": "La longueur de vos pas sur terrain plat.",
+    "name": "Longueur du pas"
+  },
+  "water_temperature": {
+    "description": "La température de l'eau dans laquelle vous étiez.",
+    "name": "Température de l'eau"
+  },
+  "wheezing": {
+    "description": "Les fois où votre respiration a sifflé, avec l'intensité.",
+    "name": "Respiration sifflante",
+    "values": {
+      "mild": "Léger",
+      "moderate": "Modéré",
+      "not_present": "Absent",
+      "severe": "Sévère",
+      "unspecified": "Présent"
+    }
+  },
+  "workout_effort_score": {
+    "description": "La difficulté que vous avez donnée à un entraînement, de 1 à 10.",
+    "name": "Effort de l'entraînement"
+  }
+}
