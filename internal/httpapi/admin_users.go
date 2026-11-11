@@ -33,9 +33,17 @@ type adminUsersInput struct {
 	PageParams
 }
 
+// AdminUserListItem is a user of the admin user list: what an admin sees of the account, and the
+// number of its API tokens, never the tokens (FR-8 of API tokens).
+type AdminUserListItem struct {
+	AdminUser
+
+	ActiveTokens int64 `json:"activeTokens" example:"2" doc:"The number of API tokens of the user that are neither revoked nor expired."`
+}
+
 // adminUsersOutput is the response of GET /api/v1/admin/users.
 type adminUsersOutput struct {
-	Body Page[AdminUser]
+	Body Page[AdminUserListItem]
 }
 
 // setUserStatusInput is the input of PUT /api/v1/admin/users/{id}/status.
@@ -59,8 +67,8 @@ type adminUserOutput struct {
 	Body AdminUser
 }
 
-// registerAdminUsers registers GET /api/v1/admin/users, the accounts for an admin, read in
-// deps.Store, and PUT /api/v1/admin/users/{id}/status and /role, which change them with
+// registerAdminUsers registers GET /api/v1/admin/users, the accounts for an admin and the number
+// of their active tokens, read in deps.Store, and PUT /api/v1/admin/users/{id}/status and /role, which change them with
 // deps.Admin.
 func registerAdminUsers(api huma.API, deps APIDeps) {
 	huma.Register(api, huma.Operation{
@@ -68,10 +76,11 @@ func registerAdminUsers(api huma.API, deps APIDeps) {
 		Method:      http.MethodGet,
 		Path:        "/api/v1/admin/users",
 		Summary:     "List the users",
-		Description: "Returns the accounts newest first, with their metadata only: never their health data.",
-		Tags:        []string{"Admin"},
-		Security:    sessionSecurity(),
-		Errors:      []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusUnprocessableEntity},
+		Description: "Returns the accounts newest first, with their metadata only: never their health data. Each " +
+			"user has the number of their active API tokens, not the tokens.",
+		Tags:     []string{"Admin"},
+		Security: sessionSecurity(),
+		Errors:   []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusUnprocessableEntity},
 	}, func(ctx context.Context, in *adminUsersInput) (*adminUsersOutput, error) {
 		if _, err := requireAdmin(ctx); err != nil {
 			return nil, err
@@ -84,12 +93,22 @@ func registerAdminUsers(api huma.API, deps APIDeps) {
 			return nil, fmt.Errorf("list users: %w", err)
 		}
 
-		items := make([]AdminUser, 0, len(users))
+		ids := make([]int64, 0, len(users))
 		for _, user := range users {
-			items = append(items, adminUserOf(user))
+			ids = append(ids, user.ID)
 		}
 
-		return &adminUsersOutput{Body: Page[AdminUser]{Items: items, NextCursor: next}}, nil
+		tokens, err := deps.Store.APITokens().CountActiveByUsers(ctx, ids)
+		if err != nil {
+			return nil, fmt.Errorf("count tokens of users: %w", err)
+		}
+
+		items := make([]AdminUserListItem, 0, len(users))
+		for _, user := range users {
+			items = append(items, AdminUserListItem{AdminUser: adminUserOf(user), ActiveTokens: tokens[user.ID]})
+		}
+
+		return &adminUsersOutput{Body: Page[AdminUserListItem]{Items: items, NextCursor: next}}, nil
 	})
 
 	huma.Register(api, huma.Operation{

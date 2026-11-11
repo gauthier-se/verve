@@ -17,7 +17,7 @@ import (
 )
 
 // tokensPath is the path of the API tokens of the current user.
-const tokensPath = "/api/v1/account/tokens"
+const tokensPath = "/api/v1/account/tokens" //nolint:gosec // G101: a path, not a credential
 
 // tokenPath returns the path of the token of id.
 func tokenPath(id int64) string { return tokensPath + "/" + strconv.FormatInt(id, 10) }

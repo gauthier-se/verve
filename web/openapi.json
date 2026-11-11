@@ -1,6 +1,84 @@
 {
   "components": {
     "schemas": {
+      "APIToken": {
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
+            "description": "When the token was created.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "expiresAt": {
+            "description": "When the token stops being valid, included, left out when it never expires.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "description": "The id of the token, which names it in DELETE /api/v1/account/tokens/{id}.",
+            "examples": [
+              3
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "lastUsedAt": {
+            "description": "When the token was last used, written at most once per minute, left out when it never was.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "lastUsedIp": {
+            "description": "The IP address of the client that last used the token, left out when unknown or never used.",
+            "examples": [
+              "203.0.113.7"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "description": "The name of the token.",
+            "examples": [
+              "Health Auto Export"
+            ],
+            "type": "string"
+          },
+          "prefix": {
+            "description": "The first 8 characters of the token, to tell the tokens apart.",
+            "examples": [
+              "vrv_3fK9"
+            ],
+            "type": "string"
+          },
+          "revokedAt": {
+            "description": "When the token was revoked, left out while it is not.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "scopes": {
+            "description": "The scopes of the token, in the order they were given.",
+            "examples": [
+              [
+                "ingest"
+              ]
+            ],
+            "items": {
+              "enum": [
+                "ingest",
+                "read"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "scopes",
+          "prefix",
+          "createdAt"
+        ],
+        "type": "object"
+      },
       "AcceptInvitationInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -79,6 +157,83 @@
           }
         },
         "required": [
+          "id",
+          "username",
+          "role",
+          "status",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "AdminUserListItem": {
+        "additionalProperties": false,
+        "properties": {
+          "activeTokens": {
+            "description": "The number of API tokens of the user that are neither revoked nor expired.",
+            "examples": [
+              2
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "createdAt": {
+            "description": "When the account was created.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "email": {
+            "description": "The email address, left out when the user has none.",
+            "examples": [
+              "bob@example.com"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "description": "The id of the user.",
+            "examples": [
+              2
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "lastLoginAt": {
+            "description": "When the user last logged in, left out when they never did.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "role": {
+            "description": "The role of the user.",
+            "enum": [
+              "admin",
+              "member"
+            ],
+            "examples": [
+              "member"
+            ],
+            "type": "string"
+          },
+          "status": {
+            "description": "The status of the account. A disabled user cannot log in.",
+            "enum": [
+              "active",
+              "disabled",
+              "deleting"
+            ],
+            "examples": [
+              "active"
+            ],
+            "type": "string"
+          },
+          "username": {
+            "description": "The username, in the case it was created with.",
+            "examples": [
+              "bob"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "activeTokens",
           "id",
           "username",
           "role",
@@ -320,6 +475,131 @@
         "required": [
           "username",
           "role"
+        ],
+        "type": "object"
+      },
+      "CreateTokenInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "expiresAt": {
+            "description": "When the token stops being valid, after the current time. Left out, the token never expires.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "name": {
+            "description": "The name of the token, which tells the automations apart: 1 to 64 characters.",
+            "examples": [
+              "Health Auto Export"
+            ],
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "scopes": {
+            "description": "The scopes of the token, one or more distinct ones: ingest for the ingestion endpoints, read for the read-only endpoints of the public API.",
+            "examples": [
+              [
+                "ingest"
+              ]
+            ],
+            "items": {
+              "enum": [
+                "ingest",
+                "read"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "name",
+          "scopes"
+        ],
+        "type": "object"
+      },
+      "CreatedAPIToken": {
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
+            "description": "When the token was created.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "expiresAt": {
+            "description": "When the token stops being valid, included, left out when it never expires.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "description": "The id of the token, which names it in DELETE /api/v1/account/tokens/{id}.",
+            "examples": [
+              3
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "lastUsedAt": {
+            "description": "When the token was last used, written at most once per minute, left out when it never was.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "lastUsedIp": {
+            "description": "The IP address of the client that last used the token, left out when unknown or never used.",
+            "examples": [
+              "203.0.113.7"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "description": "The name of the token.",
+            "examples": [
+              "Health Auto Export"
+            ],
+            "type": "string"
+          },
+          "prefix": {
+            "description": "The first 8 characters of the token, to tell the tokens apart.",
+            "examples": [
+              "vrv_3fK9"
+            ],
+            "type": "string"
+          },
+          "revokedAt": {
+            "description": "When the token was revoked, left out while it is not.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "scopes": {
+            "description": "The scopes of the token, in the order they were given.",
+            "examples": [
+              [
+                "ingest"
+              ]
+            ],
+            "items": {
+              "enum": [
+                "ingest",
+                "read"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "token": {
+            "description": "The token, vrv_ followed by 43 base62 characters, to send as Authorization: Bearer \u003ctoken\u003e. It is answered once: only its hash is stored.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "id",
+          "name",
+          "scopes",
+          "prefix",
+          "createdAt"
         ],
         "type": "object"
       },
@@ -639,13 +919,13 @@
         ],
         "type": "object"
       },
-      "PageAdminUser": {
+      "PageAdminUserListItem": {
         "additionalProperties": false,
         "properties": {
           "items": {
             "description": "The items of the page, newest first.",
             "items": {
-              "$ref": "#/components/schemas/AdminUser"
+              "$ref": "#/components/schemas/AdminUserListItem"
             },
             "type": "array"
           },
@@ -947,6 +1227,22 @@
         },
         "required": [
           "required"
+        ],
+        "type": "object"
+      },
+      "TokensOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "description": "The tokens, revoked ones included, newest first.",
+            "items": {
+              "$ref": "#/components/schemas/APIToken"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
         ],
         "type": "object"
       },
@@ -1536,6 +1832,201 @@
           }
         ],
         "summary": "Revoke a session of the current user",
+        "tags": [
+          "Account"
+        ]
+      }
+    },
+    "/api/v1/account/tokens": {
+      "get": {
+        "description": "Returns the API tokens of the user, revoked ones included, newest first, with their usage: never the token or its hash. A request with a token answers 401.",
+        "operationId": "list-tokens",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokensOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List the API tokens of the current user",
+        "tags": [
+          "Account"
+        ]
+      },
+      "post": {
+        "description": "Creates an API token of the current user and answers it, once: only its hash and its prefix are stored. An unknown, missing or repeated scope answers 422 `validation_failed`, and an expiry that is not in the future 422 `expiry_in_past`. A request with a token answers 401: a token cannot create tokens.",
+        "operationId": "create-token",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTokenInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedAPIToken"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Create an API token",
+        "tags": [
+          "Account"
+        ]
+      }
+    },
+    "/api/v1/account/tokens/{id}": {
+      "delete": {
+        "description": "Revokes the API token of the user with this id: the next request with it answers 401 `token_revoked`. The token stays listed, with its revocation time, and revoking it again changes nothing. A token of another user answers 404. A request with a token answers 401.",
+        "operationId": "revoke-token",
+        "parameters": [
+          {
+            "description": "The id of the token.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "The id of the token.",
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Revoke an API token of the current user",
         "tags": [
           "Account"
         ]
@@ -2134,7 +2625,7 @@
     },
     "/api/v1/admin/users": {
       "get": {
-        "description": "Returns the accounts newest first, with their metadata only: never their health data.",
+        "description": "Returns the accounts newest first, with their metadata only: never their health data. Each user has the number of their active API tokens, not the tokens.",
         "operationId": "list-admin-users",
         "parameters": [
           {
@@ -2166,7 +2657,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PageAdminUser"
+                  "$ref": "#/components/schemas/PageAdminUserListItem"
                 }
               }
             },

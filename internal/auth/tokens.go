@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"slices"
 	"strings"
 	"time"
 
@@ -117,6 +118,76 @@ type Tokens struct {
 // NewTokens returns the tokens service, which takes the current time from clk.
 func NewTokens(clk clock.Clock) Tokens {
 	return Tokens{clk: clk}
+}
+
+// ErrExpiryInPast is returned for a token whose expiry is not in the future. Its message is the
+// stable code that the API answers with.
+var ErrExpiryInPast = errors.New("expiry_in_past")
+
+// Create creates the API token of token through st, for its user, and returns the token, once, and
+// its record. In one transaction, it stores the token and records the token.created event, with
+// the client of ctx. It returns ErrExpiryInPast for an expiry that is not after the current time,
+// and the errors of CreateAPIToken.
+func (t Tokens) Create(ctx context.Context, st store.Store, token NewAPIToken) (string, store.APIToken, error) {
+	if !token.ExpiresAt.IsZero() && !token.ExpiresAt.After(t.clk.Now()) {
+		return "", store.APIToken{}, ErrExpiryInPast
+	}
+
+	var (
+		secret  string
+		created store.APIToken
+	)
+
+	err := st.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
+		var err error
+
+		secret, created, err = CreateAPIToken(ctx, tx, token)
+		if err != nil {
+			return err
+		}
+
+		return audit.Record(ctx, tx.AuditEvents(), audit.APITokenCreated(created.UserID, created.ID, created.Name, created.Scopes))
+	})
+	if err != nil {
+		return "", store.APIToken{}, fmt.Errorf("create token of user %d: %w", token.UserID, err)
+	}
+
+	return secret, created, nil
+}
+
+// Revoke revokes the API token of userID whose id is id through st. In one transaction, it stores
+// the revocation and records the token.revoked event, with the client of ctx. A token already
+// revoked stays as it is, without an event. It returns store.ErrNotFound when no token of userID
+// has id, also when the token is of another user.
+func (t Tokens) Revoke(ctx context.Context, st store.Store, userID, id int64) error {
+	err := st.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
+		// A user holds few tokens: listing them finds the token without a lookup of its own.
+		tokens, err := tx.APITokens().ListByUser(ctx, userID)
+		if err != nil {
+			return err
+		}
+
+		i := slices.IndexFunc(tokens, func(token store.APIToken) bool { return token.ID == id })
+		if i < 0 {
+			return store.ErrNotFound
+		}
+
+		if !tokens[i].RevokedAt.IsZero() {
+			return nil
+		}
+
+		revoked, err := tx.APITokens().Revoke(ctx, userID, id)
+		if err != nil {
+			return err
+		}
+
+		return audit.Record(ctx, tx.AuditEvents(), audit.APITokenRevoked(userID, revoked.ID, revoked.Name))
+	})
+	if err != nil {
+		return fmt.Errorf("revoke token %d of user %d: %w", id, userID, err)
+	}
+
+	return nil
 }
 
 // Authenticate returns the API token token, as the client sends it, and its user, read in repos,

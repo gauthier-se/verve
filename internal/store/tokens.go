@@ -74,4 +74,8 @@ type APITokensRepository interface {
 	// Touch sets the LastUsedAt of the token of id to the current time and its LastUsedIP to ip,
 	// empty for an unknown address, and returns the token, or returns ErrNotFound.
 	Touch(ctx context.Context, id int64, ip string) (APIToken, error)
+	// CountActiveByUsers returns the number of tokens of each of userIDs that are neither revoked nor
+	// expired at the current time, a token being valid until its expiry included. The users without
+	// such a token are left out.
+	CountActiveByUsers(ctx context.Context, userIDs []int64) (map[int64]int64, error)
 }

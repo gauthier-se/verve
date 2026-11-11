@@ -3,8 +3,8 @@
 import { type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { acceptInvitation, changePassword, createAdminBackup, createFirstAdmin, createInvitation, createPasswordResetLink, deleteAccount, deleteUser, downloadAdminBackup, getCurrentUser, getMeta, getPreferences, getSetupStatus, inspectInvitation, listAccountAuditEvents, listAdminAuditEvents, listAdminBackups, listAdminJobs, listAdminUsers, listSessions, login, logout, type Options, resetPassword, revokeOtherSessions, revokeSession, setUserRole, setUserStatus, updatePreferences } from '../sdk.gen';
-import type { AcceptInvitationData, AcceptInvitationError, AcceptInvitationResponse, ChangePasswordData, ChangePasswordError, ChangePasswordResponse, CreateAdminBackupData, CreateAdminBackupError, CreateAdminBackupResponse, CreateFirstAdminData, CreateFirstAdminError, CreateFirstAdminResponse, CreateInvitationData, CreateInvitationError, CreateInvitationResponse, CreatePasswordResetLinkData, CreatePasswordResetLinkError, CreatePasswordResetLinkResponse, DeleteAccountData, DeleteAccountError, DeleteUserData, DeleteUserError, DeleteUserResponse, DownloadAdminBackupData, DownloadAdminBackupError, DownloadAdminBackupResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetMetaData, GetMetaError, GetMetaResponse, GetPreferencesData, GetPreferencesError, GetPreferencesResponse, GetSetupStatusData, GetSetupStatusError, GetSetupStatusResponse, InspectInvitationData, InspectInvitationError, InspectInvitationResponse, ListAccountAuditEventsData, ListAccountAuditEventsError, ListAccountAuditEventsResponse, ListAdminAuditEventsData, ListAdminAuditEventsError, ListAdminAuditEventsResponse, ListAdminBackupsData, ListAdminBackupsError, ListAdminBackupsResponse, ListAdminJobsData, ListAdminJobsError, ListAdminJobsResponse, ListAdminUsersData, ListAdminUsersError, ListAdminUsersResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutError, LogoutResponse, ResetPasswordData, ResetPasswordError, ResetPasswordResponse, RevokeOtherSessionsData, RevokeOtherSessionsError, RevokeOtherSessionsResponse, RevokeSessionData, RevokeSessionError, RevokeSessionResponse, SetUserRoleData, SetUserRoleError, SetUserRoleResponse, SetUserStatusData, SetUserStatusError, SetUserStatusResponse, UpdatePreferencesData, UpdatePreferencesError, UpdatePreferencesResponse } from '../types.gen';
+import { acceptInvitation, changePassword, createAdminBackup, createFirstAdmin, createInvitation, createPasswordResetLink, createToken, deleteAccount, deleteUser, downloadAdminBackup, getCurrentUser, getMeta, getPreferences, getSetupStatus, inspectInvitation, listAccountAuditEvents, listAdminAuditEvents, listAdminBackups, listAdminJobs, listAdminUsers, listSessions, listTokens, login, logout, type Options, resetPassword, revokeOtherSessions, revokeSession, revokeToken, setUserRole, setUserStatus, updatePreferences } from '../sdk.gen';
+import type { AcceptInvitationData, AcceptInvitationError, AcceptInvitationResponse, ChangePasswordData, ChangePasswordError, ChangePasswordResponse, CreateAdminBackupData, CreateAdminBackupError, CreateAdminBackupResponse, CreateFirstAdminData, CreateFirstAdminError, CreateFirstAdminResponse, CreateInvitationData, CreateInvitationError, CreateInvitationResponse, CreatePasswordResetLinkData, CreatePasswordResetLinkError, CreatePasswordResetLinkResponse, CreateTokenData, CreateTokenError, CreateTokenResponse, DeleteAccountData, DeleteAccountError, DeleteUserData, DeleteUserError, DeleteUserResponse, DownloadAdminBackupData, DownloadAdminBackupError, DownloadAdminBackupResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetMetaData, GetMetaError, GetMetaResponse, GetPreferencesData, GetPreferencesError, GetPreferencesResponse, GetSetupStatusData, GetSetupStatusError, GetSetupStatusResponse, InspectInvitationData, InspectInvitationError, InspectInvitationResponse, ListAccountAuditEventsData, ListAccountAuditEventsError, ListAccountAuditEventsResponse, ListAdminAuditEventsData, ListAdminAuditEventsError, ListAdminAuditEventsResponse, ListAdminBackupsData, ListAdminBackupsError, ListAdminBackupsResponse, ListAdminJobsData, ListAdminJobsError, ListAdminJobsResponse, ListAdminUsersData, ListAdminUsersError, ListAdminUsersResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, ListTokensData, ListTokensError, ListTokensResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutError, LogoutResponse, ResetPasswordData, ResetPasswordError, ResetPasswordResponse, RevokeOtherSessionsData, RevokeOtherSessionsError, RevokeOtherSessionsResponse, RevokeSessionData, RevokeSessionError, RevokeSessionResponse, RevokeTokenData, RevokeTokenError, RevokeTokenResponse, SetUserRoleData, SetUserRoleError, SetUserRoleResponse, SetUserStatusData, SetUserStatusError, SetUserStatusResponse, UpdatePreferencesData, UpdatePreferencesError, UpdatePreferencesResponse } from '../types.gen';
 
 /**
  * Delete the account of the current user
@@ -255,6 +255,64 @@ export const revokeSessionMutation = (options?: Partial<Options<RevokeSessionDat
     return mutationOptions;
 };
 
+export const listTokensQueryKey = (options?: Options<ListTokensData>) => createQueryKey('listTokens', options);
+
+/**
+ * List the API tokens of the current user
+ *
+ * Returns the API tokens of the user, revoked ones included, newest first, with their usage: never the token or its hash. A request with a token answers 401.
+ */
+export const listTokensOptions = (options?: Options<ListTokensData>) => queryOptions<ListTokensResponse, ListTokensError, ListTokensResponse, ReturnType<typeof listTokensQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listTokens({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listTokensQueryKey(options)
+});
+
+/**
+ * Create an API token
+ *
+ * Creates an API token of the current user and answers it, once: only its hash and its prefix are stored. An unknown, missing or repeated scope answers 422 `validation_failed`, and an expiry that is not in the future 422 `expiry_in_past`. A request with a token answers 401: a token cannot create tokens.
+ */
+export const createTokenMutation = (options?: Partial<Options<CreateTokenData>>): UseMutationOptions<CreateTokenResponse, CreateTokenError, Options<CreateTokenData>> => {
+    const mutationOptions: UseMutationOptions<CreateTokenResponse, CreateTokenError, Options<CreateTokenData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await createToken({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Revoke an API token of the current user
+ *
+ * Revokes the API token of the user with this id: the next request with it answers 401 `token_revoked`. The token stays listed, with its revocation time, and revoking it again changes nothing. A token of another user answers 404. A request with a token answers 401.
+ */
+export const revokeTokenMutation = (options?: Partial<Options<RevokeTokenData>>): UseMutationOptions<RevokeTokenResponse, RevokeTokenError, Options<RevokeTokenData>> => {
+    const mutationOptions: UseMutationOptions<RevokeTokenResponse, RevokeTokenError, Options<RevokeTokenData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await revokeToken({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
 export const listAdminAuditEventsQueryKey = (options?: Options<ListAdminAuditEventsData>) => createQueryKey('listAdminAuditEvents', options);
 
 /**
@@ -442,7 +500,7 @@ export const listAdminUsersQueryKey = (options?: Options<ListAdminUsersData>) =>
 /**
  * List the users
  *
- * Returns the accounts newest first, with their metadata only: never their health data.
+ * Returns the accounts newest first, with their metadata only: never their health data. Each user has the number of their active API tokens, not the tokens.
  */
 export const listAdminUsersOptions = (options?: Options<ListAdminUsersData>) => queryOptions<ListAdminUsersResponse, ListAdminUsersError, ListAdminUsersResponse, ReturnType<typeof listAdminUsersQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
@@ -462,7 +520,7 @@ export const listAdminUsersInfiniteQueryKey = (options?: Options<ListAdminUsersD
 /**
  * List the users
  *
- * Returns the accounts newest first, with their metadata only: never their health data.
+ * Returns the accounts newest first, with their metadata only: never their health data. Each user has the number of their active API tokens, not the tokens.
  */
 export const listAdminUsersInfiniteOptions = (options?: Options<ListAdminUsersData>) => {
     const opts = infiniteQueryOptions<ListAdminUsersResponse, ListAdminUsersError, InfiniteData<ListAdminUsersResponse>, QueryKey<Options<ListAdminUsersData>>, string | Pick<QueryKey<Options<ListAdminUsersData>>[0], 'body' | 'headers' | 'path' | 'query'>>(

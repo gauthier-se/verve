@@ -47,6 +47,8 @@ type APIDeps struct {
 	Backups *backup.Backups
 	// Jobs queues the jobs of the API, such as manual backups.
 	Jobs auth.JobQueue
+	// Tokens creates and revokes the API tokens of the users.
+	Tokens auth.Tokens
 }
 
 // useProblemErrors makes Huma build its errors as problems. huma.NewError is Huma's documented
@@ -89,6 +91,7 @@ func NewAPI(mux *http.ServeMux, deps APIDeps) huma.API {
 	registerAdminUsers(api, deps)
 	registerAccountDeletion(api, deps)
 	registerAdminBackups(api, deps)
+	registerTokens(api, deps)
 
 	return api
 }
