@@ -1,11 +1,13 @@
 import { useMutation } from "@tanstack/react-query";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { errorMessage, hasProblemCode } from "@/api/errors";
 import { resetPasswordMutation } from "@/api/generated/@tanstack/react-query.gen";
 import { useAppForm } from "@/components/form/app-form";
+import { InvalidLink } from "@/components/form/invalid-link";
+import { NewPasswordFields } from "@/components/form/new-password-fields";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -35,7 +37,10 @@ function ResetPassword() {
         {t("resetPassword.title")}
       </h1>
       {token === undefined || gone ? (
-        <InvalidLink />
+        <InvalidLink
+          message={t("errors.reset_link_invalid")}
+          loginLabel={t("resetPassword.goToLogin")}
+        />
       ) : (
         <PasswordForm
           token={token}
@@ -44,21 +49,6 @@ function ResetPassword() {
           }}
         />
       )}
-    </div>
-  );
-}
-
-/** Says that the link is not valid, and leads to the login page. */
-function InvalidLink() {
-  const { t } = useTranslation();
-  return (
-    <div className="flex flex-col gap-4">
-      <p role="alert" className="text-sm text-destructive">
-        {t("errors.reset_link_invalid")}
-      </p>
-      <Button asChild variant="outline" size="lg" className="min-h-11">
-        <Link to="/login">{t("resetPassword.goToLogin")}</Link>
-      </Button>
     </div>
   );
 }
@@ -114,41 +104,14 @@ function PasswordForm({ token, onGone }: PasswordFormProps) {
           {errorMessage(reset.error, i18n)}
         </p>
       )}
-      <form.AppField
-        name="password"
-        validators={{
-          onChange: ({ value }) =>
-            value === "" ? t("resetPassword.passwordRequired") : undefined,
-        }}
-      >
-        {(field) => (
-          <field.TextField
-            label={t("resetPassword.password")}
-            type="password"
-            autoComplete="new-password"
-            maxLength={128}
-          />
-        )}
-      </form.AppField>
-      <form.AppField
-        name="confirmation"
-        validators={{
-          onChangeListenTo: ["password"],
-          onChange: ({ value, fieldApi }) =>
-            value === fieldApi.form.getFieldValue("password")
-              ? undefined
-              : t("resetPassword.passwordMismatch"),
-        }}
-      >
-        {(field) => (
-          <field.TextField
-            label={t("resetPassword.confirmation")}
-            type="password"
-            autoComplete="new-password"
-            maxLength={128}
-          />
-        )}
-      </form.AppField>
+      <NewPasswordFields
+        form={form}
+        fields={{ password: "password", confirmation: "confirmation" }}
+        passwordLabel={t("resetPassword.password")}
+        confirmationLabel={t("resetPassword.confirmation")}
+        requiredMessage={t("resetPassword.passwordRequired")}
+        mismatchMessage={t("resetPassword.passwordMismatch")}
+      />
       <Button
         type="submit"
         size="lg"

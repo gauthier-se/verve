@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { errorMessage, hasProblemCode } from "@/api/errors";
 import { createFirstAdminMutation } from "@/api/generated/@tanstack/react-query.gen";
 import { useAppForm } from "@/components/form/app-form";
+import { NewPasswordFields } from "@/components/form/new-password-fields";
 import { Button } from "@/components/ui/button";
 import { enterSession } from "@/lib/session";
 
@@ -99,41 +100,14 @@ export function AccountStep({
           />
         )}
       </form.AppField>
-      <form.AppField
-        name="password"
-        validators={{
-          onChange: ({ value }) =>
-            value === "" ? t("setup.account.passwordRequired") : undefined,
-        }}
-      >
-        {(field) => (
-          <field.TextField
-            label={t("setup.account.password")}
-            type="password"
-            autoComplete="new-password"
-            maxLength={128}
-          />
-        )}
-      </form.AppField>
-      <form.AppField
-        name="confirmation"
-        validators={{
-          onChangeListenTo: ["password"],
-          onChange: ({ value, fieldApi }) =>
-            value === fieldApi.form.getFieldValue("password")
-              ? undefined
-              : t("setup.account.passwordMismatch"),
-        }}
-      >
-        {(field) => (
-          <field.TextField
-            label={t("setup.account.confirmation")}
-            type="password"
-            autoComplete="new-password"
-            maxLength={128}
-          />
-        )}
-      </form.AppField>
+      <NewPasswordFields
+        form={form}
+        fields={{ password: "password", confirmation: "confirmation" }}
+        passwordLabel={t("setup.account.password")}
+        confirmationLabel={t("setup.account.confirmation")}
+        requiredMessage={t("setup.account.passwordRequired")}
+        mismatchMessage={t("setup.account.passwordMismatch")}
+      />
       <Button
         type="submit"
         size="lg"
