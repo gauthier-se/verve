@@ -9,7 +9,9 @@ import { withFieldGroup } from "@/components/form/app-form";
 export const NewPasswordFields = withFieldGroup({
   defaultValues: { password: "", confirmation: "" },
   props: {
+    /** The label of the password. */
     passwordLabel: "",
+    /** The label of the confirmation. */
     confirmationLabel: "",
     /** The error of an empty password. */
     requiredMessage: "",
