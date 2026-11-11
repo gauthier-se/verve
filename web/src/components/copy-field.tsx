@@ -27,15 +27,15 @@ export function CopyField({
 }: CopyFieldProps) {
   const { t } = useTranslation();
   const id = useId();
-  const [copied, setCopied] = useState<boolean>();
+  const [status, setStatus] = useState<"idle" | "copied" | "failed">("idle");
 
   async function copy() {
     try {
       // Browsers give no clipboard outside a secure context.
       await navigator.clipboard.writeText(value);
-      setCopied(true);
+      setStatus("copied");
     } catch {
-      setCopied(false);
+      setStatus("failed");
     }
   }
 
@@ -68,8 +68,8 @@ export function CopyField({
         </Button>
       </div>
       <p role="status" className="text-sm text-muted-foreground">
-        {copied === true && t("copy.copied")}
-        {copied === false && t("copy.failed")}
+        {status === "copied" && t("copy.copied")}
+        {status === "failed" && t("copy.failed")}
       </p>
     </div>
   );

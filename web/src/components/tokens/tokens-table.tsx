@@ -49,7 +49,7 @@ export function TokensTable({
   const [now] = useState(Date.now);
 
   const columns = useMemo(() => {
-    const date = (iso: string) =>
+    const formatTokenDate = (iso: string) =>
       formatDate(new Date(iso), lng, {
         dateStyle: "medium",
         timeZone: timeZone ?? undefined,
@@ -80,7 +80,7 @@ export function TokensTable({
       }),
       columnHelper.accessor("createdAt", {
         header: () => t("tokens.columns.created"),
-        cell: ({ getValue }) => date(getValue()),
+        cell: ({ getValue }) => formatTokenDate(getValue()),
       }),
       columnHelper.accessor("lastUsedAt", {
         header: () => t("tokens.columns.lastUsed"),
@@ -88,7 +88,9 @@ export function TokensTable({
           const lastUsedAt = getValue();
           return (
             <span className="flex flex-col gap-1">
-              {lastUsedAt === undefined ? t("tokens.never") : date(lastUsedAt)}
+              {lastUsedAt === undefined
+                ? t("tokens.never")
+                : formatTokenDate(lastUsedAt)}
               {isUnused(row.original, now) && (
                 <span className="max-w-56 text-xs whitespace-normal text-muted-foreground">
                   {t("tokens.unused")}
@@ -107,7 +109,7 @@ export function TokensTable({
           }
           return (
             <span className="flex items-center gap-2">
-              {date(expiresAt)}
+              {formatTokenDate(expiresAt)}
               {isPast(expiresAt, now) && (
                 <Badge variant="outline">{t("tokens.expired")}</Badge>
               )}

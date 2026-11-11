@@ -137,7 +137,9 @@ function CreateToken({ onDone }: { onDone: () => void }) {
     return (
       <CreatedToken
         token={create.data}
-        healthAutoExport={form.getFieldValue("preset") === "healthAutoExport"}
+        showHealthAutoExportSetup={
+          form.getFieldValue("preset") === "healthAutoExport"
+        }
         onDone={onDone}
       />
     );
@@ -268,11 +270,10 @@ interface ScopesFieldProps {
 function ScopesField({ name, value, error, onChange }: ScopesFieldProps) {
   const { t } = useTranslation();
   const errorId = useId();
-  // In the order of allScopes.
-  const scopeChoices: { scope: Scope; description: string }[] = [
-    { scope: "ingest", description: t("tokens.scopes.ingest") },
-    { scope: "read", description: t("tokens.scopes.read") },
-  ];
+  const descriptions: Record<Scope, string> = {
+    ingest: t("tokens.scopes.ingest"),
+    read: t("tokens.scopes.read"),
+  };
 
   return (
     <fieldset
@@ -282,13 +283,13 @@ function ScopesField({ name, value, error, onChange }: ScopesFieldProps) {
       <legend className="mb-2 text-sm font-medium">
         {t("tokens.create.scopes")}
       </legend>
-      {scopeChoices.map(({ scope, description }) => (
+      {allScopes.map((scope) => (
         <Choice
           key={scope}
           type="checkbox"
           name={name}
           label={scope}
-          description={description}
+          description={descriptions[scope]}
           checked={value.includes(scope)}
           onChange={(checked) => {
             onChange(
@@ -350,13 +351,17 @@ function Choice({
 
 interface CreatedTokenProps {
   token: CreatedApiToken;
-  /** Whether the token is for Health Auto Export, which shows its setup. */
-  healthAutoExport: boolean;
+  /** Whether the token is for Health Auto Export, whose setup it shows. */
+  showHealthAutoExportSetup: boolean;
   onDone: () => void;
 }
 
 /** The token just created, shown once, with the setup of its app. */
-function CreatedToken({ token, healthAutoExport, onDone }: CreatedTokenProps) {
+function CreatedToken({
+  token,
+  showHealthAutoExportSetup,
+  onDone,
+}: CreatedTokenProps) {
   const { t } = useTranslation();
 
   return (
@@ -371,7 +376,9 @@ function CreatedToken({ token, healthAutoExport, onDone }: CreatedTokenProps) {
         copyLabel={t("tokens.created.copyToken")}
         autoFocus
       />
-      {healthAutoExport && <HealthAutoExportSetup token={token.token} />}
+      {showHealthAutoExportSetup && (
+        <HealthAutoExportSetup token={token.token} />
+      )}
       <DialogFooter>
         <Button size="lg" className="min-h-11" onClick={onDone}>
           {t("tokens.created.done")}

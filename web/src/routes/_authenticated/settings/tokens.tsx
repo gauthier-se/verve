@@ -52,6 +52,7 @@ function Tokens() {
   );
 }
 
+/** What tokens are for, in place of the table while the user has none. */
 function EmptyState() {
   const { t } = useTranslation();
   const headingId = useId();

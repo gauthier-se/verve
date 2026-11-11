@@ -25,8 +25,9 @@ interface UserMenuProps {
 
 /**
  * A menu named after the user of the session, with their account, a link to
- * their API tokens and an item to log out. Logging out leaves the session. A logout that fails keeps the
- * menu open with its error, since the session may still be valid.
+ * their API tokens and an item to log out. Logging out leaves the session. A
+ * logout that fails keeps the menu open with its error, since the session may
+ * still be valid.
  */
 export function UserMenu({ user, className }: UserMenuProps) {
   const { t, i18n } = useTranslation();
