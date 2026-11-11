@@ -87,6 +87,7 @@ func NewHandler(d Deps) http.Handler {
 		PublicURL:      d.PublicURL,
 		Backups:        d.Backups,
 		Jobs:           jobs,
+		Tokens:         auth.NewTokens(d.Clock),
 	})
 
 	if d.SPA != nil {
@@ -136,7 +137,7 @@ func newHandler(d Deps, routes http.Handler) http.Handler {
 	middlewares = append(middlewares, TokenInQueryMiddleware, CSRFMiddleware(d.PublicURL))
 
 	if d.Store != nil {
-		middlewares = append(middlewares, AuthenticationMiddleware(d.Store, auth.NewSessions(d.Clock), auth.NewTokens(d.Clock), d.PublicURL))
+		middlewares = append(middlewares, AuthenticationMiddleware(d.Store, auth.NewSessions(d.Clock), auth.NewTokens(d.Clock), auth.NewTokenLimiter(d.Clock), d.PublicURL))
 	}
 
 	return chain(routes, middlewares...)

@@ -133,7 +133,8 @@ func sessionPublicIDFrom(ctx context.Context) string {
 // A request with Authorization: Bearer is authenticated by its token alone, never by its cookie,
 // since the CSRF checks do not apply to it. A token that does not authenticate answers 401 on any
 // operation, so that the client learns that its credential no longer works: unauthorized for an
-// unknown token, and token_revoked, token_expired or user_disabled for a known one.
+// unknown token, and token_revoked, token_expired or user_disabled for a known one. A valid token
+// above its rate limit, counted by limiter, answers 429 rate_limited with Retry-After.
 //
 // A request without a valid session goes on without a principal: the operations that need one
 // answer 401. When the lookup renews the session, the response sends the cookie again with the new
@@ -145,7 +146,7 @@ func sessionPublicIDFrom(ctx context.Context) string {
 //
 // It must run behind the gate, since the lookup needs a migrated database, and behind
 // CSRFMiddleware.
-func AuthenticationMiddleware(repos store.Repositories, sessions auth.Sessions, tokens auth.Tokens, publicURL config.PublicURL) func(http.Handler) http.Handler {
+func AuthenticationMiddleware(repos store.Repositories, sessions auth.Sessions, tokens auth.Tokens, limiter *auth.TokenLimiter, publicURL config.PublicURL) func(http.Handler) http.Handler {
 	cookieName := sessionCookieNameFor(publicURL)
 
 	return func(next http.Handler) http.Handler {
@@ -157,7 +158,7 @@ func AuthenticationMiddleware(repos store.Repositories, sessions auth.Sessions, 
 			}
 
 			if token, ok := bearerToken(r); ok {
-				authenticateToken(w, r, next, repos, tokens, token)
+				authenticateToken(w, r, next, repos, tokens, limiter, token)
 
 				return
 			}
@@ -198,10 +199,11 @@ var tokenRejections = []error{auth.ErrTokenRevoked, auth.ErrTokenExpired, auth.E
 
 // authenticateToken authenticates r by the API token token, looked up with tokens in repos, and
 // serves it on next with the principal of the token, or answers 401 when the token does not
-// authenticate. A lookup that fails otherwise, such as the audit event of a rejection that cannot be
-// recorded, is logged and answers 500: unlike a cookie, a token is sent on purpose, and the request
-// must not go on as if it were fine.
-func authenticateToken(w http.ResponseWriter, r *http.Request, next http.Handler, repos store.Repositories, tokens auth.Tokens, token string) {
+// authenticate, and 429 with Retry-After when limiter finds it above its rate limit. A lookup that
+// fails otherwise, such as the audit event of a rejection that cannot be recorded, is logged and
+// answers 500: unlike a cookie, a token is sent on purpose, and the request must not go on as if it
+// were fine.
+func authenticateToken(w http.ResponseWriter, r *http.Request, next http.Handler, repos store.Repositories, tokens auth.Tokens, limiter *auth.TokenLimiter, token string) {
 	ctx := r.Context()
 	found, user, err := tokens.Authenticate(ctx, repos, token, ClientInfoFrom(ctx).IP)
 
@@ -222,6 +224,13 @@ func authenticateToken(w http.ResponseWriter, r *http.Request, next http.Handler
 	if err != nil {
 		logging.FromContext(ctx).ErrorContext(ctx, "look up token", slog.Any("error", err))
 		WriteProblem(w, Problem{Status: http.StatusInternalServerError, Code: defaultCode(http.StatusInternalServerError), Detail: "unexpected error occurred"})
+
+		return
+	}
+
+	if wait := limiter.Allow(found.ID); wait > 0 {
+		w.Header().Set("Retry-After", retryAfterSeconds(wait))
+		WriteProblem(w, Problem{Status: http.StatusTooManyRequests, Code: defaultCode(http.StatusTooManyRequests)})
 
 		return
 	}

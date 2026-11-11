@@ -8,7 +8,63 @@ package sqlcgen
 import (
 	"context"
 	"database/sql"
+	"strings"
 )
+
+const countActiveUserAPITokens = `-- name: CountActiveUserAPITokens :many
+SELECT user_id, count(*) AS active
+FROM api_tokens
+WHERE revoked_at IS NULL
+  AND (expires_at IS NULL OR expires_at >= ?1)
+  AND user_id IN (/*SLICE:user_ids*/?)
+GROUP BY user_id
+`
+
+type CountActiveUserAPITokensParams struct {
+	Now     sql.NullInt64
+	UserIds []int64
+}
+
+type CountActiveUserAPITokensRow struct {
+	UserID int64
+	Active int64
+}
+
+// A token is valid until its expiry included. The time comes before the slice: sqlc numbers the
+// parameter after a slice by its position before the slice expands.
+func (q *Queries) CountActiveUserAPITokens(ctx context.Context, arg CountActiveUserAPITokensParams) ([]CountActiveUserAPITokensRow, error) {
+	query := countActiveUserAPITokens
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.Now)
+	if len(arg.UserIds) > 0 {
+		for _, v := range arg.UserIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:user_ids*/?", strings.Repeat(",?", len(arg.UserIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:user_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CountActiveUserAPITokensRow
+	for rows.Next() {
+		var i CountActiveUserAPITokensRow
+		if err := rows.Scan(&i.UserID, &i.Active); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
 
 const createAPIToken = `-- name: CreateAPIToken :one
 INSERT INTO api_tokens (user_id, name, scopes, prefix, token_hash, expires_at, created_at)

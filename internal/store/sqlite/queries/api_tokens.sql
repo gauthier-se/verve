@@ -29,3 +29,13 @@ SET last_used_at = sqlc.arg(last_used_at),
     last_used_ip = sqlc.arg(last_used_ip)
 WHERE id = sqlc.arg(id)
 RETURNING *;
+
+-- name: CountActiveUserAPITokens :many
+-- A token is valid until its expiry included. The time comes before the slice: sqlc numbers the
+-- parameter after a slice by its position before the slice expands.
+SELECT user_id, count(*) AS active
+FROM api_tokens
+WHERE revoked_at IS NULL
+  AND (expires_at IS NULL OR expires_at >= sqlc.arg(now))
+  AND user_id IN (sqlc.slice(user_ids))
+GROUP BY user_id;

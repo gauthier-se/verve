@@ -32,6 +32,8 @@ const (
 	TypeBackupCreated                = "backup.created"
 	TypeBackupRestored               = "backup.restored"
 	TypeBackupDownloaded             = "backup.downloaded"
+	TypeTokenCreated                 = "token.created"
+	TypeTokenRevoked                 = "token.revoked"
 	TypeTokenRejected                = "token.rejected"
 )
 
@@ -343,6 +345,36 @@ func TokenRejected(userID, tokenID int64, reason TokenRejection) Event {
 		subjectID:      userID,
 		aggregationKey: "token " + strconv.FormatInt(tokenID, 10) + " " + string(reason),
 		payload:        tokenRejectedPayload{ID: tokenID, Reason: reason},
+	}
+}
+
+type apiTokenCreatedPayload struct {
+	ID     int64              `json:"id"`
+	Name   string             `json:"name"`
+	Scopes []store.TokenScope `json:"scopes"`
+}
+
+// APITokenCreated is the user of userID creating the API token of tokenID, named name, with
+// scopes. The payload never holds the token.
+func APITokenCreated(userID, tokenID int64, name string, scopes []store.TokenScope) Event {
+	return Event{
+		eventType: TypeTokenCreated,
+		actorID:   userID,
+		payload:   apiTokenCreatedPayload{ID: tokenID, Name: name, Scopes: scopes},
+	}
+}
+
+type apiTokenRevokedPayload struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+// APITokenRevoked is the user of userID revoking their API token of tokenID, named name.
+func APITokenRevoked(userID, tokenID int64, name string) Event {
+	return Event{
+		eventType: TypeTokenRevoked,
+		actorID:   userID,
+		payload:   apiTokenRevokedPayload{ID: tokenID, Name: name},
 	}
 }
 

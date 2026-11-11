@@ -4,6 +4,45 @@ export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };
 
+export type ApiToken = {
+    /**
+     * When the token was created.
+     */
+    createdAt: string;
+    /**
+     * When the token stops being valid, included, left out when it never expires.
+     */
+    expiresAt?: string;
+    /**
+     * The id of the token, which names it in DELETE /api/v1/account/tokens/{id}.
+     */
+    id: number;
+    /**
+     * When the token was last used, written at most once per minute, left out when it never was.
+     */
+    lastUsedAt?: string;
+    /**
+     * The IP address of the client that last used the token, left out when unknown or never used.
+     */
+    lastUsedIp?: string;
+    /**
+     * The name of the token.
+     */
+    name: string;
+    /**
+     * The first 8 characters of the token, to tell the tokens apart.
+     */
+    prefix: string;
+    /**
+     * When the token was revoked, left out while it is not.
+     */
+    revokedAt?: string;
+    /**
+     * The scopes of the token, in the order they were given.
+     */
+    scopes: Array<'ingest' | 'read'>;
+};
+
 export type AcceptInvitationInputBody = {
     /**
      * The password of the new account: 12 to 128 characters, and not a common password.
@@ -16,6 +55,10 @@ export type AcceptInvitationInputBody = {
 };
 
 export type AdminUser = {
+    /**
+     * The number of API tokens of the user that are neither revoked nor expired.
+     */
+    activeTokens: number;
     /**
      * When the account was created.
      */
@@ -165,6 +208,64 @@ export type CreateInvitationInputBody = {
      * The username of the account to create: 1 to 64 characters, without @, whitespace, control or invisible characters.
      */
     username: string;
+};
+
+export type CreateTokenInputBody = {
+    /**
+     * When the token stops being valid, after the current time. Left out, the token never expires.
+     */
+    expiresAt?: string;
+    /**
+     * The name of the token, which tells the automations apart: 1 to 64 characters.
+     */
+    name: string;
+    /**
+     * The scopes of the token, one or more distinct ones: ingest for the ingestion endpoints, read for the read-only endpoints of the public API.
+     */
+    scopes: Array<'ingest' | 'read'>;
+};
+
+export type CreatedApiToken = {
+    /**
+     * When the token was created.
+     */
+    createdAt: string;
+    /**
+     * When the token stops being valid, included, left out when it never expires.
+     */
+    expiresAt?: string;
+    /**
+     * The id of the token, which names it in DELETE /api/v1/account/tokens/{id}.
+     */
+    id: number;
+    /**
+     * When the token was last used, written at most once per minute, left out when it never was.
+     */
+    lastUsedAt?: string;
+    /**
+     * The IP address of the client that last used the token, left out when unknown or never used.
+     */
+    lastUsedIp?: string;
+    /**
+     * The name of the token.
+     */
+    name: string;
+    /**
+     * The first 8 characters of the token, to tell the tokens apart.
+     */
+    prefix: string;
+    /**
+     * When the token was revoked, left out while it is not.
+     */
+    revokedAt?: string;
+    /**
+     * The scopes of the token, in the order they were given.
+     */
+    scopes: Array<'ingest' | 'read'>;
+    /**
+     * The token, vrv_ followed by 43 base62 characters, to send as Authorization: Bearer <token>. It is answered once: only its hash is stored.
+     */
+    token: string;
 };
 
 export type CurrentUser = {
@@ -496,6 +597,13 @@ export type SetupStatusOutputBody = {
     required: boolean;
 };
 
+export type TokensOutputBody = {
+    /**
+     * The tokens, revoked ones included, newest first.
+     */
+    items: Array<ApiToken>;
+};
+
 export type UpdatePreferencesInputBody = {
     /**
      * The IANA name of the timezone of the user. Left out, it is unchanged.
@@ -798,6 +906,114 @@ export type RevokeSessionResponses = {
 };
 
 export type RevokeSessionResponse = RevokeSessionResponses[keyof RevokeSessionResponses];
+
+export type ListTokensData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/account/tokens';
+};
+
+export type ListTokensErrors = {
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type ListTokensError = ListTokensErrors[keyof ListTokensErrors];
+
+export type ListTokensResponses = {
+    /**
+     * OK
+     */
+    200: TokensOutputBody;
+};
+
+export type ListTokensResponse = ListTokensResponses[keyof ListTokensResponses];
+
+export type CreateTokenData = {
+    body: CreateTokenInputBody;
+    path?: never;
+    query?: never;
+    url: '/api/v1/account/tokens';
+};
+
+export type CreateTokenErrors = {
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Request Entity Too Large
+     */
+    413: Problem;
+    /**
+     * Unprocessable Entity
+     */
+    422: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type CreateTokenError = CreateTokenErrors[keyof CreateTokenErrors];
+
+export type CreateTokenResponses = {
+    /**
+     * Created
+     */
+    201: CreatedApiToken;
+};
+
+export type CreateTokenResponse = CreateTokenResponses[keyof CreateTokenResponses];
+
+export type RevokeTokenData = {
+    body?: never;
+    path: {
+        /**
+         * The id of the token.
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/api/v1/account/tokens/{id}';
+};
+
+export type RevokeTokenErrors = {
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Not Found
+     */
+    404: Problem;
+    /**
+     * Unprocessable Entity
+     */
+    422: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type RevokeTokenError = RevokeTokenErrors[keyof RevokeTokenErrors];
+
+export type RevokeTokenResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type RevokeTokenResponse = RevokeTokenResponses[keyof RevokeTokenResponses];
 
 export type ListAdminAuditEventsData = {
     body?: never;

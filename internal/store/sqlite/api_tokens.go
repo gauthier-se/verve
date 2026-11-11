@@ -132,6 +132,27 @@ func (r apiTokens) Touch(ctx context.Context, id int64, ip string) (store.APITok
 	return apiTokenOf(row), nil
 }
 
+func (r apiTokens) CountActiveByUsers(ctx context.Context, userIDs []int64) (map[int64]int64, error) {
+	counts := make(map[int64]int64, len(userIDs))
+	if len(userIDs) == 0 {
+		return counts, nil
+	}
+
+	rows, err := r.q.read().CountActiveUserAPITokens(ctx, sqlcgen.CountActiveUserAPITokensParams{
+		Now:     nullMillis(r.clk.Now()),
+		UserIds: userIDs,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("count active tokens of %d users: %w", len(userIDs), err)
+	}
+
+	for _, row := range rows {
+		counts[row.UserID] = row.Active
+	}
+
+	return counts, nil
+}
+
 // validScopes reports whether scopes holds one or more distinct known scopes.
 func validScopes(scopes []store.TokenScope) bool {
 	if len(scopes) == 0 {
