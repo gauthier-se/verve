@@ -97,3 +97,64 @@ test("given a phone screen and a user without a timezone, when a protected page 
   await expectTouchTarget(dialog.getByRole("button", { name: "Not now" }));
   await expectTouchTarget(dialog.getByRole("button", { name: "Confirm" }));
 });
+
+test("given a phone screen and tokens, when the tokens page loads, then the page fits without horizontal scroll, the table scrolls on its own and the creation dialog fits", async ({
+  page,
+}) => {
+  await page.route("/api/v1/auth/me", (route) =>
+    route.fulfill({
+      json: {
+        id: 1,
+        username: "admin",
+        role: "admin",
+        timezone: "Europe/Paris",
+      },
+    }),
+  );
+  // A long name checks that a cell cannot push the page wider.
+  const name = "an-automation-with-a-name-longer-than-a-phone-screen";
+  await page.route("/api/v1/account/tokens", (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 1,
+            name,
+            scopes: ["ingest", "read"],
+            prefix: "vrv_7Tq2",
+            createdAt: "2026-10-01T09:00:00Z",
+            lastUsedAt: "2026-11-10T08:30:00Z",
+            expiresAt: "2027-10-01T09:00:00Z",
+          },
+        ],
+      },
+    }),
+  );
+
+  await page.goto("/settings/tokens");
+  const table = page.getByRole("table", { name: "API tokens" });
+  await expect(table.getByText(name)).toBeVisible();
+
+  await expectNoHorizontalScroll(page);
+  const tableScroll = await table.evaluate((element) => {
+    const container = element.parentElement;
+    return {
+      overflowX: container ? getComputedStyle(container).overflowX : "",
+      scrollWidth: container?.scrollWidth ?? 0,
+      clientWidth: container?.clientWidth ?? 0,
+    };
+  });
+  expect(tableScroll.overflowX).toBe("auto");
+  expect(tableScroll.scrollWidth).toBeGreaterThan(tableScroll.clientWidth);
+  await expectTouchTarget(page.getByRole("button", { name: "Create token" }));
+
+  await page.getByRole("button", { name: "Create token" }).click();
+  const dialog = page.getByRole("dialog", { name: "Create a token" });
+  await expect(dialog).toBeVisible();
+  await dialog.evaluate((element) =>
+    Promise.all(element.getAnimations().map((animation) => animation.finished)),
+  );
+  await expectNoHorizontalScroll(page);
+  await expectTouchTarget(dialog.getByLabel("Name"));
+  await expectTouchTarget(dialog.getByRole("button", { name: "Create" }));
+});
