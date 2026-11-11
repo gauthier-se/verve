@@ -46,8 +46,11 @@ Personal, scoped Bearer tokens for machine clients: Health Auto Export, the futu
 
 ## UX notes
 
-- Tokens page in account settings: table with name, scopes, prefix, created, last used, expiry, and a revoke action.
-- Warning when a token has not been used for 90 days, suggesting revocation.
+- Tokens page in account settings, at `/settings/tokens`, reached from the user menu: table with name, scopes, prefix, created, last used, expiry, and a revoke action behind a confirmation. A revoked token stays listed as revoked, without the action, and a past expiry is marked expired. Dates are shown in the timezone of the user. Without any token, the page explains what tokens are for instead of the table. On a phone, the table scrolls on its own and the page never scrolls sideways.
+- Warning when a token has not been used for 90 days, suggesting revocation: counted from its last use, or from its creation when it was never used, for tokens that are neither revoked nor expired.
+- The creation dialog asks for a name (1 to 64 characters) and a preset (FR-10), "Health Auto Export" by default. "Custom" asks for one or more scopes. The dialog has no expiry field yet: tokens created from the page never expire.
+- The created token is shown once, in the dialog, with a copy button, and leaves memory when the dialog closes: it is never put in the query cache, the list of tokens is fetched again instead. Where the browser gives no clipboard, as over plain HTTP, the dialog says to copy it by hand, and focusing a value selects it.
+- For a "Health Auto Export" token (FR-11), the dialog also shows the URL, the origin of the page followed by `/api/v1/ingest/health-auto-export`, the header key `Authorization` and its value `Bearer <token>`, each with a copy button.
 
 ## Data and API notes
 

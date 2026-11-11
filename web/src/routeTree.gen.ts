@@ -17,6 +17,7 @@ import { Route as SetupRouteImport } from './routes/setup'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin/index'
+import { Route as AuthenticatedSettingsTokensRouteImport } from './routes/_authenticated/settings/tokens'
 
 const AuthenticatedRoute = AuthenticatedRouteImport.update({
   id: '/_authenticated',
@@ -57,6 +58,12 @@ const AuthenticatedAdminIndexRoute = AuthenticatedAdminIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthenticatedAdminRoute,
 } as any)
+const AuthenticatedSettingsTokensRoute =
+  AuthenticatedSettingsTokensRouteImport.update({
+    id: '/settings/tokens',
+    path: '/settings/tokens',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
@@ -65,6 +72,7 @@ export interface FileRoutesByFullPath {
   '/reset-password': typeof ResetPasswordRoute
   '/setup': typeof SetupRoute
   '/admin': typeof AuthenticatedAdminRouteWithChildren
+  '/settings/tokens': typeof AuthenticatedSettingsTokensRoute
   '/admin/': typeof AuthenticatedAdminIndexRoute
 }
 export interface FileRoutesByTo {
@@ -73,6 +81,7 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordRoute
   '/setup': typeof SetupRoute
   '/': typeof AuthenticatedIndexRoute
+  '/settings/tokens': typeof AuthenticatedSettingsTokensRoute
   '/admin': typeof AuthenticatedAdminIndexRoute
 }
 export interface FileRoutesById {
@@ -84,6 +93,7 @@ export interface FileRoutesById {
   '/setup': typeof SetupRoute
   '/_authenticated/admin': typeof AuthenticatedAdminRouteWithChildren
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/settings/tokens': typeof AuthenticatedSettingsTokensRoute
   '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
 }
 export interface FileRouteTypes {
@@ -95,9 +105,17 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/setup'
     | '/admin'
+    | '/settings/tokens'
     | '/admin/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/invite' | '/login' | '/reset-password' | '/setup' | '/' | '/admin'
+  to:
+    | '/invite'
+    | '/login'
+    | '/reset-password'
+    | '/setup'
+    | '/'
+    | '/settings/tokens'
+    | '/admin'
   id:
     | '__root__'
     | '/_authenticated'
@@ -107,6 +125,7 @@ export interface FileRouteTypes {
     | '/setup'
     | '/_authenticated/admin'
     | '/_authenticated/'
+    | '/_authenticated/settings/tokens'
     | '/_authenticated/admin/'
   fileRoutesById: FileRoutesById
 }
@@ -176,6 +195,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminIndexRouteImport
       parentRoute: typeof AuthenticatedAdminRoute
     }
+    '/_authenticated/settings/tokens': {
+      id: '/_authenticated/settings/tokens'
+      path: '/settings/tokens'
+      fullPath: '/settings/tokens'
+      preLoaderRoute: typeof AuthenticatedSettingsTokensRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
   }
 }
 
@@ -193,11 +219,13 @@ const AuthenticatedAdminRouteWithChildren =
 interface AuthenticatedRouteChildren {
   AuthenticatedAdminRoute: typeof AuthenticatedAdminRouteWithChildren
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+  AuthenticatedSettingsTokensRoute: typeof AuthenticatedSettingsTokensRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAdminRoute: AuthenticatedAdminRouteWithChildren,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
+  AuthenticatedSettingsTokensRoute: AuthenticatedSettingsTokensRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
