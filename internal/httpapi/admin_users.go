@@ -68,8 +68,8 @@ type adminUserOutput struct {
 }
 
 // registerAdminUsers registers GET /api/v1/admin/users, the accounts for an admin and the number
-// of their active tokens, read in deps.Store, and PUT /api/v1/admin/users/{id}/status and /role, which change them with
-// deps.Admin.
+// of their active tokens, read in deps.Store, and PUT /api/v1/admin/users/{id}/status and /role,
+// which change them with deps.Admin.
 func registerAdminUsers(api huma.API, deps APIDeps) {
 	huma.Register(api, huma.Operation{
 		OperationID: "list-admin-users",
@@ -180,20 +180,15 @@ func registerAdminUsers(api huma.API, deps APIDeps) {
 
 // adminUserOf returns what an admin sees of user.
 func adminUserOf(user store.User) AdminUser {
-	out := AdminUser{
-		ID:        user.ID,
-		Username:  user.Username,
-		Email:     user.Email,
-		Role:      string(user.Role),
-		Status:    string(user.Status),
-		CreatedAt: user.CreatedAt,
+	return AdminUser{
+		ID:          user.ID,
+		Username:    user.Username,
+		Email:       user.Email,
+		Role:        string(user.Role),
+		Status:      string(user.Status),
+		CreatedAt:   user.CreatedAt,
+		LastLoginAt: optionalTime(user.LastLoginAt),
 	}
-
-	if !user.LastLoginAt.IsZero() {
-		out.LastLoginAt = &user.LastLoginAt
-	}
-
-	return out
 }
 
 // adminUserError returns the problem of the error of a change of a user: 404 for an unknown user

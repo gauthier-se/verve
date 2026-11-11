@@ -26,7 +26,8 @@ const (
 	// failure takes a hashing slot.
 	forgetFailuresAfter = time.Hour
 
-	// sweepInterval is the shortest time between two removals of the forgotten failures.
+	// sweepInterval is the shortest time between two removals of the forgotten failures, and of the
+	// forgotten tokens of TokenLimiter.
 	sweepInterval = time.Minute
 )
 
