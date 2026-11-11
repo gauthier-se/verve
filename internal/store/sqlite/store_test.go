@@ -279,3 +279,16 @@ func TestJobs_ConcurrentClaimsOnTwoStoresClaimEachJobOnce(t *testing.T) {
 		require.Equal(t, 1, claims, "job %d", id)
 	}
 }
+
+// Given the contract suite storetest.RunMetricTypes, then the SQLite implementation passes it.
+func TestStore_MetricTypesContract(t *testing.T) {
+	t.Parallel()
+
+	storetest.RunMetricTypes(t, func(t *testing.T, clk clock.Clock) store.Store {
+		t.Helper()
+
+		s, _ := newTestStore(t, clk)
+
+		return s
+	})
+}
