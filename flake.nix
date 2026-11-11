@@ -12,6 +12,17 @@
         let
           pkgs = nixpkgs.legacyPackages.${system};
 
+          # CI installs the latest 1.27 patch with actions/setup-go, nixpkgs
+          # still has 1.27.3, which govulncheck flags (GO-2026-6859). Remove
+          # this override once nixpkgs ships go_1_27 1.27.4 or later.
+          go = pkgs.go_1_27.overrideAttrs (old: rec {
+            version = "1.27.4";
+            src = pkgs.fetchurl {
+              url = "https://go.dev/dl/go${version}.src.tar.gz";
+              hash = "sha256-c8+4VxrsDAEXdofbhxY9Rqog6XeWcncokaoXZU2aYJk=";
+            };
+          });
+
           # Go tools (task, air, sqlc, govulncheck) are pinned in go.mod and run
           # with `go tool`, so CI and contributors without Nix get the same
           # versions. This wrapper only keeps the command short.
@@ -26,7 +37,7 @@
         {
           default = pkgs.mkShell {
             packages = with pkgs; [
-              go_1_27
+              go
               gopls
               gotools
               delve
