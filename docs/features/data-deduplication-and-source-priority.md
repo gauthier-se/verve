@@ -40,7 +40,12 @@ Two problems make naive sums wrong: the same data arrives several times (re-impo
   | Workout with external id | `(user, origin, external id)` | Update |
   | Workout without external id (XML) | `(user, activity type, source, start, end)` | Ignore |
 
-- **FR-2**: Sources are registered per user from the source name, bundle id and device information when available. Each source gets a detected kind: `watch`, `phone`, `scale`, `ring`, `app`, `aggregated`, `unknown`. Detection uses the XML `device` string (model field), known bundle ids and name patterns, and can be corrected by the user.
+- **FR-2**: Sources are registered per user from the source name, bundle id and device information when available.
+  - The identity of a source is `(user, name, device model)`. The name is compared as received. The device model is the `model` of the HealthKit device (for example `Watch` or `iPhone`), from the `device` string of the XML export or the model of the native format, and is empty when unknown, as in Health Auto Export payloads, which carry only a name.
+  - A record with a device model matches the source of that identity. Otherwise it matches the source of that name without model, which then takes the model, and otherwise it creates a source.
+  - A record without device model matches the only source of that name. When several sources have that name, it matches the one without model. Otherwise it creates a source without model.
+  - Bundle id, device name, manufacturer, and hardware and software versions are recorded on the source, but are not part of its identity. The aliases of merged sources (FR-3) are matched by the same identity.
+  - Each source gets a detected kind: `watch`, `phone`, `scale`, `ring`, `app`, `aggregated`, `unknown`. Detection uses the XML `device` string (model field), known bundle ids and name patterns, and can be corrected by the user.
 - **FR-3**: Users can rename the display name of a source and merge sources (for example the same Apple Watch recorded under an old and a new device name). Merging is an alias: future data from either name lands in the merged source, and aggregates are recomputed.
 - **FR-4**: Each metric type has an ordered priority list of sources per user, plus an "ignored" section. Default ordering when no user choice exists:
   - activity and energy metrics: `aggregated`, then `watch`, then `ring`, then `phone`, then other apps,
@@ -53,7 +58,7 @@ Two problems make naive sums wrong: the same data arrives several times (re-impo
 - **FR-8**: Changing priorities, ignoring a source or merging sources triggers recomputation of the affected aggregates.
 - **FR-9**: Raw sample views (metric explorer table, workout detail) always show the source of each sample and whether it is used in aggregates.
 - **FR-10**: Sleep: for each night, sleep stages come from the highest priority source with sleep data for that night (see [Sleep page](page-sleep.md)).
-- **FR-11**: Workouts: two workouts from different sources or different origins with the same activity family overlapping by more than 80 percent of the shorter one are flagged as duplicates. The lower priority one is hidden from lists and totals but kept, and can be shown or promoted. Between two workouts of the same source, for example received through both an XML import and Health Auto Export, the one with a route is kept, then the one imported first.
+- **FR-11**: Workouts: two workouts from different sources or different origins with the same activity family (the family of their activity type in the activity type catalog, see [Storage and aggregates](data-storage-and-aggregates.md) FR-4) overlapping by more than 80 percent of the shorter one are flagged as duplicates. The lower priority one is hidden from lists and totals but kept, and can be shown or promoted. Between two workouts of the same source, for example received through both an XML import and Health Auto Export, the one with a route is kept, then the one imported first.
 
 ## UX notes
 
@@ -63,7 +68,7 @@ Two problems make naive sums wrong: the same data arrives several times (re-impo
 
 ## Data and API notes
 
-- Tables: `sources`, `source_aliases`, `source_priorities` (user, type, ordered list, ignored list, combine flag).
+- Tables: `sources` (unique `(user_id, name, device_model)`, the model being an empty string when unknown), `source_aliases`, `source_priorities` (user, type, ordered list, ignored list, combine flag).
 - Endpoints: `GET/PATCH /api/v1/sources`, `POST /api/v1/sources/merge`, `GET/PUT /api/v1/metrics/{type}/sources`.
 
 ## Edge cases
@@ -71,7 +76,7 @@ Two problems make naive sums wrong: the same data arrives several times (re-impo
 - Watch not worn for part of an hour while the phone counted steps: the hour uses the watch only, so a few steps can be missed. This is the accepted trade-off of hour granularity, documented in the UI help.
 - Summarized Health Auto Export data and raw XML data for the same hours: the `aggregated` source wins by default, no double counting.
 - A source that changes kind (phone app moved to watch): user correction persists.
-- Sources with identical names on two different devices: separated by device model when available, otherwise treated as one source.
+- Sources with identical names on two different devices: separated by device model (FR-2). A record of that name without model goes to the source of that name without model, or creates it.
 
 ## Acceptance criteria
 
