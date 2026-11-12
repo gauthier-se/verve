@@ -74,3 +74,42 @@ func TestTranslations_MatchTheCatalog(t *testing.T) {
 		})
 	}
 }
+
+// readActivityTexts reads web/src/locales/<language>/activities.json: the name of each activity
+// type, by its key.
+func readActivityTexts(t *testing.T, language string) map[string]string {
+	t.Helper()
+
+	data, err := os.ReadFile(filepath.Join("..", "..", "web", "src", "locales", language, "activities.json")) //nolint:gosec // G304: a locale file of the repository
+	require.NoError(t, err)
+
+	var texts map[string]string
+	require.NoError(t, json.Unmarshal(data, &texts), language)
+
+	return texts
+}
+
+// Given an activity key, then the activities files hold its name. Given a key in these files that
+// the catalog lacks, then the test fails too.
+func TestActivityTranslations_MatchTheCatalog(t *testing.T) {
+	t.Parallel()
+
+	activities := shippedActivities(t).All()
+
+	for _, language := range []string{"en", "fr"} {
+		t.Run(language, func(t *testing.T) {
+			t.Parallel()
+
+			texts := readActivityTexts(t, language)
+			keys := make([]string, 0, len(activities))
+
+			for _, activity := range activities {
+				keys = append(keys, activity.Key)
+				require.NotEmpty(t, strings.TrimSpace(texts[activity.Key]), "%s has no name", activity.Key)
+			}
+
+			require.ElementsMatch(t, keys, slices.Collect(maps.Keys(texts)),
+				"the keys of the file and those of the catalog differ")
+		})
+	}
+}

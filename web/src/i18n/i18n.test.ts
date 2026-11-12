@@ -90,4 +90,17 @@ describe("translations", () => {
       ).toBe(value);
     },
   );
+
+  it.each([
+    { lng: "en", name: "Running" },
+    { lng: "fr", name: "Course à pied" },
+  ])(
+    "given an activity key, when $lng translates it in the activities namespace, then it shows its name",
+    async ({ lng, name }) => {
+      const i18n = await initI18n();
+      await i18n.changeLanguage(lng);
+
+      expect(i18n.t("running", { ns: "activities" })).toBe(name);
+    },
+  );
 });
