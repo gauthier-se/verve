@@ -1,0 +1,8 @@
+[
+  {"time": "2026-02-07T08:15:00Z", "lat": 0.0012, "lon": -0.0034},
+  {"time": "2026-02-07T08:15:01Z", "lat": 0.00121, "lon": -0.00338, "altitude": 42.5, "speed": 3.1},
+  {"time": "2026-02-07T08:15:02Z", "lat": 0.00122, "lon": -0.00336, "altitude": 42.6, "speed": -1, "course": -1},
+  {"time": "2026-02-07T08:15:03Z", "lat": 0.00124, "lon": -0.00335, "horizontalAccuracy": -1, "verticalAccuracy": 4.2},
+  {"time": "2026-02-07T08:17:30Z", "lat": 0.00180, "lon": -0.00290, "altitude": -2.25, "horizontalAccuracy": 12.75, "course": 45},
+  {"time": "2026-02-07T08:17:31Z", "lat": 0.00181, "lon": -0.00288, "altitude": -2.3, "horizontalAccuracy": 11.5, "verticalAccuracy": 5, "speed": 2.8, "course": 46.5}
+]
