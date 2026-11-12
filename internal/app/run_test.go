@@ -396,6 +396,58 @@ func TestRun_SyncsTheMetricTypesAfterMigrationsAndBeforeTheWorker(t *testing.T) 
 	}
 }
 
+// Given a session, then GET /api/v1/metrics lists the types of the shipped catalog with their
+// category values.
+func TestRun_ListsTheMetricTypesOfTheShippedCatalog(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	cfg := testConfig(t.TempDir())
+
+	_, err := Migrate(ctx, cfg, discardLogger())
+	require.NoError(t, err)
+
+	db, err := sqlite.Open(ctx, filepath.Join(cfg.DataDir, dbFile))
+	require.NoError(t, err)
+
+	s := sqlite.New(db, clock.Real())
+
+	user, err := s.Users().Create(ctx, store.NewUser{Username: "alice", Role: store.RoleMember})
+	require.NoError(t, err)
+
+	id, _, err := auth.NewSessions(clock.Real()).Create(ctx, s, auth.NewSession{UserID: user.ID, Method: store.LoginPassword})
+	require.NoError(t, err)
+	require.NoError(t, db.CloseShared())
+
+	addr, _, stop := startRun(t, cfg)
+	defer stop()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+addr+"/api/v1/metrics", nil)
+	require.NoError(t, err)
+	req.Header.Set("Cookie", "verve_session="+id)
+
+	res, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+
+	var body struct {
+		Items []struct {
+			Key    string   `json:"key"`
+			Values []string `json:"values"`
+		} `json:"items"`
+	}
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&body))
+	require.NoError(t, res.Body.Close())
+	require.Equal(t, http.StatusOK, res.StatusCode)
+
+	values := make(map[string][]string, len(body.Items))
+	for _, item := range body.Items {
+		values[item.Key] = item.Values
+	}
+
+	require.Contains(t, values, "heart_rate")
+	require.Contains(t, values["sleep_analysis"], "asleep_core")
+}
+
 // Given shutdown and a handler that takes time to stop, then the database closes after it returned,
 // so that its result is still written.
 func TestRun_ShutdownWaitsForARunningJobBeforeClosingTheDatabase(t *testing.T) {
