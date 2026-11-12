@@ -11,6 +11,7 @@ CREATE TABLE sources (
     display_name     TEXT    NOT NULL CHECK (display_name <> ''),
     bundle_id        TEXT    NOT NULL,
     device_name      TEXT    NOT NULL,
+    manufacturer     TEXT    NOT NULL,
     hardware_version TEXT    NOT NULL,
     software_version TEXT    NOT NULL,
     kind             TEXT    NOT NULL CHECK (kind IN ('watch', 'phone', 'scale', 'ring', 'app', 'aggregated', 'unknown')),

@@ -111,6 +111,7 @@ type Source struct {
 	DisplayName     string
 	BundleID        string
 	DeviceName      string
+	Manufacturer    string
 	HardwareVersion string
 	SoftwareVersion string
 	Kind            string

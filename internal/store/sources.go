@@ -47,6 +47,7 @@ type SourceInfo struct {
 	DeviceModel     string
 	BundleID        string
 	DeviceName      string
+	Manufacturer    string
 	HardwareVersion string
 	SoftwareVersion string
 }
@@ -61,10 +62,11 @@ type Source struct {
 	DeviceModel string
 	// DisplayName is the name shown to the user: Name until the user renames the source.
 	DisplayName string
-	// BundleID, DeviceName, HardwareVersion and SoftwareVersion are those of the latest record that
-	// gave them.
+	// BundleID, DeviceName, Manufacturer, HardwareVersion and SoftwareVersion are those of the latest
+	// record that gave them.
 	BundleID        string
 	DeviceName      string
+	Manufacturer    string
 	HardwareVersion string
 	SoftwareVersion string
 	Kind            SourceKind

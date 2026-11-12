@@ -10,10 +10,10 @@ import (
 )
 
 const createSource = `-- name: CreateSource :one
-INSERT INTO sources (user_id, name, device_model, display_name, bundle_id, device_name, hardware_version,
+INSERT INTO sources (user_id, name, device_model, display_name, bundle_id, device_name, manufacturer, hardware_version,
                      software_version, kind, kind_set_by_user, first_seen_at, last_seen_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
-RETURNING id, user_id, name, device_model, display_name, bundle_id, device_name, hardware_version, software_version, kind, kind_set_by_user, first_seen_at, last_seen_at
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+RETURNING id, user_id, name, device_model, display_name, bundle_id, device_name, manufacturer, hardware_version, software_version, kind, kind_set_by_user, first_seen_at, last_seen_at
 `
 
 type CreateSourceParams struct {
@@ -23,6 +23,7 @@ type CreateSourceParams struct {
 	DisplayName     string
 	BundleID        string
 	DeviceName      string
+	Manufacturer    string
 	HardwareVersion string
 	SoftwareVersion string
 	Kind            string
@@ -38,6 +39,7 @@ func (q *Queries) CreateSource(ctx context.Context, arg CreateSourceParams) (Sou
 		arg.DisplayName,
 		arg.BundleID,
 		arg.DeviceName,
+		arg.Manufacturer,
 		arg.HardwareVersion,
 		arg.SoftwareVersion,
 		arg.Kind,
@@ -53,6 +55,7 @@ func (q *Queries) CreateSource(ctx context.Context, arg CreateSourceParams) (Sou
 		&i.DisplayName,
 		&i.BundleID,
 		&i.DeviceName,
+		&i.Manufacturer,
 		&i.HardwareVersion,
 		&i.SoftwareVersion,
 		&i.Kind,
@@ -86,7 +89,7 @@ func (q *Queries) CreateSourceAlias(ctx context.Context, arg CreateSourceAliasPa
 }
 
 const getUserSource = `-- name: GetUserSource :one
-SELECT id, user_id, name, device_model, display_name, bundle_id, device_name, hardware_version, software_version, kind, kind_set_by_user, first_seen_at, last_seen_at
+SELECT id, user_id, name, device_model, display_name, bundle_id, device_name, manufacturer, hardware_version, software_version, kind, kind_set_by_user, first_seen_at, last_seen_at
 FROM sources
 WHERE user_id = ? AND id = ?
 `
@@ -107,6 +110,7 @@ func (q *Queries) GetUserSource(ctx context.Context, arg GetUserSourceParams) (S
 		&i.DisplayName,
 		&i.BundleID,
 		&i.DeviceName,
+		&i.Manufacturer,
 		&i.HardwareVersion,
 		&i.SoftwareVersion,
 		&i.Kind,
@@ -118,7 +122,7 @@ func (q *Queries) GetUserSource(ctx context.Context, arg GetUserSourceParams) (S
 }
 
 const getUserSourceByIdentity = `-- name: GetUserSourceByIdentity :one
-SELECT id, user_id, name, device_model, display_name, bundle_id, device_name, hardware_version, software_version, kind, kind_set_by_user, first_seen_at, last_seen_at
+SELECT id, user_id, name, device_model, display_name, bundle_id, device_name, manufacturer, hardware_version, software_version, kind, kind_set_by_user, first_seen_at, last_seen_at
 FROM sources
 WHERE user_id = ? AND name = ? AND device_model = ?
 `
@@ -140,6 +144,7 @@ func (q *Queries) GetUserSourceByIdentity(ctx context.Context, arg GetUserSource
 		&i.DisplayName,
 		&i.BundleID,
 		&i.DeviceName,
+		&i.Manufacturer,
 		&i.HardwareVersion,
 		&i.SoftwareVersion,
 		&i.Kind,
@@ -190,7 +195,7 @@ func (q *Queries) ListUserSourceAliasesByName(ctx context.Context, arg ListUserS
 }
 
 const listUserSources = `-- name: ListUserSources :many
-SELECT id, user_id, name, device_model, display_name, bundle_id, device_name, hardware_version, software_version, kind, kind_set_by_user, first_seen_at, last_seen_at
+SELECT id, user_id, name, device_model, display_name, bundle_id, device_name, manufacturer, hardware_version, software_version, kind, kind_set_by_user, first_seen_at, last_seen_at
 FROM sources
 WHERE user_id = ?
 ORDER BY id
@@ -213,6 +218,7 @@ func (q *Queries) ListUserSources(ctx context.Context, userID int64) ([]Source, 
 			&i.DisplayName,
 			&i.BundleID,
 			&i.DeviceName,
+			&i.Manufacturer,
 			&i.HardwareVersion,
 			&i.SoftwareVersion,
 			&i.Kind,
@@ -234,7 +240,7 @@ func (q *Queries) ListUserSources(ctx context.Context, userID int64) ([]Source, 
 }
 
 const listUserSourcesByName = `-- name: ListUserSourcesByName :many
-SELECT id, user_id, name, device_model, display_name, bundle_id, device_name, hardware_version, software_version, kind, kind_set_by_user, first_seen_at, last_seen_at
+SELECT id, user_id, name, device_model, display_name, bundle_id, device_name, manufacturer, hardware_version, software_version, kind, kind_set_by_user, first_seen_at, last_seen_at
 FROM sources
 WHERE user_id = ? AND name = ?
 ORDER BY id
@@ -262,6 +268,7 @@ func (q *Queries) ListUserSourcesByName(ctx context.Context, arg ListUserSources
 			&i.DisplayName,
 			&i.BundleID,
 			&i.DeviceName,
+			&i.Manufacturer,
 			&i.HardwareVersion,
 			&i.SoftwareVersion,
 			&i.Kind,
@@ -286,7 +293,7 @@ const renameUserSource = `-- name: RenameUserSource :one
 UPDATE sources
 SET display_name = ?
 WHERE user_id = ? AND id = ?
-RETURNING id, user_id, name, device_model, display_name, bundle_id, device_name, hardware_version, software_version, kind, kind_set_by_user, first_seen_at, last_seen_at
+RETURNING id, user_id, name, device_model, display_name, bundle_id, device_name, manufacturer, hardware_version, software_version, kind, kind_set_by_user, first_seen_at, last_seen_at
 `
 
 type RenameUserSourceParams struct {
@@ -306,6 +313,7 @@ func (q *Queries) RenameUserSource(ctx context.Context, arg RenameUserSourcePara
 		&i.DisplayName,
 		&i.BundleID,
 		&i.DeviceName,
+		&i.Manufacturer,
 		&i.HardwareVersion,
 		&i.SoftwareVersion,
 		&i.Kind,
@@ -338,7 +346,7 @@ UPDATE sources
 SET kind             = ?,
     kind_set_by_user = 1
 WHERE user_id = ? AND id = ?
-RETURNING id, user_id, name, device_model, display_name, bundle_id, device_name, hardware_version, software_version, kind, kind_set_by_user, first_seen_at, last_seen_at
+RETURNING id, user_id, name, device_model, display_name, bundle_id, device_name, manufacturer, hardware_version, software_version, kind, kind_set_by_user, first_seen_at, last_seen_at
 `
 
 type SetUserSourceKindParams struct {
@@ -358,6 +366,7 @@ func (q *Queries) SetUserSourceKind(ctx context.Context, arg SetUserSourceKindPa
 		&i.DisplayName,
 		&i.BundleID,
 		&i.DeviceName,
+		&i.Manufacturer,
 		&i.HardwareVersion,
 		&i.SoftwareVersion,
 		&i.Kind,
@@ -373,18 +382,20 @@ UPDATE sources
 SET device_model     = ?,
     bundle_id        = ?,
     device_name      = ?,
+    manufacturer     = ?,
     hardware_version = ?,
     software_version = ?,
     kind             = ?,
     last_seen_at     = ?
 WHERE user_id = ? AND id = ?
-RETURNING id, user_id, name, device_model, display_name, bundle_id, device_name, hardware_version, software_version, kind, kind_set_by_user, first_seen_at, last_seen_at
+RETURNING id, user_id, name, device_model, display_name, bundle_id, device_name, manufacturer, hardware_version, software_version, kind, kind_set_by_user, first_seen_at, last_seen_at
 `
 
 type UpdateSourceParams struct {
 	DeviceModel     string
 	BundleID        string
 	DeviceName      string
+	Manufacturer    string
 	HardwareVersion string
 	SoftwareVersion string
 	Kind            string
@@ -398,6 +409,7 @@ func (q *Queries) UpdateSource(ctx context.Context, arg UpdateSourceParams) (Sou
 		arg.DeviceModel,
 		arg.BundleID,
 		arg.DeviceName,
+		arg.Manufacturer,
 		arg.HardwareVersion,
 		arg.SoftwareVersion,
 		arg.Kind,
@@ -414,6 +426,7 @@ func (q *Queries) UpdateSource(ctx context.Context, arg UpdateSourceParams) (Sou
 		&i.DisplayName,
 		&i.BundleID,
 		&i.DeviceName,
+		&i.Manufacturer,
 		&i.HardwareVersion,
 		&i.SoftwareVersion,
 		&i.Kind,

@@ -10,9 +10,9 @@ WHERE user_id = ?
 ORDER BY id;
 
 -- name: CreateSource :one
-INSERT INTO sources (user_id, name, device_model, display_name, bundle_id, device_name, hardware_version,
+INSERT INTO sources (user_id, name, device_model, display_name, bundle_id, device_name, manufacturer, hardware_version,
                      software_version, kind, kind_set_by_user, first_seen_at, last_seen_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
 RETURNING *;
 
 -- name: ListUserSourcesByName :many
@@ -26,6 +26,7 @@ UPDATE sources
 SET device_model     = ?,
     bundle_id        = ?,
     device_name      = ?,
+    manufacturer     = ?,
     hardware_version = ?,
     software_version = ?,
     kind             = ?,
