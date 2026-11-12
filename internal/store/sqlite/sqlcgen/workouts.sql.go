@@ -260,6 +260,25 @@ SET source_id      = ?1,
     import_id      = ?20
 WHERE user_id = ?21
   AND natural_key = ?22
+  AND (source_id IS NOT ?1
+    OR origin IS NOT ?2
+    OR external_id IS NOT ?3
+    OR activity IS NOT ?4
+    OR start_at IS NOT ?5
+    OR end_at IS NOT ?6
+    OR utc_offset IS NOT ?7
+    OR duration IS NOT ?8
+    OR distance IS NOT ?9
+    OR active_energy IS NOT ?10
+    OR total_energy IS NOT ?11
+    OR elevation_gain IS NOT ?12
+    OR elevation_loss IS NOT ?13
+    OR avg_heart_rate IS NOT ?14
+    OR max_heart_rate IS NOT ?15
+    OR indoor IS NOT ?16
+    OR location_type IS NOT ?17
+    OR events IS NOT ?18
+    OR metadata IS NOT ?19)
 RETURNING id
 `
 
@@ -288,7 +307,8 @@ type UpdateWorkoutParams struct {
 	NaturalKey    []byte
 }
 
-// Replaces every field of the workout of a natural key but its id, user and natural key.
+// Replaces every field of the workout of a natural key but its id, user and natural key, when one of
+// them differs, the import id aside. Returns no row when none differs.
 func (q *Queries) UpdateWorkout(ctx context.Context, arg UpdateWorkoutParams) (int64, error) {
 	row := q.db.QueryRowContext(ctx, updateWorkout,
 		arg.SourceID,

@@ -8,7 +8,8 @@ ON CONFLICT (user_id, natural_key) DO NOTHING
 RETURNING id;
 
 -- name: UpdateWorkout :one
--- Replaces every field of the workout of a natural key but its id, user and natural key.
+-- Replaces every field of the workout of a natural key but its id, user and natural key, when one of
+-- them differs, the import id aside. Returns no row when none differs.
 UPDATE workouts
 SET source_id      = sqlc.arg(source_id),
     origin         = sqlc.arg(origin),
@@ -32,6 +33,25 @@ SET source_id      = sqlc.arg(source_id),
     import_id      = sqlc.arg(import_id)
 WHERE user_id = sqlc.arg(user_id)
   AND natural_key = sqlc.arg(natural_key)
+  AND (source_id IS NOT sqlc.arg(source_id)
+    OR origin IS NOT sqlc.arg(origin)
+    OR external_id IS NOT sqlc.arg(external_id)
+    OR activity IS NOT sqlc.arg(activity)
+    OR start_at IS NOT sqlc.arg(start_at)
+    OR end_at IS NOT sqlc.arg(end_at)
+    OR utc_offset IS NOT sqlc.arg(utc_offset)
+    OR duration IS NOT sqlc.arg(duration)
+    OR distance IS NOT sqlc.narg(distance)
+    OR active_energy IS NOT sqlc.narg(active_energy)
+    OR total_energy IS NOT sqlc.narg(total_energy)
+    OR elevation_gain IS NOT sqlc.narg(elevation_gain)
+    OR elevation_loss IS NOT sqlc.narg(elevation_loss)
+    OR avg_heart_rate IS NOT sqlc.narg(avg_heart_rate)
+    OR max_heart_rate IS NOT sqlc.narg(max_heart_rate)
+    OR indoor IS NOT sqlc.narg(indoor)
+    OR location_type IS NOT sqlc.arg(location_type)
+    OR events IS NOT sqlc.arg(events)
+    OR metadata IS NOT sqlc.narg(metadata))
 RETURNING id;
 
 -- name: GetUserWorkoutIDByNaturalKey :one

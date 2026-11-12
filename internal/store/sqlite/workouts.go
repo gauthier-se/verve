@@ -202,19 +202,33 @@ func upsertWorkout(ctx context.Context, q *sqlcgen.Queries, userID int64, workou
 		return store.WorkoutUpsert{}, constraintError(err)
 	}
 
-	if workout.OnConflict == store.ConflictIgnore {
-		id, err := q.GetUserWorkoutIDByNaturalKey(ctx, sqlcgen.GetUserWorkoutIDByNaturalKeyParams{
-			UserID:     userID,
-			NaturalKey: workout.NaturalKey,
-		})
-		if err != nil {
-			return store.WorkoutUpsert{}, err
+	if workout.OnConflict == store.ConflictUpdate {
+		id, err := updateWorkout(ctx, q, userID, workout, events)
+		if err == nil {
+			return store.WorkoutUpsert{ID: id, Outcome: store.OutcomeUpdated}, nil
 		}
 
-		return store.WorkoutUpsert{ID: id, Outcome: store.OutcomeDuplicate}, nil
+		if !errors.Is(err, sql.ErrNoRows) {
+			return store.WorkoutUpsert{}, constraintError(err)
+		}
 	}
 
-	id, err = q.UpdateWorkout(ctx, sqlcgen.UpdateWorkoutParams{
+	// The rule ignore, or the rule update of a workout that changed nothing: the stored one stays.
+	id, err = q.GetUserWorkoutIDByNaturalKey(ctx, sqlcgen.GetUserWorkoutIDByNaturalKeyParams{
+		UserID:     userID,
+		NaturalKey: workout.NaturalKey,
+	})
+	if err != nil {
+		return store.WorkoutUpsert{}, err
+	}
+
+	return store.WorkoutUpsert{ID: id, Outcome: store.OutcomeDuplicate}, nil
+}
+
+// updateWorkout replaces the stored workout of the natural key of workout, of the user of userID,
+// and returns its id. It returns sql.ErrNoRows when no field but the import id differs.
+func updateWorkout(ctx context.Context, q *sqlcgen.Queries, userID int64, workout store.NewWorkout, events string) (int64, error) {
+	return q.UpdateWorkout(ctx, sqlcgen.UpdateWorkoutParams{
 		SourceID:      workout.SourceID,
 		Origin:        string(workout.Origin),
 		ExternalID:    workout.ExternalID,
@@ -238,11 +252,6 @@ func upsertWorkout(ctx context.Context, q *sqlcgen.Queries, userID int64, workou
 		UserID:        userID,
 		NaturalKey:    workout.NaturalKey,
 	})
-	if err != nil {
-		return store.WorkoutUpsert{}, constraintError(err)
-	}
-
-	return store.WorkoutUpsert{ID: id, Outcome: store.OutcomeUpdated}, nil
 }
 
 // workoutEvent is the JSON of an event in the events column, times in Unix milliseconds.

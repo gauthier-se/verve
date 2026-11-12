@@ -7,8 +7,9 @@ import (
 )
 
 // ConflictUpdate is the conflict rule of a workout with an external id (FR-1 of Deduplication and
-// source priority): it replaces every field of the stored workout but its id, so that its route
-// stays attached, and the workout is updated. Samples do not take it.
+// source priority). When a field of the stored workout differs, the import id aside, it replaces
+// every field but the id, so that its route stays attached, and the workout is updated. Otherwise
+// the stored workout stays as it is, and the workout is a duplicate. Samples do not take it.
 const ConflictUpdate ConflictRule = "update"
 
 // LocationType is where a workout took place.
