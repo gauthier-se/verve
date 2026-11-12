@@ -2,8 +2,10 @@ package httpapi
 
 import (
 	"encoding/json"
+	"maps"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 	"time"
 
@@ -72,11 +74,11 @@ func (m metricsTest) mustTypeByKey(t *testing.T, key string) store.MetricType {
 	return metricType
 }
 
-// mustEnsureUncurated returns the uncurated quantity type of identifier, in count, creating it.
-func (m metricsTest) mustEnsureUncurated(t *testing.T, identifier string) store.MetricType {
+// mustEnsureUncurated returns the uncurated quantity type of identifier, in unit, creating it.
+func (m metricsTest) mustEnsureUncurated(t *testing.T, identifier, unit string) store.MetricType {
 	t.Helper()
 
-	metricType, err := m.store.MetricTypes().EnsureUncurated(t.Context(), identifier, catalog.KindQuantity, "count")
+	metricType, err := m.store.MetricTypes().EnsureUncurated(t.Context(), identifier, catalog.KindQuantity, unit)
 	require.NoError(t, err)
 
 	return metricType
@@ -167,7 +169,7 @@ func TestListMetrics_ListsEveryCuratedType(t *testing.T) {
 		keys = append(keys, curated.Key)
 	}
 
-	require.ElementsMatch(t, keys, mapKeys(got))
+	require.ElementsMatch(t, keys, slices.Collect(maps.Keys(got)))
 
 	require.Equal(t, metricItem{
 		Key:         "heart_rate",
@@ -190,16 +192,6 @@ func TestListMetrics_ListsEveryCuratedType(t *testing.T) {
 		Curated:     true,
 		Values:      []string{"in_bed", "awake", "asleep_core", "asleep_deep", "asleep_rem", "asleep_unspecified"},
 	}, got["sleep_analysis"])
-}
-
-// mapKeys returns the keys of byKey, in any order.
-func mapKeys(byKey map[string]metricItem) []string {
-	keys := make([]string, 0, len(byKey))
-	for key := range byKey {
-		keys = append(keys, key)
-	}
-
-	return keys
 }
 
 // Given samples of a type, then its availability holds the first and last start and the count of my
@@ -230,9 +222,9 @@ func TestListMetrics_ListsTheUncuratedTypesOfMySamplesOnly(t *testing.T) {
 	t.Parallel()
 
 	m := newMetricsTest(t)
-	mine := m.mustEnsureUncurated(t, "Mindful Breaths")
-	theirs := m.mustEnsureUncurated(t, "Cold Plunges")
-	unused := m.mustEnsureUncurated(t, "Sauna Sessions")
+	mine := m.mustEnsureUncurated(t, "Mindful Breaths", "count")
+	theirs := m.mustEnsureUncurated(t, "Cold Plunges", "count")
+	unused := m.mustEnsureUncurated(t, "Sauna Sessions", "count")
 
 	start := time.Date(2025, 3, 1, 8, 0, 0, 0, time.UTC)
 	m.mustStoreSamples(t, m.alice, m.aliceSource, mine, start)
@@ -254,9 +246,7 @@ func TestListMetrics_ListsATypeCreatedOnFirstSight(t *testing.T) {
 	t.Parallel()
 
 	m := newMetricsTest(t)
-	created, err := m.store.MetricTypes().EnsureUncurated(t.Context(), "HKQuantityTypeIdentifierFutureMetric",
-		catalog.KindQuantity, "count/min")
-	require.NoError(t, err)
+	created := m.mustEnsureUncurated(t, "HKQuantityTypeIdentifierFutureMetric", "count/min")
 
 	m.mustStoreSamples(t, m.alice, m.aliceSource, created, time.Date(2025, 3, 1, 8, 0, 0, 0, time.UTC))
 

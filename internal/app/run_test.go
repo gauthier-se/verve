@@ -429,15 +429,18 @@ func TestRun_ListsTheMetricTypesOfTheShippedCatalog(t *testing.T) {
 	res, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 
+	raw, err := io.ReadAll(res.Body)
+	require.NoError(t, err)
+	require.NoError(t, res.Body.Close())
+	require.Equal(t, http.StatusOK, res.StatusCode, string(raw))
+
 	var body struct {
 		Items []struct {
 			Key    string   `json:"key"`
 			Values []string `json:"values"`
 		} `json:"items"`
 	}
-	require.NoError(t, json.NewDecoder(res.Body).Decode(&body))
-	require.NoError(t, res.Body.Close())
-	require.Equal(t, http.StatusOK, res.StatusCode)
+	require.NoError(t, json.Unmarshal(raw, &body))
 
 	values := make(map[string][]string, len(body.Items))
 	for _, item := range body.Items {
