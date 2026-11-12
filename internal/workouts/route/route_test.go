@@ -121,18 +121,25 @@ func TestCodec_RoundTrip_NegativeInvalidValuesComeBackAbsent(t *testing.T) {
 
 	at := time.Date(2026, 3, 14, 7, 0, 0, 0, time.UTC)
 
-	points := []route.Point{{
-		Time:               at,
-		Lat:                0.001,
-		Lon:                0.002,
-		Altitude:           ptr(-3),
-		HorizontalAccuracy: ptr(-1),
-		VerticalAccuracy:   ptr(-1),
-		Speed:              ptr(-1),
-		Course:             ptr(-1),
-	}}
+	points := []route.Point{
+		{
+			Time:               at,
+			Lat:                0.001,
+			Lon:                0.002,
+			Altitude:           ptr(-3),
+			HorizontalAccuracy: ptr(-1),
+			VerticalAccuracy:   ptr(-1),
+			Speed:              ptr(-1),
+			Course:             ptr(-1),
+		},
+		// Negative, although it rounds to 0 cm/s.
+		{Time: at.Add(time.Second), Lat: 0.001, Lon: 0.002, Speed: ptr(-0.004)},
+	}
 
-	want := []route.Point{{Time: at, Lat: 0.001, Lon: 0.002, Altitude: ptr(-3)}}
+	want := []route.Point{
+		{Time: at, Lat: 0.001, Lon: 0.002, Altitude: ptr(-3)},
+		{Time: at.Add(time.Second), Lat: 0.001, Lon: 0.002},
+	}
 
 	require.Equal(t, want, roundTrip(t, points))
 }

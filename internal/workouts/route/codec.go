@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/bits"
 	"time"
 
 	"github.com/klauspost/compress/zstd"
@@ -96,13 +97,17 @@ func (c *Codec) Encode(points []Point) ([]byte, error) {
 
 		for i := range points {
 			v := *f.value(&points[i])
-			if v == nil || (!f.signed && *v < 0) {
+			if v == nil {
 				continue
 			}
 
 			units, ok := toUnits(*v, centiUnits)
 			if !ok {
 				return nil, fmt.Errorf("encode route: point %d: invalid %s %v", i, f.name, *v)
+			}
+
+			if !f.signed && *v < 0 {
+				continue
 			}
 
 			bitmap[i/8] |= 1 << (i % 8)
@@ -173,9 +178,13 @@ func decodeColumns(raw []byte) ([]Point, error) {
 	for _, f := range optionalFields {
 		bitmap := r.bytes((n + 7) / 8)
 
+		if n%8 != 0 && bitmap[len(bitmap)-1]>>(n%8) != 0 {
+			return nil, fmt.Errorf("%s bitmap: bit set past the last point", f.name)
+		}
+
 		present := 0
 		for _, b := range bitmap {
-			present += bitsSet(b)
+			present += bits.OnesCount8(b)
 		}
 
 		values := r.deltas(present)
@@ -238,16 +247,6 @@ func appendDeltas(buf []byte, values []int64) []byte {
 	}
 
 	return buf
-}
-
-// bitsSet returns the number of bits set in b.
-func bitsSet(b byte) int {
-	n := 0
-	for ; b != 0; b &= b - 1 {
-		n++
-	}
-
-	return n
 }
 
 // reader reads a decompressed encoding. After the first error, it returns zero values and keeps
