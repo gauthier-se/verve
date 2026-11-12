@@ -426,6 +426,67 @@ export type Meta = {
     version: string;
 };
 
+export type Metric = {
+    /**
+     * How the values add up: cumulative values are summed, such as steps, discrete ones averaged, such as heart rate.
+     */
+    aggregation: 'cumulative' | 'discrete';
+    /**
+     * The data of the current user for the type, or null when they have no sample of it.
+     */
+    availability: MetricAvailability;
+    /**
+     * False for a type that the catalog does not list, created when its data was first seen.
+     */
+    curated: boolean;
+    /**
+     * The display group of the type.
+     */
+    group: 'activity' | 'heart' | 'body' | 'sleep' | 'nutrition' | 'respiratory' | 'vitals' | 'mobility' | 'hearing' | 'cycle' | 'symptoms' | 'other';
+    /**
+     * The identifier received for the type: the HealthKit identifier, or the name an uncurated type was first seen with.
+     */
+    identifier: string;
+    /**
+     * The key of the type, which names it in the API and in the translations.
+     */
+    key: string;
+    /**
+     * The kind of the samples of the type.
+     */
+    kind: 'quantity' | 'category';
+    /**
+     * The canonical unit of the values. A category type has the unit count.
+     */
+    unit: string;
+    /**
+     * The keys of the values of a category type that the catalog lists, in the order of the catalog. Empty for a quantity type and an uncurated type, whose samples keep the values as received.
+     */
+    values: Array<string>;
+};
+
+export type MetricAvailability = {
+    /**
+     * The number of samples.
+     */
+    count: number;
+    /**
+     * The start of the first sample.
+     */
+    firstAt: string;
+    /**
+     * The start of the last sample.
+     */
+    lastAt: string;
+} | null;
+
+export type MetricsOutputBody = {
+    /**
+     * The curated types, and the uncurated types the current user has samples of, sorted by id.
+     */
+    items: Array<Metric>;
+};
+
 export type PageAdminUser = {
     /**
      * The items of the page, newest first.
@@ -1743,6 +1804,39 @@ export type GetMetaResponses = {
 };
 
 export type GetMetaResponse = GetMetaResponses[keyof GetMetaResponses];
+
+export type ListMetricsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/metrics';
+};
+
+export type ListMetricsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Forbidden
+     */
+    403: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type ListMetricsError = ListMetricsErrors[keyof ListMetricsErrors];
+
+export type ListMetricsResponses = {
+    /**
+     * OK
+     */
+    200: MetricsOutputBody;
+};
+
+export type ListMetricsResponse = ListMetricsResponses[keyof ListMetricsResponses];
 
 export type ResetPasswordData = {
     body: ResetPasswordInputBody;

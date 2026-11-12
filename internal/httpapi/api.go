@@ -9,6 +9,7 @@ import (
 
 	"github.com/gauthier-se/verve/internal/auth"
 	"github.com/gauthier-se/verve/internal/backup"
+	"github.com/gauthier-se/verve/internal/catalog"
 	"github.com/gauthier-se/verve/internal/config"
 	"github.com/gauthier-se/verve/internal/store"
 	"github.com/gauthier-se/verve/internal/version"
@@ -49,6 +50,9 @@ type APIDeps struct {
 	Jobs auth.JobQueue
 	// Tokens creates and revokes the API tokens of the users.
 	Tokens auth.Tokens
+	// Catalog is the metric type catalog shipped with the binary, which gives the category values
+	// of the metric types.
+	Catalog *catalog.Catalog
 }
 
 // useProblemErrors makes Huma build its errors as problems. huma.NewError is Huma's documented
@@ -92,6 +96,7 @@ func NewAPI(mux *http.ServeMux, deps APIDeps) huma.API {
 	registerAccountDeletion(api, deps)
 	registerAdminBackups(api, deps)
 	registerTokens(api, deps)
+	registerMetrics(api, deps)
 
 	return api
 }

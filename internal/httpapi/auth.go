@@ -35,6 +35,12 @@ func sessionSecurity() []map[string][]string {
 	return []map[string][]string{{sessionCookieSchemeName: {}}}
 }
 
+// scopeSecurity returns the security requirement of the operations of the public API that need a
+// session or a token with scope, as requireScope checks.
+func scopeSecurity(scope store.TokenScope) []map[string][]string {
+	return []map[string][]string{{sessionCookieSchemeName: {}}, {bearerTokenSchemeName: {string(scope)}}}
+}
+
 // sessionCookieScheme describes the session cookie in the OpenAPI document. The document is the
 // same for every instance, so it names the cookie without the prefix of the https instances.
 func sessionCookieScheme() *huma.SecurityScheme {

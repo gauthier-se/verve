@@ -10,6 +10,7 @@ import (
 
 	"github.com/gauthier-se/verve/internal/auth"
 	"github.com/gauthier-se/verve/internal/backup"
+	"github.com/gauthier-se/verve/internal/catalog"
 	"github.com/gauthier-se/verve/internal/clock"
 	"github.com/gauthier-se/verve/internal/config"
 	"github.com/gauthier-se/verve/internal/store"
@@ -51,6 +52,9 @@ type Deps struct {
 	Jobs auth.JobQueue
 	// Backups lists, opens and creates the backups of the instance.
 	Backups *backup.Backups
+	// Catalog is the metric type catalog shipped with the binary, which gives the category values
+	// of the metric types.
+	Catalog *catalog.Catalog
 }
 
 // NewHandler returns the root handler of the server: the health probes, the API, a JSON 404
@@ -88,6 +92,7 @@ func NewHandler(d Deps) http.Handler {
 		Backups:        d.Backups,
 		Jobs:           jobs,
 		Tokens:         auth.NewTokens(d.Clock),
+		Catalog:        d.Catalog,
 	})
 
 	if d.SPA != nil {

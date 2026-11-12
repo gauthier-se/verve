@@ -851,6 +851,146 @@
         ],
         "type": "object"
       },
+      "Metric": {
+        "additionalProperties": false,
+        "properties": {
+          "aggregation": {
+            "description": "How the values add up: cumulative values are summed, such as steps, discrete ones averaged, such as heart rate.",
+            "enum": [
+              "cumulative",
+              "discrete"
+            ],
+            "type": "string"
+          },
+          "availability": {
+            "$ref": "#/components/schemas/MetricAvailability",
+            "description": "The data of the current user for the type, or null when they have no sample of it."
+          },
+          "curated": {
+            "description": "False for a type that the catalog does not list, created when its data was first seen.",
+            "type": "boolean"
+          },
+          "group": {
+            "description": "The display group of the type.",
+            "enum": [
+              "activity",
+              "heart",
+              "body",
+              "sleep",
+              "nutrition",
+              "respiratory",
+              "vitals",
+              "mobility",
+              "hearing",
+              "cycle",
+              "symptoms",
+              "other"
+            ],
+            "type": "string"
+          },
+          "identifier": {
+            "description": "The identifier received for the type: the HealthKit identifier, or the name an uncurated type was first seen with.",
+            "examples": [
+              "HKQuantityTypeIdentifierHeartRate"
+            ],
+            "type": "string"
+          },
+          "key": {
+            "description": "The key of the type, which names it in the API and in the translations.",
+            "examples": [
+              "heart_rate"
+            ],
+            "type": "string"
+          },
+          "kind": {
+            "description": "The kind of the samples of the type.",
+            "enum": [
+              "quantity",
+              "category"
+            ],
+            "type": "string"
+          },
+          "unit": {
+            "description": "The canonical unit of the values. A category type has the unit count.",
+            "examples": [
+              "count/min"
+            ],
+            "type": "string"
+          },
+          "values": {
+            "description": "The keys of the values of a category type that the catalog lists, in the order of the catalog. Empty for a quantity type and an uncurated type, whose samples keep the values as received.",
+            "examples": [
+              [
+                "asleep_core"
+              ]
+            ],
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "key",
+          "identifier",
+          "kind",
+          "unit",
+          "aggregation",
+          "group",
+          "curated",
+          "values",
+          "availability"
+        ],
+        "type": "object"
+      },
+      "MetricAvailability": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "description": "The number of samples.",
+            "examples": [
+              1250
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "firstAt": {
+            "description": "The start of the first sample.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "lastAt": {
+            "description": "The start of the last sample.",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "firstAt",
+          "lastAt",
+          "count"
+        ],
+        "type": [
+          "object",
+          "null"
+        ]
+      },
+      "MetricsOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "description": "The curated types, and the uncurated types the current user has samples of, sorted by id.",
+            "items": {
+              "$ref": "#/components/schemas/Metric"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
       "PageAdminUser": {
         "additionalProperties": false,
         "properties": {
@@ -3476,6 +3616,68 @@
         "summary": "Get the server metadata",
         "tags": [
           "Meta"
+        ]
+      }
+    },
+    "/api/v1/metrics": {
+      "get": {
+        "description": "Returns every curated metric type, and the uncurated types the current user has samples of, with the first and last start and the count of their samples. Accepts a session or a token with the `read` scope.",
+        "operationId": "list-metrics",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricsOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerToken": [
+              "read"
+            ]
+          }
+        ],
+        "summary": "List the metric types",
+        "tags": [
+          "Metrics"
         ]
       }
     },
