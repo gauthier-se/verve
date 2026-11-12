@@ -22,12 +22,13 @@ var workoutsUTC = time.Date(2026, 11, 12, 17, 5, 0, 456_000_000, time.UTC)
 // allWorkouts is a range that holds every workout of the suite.
 var allWorkouts = store.WorkoutsQuery{From: time.Unix(0, 0), To: time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC)}
 
-// workoutsTest holds a store with two users and a source of each.
+// workoutsTest holds a store with two users, a watch source of each and a phone source of the first.
 type workoutsTest struct {
 	store   store.Store
 	user    store.User
 	other   store.User
 	source  store.Source
+	phone   store.Source
 	foreign store.Source
 }
 
@@ -44,6 +45,7 @@ func newWorkoutsTest(t *testing.T, newStore NewStoreFunc) workoutsTest {
 		user:    user,
 		other:   other,
 		source:  mustResolve(ctx, t, s.Sources(), user.ID, watchInfo, store.SourceWatch, workoutsTime),
+		phone:   mustResolve(ctx, t, s.Sources(), user.ID, sourceInfo("iPhone de Camille", "iPhone"), store.SourcePhone, workoutsTime),
 		foreign: mustResolve(ctx, t, s.Sources(), other.ID, watchInfo, store.SourceWatch, workoutsTime),
 	}
 }
@@ -291,6 +293,69 @@ func runWorkoutsConflicts(t *testing.T, newStore NewStoreFunc) {
 		require.Equal(t, store.WorkoutUpsert{ID: first.ID, Outcome: store.OutcomeUpdated}, got)
 
 		require.Equal(t, []store.Workout{storedWorkout(again, st.user.ID, first.ID)}, st.mustListAll(ctx, t, st.user.ID))
+	})
+
+	// Given the rule update and a stored workout, then the same workout, also from another import,
+	// counts as a duplicate and leaves it unchanged, import id included, so that a source that sends
+	// its workouts again rewrites nothing. A change of any other field counts as updated and replaces
+	// every field.
+	t.Run("UpdateOfAnUnchangedWorkoutIsADuplicate", func(t *testing.T) {
+		t.Parallel()
+
+		cases := []struct {
+			name    string
+			change  func(st workoutsTest, w *store.NewWorkout)
+			updated bool
+		}{
+			{"SameWorkout", func(workoutsTest, *store.NewWorkout) {}, false},
+			{"OtherImportOnly", func(_ workoutsTest, w *store.NewWorkout) { w.ImportID = 8 }, false},
+			{"Source", func(st workoutsTest, w *store.NewWorkout) { w.SourceID = st.phone.ID }, true},
+			{"Origin", func(_ workoutsTest, w *store.NewWorkout) { w.Origin = store.OriginNative }, true},
+			{"ExternalID", func(_ workoutsTest, w *store.NewWorkout) { w.ExternalID = "other" }, true},
+			{"Activity", func(_ workoutsTest, w *store.NewWorkout) { w.Activity = "trail_running" }, true},
+			{"Start", func(_ workoutsTest, w *store.NewWorkout) { w.Start = w.Start.Add(time.Second) }, true},
+			{"End", func(_ workoutsTest, w *store.NewWorkout) { w.End = w.End.Add(time.Second) }, true},
+			{"UTCOffset", func(_ workoutsTest, w *store.NewWorkout) { w.UTCOffset = 3600 }, true},
+			{"Duration", func(_ workoutsTest, w *store.NewWorkout) { w.Duration = 2701 }, true},
+			{"Distance", func(_ workoutsTest, w *store.NewWorkout) { w.Distance = nil }, true},
+			{"ActiveEnergy", func(_ workoutsTest, w *store.NewWorkout) { w.ActiveEnergy = ptr(600) }, true},
+			{"TotalEnergy", func(_ workoutsTest, w *store.NewWorkout) { w.TotalEnergy = nil }, true},
+			{"ElevationGain", func(_ workoutsTest, w *store.NewWorkout) { w.ElevationGain = ptr(85) }, true},
+			{"ElevationLoss", func(_ workoutsTest, w *store.NewWorkout) { w.ElevationLoss = nil }, true},
+			{"AvgHeartRate", func(_ workoutsTest, w *store.NewWorkout) { w.AvgHeartRate = ptr(150) }, true},
+			{"MaxHeartRate", func(_ workoutsTest, w *store.NewWorkout) { w.MaxHeartRate = nil }, true},
+			{"Indoor", func(_ workoutsTest, w *store.NewWorkout) { w.Indoor = nil }, true},
+			{"LocationType", func(_ workoutsTest, w *store.NewWorkout) { w.LocationType = store.LocationUnknown }, true},
+			{"Events", func(_ workoutsTest, w *store.NewWorkout) { w.Events = w.Events[1:] }, true},
+			{"NoMetadata", func(_ workoutsTest, w *store.NewWorkout) { w.Metadata = nil }, true},
+		}
+
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				st := newWorkoutsTest(t, newStore)
+				ctx := t.Context()
+
+				first := st.mustUpsert(ctx, t, st.user.ID, st.fullRun("hae"))
+				before := st.mustListAll(ctx, t, st.user.ID)
+
+				again := st.fullRun("hae")
+				tc.change(st, &again)
+
+				got := st.mustUpsert(ctx, t, st.user.ID, again)
+
+				if !tc.updated {
+					require.Equal(t, store.WorkoutUpsert{ID: first.ID, Outcome: store.OutcomeDuplicate}, got)
+					require.Equal(t, before, st.mustListAll(ctx, t, st.user.ID))
+
+					return
+				}
+
+				require.Equal(t, store.WorkoutUpsert{ID: first.ID, Outcome: store.OutcomeUpdated}, got)
+				require.Equal(t, []store.Workout{storedWorkout(again, st.user.ID, first.ID)}, st.mustListAll(ctx, t, st.user.ID))
+			})
+		}
 	})
 
 	// Given the rule ignore and a natural key already stored, then the workout counts as a duplicate
