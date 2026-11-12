@@ -20,18 +20,18 @@ type metricTexts struct {
 	Values      map[string]string `json:"values"`
 }
 
-// readMetricTexts reads web/src/locales/<language>/metrics.json, and fails on a field that a type
-// does not have.
-func readMetricTexts(t *testing.T, language string) map[string]metricTexts {
+// readTexts reads web/src/locales/<language>/<namespace>.json, and fails on a field that T does not
+// have.
+func readTexts[T any](t *testing.T, language, namespace string) map[string]T {
 	t.Helper()
 
-	data, err := os.ReadFile(filepath.Join("..", "..", "web", "src", "locales", language, "metrics.json")) //nolint:gosec // G304: a locale file of the repository
+	data, err := os.ReadFile(filepath.Join("..", "..", "web", "src", "locales", language, namespace+".json")) //nolint:gosec // G304: a locale file of the repository
 	require.NoError(t, err)
 
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 
-	var texts map[string]metricTexts
+	var texts map[string]T
 	require.NoError(t, dec.Decode(&texts), language)
 
 	return texts
@@ -48,7 +48,7 @@ func TestTranslations_MatchTheCatalog(t *testing.T) {
 		t.Run(language, func(t *testing.T) {
 			t.Parallel()
 
-			texts := readMetricTexts(t, language)
+			texts := readTexts[metricTexts](t, language, "metrics")
 			keys := make([]string, 0, len(types))
 
 			for _, typ := range types {
@@ -75,20 +75,6 @@ func TestTranslations_MatchTheCatalog(t *testing.T) {
 	}
 }
 
-// readActivityTexts reads web/src/locales/<language>/activities.json: the name of each activity
-// type, by its key.
-func readActivityTexts(t *testing.T, language string) map[string]string {
-	t.Helper()
-
-	data, err := os.ReadFile(filepath.Join("..", "..", "web", "src", "locales", language, "activities.json")) //nolint:gosec // G304: a locale file of the repository
-	require.NoError(t, err)
-
-	var texts map[string]string
-	require.NoError(t, json.Unmarshal(data, &texts), language)
-
-	return texts
-}
-
 // Given an activity key, then the activities files hold its name. Given a key in these files that
 // the catalog lacks, then the test fails too.
 func TestActivityTranslations_MatchTheCatalog(t *testing.T) {
@@ -100,7 +86,7 @@ func TestActivityTranslations_MatchTheCatalog(t *testing.T) {
 		t.Run(language, func(t *testing.T) {
 			t.Parallel()
 
-			texts := readActivityTexts(t, language)
+			texts := readTexts[string](t, language, "activities")
 			keys := make([]string, 0, len(activities))
 
 			for _, activity := range activities {
