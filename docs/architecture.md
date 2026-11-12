@@ -118,7 +118,7 @@ Domain code depends on repository interfaces declared in `internal/store`, never
 
 ### Job worker
 
-See [Job worker](features/platform-jobs.md). A single worker pool polls the `jobs` table. Jobs have a kind, a JSON payload, a status, an attempt counter, a `run_at` time and a lease (`locked_until`). Failed jobs are retried with exponential backoff, then marked failed and surfaced to admins. Kinds include `import.xml`, `import.hae`, `aggregate.recompute`, `workouts.records`, `energy.daily`, `plan.checkin`, `notify.deliver`, `backup.run`, `backup.create`, `export.build`, `cleanup.uploads`, `cleanup.sessions`, `jobs.purge`, `audit.purge`.
+See [Job worker](features/platform-jobs.md). A single worker pool polls the `jobs` table. Jobs have a kind, a JSON payload, a status, an attempt counter, a `run_at` time and a lease (`locked_until`). Failed jobs are retried with exponential backoff, then marked failed and surfaced to admins. Kinds include `import.xml`, `import.hae`, `import.native`, `aggregate.recompute`, `workouts.records`, `energy.daily`, `plan.checkin`, `notify.deliver`, `backup.run`, `backup.create`, `export.build`, `cleanup.uploads`, `cleanup.inbox`, `cleanup.sessions`, `jobs.purge`, `audit.purge`. Every import kind has the serial key `import:<user id>`, so that one import runs at a time per user whatever its origin ([Ingestion pipeline](features/ingestion-pipeline.md) FR-4).
 
 SQLite allows one writer at a time. The database runs in WAL mode with two connection pools: a single writer connection whose transactions start with `BEGIN IMMEDIATE`, so concurrent writers queue instead of failing with `SQLITE_BUSY`, and a read-only pool that long writes (imports) never block. Writers use short transactions (bounded batches) so that API requests are never blocked for long. A `busy_timeout` is set on every connection. On shutdown the database is closed after the HTTP server has stopped, and the WAL is checkpointed with `TRUNCATE` without waiting: when another process blocks the checkpoint, the WAL stays in place and the last connection to close finishes it. CLI commands that run next to the server skip that checkpoint, which would hold off its writers.
 
@@ -163,7 +163,8 @@ source payload
   -> block rules: drop matching records, count them
   -> dedupe: compute the natural key, upsert in batches
   -> dirty ranges: record (type, time range) per user, enqueue aggregate.recompute
-  -> import report: received, inserted, updated, duplicates, blocked, invalid, unsupported
+  -> import report: received, inserted, updated, duplicates, blocked, invalid, unsupported,
+                   suspicious, warnings, deleted, notFound, in total and per type
 ```
 
 See [Ingestion pipeline](features/ingestion-pipeline.md).
@@ -217,31 +218,37 @@ Every user-owned row carries a `user_id`. All queries are scoped by user, and th
 
 ### Units
 
-Values are stored in canonical units and converted only for display. The table covers every dimension of the HealthKit quantity types. An uncurated type keeps the unit it was received with. A category type has the unit count, since its samples are counted. The metric type catalog (`internal/catalog/catalog.yaml`) writes each unit as in the last column, without the range.
+Values are stored in canonical units and converted only for display. The table covers every dimension of the HealthKit quantity types, and lists for each the unit strings that the pipeline accepts, in the syntax of HealthKit unit strings (`HKUnit`). A category type has the unit count, since its samples are counted. The metric type catalog (`internal/catalog/catalog.yaml`) writes each canonical unit as in the last column, without the range.
 
-| Dimension | Examples | Canonical unit |
-|---|---|---|
-| Count | steps, flights climbed, falls, swimming strokes, inhaler usage, body mass index, UV index | count |
-| Mass | body mass, lean body mass, nutrients | kg |
-| Length, distance | distances, height, waist circumference, stride and step length, vertical oscillation, underwater depth | m |
-| Volume | water, forced vital capacity | L |
-| Energy | active, basal and dietary energy | kcal |
-| Duration | exercise, move, stand time, time in daylight | s |
-| Short duration | heart rate variability, running ground contact time | ms |
-| Rate | heart rate, respiratory rate, cycling cadence | count/min |
-| Speed | running, walking, cycling, stair speeds | m/s |
-| Power | running and cycling power | W |
-| Temperature | body, basal body, wrist and water temperature | degC |
-| Percentages | oxygen saturation, body fat, walking asymmetry, blood alcohol content | fraction (0 to 1) |
-| Blood glucose | blood glucose | mg/dL |
-| Blood pressure | systolic and diastolic | mmHg |
-| VO2max | VO2max | mL/(kg.min) |
-| Physical effort | physical effort (METs) | kcal/(kg.h) |
-| Effort score | workout effort score | appleEffortScore (1 to 10) |
-| Sound level | environmental and headphone audio exposure, sound reduction | dBASPL |
-| Air flow | peak expiratory flow rate | L/min |
-| Electrical conductance | electrodermal activity | S |
-| Insulin | insulin delivery | IU |
+- Unit strings are matched exactly, as HealthKit writes them, from a table in code in `internal/catalog`. HealthKit writes micro as `mc` (`mcg`), and a compound unit with a middle dot (`mL/min·kg`).
+- A value of a curated type with a unit that the table does not list, or lists for another dimension than the canonical unit of the type, is invalid ([Ingestion pipeline](features/ingestion-pipeline.md) FR-2).
+- Duration and short duration are one dimension, time, with two canonical units.
+- HealthKit writes percentages as fractions: a value of `0.97` with the unit `%` is 97 %, and is stored as `0.97`.
+- An uncurated type stores the unit of its first record as its unit, without conversion. A later record with the same unit is stored as received. A record with another unit converts to the unit of the type when both units are in the table and share a dimension, and is invalid otherwise.
+
+| Dimension | Examples | Accepted unit strings | Canonical unit |
+|---|---|---|---|
+| Count | steps, flights climbed, falls, swimming strokes, inhaler usage, body mass index, UV index | `count` | count |
+| Mass | body mass, lean body mass, nutrients | `kg`, `g`, `mg`, `mcg`, `lb`, `oz`, `st` | kg |
+| Length, distance | distances, height, waist circumference, stride and step length, vertical oscillation, underwater depth | `m`, `km`, `cm`, `mm`, `in`, `ft`, `yd`, `mi` | m |
+| Volume | water, forced vital capacity | `L`, `mL`, `fl_oz_us`, `fl_oz_imp`, `cup_us`, `cup_imp`, `pt_us`, `pt_imp` | L |
+| Energy | active, basal and dietary energy | `kcal`, `Cal`, `cal`, `kJ`, `J` | kcal |
+| Duration | exercise, move, stand time, time in daylight | `s`, `ms`, `min`, `hr`, `d` | s |
+| Short duration | heart rate variability, running ground contact time | `s`, `ms`, `min`, `hr`, `d` | ms |
+| Rate | heart rate, respiratory rate, cycling cadence | `count/min`, `count/s` | count/min |
+| Speed | running, walking, cycling, stair speeds | `m/s`, `km/hr`, `mi/hr` | m/s |
+| Power | running and cycling power | `W`, `kW` | W |
+| Temperature | body, basal body, wrist and water temperature | `degC`, `degF`, `K` | degC |
+| Percentages | oxygen saturation, body fat, walking asymmetry, blood alcohol content | `%` | fraction (0 to 1) |
+| Blood glucose | blood glucose | `mg/dL`, `mmol<180.15588000005408>/L` | mg/dL |
+| Blood pressure | systolic and diastolic | `mmHg`, `kPa` | mmHg |
+| VO2max | VO2max | `mL/min·kg` | mL/(kg.min) |
+| Physical effort | physical effort (METs) | `kcal/hr·kg` | kcal/(kg.h) |
+| Effort score | workout effort score | `appleEffortScore` | appleEffortScore (1 to 10) |
+| Sound level | environmental and headphone audio exposure, sound reduction | `dBASPL` | dBASPL |
+| Air flow | peak expiratory flow rate | `L/min` | L/min |
+| Electrical conductance | electrodermal activity | `S`, `mS`, `mcS` | S |
+| Insulin | insulin delivery | `IU` | IU |
 
 ### Security baseline
 
