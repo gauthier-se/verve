@@ -93,8 +93,8 @@ func TestActivities_UnknownKeyNameOrRawValue_ReportsUnknown(t *testing.T) {
 	}
 }
 
-// activity is a valid activity type whose fields a test replaces.
-const activity = `{key: running, identifier: HKWorkoutActivityTypeRunning, raw_value: 37, family: running}`
+// validActivity is a valid activity type entry that a test puts next to a broken one.
+const validActivity = `{key: running, identifier: HKWorkoutActivityTypeRunning, raw_value: 37, family: running}`
 
 // Given an activity catalog file that breaks a rule, when it is parsed, then it fails with an error
 // that names the entry.
@@ -108,19 +108,19 @@ func TestParseActivities_BrokenRule_FailsNamingTheEntry(t *testing.T) {
 	}{
 		{
 			name: "duplicate key",
-			data: "activities:\n  - " + activity + "\n" +
+			data: "activities:\n  - " + validActivity + "\n" +
 				"  - {key: running, identifier: HKWorkoutActivityTypeWalking, raw_value: 52, family: walking}\n",
 			want: `activity "running" (HKWorkoutActivityTypeWalking): key is already used`,
 		},
 		{
 			name: "duplicate export name",
-			data: "activities:\n  - " + activity + "\n" +
+			data: "activities:\n  - " + validActivity + "\n" +
 				"  - {key: jogging, identifier: HKWorkoutActivityTypeRunning, raw_value: 52, family: running}\n",
 			want: `activity "jogging" (HKWorkoutActivityTypeRunning): identifier is already used`,
 		},
 		{
 			name: "duplicate raw value",
-			data: "activities:\n  - " + activity + "\n" +
+			data: "activities:\n  - " + validActivity + "\n" +
 				"  - {key: walking, identifier: HKWorkoutActivityTypeWalking, raw_value: 37, family: walking}\n",
 			want: `activity "walking" (HKWorkoutActivityTypeWalking): raw value 37 is already used`,
 		},
@@ -147,7 +147,7 @@ func TestParseActivities_BrokenRule_FailsNamingTheEntry(t *testing.T) {
 		{
 			name: "negative raw value",
 			data: "activities:\n  - {key: running, identifier: HKWorkoutActivityTypeRunning, raw_value: -1, family: running}\n",
-			want: "parse activities",
+			want: "line 2: cannot unmarshal !!int `-1` into uint",
 		},
 		{
 			name: "family not in FR-4",
@@ -162,7 +162,7 @@ func TestParseActivities_BrokenRule_FailsNamingTheEntry(t *testing.T) {
 		{
 			name: "unknown field",
 			data: "activities:\n  - {key: running, identifier: HKWorkoutActivityTypeRunning, raw_value: 37, family: running, name: Running}\n",
-			want: "field name not found",
+			want: "line 2: field name not found",
 		},
 	}
 

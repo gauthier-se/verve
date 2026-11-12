@@ -10,7 +10,8 @@
 # - family is an activity family of FR-4, which deduplication compares (FR-11 of
 #   docs/features/data-deduplication-and-source-priority.md). Two workouts of different sources
 #   rarely overlap unless they are copies, so a family is broad: stretching, recovery and cooldown
-#   are mind_and_body like yoga, and track_and_field, whose events are throws and jumps, is other.
+#   are mind_and_body like yoga, and track_and_field, whose examples in HKWorkout.h are throws and
+#   jumps, is other.
 # - Names live in web/src/locales/<language>/activities.json, keyed by the activity key.
 #
 # A key is what the API and the workouts store: never change the key of an activity type once
