@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/gauthier-se/verve/internal/auth"
+	"github.com/gauthier-se/verve/internal/catalog"
 	"github.com/gauthier-se/verve/internal/clock"
 	"github.com/gauthier-se/verve/internal/config"
 	"github.com/gauthier-se/verve/internal/httpapi"
@@ -44,6 +45,11 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger, stderr io.
 
 	if !webui.Built() {
 		logger.Warn("web app not built, serving a placeholder page: run task build to embed it")
+	}
+
+	shipped, err := catalog.Shipped()
+	if err != nil {
+		return err
 	}
 
 	db, closeDB, err := openDatabase(ctx, cfg.DataDir)
@@ -94,6 +100,7 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger, stderr io.
 		SetupToken:     setupToken,
 		Jobs:           worker,
 		Backups:        newBackups(cfg, clk),
+		Catalog:        shipped,
 	})
 	srv := NewServer(ServerConfig{Addr: cfg.ListenAddr}, handler, logger)
 
@@ -116,7 +123,7 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger, stderr io.
 		return errors.Join(err, <-served)
 	}
 
-	if err := syncMetricTypes(ctx, st.MetricTypes(), logger); err != nil {
+	if err := syncMetricTypes(ctx, st.MetricTypes(), shipped, logger); err != nil {
 		stopServer()
 
 		return errors.Join(err, <-served)

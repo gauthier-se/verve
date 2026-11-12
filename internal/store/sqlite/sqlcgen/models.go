@@ -91,6 +91,33 @@ type MetricType struct {
 	CreatedAt    int64
 }
 
+type Sample struct {
+	ID         int64
+	UserID     int64
+	TypeID     int64
+	SourceID   int64
+	StartAt    int64
+	EndAt      int64
+	UtcOffset  int64
+	Value      float64
+	Min        sql.NullFloat64
+	Max        sql.NullFloat64
+	Category   string
+	Origin     string
+	ImportID   int64
+	Uuid       string
+	NaturalKey []byte
+	Metadata   sql.NullString
+}
+
+type SampleStat struct {
+	UserID  int64
+	TypeID  int64
+	FirstAt int64
+	LastAt  int64
+	Count   int64
+}
+
 type Session struct {
 	IDHash     []byte
 	PublicID   string

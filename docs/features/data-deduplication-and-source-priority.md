@@ -40,6 +40,10 @@ Two problems make naive sums wrong: the same data arrives several times (re-impo
   | Workout with external id | `(user, origin, external id)` | Update |
   | Workout without external id (XML) | `(user, activity type, source, start, end)` | Ignore |
 
+  - The pipeline computes the natural key of each sample as a hash and chooses its rule. The key of a sample with a uuid is derived from the uuid, so that one unique index on `samples (user_id, natural_key)` covers every sample. Samples are stored in batches, in order: a sample whose key appeared earlier in its batch meets that one as stored.
+  - Update if the value changed compares the value, min, max and category value, and when one of them differs replaces all four and counts the sample as updated, otherwise as a duplicate. Replace replaces the value, min and max, and always counts the sample as updated. Neither changes the other fields of the stored sample, its start included.
+  - A batch with an invalid sample, such as a type that does not exist or a source of another user, is refused as a whole, and nothing of it is stored.
+
 - **FR-2**: Sources are registered per user from the source name, bundle id and device information when available.
   - The identity of a source is `(user, name, device model)`. The name is compared as received. The device model is the `model` of the HealthKit device (for example `Watch` or `iPhone`), from the `device` string of the XML export or the model of the native format, and is empty when unknown, as in Health Auto Export payloads, which carry only a name.
   - A record with a device model matches the source of that identity. Otherwise it matches the source of that name without model, which then takes the model, and otherwise it creates a source.

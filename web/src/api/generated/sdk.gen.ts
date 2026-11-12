@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AcceptInvitationData, AcceptInvitationErrors, AcceptInvitationResponses, ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, CreateAdminBackupData, CreateAdminBackupErrors, CreateAdminBackupResponses, CreateFirstAdminData, CreateFirstAdminErrors, CreateFirstAdminResponses, CreateInvitationData, CreateInvitationErrors, CreateInvitationResponses, CreatePasswordResetLinkData, CreatePasswordResetLinkErrors, CreatePasswordResetLinkResponses, CreateTokenData, CreateTokenErrors, CreateTokenResponses, DeleteAccountData, DeleteAccountErrors, DeleteAccountResponses, DeleteUserData, DeleteUserErrors, DeleteUserResponses, DownloadAdminBackupData, DownloadAdminBackupErrors, DownloadAdminBackupResponses, GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetMetaData, GetMetaErrors, GetMetaResponses, GetPreferencesData, GetPreferencesErrors, GetPreferencesResponses, GetSetupStatusData, GetSetupStatusErrors, GetSetupStatusResponses, InspectInvitationData, InspectInvitationErrors, InspectInvitationResponses, ListAccountAuditEventsData, ListAccountAuditEventsErrors, ListAccountAuditEventsResponses, ListAdminAuditEventsData, ListAdminAuditEventsErrors, ListAdminAuditEventsResponses, ListAdminBackupsData, ListAdminBackupsErrors, ListAdminBackupsResponses, ListAdminJobsData, ListAdminJobsErrors, ListAdminJobsResponses, ListAdminUsersData, ListAdminUsersErrors, ListAdminUsersResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, ListTokensData, ListTokensErrors, ListTokensResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutErrors, LogoutResponses, ResetPasswordData, ResetPasswordErrors, ResetPasswordResponses, RevokeOtherSessionsData, RevokeOtherSessionsErrors, RevokeOtherSessionsResponses, RevokeSessionData, RevokeSessionErrors, RevokeSessionResponses, RevokeTokenData, RevokeTokenErrors, RevokeTokenResponses, SetUserRoleData, SetUserRoleErrors, SetUserRoleResponses, SetUserStatusData, SetUserStatusErrors, SetUserStatusResponses, UpdatePreferencesData, UpdatePreferencesErrors, UpdatePreferencesResponses } from './types.gen';
+import type { AcceptInvitationData, AcceptInvitationErrors, AcceptInvitationResponses, ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, CreateAdminBackupData, CreateAdminBackupErrors, CreateAdminBackupResponses, CreateFirstAdminData, CreateFirstAdminErrors, CreateFirstAdminResponses, CreateInvitationData, CreateInvitationErrors, CreateInvitationResponses, CreatePasswordResetLinkData, CreatePasswordResetLinkErrors, CreatePasswordResetLinkResponses, CreateTokenData, CreateTokenErrors, CreateTokenResponses, DeleteAccountData, DeleteAccountErrors, DeleteAccountResponses, DeleteUserData, DeleteUserErrors, DeleteUserResponses, DownloadAdminBackupData, DownloadAdminBackupErrors, DownloadAdminBackupResponses, GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetMetaData, GetMetaErrors, GetMetaResponses, GetPreferencesData, GetPreferencesErrors, GetPreferencesResponses, GetSetupStatusData, GetSetupStatusErrors, GetSetupStatusResponses, InspectInvitationData, InspectInvitationErrors, InspectInvitationResponses, ListAccountAuditEventsData, ListAccountAuditEventsErrors, ListAccountAuditEventsResponses, ListAdminAuditEventsData, ListAdminAuditEventsErrors, ListAdminAuditEventsResponses, ListAdminBackupsData, ListAdminBackupsErrors, ListAdminBackupsResponses, ListAdminJobsData, ListAdminJobsErrors, ListAdminJobsResponses, ListAdminUsersData, ListAdminUsersErrors, ListAdminUsersResponses, ListMetricsData, ListMetricsErrors, ListMetricsResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, ListTokensData, ListTokensErrors, ListTokensResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutErrors, LogoutResponses, ResetPasswordData, ResetPasswordErrors, ResetPasswordResponses, RevokeOtherSessionsData, RevokeOtherSessionsErrors, RevokeOtherSessionsResponses, RevokeSessionData, RevokeSessionErrors, RevokeSessionResponses, RevokeTokenData, RevokeTokenErrors, RevokeTokenResponses, SetUserRoleData, SetUserRoleErrors, SetUserRoleResponses, SetUserStatusData, SetUserStatusErrors, SetUserStatusResponses, UpdatePreferencesData, UpdatePreferencesErrors, UpdatePreferencesResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -450,6 +450,21 @@ export const inspectInvitation = <ThrowOnError extends boolean = false>(options:
  * Returns the name of the application and the build metadata of the server, without authentication.
  */
 export const getMeta = <ThrowOnError extends boolean = false>(options?: Options<GetMetaData, ThrowOnError>): RequestResult<GetMetaResponses, GetMetaErrors, ThrowOnError> => (options?.client ?? client).get<GetMetaResponses, GetMetaErrors, ThrowOnError>({ url: '/api/v1/meta', ...options });
+
+/**
+ * List the metric types
+ *
+ * Returns every curated metric type, and the uncurated types the current user has samples of, with the first and last start and the count of their samples. Accepts a session or a token with the `read` scope.
+ */
+export const listMetrics = <ThrowOnError extends boolean = false>(options?: Options<ListMetricsData, ThrowOnError>): RequestResult<ListMetricsResponses, ListMetricsErrors, ThrowOnError> => (options?.client ?? client).get<ListMetricsResponses, ListMetricsErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'verve_session',
+            type: 'apiKey'
+        }, { scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/metrics',
+    ...options
+});
 
 /**
  * Reset a password
