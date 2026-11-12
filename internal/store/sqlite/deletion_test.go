@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/gauthier-se/verve/internal/auth"
+	"github.com/gauthier-se/verve/internal/catalog"
 	"github.com/gauthier-se/verve/internal/clock"
 	"github.com/gauthier-se/verve/internal/store"
 )
@@ -74,6 +75,17 @@ var userRowSeeders = map[string]func(ctx context.Context, t *testing.T, s store.
 
 		seedSource(ctx, t, s, user)
 	},
+	// The data availability is that of the sample of the seeder of samples.
+	"sample_stats": func(ctx context.Context, t *testing.T, s store.Store, user store.User) {
+		t.Helper()
+
+		seedSample(ctx, t, s, user)
+	},
+	"samples": func(ctx context.Context, t *testing.T, s store.Store, user store.User) {
+		t.Helper()
+
+		seedSample(ctx, t, s, user)
+	},
 	"jobs": func(ctx context.Context, t *testing.T, s store.Store, user store.User) {
 		t.Helper()
 
@@ -91,6 +103,28 @@ func seedSource(ctx context.Context, t *testing.T, s store.Store, user store.Use
 	require.NoError(t, err)
 
 	return source
+}
+
+// seedSample stores a heart rate sample of the watch source of user, the same sample on every call.
+func seedSample(ctx context.Context, t *testing.T, s store.Store, user store.User) {
+	t.Helper()
+
+	heart, err := s.MetricTypes().EnsureUncurated(ctx, "HKQuantityTypeIdentifierHeartRate", catalog.KindQuantity, "count/min")
+	require.NoError(t, err)
+
+	_, err = s.Samples().Upsert(ctx, user.ID, []store.NewSample{{
+		Sample: store.Sample{
+			TypeID:     heart.ID,
+			SourceID:   seedSource(ctx, t, s, user).ID,
+			Start:      deletionTestNow,
+			End:        deletionTestNow,
+			Value:      60,
+			Origin:     store.OriginXML,
+			NaturalKey: []byte("heart rate of " + user.Username),
+		},
+		OnConflict: store.ConflictIgnore,
+	}})
+	require.NoError(t, err)
 }
 
 // tablesWithUserID returns the tables of the schema of db that have a user_id column.

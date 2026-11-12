@@ -3,12 +3,14 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/gauthier-se/verve/internal/audit"
+	"github.com/gauthier-se/verve/internal/catalog"
 	"github.com/gauthier-se/verve/internal/store"
 )
 
@@ -274,15 +276,46 @@ type deleteBatch struct {
 	deleted int64
 }
 
-// countingStore records the calls of Jobs().DeleteByUser on the store it wraps.
+// sampleBatch is a call of Samples().DeleteByUser: its limit, how many rows it removed, and whether
+// the user still existed when it ran.
+type sampleBatch struct {
+	limit      int
+	deleted    int64
+	userExists bool
+}
+
+// countingStore records the calls of Jobs().DeleteByUser and Samples().DeleteByUser on the store
+// it wraps.
 type countingStore struct {
 	store.Store
 
-	batches *[]deleteBatch
+	batches       *[]deleteBatch
+	sampleBatches *[]sampleBatch
 }
 
 func (s countingStore) Jobs() store.JobsRepository {
 	return countingJobs{JobsRepository: s.Store.Jobs(), batches: s.batches}
+}
+
+func (s countingStore) Samples() store.SamplesRepository {
+	return countingSamples{SamplesRepository: s.Store.Samples(), users: s.Users(), batches: s.sampleBatches}
+}
+
+type countingSamples struct {
+	store.SamplesRepository
+
+	users   store.UsersRepository
+	batches *[]sampleBatch
+}
+
+func (r countingSamples) DeleteByUser(ctx context.Context, userID int64, limit int) (int64, error) {
+	_, err := r.users.Get(ctx, userID)
+	userExists := err == nil
+
+	deleted, err := r.SamplesRepository.DeleteByUser(ctx, userID, limit)
+	*r.batches = append(*r.batches, sampleBatch{limit: limit, deleted: deleted, userExists: userExists})
+
+	return deleted, err
 }
 
 type countingJobs struct {
@@ -317,9 +350,12 @@ func TestDeleteAccount_RemovesTheRowsInBoundedBatchesAndIsSafeToRunTwice(t *test
 
 	dt.mustRequestOwnDeletion(t, bob)
 
-	var batches []deleteBatch
+	var (
+		batches       []deleteBatch
+		sampleBatches []sampleBatch
+	)
 
-	counting := countingStore{Store: dt.store, batches: &batches}
+	counting := countingStore{Store: dt.store, batches: &batches, sampleBatches: &sampleBatches}
 
 	require.NoError(t, deleteAccount(t.Context(), counting, bob.ID, 2))
 	require.Equal(t, []deleteBatch{{limit: 2, deleted: 2}, {limit: 2, deleted: 2}, {limit: 2, deleted: 1}}, batches,
@@ -353,6 +389,78 @@ func TestDeleteAccount_RemovesTheRowsInBoundedBatchesAndIsSafeToRunTwice(t *test
 	require.Len(t, completed, 1)
 	require.Zero(t, completed[0].ActorID, "the system completes the deletion")
 	require.Equal(t, bob.ID, completed[0].SubjectID)
+}
+
+// mustUpsertHeartRates stores count heart rate samples of user, from one source.
+func (dt deletionTest) mustUpsertHeartRates(t *testing.T, user store.User, count int) {
+	t.Helper()
+
+	ctx := t.Context()
+
+	heart, err := dt.store.MetricTypes().EnsureUncurated(ctx, "HKQuantityTypeIdentifierHeartRate", catalog.KindQuantity, "count/min")
+	require.NoError(t, err)
+
+	source, err := dt.store.Sources().Resolve(ctx, user.ID, store.SourceInfo{Name: "Watch", DeviceModel: "Watch"},
+		store.SourceWatch, sessionsTestNow)
+	require.NoError(t, err)
+
+	samples := make([]store.NewSample, count)
+	for i := range samples {
+		start := sessionsTestNow.Add(time.Duration(i) * time.Minute)
+		samples[i] = store.NewSample{
+			Sample: store.Sample{
+				TypeID:     heart.ID,
+				SourceID:   source.ID,
+				Start:      start,
+				End:        start,
+				Value:      60,
+				Origin:     store.OriginXML,
+				NaturalKey: []byte(fmt.Sprintf("heart rate %d of %s", i, user.Username)),
+			},
+			OnConflict: store.ConflictIgnore,
+		}
+	}
+
+	_, err = dt.store.Samples().Upsert(ctx, user.ID, samples)
+	require.NoError(t, err)
+}
+
+// Given samples of two users, when the account.delete job of one of them runs, then it removes
+// their samples and data availability in transactions of at most the batch size, all before the
+// user, and the other user keeps theirs.
+func TestDeleteAccount_RemovesTheSamplesInBoundedBatchesBeforeTheUser(t *testing.T) {
+	t.Parallel()
+
+	dt := newDeletionTest(t)
+	alice := dt.mustCreateRole(t, "alice", store.RoleMember)
+	bob := dt.mustCreateRole(t, "bob", store.RoleMember)
+	dt.mustUpsertHeartRates(t, alice, 2)
+	dt.mustUpsertHeartRates(t, bob, 5)
+
+	dt.mustRequestOwnDeletion(t, bob)
+
+	var (
+		batches       []deleteBatch
+		sampleBatches []sampleBatch
+	)
+
+	counting := countingStore{Store: dt.store, batches: &batches, sampleBatches: &sampleBatches}
+
+	require.NoError(t, deleteAccount(t.Context(), counting, bob.ID, 2))
+	require.Equal(t, []sampleBatch{
+		{limit: 2, deleted: 2, userExists: true},
+		{limit: 2, deleted: 2, userExists: true},
+		{limit: 2, deleted: 2, userExists: true},
+		{limit: 2, deleted: 0, userExists: true},
+	}, sampleBatches, "five samples and one stats row in batches of at most two, before the user")
+
+	_, err := dt.store.Users().Get(t.Context(), bob.ID)
+	require.ErrorIs(t, err, store.ErrNotFound)
+
+	stats, err := dt.store.Samples().Stats(t.Context(), alice.ID)
+	require.NoError(t, err)
+	require.Len(t, stats, 1)
+	require.Equal(t, int64(2), stats[0].Count, "the samples of the other user stay")
 }
 
 // Given a queued and a running job of the user, then the account.delete job cancels both first: it
