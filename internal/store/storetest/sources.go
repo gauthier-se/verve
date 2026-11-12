@@ -313,6 +313,30 @@ func runSourcesCorrections(t *testing.T, newStore NewStoreFunc) {
 		_, err = s.Sources().SetKind(ctx, user.ID, created.ID, "tablet")
 		require.ErrorIs(t, err, store.ErrInvalid)
 	})
+
+	// Given each kind of a source, then Resolve stores it as the detected kind and SetKind as the
+	// kind set by the user.
+	t.Run("ResolveAndSetKindStoreEveryKind", func(t *testing.T) {
+		t.Parallel()
+
+		s := newStore(t, clock.NewFake(sourcesTime))
+		ctx := t.Context()
+		user := mustCreateUser(ctx, t, s.Users(), newUser("camille", "camille@example.com"))
+		kinds := []store.SourceKind{
+			store.SourceWatch, store.SourcePhone, store.SourceScale, store.SourceRing, store.SourceApp,
+			store.SourceManual, store.SourceAggregated, store.SourceUnknown,
+		}
+
+		for _, kind := range kinds {
+			resolved := mustResolve(ctx, t, s.Sources(), user.ID, sourceInfo(string(kind), ""), kind, sourcesTime)
+			require.Equal(t, kind, resolved.Kind)
+
+			set, err := s.Sources().SetKind(ctx, user.ID, resolved.ID, kind)
+			require.NoError(t, err, "kind %s", kind)
+			require.Equal(t, kind, set.Kind)
+			require.True(t, set.KindSetByUser)
+		}
+	})
 }
 
 // runSourcesAliases runs the cases of the aliases of merged sources.
