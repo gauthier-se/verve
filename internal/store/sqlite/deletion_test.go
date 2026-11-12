@@ -89,20 +89,19 @@ var userRowSeeders = map[string]func(ctx context.Context, t *testing.T, s store.
 	"workouts": func(ctx context.Context, t *testing.T, s store.Store, user store.User) {
 		t.Helper()
 
-		_, err := s.Workouts().Upsert(ctx, user.ID, store.NewWorkout{
-			Workout: store.Workout{
-				SourceID:     seedSource(ctx, t, s, user).ID,
-				Origin:       store.OriginXML,
-				Activity:     "running",
-				Start:        deletionTestNow,
-				End:          deletionTestNow.Add(30 * time.Minute),
-				Duration:     1800,
-				LocationType: store.LocationOutdoor,
-				NaturalKey:   []byte("run of " + user.Username),
-			},
-			OnConflict: store.ConflictIgnore,
-		})
-		require.NoError(t, err)
+		seedWorkout(ctx, t, s, user)
+	},
+	// The route is that of the workout of the seeder of workouts.
+	"workout_routes": func(ctx context.Context, t *testing.T, s store.Store, user store.User) {
+		t.Helper()
+
+		require.NoError(t, s.Workouts().SetRoute(ctx, user.ID, seedWorkout(ctx, t, s, user), store.WorkoutRoute{
+			Encoded:    []byte("route of " + user.Username),
+			Box:        store.RouteBox{MinLat: 45.74, MinLon: 4.82, MaxLat: 45.76, MaxLon: 4.85},
+			Distance:   5000,
+			PointCount: 1800,
+			Polyline:   "_p~iF~ps|U",
+		}))
 	},
 	"jobs": func(ctx context.Context, t *testing.T, s store.Store, user store.User) {
 		t.Helper()
@@ -121,6 +120,29 @@ func seedSource(ctx context.Context, t *testing.T, s store.Store, user store.Use
 	require.NoError(t, err)
 
 	return source
+}
+
+// seedWorkout stores a run of the watch source of user, the same run on every call, and returns its
+// id.
+func seedWorkout(ctx context.Context, t *testing.T, s store.Store, user store.User) int64 {
+	t.Helper()
+
+	upserted, err := s.Workouts().Upsert(ctx, user.ID, store.NewWorkout{
+		Workout: store.Workout{
+			SourceID:     seedSource(ctx, t, s, user).ID,
+			Origin:       store.OriginXML,
+			Activity:     "running",
+			Start:        deletionTestNow,
+			End:          deletionTestNow.Add(30 * time.Minute),
+			Duration:     1800,
+			LocationType: store.LocationOutdoor,
+			NaturalKey:   []byte("run of " + user.Username),
+		},
+		OnConflict: store.ConflictIgnore,
+	})
+	require.NoError(t, err)
+
+	return upserted.ID
 }
 
 // seedSample stores a heart rate sample of the watch source of user, the same sample on every call.
