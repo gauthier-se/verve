@@ -59,7 +59,7 @@ internal/
     xmlexport/             Apple Health export.zip adapter
     healthautoexport/      Health Auto Export JSON adapter
     native/                Verve native ingest format
-  catalog/                 metric type catalog, unit conversion
+  catalog/                 metric type and activity type catalogs, unit conversion
   aggregate/               hourly and daily aggregates, source selection
   sleep/                   night assembly, stages, statistics
   workouts/                zones, splits, best efforts, duplicates
