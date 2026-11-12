@@ -16,6 +16,8 @@ const (
 	SourceScale SourceKind = "scale"
 	SourceRing  SourceKind = "ring"
 	SourceApp   SourceKind = "app"
+	// SourceManual is the kind of the entries made by hand in the Health app.
+	SourceManual SourceKind = "manual"
 	// SourceAggregated is the kind of the synthetic sources of data that HealthKit already
 	// deduplicated across devices, such as summarized Health Auto Export points.
 	SourceAggregated SourceKind = "aggregated"
@@ -25,7 +27,7 @@ const (
 // Known reports whether k is one of the kinds of a source.
 func (k SourceKind) Known() bool {
 	switch k {
-	case SourceWatch, SourcePhone, SourceScale, SourceRing, SourceApp, SourceAggregated, SourceUnknown:
+	case SourceWatch, SourcePhone, SourceScale, SourceRing, SourceApp, SourceManual, SourceAggregated, SourceUnknown:
 		return true
 	default:
 		return false

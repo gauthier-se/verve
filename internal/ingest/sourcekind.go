@@ -31,17 +31,33 @@ var vendors = []vendor{
 	{kind: store.SourceRing, names: []string{"Circular"}, bundleIDs: []string{"com.circular.circular"}},
 }
 
+// healthAppBundleID is the bundle id of the Health app, the source of the entries made by hand.
+const healthAppBundleID = "com.apple.Health"
+
+// healthAppName is the source name of the entries made by hand in the Health app, which the XML
+// export gives without bundle id.
+const healthAppName = "Health"
+
 // DetectKind returns the kind of the source of info (FR-2 of Deduplication and source priority).
 // The first rule that matches gives the kind:
 //   - a known vendor, by its bundle id, exactly, or its name, whatever its case: scale or ring;
+//   - the Health app, by its bundle id, exactly, or its name, whatever its case, on an iPhone:
+//     manual;
 //   - the device model: watch for Watch, phone for iPhone;
 //   - a bundle id outside com.apple.: app;
+//   - without device model, a name that contains Apple Watch or iPhone, whatever its case: watch or
+//     phone;
 //   - otherwise unknown.
 func DetectKind(info store.SourceInfo) store.SourceKind {
 	for _, v := range vendors {
 		if v.matches(info) {
 			return v.kind
 		}
+	}
+
+	if info.BundleID == healthAppBundleID ||
+		(info.DeviceModel == "iPhone" && strings.EqualFold(info.Name, healthAppName)) {
+		return store.SourceManual
 	}
 
 	switch info.DeviceModel {
@@ -53,6 +69,17 @@ func DetectKind(info store.SourceInfo) store.SourceKind {
 
 	if info.BundleID != "" && !strings.HasPrefix(info.BundleID, "com.apple.") {
 		return store.SourceApp
+	}
+
+	if info.DeviceModel == "" {
+		name := strings.ToLower(info.Name)
+
+		switch {
+		case strings.Contains(name, "apple watch"):
+			return store.SourceWatch
+		case strings.Contains(name, "iphone"):
+			return store.SourcePhone
+		}
 	}
 
 	return store.SourceUnknown
