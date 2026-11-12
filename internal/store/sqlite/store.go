@@ -183,3 +183,7 @@ func inTx(ctx context.Context, db *sql.DB, fn func(tx *sql.Tx) error) (err error
 func (s *sqliteStore) Snapshot(ctx context.Context, path string) error {
 	return s.db.Snapshot(ctx, path)
 }
+
+func (r repositories) Samples() store.SamplesRepository {
+	return samples(r)
+}

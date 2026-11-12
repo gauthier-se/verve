@@ -230,8 +230,12 @@ func deleteAccount(ctx context.Context, st store.Store, userID int64, batchSize 
 		return fmt.Errorf("delete account %d: %w", userID, ErrJobsStillRunning)
 	}
 
-	// The large tables of later milestones go here, removed in batches before the user, whose foreign
-	// keys remove the small tables in the transaction that records the completion.
+	// The large tables are removed in batches before the user, whose foreign keys remove the small
+	// tables in the transaction that records the completion.
+	if err := deleteSamplesOf(ctx, st.Samples(), userID, batchSize); err != nil {
+		return err
+	}
+
 	err = st.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
 		if err := tx.Users().Delete(ctx, userID); err != nil {
 			return err
@@ -246,6 +250,22 @@ func deleteAccount(ctx context.Context, st store.Store, userID int64, batchSize 
 	// The jobs come last: jobs.user_id has no foreign key, and a run that stops before them finds
 	// the user gone and removes them.
 	return deleteJobsOf(ctx, st.Jobs(), userID, batchSize)
+}
+
+// deleteSamplesOf removes the samples and the data availability of the user of userID from samples,
+// in batches of batchSize rows. Each batch is a transaction of its own only when samples is the
+// repository of the store, never the one of a WithTx.
+func deleteSamplesOf(ctx context.Context, samples store.SamplesRepository, userID int64, batchSize int) error {
+	for {
+		deleted, err := samples.DeleteByUser(ctx, userID, batchSize)
+		if err != nil {
+			return fmt.Errorf("delete account %d: %w", userID, err)
+		}
+
+		if deleted < int64(batchSize) {
+			return nil
+		}
+	}
 }
 
 // deleteJobsOf removes the jobs of the user of userID from jobs, in batches of batchSize. Each batch

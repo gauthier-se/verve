@@ -30,6 +30,7 @@ type Repositories interface {
 	APITokens() APITokensRepository
 	MetricTypes() MetricTypesRepository
 	Sources() SourcesRepository
+	Samples() SamplesRepository
 
 	// AfterCommit calls fn once the writes made through these repositories are committed: at once
 	// outside WithTx, where each write is committed when it returns, and after the commit inside
@@ -58,8 +59,8 @@ type Store interface {
 	Close(ctx context.Context) error
 }
 
-// Cursor is the position of an item in a list sorted newest first, by time then id. The zero
-// Cursor is the start of the list.
+// Cursor is the position of an item in a list sorted by time then id, newest first unless the list
+// says otherwise. The zero Cursor is the start of the list.
 type Cursor struct {
 	At time.Time
 	ID int64
