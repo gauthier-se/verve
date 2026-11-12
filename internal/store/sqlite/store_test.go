@@ -280,6 +280,19 @@ func TestJobs_ConcurrentClaimsOnTwoStoresClaimEachJobOnce(t *testing.T) {
 	}
 }
 
+// Given the contract suite storetest.RunSources, then the SQLite implementation passes it.
+func TestStore_SourcesContract(t *testing.T) {
+	t.Parallel()
+
+	storetest.RunSources(t, func(t *testing.T, clk clock.Clock) store.Store {
+		t.Helper()
+
+		s, _ := newTestStore(t, clk)
+
+		return s
+	})
+}
+
 // Given the contract suite storetest.RunMetricTypes, then the SQLite implementation passes it.
 func TestStore_MetricTypesContract(t *testing.T) {
 	t.Parallel()
