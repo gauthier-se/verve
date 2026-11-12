@@ -225,7 +225,7 @@ func TestShippedActivities_ListTheValuesOfHKWorkoutActivityType(t *testing.T) {
 		{Key: "yoga", Identifier: "HKWorkoutActivityTypeYoga", RawValue: 57, Family: catalog.FamilyMindAndBody},
 		{Key: "high_intensity_interval_training", Identifier: "HKWorkoutActivityTypeHighIntensityIntervalTraining", RawValue: 63, Family: catalog.FamilyCardio},
 		{Key: "wheelchair_run_pace", Identifier: "HKWorkoutActivityTypeWheelchairRunPace", RawValue: 71, Family: catalog.FamilyRunning},
-		{Key: "cooldown", Identifier: "HKWorkoutActivityTypeCooldown", RawValue: 80, Family: catalog.FamilyOther},
+		{Key: "cooldown", Identifier: "HKWorkoutActivityTypeCooldown", RawValue: 80, Family: catalog.FamilyMindAndBody},
 		{Key: "swim_bike_run", Identifier: "HKWorkoutActivityTypeSwimBikeRun", RawValue: 82, Family: catalog.FamilyOther},
 		{Key: "underwater_diving", Identifier: "HKWorkoutActivityTypeUnderwaterDiving", RawValue: 84, Family: catalog.FamilyWaterSport},
 		{Key: "other", Identifier: "HKWorkoutActivityTypeOther", RawValue: 3000, Family: catalog.FamilyOther},
