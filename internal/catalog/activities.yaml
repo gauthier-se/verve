@@ -1,0 +1,104 @@
+# The activity type catalog: the values of HKWorkoutActivityType that a workout can have, described
+# in docs/features/data-storage-and-aggregates.md FR-4.
+#
+# - The activity types come from the Apple documentation of HKWorkoutActivityType, and their raw
+#   values from HKWorkout.h of the iOS SDK, since the documentation does not give them. The
+#   deprecated dance, dance_inspired_training and mixed_metabolic_cardio_training stay, for older
+#   data.
+# - identifier is the name of the activity type in the XML export.
+# - key is the identifier in snake case, without the prefix HKWorkoutActivityType.
+# - family is an activity family of FR-4, which deduplication compares (FR-11 of
+#   docs/features/data-deduplication-and-source-priority.md). Two workouts of different sources
+#   rarely overlap unless they are copies, so a family is broad: stretching, recovery and cooldown
+#   are mind_and_body like yoga, and track_and_field, whose examples in HKWorkout.h are throws and
+#   jumps, is other.
+# - Names live in web/src/locales/<language>/activities.json, keyed by the activity key.
+#
+# A key is what the API and the workouts store: never change the key of an activity type once
+# released.
+
+activities:
+  - {key: american_football, identifier: HKWorkoutActivityTypeAmericanFootball, raw_value: 1, family: team_sport}
+  - {key: archery, identifier: HKWorkoutActivityTypeArchery, raw_value: 2, family: other}
+  - {key: australian_football, identifier: HKWorkoutActivityTypeAustralianFootball, raw_value: 3, family: team_sport}
+  - {key: badminton, identifier: HKWorkoutActivityTypeBadminton, raw_value: 4, family: racket_sport}
+  - {key: baseball, identifier: HKWorkoutActivityTypeBaseball, raw_value: 5, family: team_sport}
+  - {key: basketball, identifier: HKWorkoutActivityTypeBasketball, raw_value: 6, family: team_sport}
+  - {key: bowling, identifier: HKWorkoutActivityTypeBowling, raw_value: 7, family: other}
+  - {key: boxing, identifier: HKWorkoutActivityTypeBoxing, raw_value: 8, family: combat}
+  - {key: climbing, identifier: HKWorkoutActivityTypeClimbing, raw_value: 9, family: other}
+  - {key: cricket, identifier: HKWorkoutActivityTypeCricket, raw_value: 10, family: team_sport}
+  - {key: cross_training, identifier: HKWorkoutActivityTypeCrossTraining, raw_value: 11, family: cardio}
+  - {key: curling, identifier: HKWorkoutActivityTypeCurling, raw_value: 12, family: winter_sport}
+  - {key: cycling, identifier: HKWorkoutActivityTypeCycling, raw_value: 13, family: cycling}
+  - {key: dance, identifier: HKWorkoutActivityTypeDance, raw_value: 14, family: dance}
+  - {key: dance_inspired_training, identifier: HKWorkoutActivityTypeDanceInspiredTraining, raw_value: 15, family: dance}
+  - {key: elliptical, identifier: HKWorkoutActivityTypeElliptical, raw_value: 16, family: cardio}
+  - {key: equestrian_sports, identifier: HKWorkoutActivityTypeEquestrianSports, raw_value: 17, family: other}
+  - {key: fencing, identifier: HKWorkoutActivityTypeFencing, raw_value: 18, family: combat}
+  - {key: fishing, identifier: HKWorkoutActivityTypeFishing, raw_value: 19, family: other}
+  - {key: functional_strength_training, identifier: HKWorkoutActivityTypeFunctionalStrengthTraining, raw_value: 20, family: strength}
+  - {key: golf, identifier: HKWorkoutActivityTypeGolf, raw_value: 21, family: other}
+  - {key: gymnastics, identifier: HKWorkoutActivityTypeGymnastics, raw_value: 22, family: other}
+  - {key: handball, identifier: HKWorkoutActivityTypeHandball, raw_value: 23, family: team_sport}
+  - {key: hiking, identifier: HKWorkoutActivityTypeHiking, raw_value: 24, family: hiking}
+  - {key: hockey, identifier: HKWorkoutActivityTypeHockey, raw_value: 25, family: team_sport}
+  - {key: hunting, identifier: HKWorkoutActivityTypeHunting, raw_value: 26, family: other}
+  - {key: lacrosse, identifier: HKWorkoutActivityTypeLacrosse, raw_value: 27, family: team_sport}
+  - {key: martial_arts, identifier: HKWorkoutActivityTypeMartialArts, raw_value: 28, family: combat}
+  - {key: mind_and_body, identifier: HKWorkoutActivityTypeMindAndBody, raw_value: 29, family: mind_and_body}
+  - {key: mixed_metabolic_cardio_training, identifier: HKWorkoutActivityTypeMixedMetabolicCardioTraining, raw_value: 30, family: cardio}
+  - {key: paddle_sports, identifier: HKWorkoutActivityTypePaddleSports, raw_value: 31, family: water_sport}
+  - {key: play, identifier: HKWorkoutActivityTypePlay, raw_value: 32, family: other}
+  - {key: preparation_and_recovery, identifier: HKWorkoutActivityTypePreparationAndRecovery, raw_value: 33, family: mind_and_body}
+  - {key: racquetball, identifier: HKWorkoutActivityTypeRacquetball, raw_value: 34, family: racket_sport}
+  - {key: rowing, identifier: HKWorkoutActivityTypeRowing, raw_value: 35, family: rowing}
+  - {key: rugby, identifier: HKWorkoutActivityTypeRugby, raw_value: 36, family: team_sport}
+  - {key: running, identifier: HKWorkoutActivityTypeRunning, raw_value: 37, family: running}
+  - {key: sailing, identifier: HKWorkoutActivityTypeSailing, raw_value: 38, family: water_sport}
+  - {key: skating_sports, identifier: HKWorkoutActivityTypeSkatingSports, raw_value: 39, family: winter_sport}
+  - {key: snow_sports, identifier: HKWorkoutActivityTypeSnowSports, raw_value: 40, family: winter_sport}
+  - {key: soccer, identifier: HKWorkoutActivityTypeSoccer, raw_value: 41, family: team_sport}
+  - {key: softball, identifier: HKWorkoutActivityTypeSoftball, raw_value: 42, family: team_sport}
+  - {key: squash, identifier: HKWorkoutActivityTypeSquash, raw_value: 43, family: racket_sport}
+  - {key: stair_climbing, identifier: HKWorkoutActivityTypeStairClimbing, raw_value: 44, family: cardio}
+  - {key: surfing_sports, identifier: HKWorkoutActivityTypeSurfingSports, raw_value: 45, family: water_sport}
+  - {key: swimming, identifier: HKWorkoutActivityTypeSwimming, raw_value: 46, family: swimming}
+  - {key: table_tennis, identifier: HKWorkoutActivityTypeTableTennis, raw_value: 47, family: racket_sport}
+  - {key: tennis, identifier: HKWorkoutActivityTypeTennis, raw_value: 48, family: racket_sport}
+  - {key: track_and_field, identifier: HKWorkoutActivityTypeTrackAndField, raw_value: 49, family: other}
+  - {key: traditional_strength_training, identifier: HKWorkoutActivityTypeTraditionalStrengthTraining, raw_value: 50, family: strength}
+  - {key: volleyball, identifier: HKWorkoutActivityTypeVolleyball, raw_value: 51, family: team_sport}
+  - {key: walking, identifier: HKWorkoutActivityTypeWalking, raw_value: 52, family: walking}
+  - {key: water_fitness, identifier: HKWorkoutActivityTypeWaterFitness, raw_value: 53, family: water_sport}
+  - {key: water_polo, identifier: HKWorkoutActivityTypeWaterPolo, raw_value: 54, family: team_sport}
+  - {key: water_sports, identifier: HKWorkoutActivityTypeWaterSports, raw_value: 55, family: water_sport}
+  - {key: wrestling, identifier: HKWorkoutActivityTypeWrestling, raw_value: 56, family: combat}
+  - {key: yoga, identifier: HKWorkoutActivityTypeYoga, raw_value: 57, family: mind_and_body}
+  - {key: barre, identifier: HKWorkoutActivityTypeBarre, raw_value: 58, family: strength}
+  - {key: core_training, identifier: HKWorkoutActivityTypeCoreTraining, raw_value: 59, family: strength}
+  - {key: cross_country_skiing, identifier: HKWorkoutActivityTypeCrossCountrySkiing, raw_value: 60, family: winter_sport}
+  - {key: downhill_skiing, identifier: HKWorkoutActivityTypeDownhillSkiing, raw_value: 61, family: winter_sport}
+  - {key: flexibility, identifier: HKWorkoutActivityTypeFlexibility, raw_value: 62, family: mind_and_body}
+  - {key: high_intensity_interval_training, identifier: HKWorkoutActivityTypeHighIntensityIntervalTraining, raw_value: 63, family: cardio}
+  - {key: jump_rope, identifier: HKWorkoutActivityTypeJumpRope, raw_value: 64, family: cardio}
+  - {key: kickboxing, identifier: HKWorkoutActivityTypeKickboxing, raw_value: 65, family: combat}
+  - {key: pilates, identifier: HKWorkoutActivityTypePilates, raw_value: 66, family: mind_and_body}
+  - {key: snowboarding, identifier: HKWorkoutActivityTypeSnowboarding, raw_value: 67, family: winter_sport}
+  - {key: stairs, identifier: HKWorkoutActivityTypeStairs, raw_value: 68, family: cardio}
+  - {key: step_training, identifier: HKWorkoutActivityTypeStepTraining, raw_value: 69, family: cardio}
+  - {key: wheelchair_walk_pace, identifier: HKWorkoutActivityTypeWheelchairWalkPace, raw_value: 70, family: walking}
+  - {key: wheelchair_run_pace, identifier: HKWorkoutActivityTypeWheelchairRunPace, raw_value: 71, family: running}
+  - {key: tai_chi, identifier: HKWorkoutActivityTypeTaiChi, raw_value: 72, family: mind_and_body}
+  - {key: mixed_cardio, identifier: HKWorkoutActivityTypeMixedCardio, raw_value: 73, family: cardio}
+  - {key: hand_cycling, identifier: HKWorkoutActivityTypeHandCycling, raw_value: 74, family: cycling}
+  - {key: disc_sports, identifier: HKWorkoutActivityTypeDiscSports, raw_value: 75, family: other}
+  - {key: fitness_gaming, identifier: HKWorkoutActivityTypeFitnessGaming, raw_value: 76, family: cardio}
+  - {key: cardio_dance, identifier: HKWorkoutActivityTypeCardioDance, raw_value: 77, family: dance}
+  - {key: social_dance, identifier: HKWorkoutActivityTypeSocialDance, raw_value: 78, family: dance}
+  - {key: pickleball, identifier: HKWorkoutActivityTypePickleball, raw_value: 79, family: racket_sport}
+  - {key: cooldown, identifier: HKWorkoutActivityTypeCooldown, raw_value: 80, family: mind_and_body}
+  - {key: swim_bike_run, identifier: HKWorkoutActivityTypeSwimBikeRun, raw_value: 82, family: other}
+  - {key: transition, identifier: HKWorkoutActivityTypeTransition, raw_value: 83, family: other}
+  - {key: underwater_diving, identifier: HKWorkoutActivityTypeUnderwaterDiving, raw_value: 84, family: water_sport}
+  - {key: other, identifier: HKWorkoutActivityTypeOther, raw_value: 3000, family: other}

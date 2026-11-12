@@ -20,18 +20,18 @@ type metricTexts struct {
 	Values      map[string]string `json:"values"`
 }
 
-// readMetricTexts reads web/src/locales/<language>/metrics.json, and fails on a field that a type
-// does not have.
-func readMetricTexts(t *testing.T, language string) map[string]metricTexts {
+// readTexts reads web/src/locales/<language>/<namespace>.json, and fails on a field that T does not
+// have.
+func readTexts[T any](t *testing.T, language, namespace string) map[string]T {
 	t.Helper()
 
-	data, err := os.ReadFile(filepath.Join("..", "..", "web", "src", "locales", language, "metrics.json")) //nolint:gosec // G304: a locale file of the repository
+	data, err := os.ReadFile(filepath.Join("..", "..", "web", "src", "locales", language, namespace+".json")) //nolint:gosec // G304: a locale file of the repository
 	require.NoError(t, err)
 
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 
-	var texts map[string]metricTexts
+	var texts map[string]T
 	require.NoError(t, dec.Decode(&texts), language)
 
 	return texts
@@ -48,7 +48,7 @@ func TestTranslations_MatchTheCatalog(t *testing.T) {
 		t.Run(language, func(t *testing.T) {
 			t.Parallel()
 
-			texts := readMetricTexts(t, language)
+			texts := readTexts[metricTexts](t, language, "metrics")
 			keys := make([]string, 0, len(types))
 
 			for _, typ := range types {
@@ -67,6 +67,31 @@ func TestTranslations_MatchTheCatalog(t *testing.T) {
 
 				require.ElementsMatch(t, valueKeys, slices.Collect(maps.Keys(text.Values)),
 					"%s: the values of the file and those of the catalog differ", typ.Key)
+			}
+
+			require.ElementsMatch(t, keys, slices.Collect(maps.Keys(texts)),
+				"the keys of the file and those of the catalog differ")
+		})
+	}
+}
+
+// Given an activity key, then the activities files hold its name. Given a key in these files that
+// the catalog lacks, then the test fails too.
+func TestActivityTranslations_MatchTheCatalog(t *testing.T) {
+	t.Parallel()
+
+	activities := shippedActivities(t).All()
+
+	for _, language := range []string{"en", "fr"} {
+		t.Run(language, func(t *testing.T) {
+			t.Parallel()
+
+			texts := readTexts[string](t, language, "activities")
+			keys := make([]string, 0, len(activities))
+
+			for _, activity := range activities {
+				keys = append(keys, activity.Key)
+				require.NotEmpty(t, strings.TrimSpace(texts[activity.Key]), "%s has no name", activity.Key)
 			}
 
 			require.ElementsMatch(t, keys, slices.Collect(maps.Keys(texts)),

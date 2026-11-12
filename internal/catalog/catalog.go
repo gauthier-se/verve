@@ -1,5 +1,6 @@
 // Package catalog describes the HealthKit types that Verve knows: the metric type catalog of
-// docs/features/data-storage-and-aggregates.md FR-1. It ships with the binary in catalog.yaml.
+// docs/features/data-storage-and-aggregates.md FR-1, shipped with the binary in catalog.yaml, and
+// the workout activity type catalog of FR-4, shipped in activities.yaml.
 package catalog
 
 import (

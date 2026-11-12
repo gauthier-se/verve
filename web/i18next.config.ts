@@ -23,7 +23,13 @@ export default defineConfig({
     // Keys not used in code yet, kept for the components that will need them.
     // errors.<code> translates the code of an API problem.
     // metrics:<key> translates a metric type by its key in the catalog of the server.
-    preservePatterns: ["common:days_*", "common:errors.*", "metrics:*"],
+    // activities:<key> translates a workout activity type by its key in the catalog of the server.
+    preservePatterns: [
+      "common:days_*",
+      "common:errors.*",
+      "metrics:*",
+      "activities:*",
+    ],
   },
   types: {
     input: ["src/locales/en/*.json"],

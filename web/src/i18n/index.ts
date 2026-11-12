@@ -2,8 +2,10 @@ import i18next, { type i18n } from "i18next";
 import LanguageDetector from "i18next-browser-languagedetector";
 import { initReactI18next } from "react-i18next";
 
+import enActivities from "@/locales/en/activities.json";
 import enCommon from "@/locales/en/common.json";
 import enMetrics from "@/locales/en/metrics.json";
+import frActivities from "@/locales/fr/activities.json";
 import frCommon from "@/locales/fr/common.json";
 import frMetrics from "@/locales/fr/metrics.json";
 
@@ -48,14 +50,14 @@ export async function initI18n(): Promise<i18n> {
     .use(initReactI18next)
     .init({
       resources: {
-        en: { common: enCommon, metrics: enMetrics },
-        fr: { common: frCommon, metrics: frMetrics },
+        en: { common: enCommon, metrics: enMetrics, activities: enActivities },
+        fr: { common: frCommon, metrics: frMetrics, activities: frActivities },
       },
       supportedLngs: supportedLanguages,
       fallbackLng: "en",
       load: "languageOnly",
       defaultNS: "common",
-      ns: ["common", "metrics"],
+      ns: ["common", "metrics", "activities"],
       interpolation: { escapeValue: false },
       detection: {
         order: ["localStorage", "navigator"],

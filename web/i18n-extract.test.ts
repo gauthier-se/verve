@@ -106,4 +106,17 @@ describe("i18n:extract script", { timeout: 30_000 }, () => {
     expect(await readFile(metricsPath("fr"), "utf8")).toBe(french);
     expect(await generatedTypes()).toContain(`"name": "Heart rate"`);
   });
+
+  it("given the activities namespace, which code reads by the keys of the catalog, when the script runs, then its texts stay", async () => {
+    const activitiesPath = (lng: string) =>
+      join(workspace, "src", "locales", lng, "activities.json");
+    const english = await readFile(activitiesPath("en"), "utf8");
+    const french = await readFile(activitiesPath("fr"), "utf8");
+
+    runScript();
+
+    expect(await readFile(activitiesPath("en"), "utf8")).toBe(english);
+    expect(await readFile(activitiesPath("fr"), "utf8")).toBe(french);
+    expect(await generatedTypes()).toContain(`"running": "Running"`);
+  });
 });
