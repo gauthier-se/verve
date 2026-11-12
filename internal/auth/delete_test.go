@@ -276,21 +276,22 @@ type deleteBatch struct {
 	deleted int64
 }
 
-// sampleBatch is a call of Samples().DeleteByUser: its limit, how many rows it removed, and whether
-// the user still existed when it ran.
+// sampleBatch is a call of Samples().DeleteByUser or Workouts().DeleteByUser: its limit, how many
+// rows it removed, and whether the user still existed when it ran.
 type sampleBatch struct {
 	limit      int
 	deleted    int64
 	userExists bool
 }
 
-// countingStore records the calls of Jobs().DeleteByUser and Samples().DeleteByUser on the store
-// it wraps.
+// countingStore records the calls of Jobs().DeleteByUser, Samples().DeleteByUser and
+// Workouts().DeleteByUser on the store it wraps.
 type countingStore struct {
 	store.Store
 
-	batches       *[]deleteBatch
-	sampleBatches *[]sampleBatch
+	batches        *[]deleteBatch
+	sampleBatches  *[]sampleBatch
+	workoutBatches *[]sampleBatch
 }
 
 func (s countingStore) Jobs() store.JobsRepository {
@@ -313,6 +314,27 @@ func (r countingSamples) DeleteByUser(ctx context.Context, userID int64, limit i
 	userExists := err == nil
 
 	deleted, err := r.SamplesRepository.DeleteByUser(ctx, userID, limit)
+	*r.batches = append(*r.batches, sampleBatch{limit: limit, deleted: deleted, userExists: userExists})
+
+	return deleted, err
+}
+
+func (s countingStore) Workouts() store.WorkoutsRepository {
+	return countingWorkouts{WorkoutsRepository: s.Store.Workouts(), users: s.Users(), batches: s.workoutBatches}
+}
+
+type countingWorkouts struct {
+	store.WorkoutsRepository
+
+	users   store.UsersRepository
+	batches *[]sampleBatch
+}
+
+func (r countingWorkouts) DeleteByUser(ctx context.Context, userID int64, limit int) (int64, error) {
+	_, err := r.users.Get(ctx, userID)
+	userExists := err == nil
+
+	deleted, err := r.WorkoutsRepository.DeleteByUser(ctx, userID, limit)
 	*r.batches = append(*r.batches, sampleBatch{limit: limit, deleted: deleted, userExists: userExists})
 
 	return deleted, err
@@ -351,11 +373,12 @@ func TestDeleteAccount_RemovesTheRowsInBoundedBatchesAndIsSafeToRunTwice(t *test
 	dt.mustRequestOwnDeletion(t, bob)
 
 	var (
-		batches       []deleteBatch
-		sampleBatches []sampleBatch
+		batches        []deleteBatch
+		sampleBatches  []sampleBatch
+		workoutBatches []sampleBatch
 	)
 
-	counting := countingStore{Store: dt.store, batches: &batches, sampleBatches: &sampleBatches}
+	counting := countingStore{Store: dt.store, batches: &batches, sampleBatches: &sampleBatches, workoutBatches: &workoutBatches}
 
 	require.NoError(t, deleteAccount(t.Context(), counting, bob.ID, 2))
 	require.Equal(t, []deleteBatch{{limit: 2, deleted: 2}, {limit: 2, deleted: 2}, {limit: 2, deleted: 1}}, batches,
@@ -440,11 +463,12 @@ func TestDeleteAccount_RemovesTheSamplesInBoundedBatchesBeforeTheUser(t *testing
 	dt.mustRequestOwnDeletion(t, bob)
 
 	var (
-		batches       []deleteBatch
-		sampleBatches []sampleBatch
+		batches        []deleteBatch
+		sampleBatches  []sampleBatch
+		workoutBatches []sampleBatch
 	)
 
-	counting := countingStore{Store: dt.store, batches: &batches, sampleBatches: &sampleBatches}
+	counting := countingStore{Store: dt.store, batches: &batches, sampleBatches: &sampleBatches, workoutBatches: &workoutBatches}
 
 	require.NoError(t, deleteAccount(t.Context(), counting, bob.ID, 2))
 	require.Equal(t, []sampleBatch{
@@ -461,6 +485,76 @@ func TestDeleteAccount_RemovesTheSamplesInBoundedBatchesBeforeTheUser(t *testing
 	require.NoError(t, err)
 	require.Len(t, stats, 1)
 	require.Equal(t, int64(2), stats[0].Count, "the samples of the other user stay")
+}
+
+// mustUpsertRuns stores count runs of user, from one source.
+func (dt deletionTest) mustUpsertRuns(t *testing.T, user store.User, count int) {
+	t.Helper()
+
+	ctx := t.Context()
+
+	source, err := dt.store.Sources().Resolve(ctx, user.ID, store.SourceInfo{Name: "Watch", DeviceModel: "Watch"},
+		store.SourceWatch, sessionsTestNow)
+	require.NoError(t, err)
+
+	for i := range count {
+		start := sessionsTestNow.Add(time.Duration(i) * time.Hour)
+		_, err := dt.store.Workouts().Upsert(ctx, user.ID, store.NewWorkout{
+			Workout: store.Workout{
+				SourceID:     source.ID,
+				Origin:       store.OriginXML,
+				Activity:     "running",
+				Start:        start,
+				End:          start.Add(30 * time.Minute),
+				Duration:     1800,
+				LocationType: store.LocationOutdoor,
+				NaturalKey:   []byte(fmt.Sprintf("run %d of %s", i, user.Username)),
+			},
+			OnConflict: store.ConflictIgnore,
+		})
+		require.NoError(t, err)
+	}
+}
+
+// Given workouts of two users, when the account.delete job of one of them runs, then it removes
+// their workouts in transactions of at most the batch size, all before the user, and the other user
+// keeps theirs.
+func TestDeleteAccount_RemovesTheWorkoutsInBoundedBatchesBeforeTheUser(t *testing.T) {
+	t.Parallel()
+
+	dt := newDeletionTest(t)
+	alice := dt.mustCreateRole(t, "alice", store.RoleMember)
+	bob := dt.mustCreateRole(t, "bob", store.RoleMember)
+	dt.mustUpsertRuns(t, alice, 2)
+	dt.mustUpsertRuns(t, bob, 5)
+
+	dt.mustRequestOwnDeletion(t, bob)
+
+	var (
+		batches        []deleteBatch
+		sampleBatches  []sampleBatch
+		workoutBatches []sampleBatch
+	)
+
+	counting := countingStore{Store: dt.store, batches: &batches, sampleBatches: &sampleBatches, workoutBatches: &workoutBatches}
+
+	require.NoError(t, deleteAccount(t.Context(), counting, bob.ID, 2))
+	require.Equal(t, []sampleBatch{
+		{limit: 2, deleted: 2, userExists: true},
+		{limit: 2, deleted: 2, userExists: true},
+		{limit: 2, deleted: 1, userExists: true},
+	}, workoutBatches, "five workouts in batches of at most two, before the user")
+
+	_, err := dt.store.Users().Get(t.Context(), bob.ID)
+	require.ErrorIs(t, err, store.ErrNotFound)
+
+	workouts, err := dt.store.Workouts().List(t.Context(), alice.ID, store.WorkoutsQuery{
+		From:  sessionsTestNow.Add(-time.Hour),
+		To:    sessionsTestNow.Add(24 * time.Hour),
+		Limit: 10,
+	})
+	require.NoError(t, err)
+	require.Len(t, workouts, 2, "the workouts of the other user stay")
 }
 
 // Given a queued and a running job of the user, then the account.delete job cancels both first: it

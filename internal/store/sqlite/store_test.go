@@ -318,3 +318,16 @@ func TestStore_SamplesContract(t *testing.T) {
 		return s
 	})
 }
+
+// Given the contract suite storetest.RunWorkouts, then the SQLite implementation passes it.
+func TestStore_WorkoutsContract(t *testing.T) {
+	t.Parallel()
+
+	storetest.RunWorkouts(t, func(t *testing.T, clk clock.Clock) store.Store {
+		t.Helper()
+
+		s, _ := newTestStore(t, clk)
+
+		return s
+	})
+}
