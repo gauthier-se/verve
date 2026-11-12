@@ -17,7 +17,7 @@ func (r workouts) SetRoute(ctx context.Context, userID, workoutID int64, route s
 	}
 
 	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
-		stored, err := q.UpsertWorkoutRoute(ctx, sqlcgen.UpsertWorkoutRouteParams{
+		written, err := q.UpsertWorkoutRoute(ctx, sqlcgen.UpsertWorkoutRouteParams{
 			Encoded:    route.Encoded,
 			MinLat:     route.Box.MinLat,
 			MinLon:     route.Box.MinLon,
@@ -33,7 +33,7 @@ func (r workouts) SetRoute(ctx context.Context, userID, workoutID int64, route s
 			return constraintError(err)
 		}
 
-		if stored == 0 {
+		if written == 0 {
 			return store.ErrNotFound
 		}
 
@@ -58,7 +58,7 @@ func (r workouts) GetRoute(ctx context.Context, userID, workoutID int64) (store.
 
 	return store.WorkoutRoute{
 		Encoded:    row.Encoded,
-		Box:        store.RouteBox{MinLat: row.MinLat, MinLon: row.MinLon, MaxLat: row.MaxLat, MaxLon: row.MaxLon},
+		Box:        routeBox(row.MinLat, row.MinLon, row.MaxLat, row.MaxLon),
 		Distance:   row.Distance,
 		PointCount: int(row.PointCount),
 		Polyline:   row.Polyline,
@@ -82,7 +82,7 @@ func (r workouts) Thumbnails(ctx context.Context, userID int64, workoutIDs []int
 	for _, row := range rows {
 		thumbnails = append(thumbnails, store.RouteThumbnail{
 			WorkoutID: row.WorkoutID,
-			Box:       store.RouteBox{MinLat: row.MinLat, MinLon: row.MinLon, MaxLat: row.MaxLat, MaxLon: row.MaxLon},
+			Box:       routeBox(row.MinLat, row.MinLon, row.MaxLat, row.MaxLon),
 			Polyline:  row.Polyline,
 		})
 	}
@@ -121,7 +121,7 @@ func checkRoute(route store.WorkoutRoute) error {
 		return fmt.Errorf("empty encoding: %w", store.ErrInvalid)
 	case route.PointCount < 1:
 		return fmt.Errorf("point count %d: %w", route.PointCount, store.ErrInvalid)
-	case !(route.Distance >= 0) || math.IsInf(route.Distance, 1):
+	case !(route.Distance >= 0) || math.IsInf(route.Distance, 0):
 		return fmt.Errorf("distance %v: %w", route.Distance, store.ErrInvalid)
 	case !(-90 <= box.MinLat && box.MinLat <= box.MaxLat && box.MaxLat <= 90):
 		return fmt.Errorf("latitudes %v to %v: %w", box.MinLat, box.MaxLat, store.ErrInvalid)
@@ -130,4 +130,8 @@ func checkRoute(route store.WorkoutRoute) error {
 	}
 
 	return nil
+}
+
+func routeBox(minLat, minLon, maxLat, maxLon float64) store.RouteBox {
+	return store.RouteBox{MinLat: minLat, MinLon: minLon, MaxLat: maxLat, MaxLon: maxLon}
 }
