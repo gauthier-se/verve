@@ -97,8 +97,8 @@ type SourcesRepository interface {
 	// they only fill the empty ones, and kind only replaces SourceUnknown. A kind set by the user
 	// is always kept.
 	//
-	// It returns ErrInvalid when the name of info is empty or kind unknown, and ErrNotFound when no
-	// user has userID.
+	// It returns ErrInvalid when the name of info is empty or kind not Known, and ErrNotFound when
+	// no user has userID.
 	Resolve(ctx context.Context, userID int64, info SourceInfo, kind SourceKind, seenAt time.Time) (Source, error)
 	// AddAlias makes identity an alias of the source of userID whose id is sourceID: Resolve of
 	// identity then returns that source. It returns ErrNotFound when no source of userID has
@@ -115,6 +115,6 @@ type SourcesRepository interface {
 	Rename(ctx context.Context, userID, id int64, displayName string) (Source, error)
 	// SetKind sets the Kind of the source of userID whose id is id, as set by the user, and returns
 	// the source. It returns ErrNotFound when no source of userID has id, and ErrInvalid when kind
-	// is unknown.
+	// is not Known.
 	SetKind(ctx context.Context, userID, id int64, kind SourceKind) (Source, error)
 }

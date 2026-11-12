@@ -29,33 +29,30 @@ func (r sources) Resolve(ctx context.Context, userID int64, info store.SourceInf
 	var row sqlcgen.Source
 
 	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
-		identities, err := identitiesOf(ctx, q, userID, info.Name)
+		candidates, err := candidatesOf(ctx, q, userID, info.Name)
 		if err != nil {
 			return err
 		}
 
-		if matched, ok := match(identities, info.DeviceModel); ok {
+		if matched, ok := match(candidates, info.DeviceModel); ok {
 			row, err = q.GetUserSource(ctx, sqlcgen.GetUserSourceParams{UserID: userID, ID: matched.sourceID})
 			if err != nil {
 				return err
 			}
 
-			update := seen(row, info, kind, seenAt)
+			update := seenUpdate(row, info, kind, seenAt)
 
 			// The identity without model that a record with a model matches takes that model.
-			switch {
-			case info.DeviceModel == "" || matched.model != "":
-			case matched.alias:
-				err = q.SetSourceAliasModel(ctx, sqlcgen.SetSourceAliasModelParams{
+			if info.DeviceModel != "" && matched.model == "" {
+				if !matched.alias {
+					update.DeviceModel = info.DeviceModel
+				} else if err := q.SetSourceAliasModel(ctx, sqlcgen.SetSourceAliasModelParams{
 					DeviceModel: info.DeviceModel,
 					UserID:      userID,
 					Name:        info.Name,
-				})
-				if err != nil {
+				}); err != nil {
 					return err
 				}
-			default:
-				update.DeviceModel = info.DeviceModel
 			}
 
 			row, err = q.UpdateSource(ctx, update)
@@ -208,16 +205,17 @@ func (r sources) SetKind(ctx context.Context, userID, id int64, kind store.Sourc
 	return sourceOf(row), nil
 }
 
-// identity is an identity of a source or of an alias, of the name of a record.
-type identity struct {
+// candidate is an identity of a source or of an alias, of the name of a record, that a record may
+// match.
+type candidate struct {
 	model string
 	// sourceID is the source of the identity, or the target of the alias.
 	sourceID int64
 	alias    bool
 }
 
-// identitiesOf returns the identities of the sources and of the aliases of userID named name.
-func identitiesOf(ctx context.Context, q *sqlcgen.Queries, userID int64, name string) ([]identity, error) {
+// candidatesOf returns the identities of the sources and of the aliases of userID named name.
+func candidatesOf(ctx context.Context, q *sqlcgen.Queries, userID int64, name string) ([]candidate, error) {
 	named, err := q.ListUserSourcesByName(ctx, sqlcgen.ListUserSourcesByNameParams{UserID: userID, Name: name})
 	if err != nil {
 		return nil, err
@@ -228,13 +226,13 @@ func identitiesOf(ctx context.Context, q *sqlcgen.Queries, userID int64, name st
 		return nil, err
 	}
 
-	identities := make([]identity, 0, len(named)+len(aliases))
+	identities := make([]candidate, 0, len(named)+len(aliases))
 	for _, source := range named {
-		identities = append(identities, identity{model: source.DeviceModel, sourceID: source.ID})
+		identities = append(identities, candidate{model: source.DeviceModel, sourceID: source.ID})
 	}
 
 	for _, alias := range aliases {
-		identities = append(identities, identity{model: alias.DeviceModel, sourceID: alias.SourceID, alias: true})
+		identities = append(identities, candidate{model: alias.DeviceModel, sourceID: alias.SourceID, alias: true})
 	}
 
 	return identities, nil
@@ -242,11 +240,11 @@ func identitiesOf(ctx context.Context, q *sqlcgen.Queries, userID int64, name st
 
 // match returns the identity among identities, all of one name, that a record of that name and of
 // the device model model matches by the rule of FR-2, or false when the record makes a new source.
-func match(identities []identity, model string) (identity, bool) {
-	byModel := func(model string) (identity, bool) {
-		i := slices.IndexFunc(identities, func(id identity) bool { return id.model == model })
+func match(identities []candidate, model string) (candidate, bool) {
+	byModel := func(model string) (candidate, bool) {
+		i := slices.IndexFunc(identities, func(id candidate) bool { return id.model == model })
 		if i < 0 {
-			return identity{}, false
+			return candidate{}, false
 		}
 
 		return identities[i], true
@@ -260,7 +258,7 @@ func match(identities []identity, model string) (identity, bool) {
 		return byModel("")
 	}
 
-	only := len(identities) > 0 && !slices.ContainsFunc(identities, func(id identity) bool {
+	only := len(identities) > 0 && !slices.ContainsFunc(identities, func(id candidate) bool {
 		return id.sourceID != identities[0].sourceID
 	})
 	if only {
@@ -270,11 +268,11 @@ func match(identities []identity, model string) (identity, bool) {
 	return byModel("")
 }
 
-// seen returns the update of the source of row that a record of info and of kind, seen at seenAt,
+// seenUpdate returns the update of the source of row that a record of info and of kind, seen at seenAt,
 // matches. The details of info that are not empty, and kind unless it is unknown, replace those of
 // the source when seenAt is not before its last seen time, and otherwise only fill the empty ones,
 // an unknown kind being empty. A kind set by the user is kept.
-func seen(row sqlcgen.Source, info store.SourceInfo, kind store.SourceKind, seenAt time.Time) sqlcgen.UpdateSourceParams {
+func seenUpdate(row sqlcgen.Source, info store.SourceInfo, kind store.SourceKind, seenAt time.Time) sqlcgen.UpdateSourceParams {
 	at := toMillis(seenAt)
 	latest := at >= row.LastSeenAt
 

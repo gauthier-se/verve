@@ -407,8 +407,10 @@ func runSourcesAliases(t *testing.T, newStore NewStoreFunc) {
 		}
 
 		for _, tc := range cases {
-			err := s.Sources().AddAlias(ctx, user.ID, tc.identity, tc.sourceID)
-			require.ErrorIs(t, err, tc.want, tc.name)
+			t.Run(tc.name, func(t *testing.T) {
+				err := s.Sources().AddAlias(ctx, user.ID, tc.identity, tc.sourceID)
+				require.ErrorIs(t, err, tc.want)
+			})
 		}
 
 		got := mustResolve(ctx, t, s.Sources(), user.ID, sourceInfo("Ancienne montre", "Watch"), store.SourceWatch, sourcesTime)
