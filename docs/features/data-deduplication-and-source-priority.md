@@ -51,19 +51,23 @@ Two problems make naive sums wrong: the same data arrives several times (re-impo
   - A record without device model matches the only source of that name. When several sources have that name, it matches the one without model. Otherwise it creates a source without model.
   - Bundle id, device name, manufacturer, and hardware and software versions are recorded on the source, but are not part of its identity. The aliases of merged sources (FR-3) are matched by the same identity: a record whose identity is an alias lands in the source of the alias, and an alias without model takes the model as a source does. No identity is both an alias and a source of the same user.
   - Each source records when it was first and last seen, from the time the pipeline gives for the records of the source. First seen never moves, and last seen never moves back. A record not older than last seen replaces the details of the source with those it carries, and an older record only fills the details that the source lacks. A record without a detail, such as the name only payloads of Health Auto Export, never clears it.
-  - Each source gets a detected kind: `watch`, `phone`, `scale`, `ring`, `app`, `aggregated`, `unknown`. Adapters give `aggregated` to their synthetic sources. Otherwise the first rule that matches the source of a record gives its kind:
+  - Each source gets a detected kind: `watch`, `phone`, `scale`, `ring`, `app`, `manual`, `aggregated`, `unknown`. Adapters give `aggregated` to their synthetic sources. Otherwise the first rule that matches the source of a record gives its kind:
     1. A known smart scale or smart ring vendor, from a table in code of the bundle ids and source names of its apps: `scale` or `ring`. Bundle ids match exactly, names whatever their case. A scale reading written through the phone app of its vendor is thus `scale`.
-    2. The device model, from the XML `device` string (model field) or the native format: `watch` for `Watch`, `phone` for `iPhone`.
-    3. A bundle id outside `com.apple.`, as written by a third-party app such as a running or nutrition app: `app`.
-    4. Otherwise `unknown`.
+    2. The Health app, the source of the entries made by hand: `manual`. It is known by its bundle id `com.apple.Health`, matched exactly, or, as in XML exports that carry no bundle id, by the name `Health`, whatever its case, with the device model `iPhone`. The `HKWasUserEntered` metadata is not used, since it describes a sample, not its source, and third-party apps set it too.
+    3. The device model, from the XML `device` string (model field) or the native format: `watch` for `Watch`, `phone` for `iPhone`.
+    4. A bundle id outside `com.apple.`, as written by a third-party app such as a running or nutrition app: `app`.
+    5. Without device model, as in Health Auto Export payloads, a name that contains `Apple Watch` or `iPhone`, whatever its case, such as "Camille's Apple Watch": `watch` or `phone`. It comes after the bundle id, which is the stronger evidence.
+    6. Otherwise `unknown`. A third-party app known only by its name, as in XML exports and Health Auto Export payloads, is `unknown`: no table of app names is kept, and FR-4 ranks `unknown` as an app.
 
     The kind can be corrected by the user. The detected kind follows the records as the details do, `unknown` counting as a missing kind. A kind corrected by the user is kept.
 - **FR-3**: Users can rename the display name of a source and merge sources (for example the same Apple Watch recorded under an old and a new device name). Merging is an alias: future data from either name lands in the merged source, and aggregates are recomputed.
 - **FR-4**: Each metric type has an ordered priority list of sources per user, plus an "ignored" section. Default ordering when no user choice exists:
-  - activity and energy metrics: `aggregated`, then `watch`, then `ring`, then `phone`, then other apps,
-  - body measurements: `scale`, then apps, then manual entries in the Health app,
-  - nutrition: apps in order of first appearance,
+  - activity and energy metrics: `aggregated`, then `watch`, then `ring`, then `phone`, then other apps, then `manual`,
+  - body measurements: `scale`, then apps, then `manual`,
+  - nutrition: apps in order of first appearance, then `manual`,
   - other metrics: `aggregated`, then `watch`, then `ring`, then `phone`, then others.
+
+  Apps are the sources of kind `app` or `unknown`, since a third-party app known only by its name is `unknown` (FR-2).
 - **FR-5**: New sources are appended at the end of the default position for their kind, and the user is notified in the UI ("New source detected: ...").
 - **FR-6**: Aggregation selects, for each user, metric and hourly bucket, the highest priority non-ignored source that has data in that bucket. Only that source's samples contribute to the bucket.
 - **FR-7**: For discrete metrics, the user can switch a metric to "combine sources" mode, where all non-ignored sources contribute (useful when two scales are used alternately).
