@@ -276,30 +276,67 @@ type deleteBatch struct {
 	deleted int64
 }
 
-// userBatch is a call of Samples().DeleteByUser or Workouts().DeleteByUser: its limit, how many rows
-// it removed, and whether the user still existed when it ran.
+// userBatch is a call of Samples().DeleteByUser, Workouts().DeleteByUser or
+// Workouts().DeleteRoutesByUser: its limit, how many rows it removed, and whether the user still
+// existed when it ran.
 type userBatch struct {
 	limit      int
 	deleted    int64
 	userExists bool
 }
 
-// countingStore records the calls of Jobs().DeleteByUser, Samples().DeleteByUser and
-// Workouts().DeleteByUser on the store it wraps.
+// recordedBatches are the calls that a countingStore records, one list per method.
+type recordedBatches struct {
+	jobs     []deleteBatch
+	samples  []userBatch
+	workouts []userBatch
+	routes   []userBatch
+}
+
+// countingStore records the calls of Jobs().DeleteByUser, Samples().DeleteByUser,
+// Workouts().DeleteByUser and Workouts().DeleteRoutesByUser on the store it wraps.
 type countingStore struct {
 	store.Store
 
-	batches        *[]deleteBatch
-	sampleBatches  *[]userBatch
-	workoutBatches *[]userBatch
+	recorded *recordedBatches
+}
+
+// newCountingStore returns a countingStore over st, and the calls it records.
+func newCountingStore(st store.Store) (countingStore, *recordedBatches) {
+	recorded := &recordedBatches{}
+
+	return countingStore{Store: st, recorded: recorded}, recorded
 }
 
 func (s countingStore) Jobs() store.JobsRepository {
-	return countingJobs{JobsRepository: s.Store.Jobs(), batches: s.batches}
+	return countingJobs{JobsRepository: s.Store.Jobs(), batches: &s.recorded.jobs}
 }
 
 func (s countingStore) Samples() store.SamplesRepository {
-	return countingSamples{SamplesRepository: s.Store.Samples(), users: s.Users(), batches: s.sampleBatches}
+	return countingSamples{SamplesRepository: s.Store.Samples(), users: s.Users(), batches: &s.recorded.samples}
+}
+
+func (s countingStore) Workouts() store.WorkoutsRepository {
+	return countingWorkouts{
+		WorkoutsRepository: s.Store.Workouts(),
+		users:              s.Users(),
+		batches:            &s.recorded.workouts,
+		routeBatches:       &s.recorded.routes,
+	}
+}
+
+// recordUserBatch removes a batch of rows of the user of userID with deleteBatch, and appends the
+// call to batches, with whether the user still existed when it ran.
+func recordUserBatch(ctx context.Context, users store.UsersRepository, batches *[]userBatch, deleteBatch deleteByUser,
+	userID int64, limit int,
+) (int64, error) {
+	_, err := users.Get(ctx, userID)
+	userExists := err == nil
+
+	deleted, err := deleteBatch(ctx, userID, limit)
+	*batches = append(*batches, userBatch{limit: limit, deleted: deleted, userExists: userExists})
+
+	return deleted, err
 }
 
 type countingSamples struct {
@@ -310,34 +347,23 @@ type countingSamples struct {
 }
 
 func (r countingSamples) DeleteByUser(ctx context.Context, userID int64, limit int) (int64, error) {
-	_, err := r.users.Get(ctx, userID)
-	userExists := err == nil
-
-	deleted, err := r.SamplesRepository.DeleteByUser(ctx, userID, limit)
-	*r.batches = append(*r.batches, userBatch{limit: limit, deleted: deleted, userExists: userExists})
-
-	return deleted, err
-}
-
-func (s countingStore) Workouts() store.WorkoutsRepository {
-	return countingWorkouts{WorkoutsRepository: s.Store.Workouts(), users: s.Users(), batches: s.workoutBatches}
+	return recordUserBatch(ctx, r.users, r.batches, r.SamplesRepository.DeleteByUser, userID, limit)
 }
 
 type countingWorkouts struct {
 	store.WorkoutsRepository
 
-	users   store.UsersRepository
-	batches *[]userBatch
+	users        store.UsersRepository
+	batches      *[]userBatch
+	routeBatches *[]userBatch
 }
 
 func (r countingWorkouts) DeleteByUser(ctx context.Context, userID int64, limit int) (int64, error) {
-	_, err := r.users.Get(ctx, userID)
-	userExists := err == nil
+	return recordUserBatch(ctx, r.users, r.batches, r.WorkoutsRepository.DeleteByUser, userID, limit)
+}
 
-	deleted, err := r.WorkoutsRepository.DeleteByUser(ctx, userID, limit)
-	*r.batches = append(*r.batches, userBatch{limit: limit, deleted: deleted, userExists: userExists})
-
-	return deleted, err
+func (r countingWorkouts) DeleteRoutesByUser(ctx context.Context, userID int64, limit int) (int64, error) {
+	return recordUserBatch(ctx, r.users, r.routeBatches, r.WorkoutsRepository.DeleteRoutesByUser, userID, limit)
 }
 
 type countingJobs struct {
@@ -372,22 +398,16 @@ func TestDeleteAccount_RemovesTheRowsInBoundedBatchesAndIsSafeToRunTwice(t *test
 
 	dt.mustRequestOwnDeletion(t, bob)
 
-	var (
-		batches        []deleteBatch
-		sampleBatches  []userBatch
-		workoutBatches []userBatch
-	)
+	counting, recorded := newCountingStore(dt.store)
 
-	counting := countingStore{Store: dt.store, batches: &batches, sampleBatches: &sampleBatches, workoutBatches: &workoutBatches}
-
-	require.NoError(t, deleteAccount(t.Context(), counting, bob.ID, 2))
-	require.Equal(t, []deleteBatch{{limit: 2, deleted: 2}, {limit: 2, deleted: 2}, {limit: 2, deleted: 1}}, batches,
+	require.NoError(t, deleteAccount(t.Context(), counting, bob.ID, deleteBatchSizes{rows: 2, routes: 2}))
+	require.Equal(t, []deleteBatch{{limit: 2, deleted: 2}, {limit: 2, deleted: 2}, {limit: 2, deleted: 1}}, recorded.jobs,
 		"five jobs in batches of at most two")
 
-	batches = nil
+	recorded.jobs = nil
 
-	require.NoError(t, deleteAccount(t.Context(), counting, bob.ID, 2), "a second run succeeds")
-	require.Equal(t, []deleteBatch{{limit: 2, deleted: 0}}, batches)
+	require.NoError(t, deleteAccount(t.Context(), counting, bob.ID, deleteBatchSizes{rows: 2, routes: 2}), "a second run succeeds")
+	require.Equal(t, []deleteBatch{{limit: 2, deleted: 0}}, recorded.jobs)
 
 	_, err := dt.store.Users().Get(t.Context(), bob.ID)
 	require.ErrorIs(t, err, store.ErrNotFound)
@@ -462,21 +482,15 @@ func TestDeleteAccount_RemovesTheSamplesInBoundedBatchesBeforeTheUser(t *testing
 
 	dt.mustRequestOwnDeletion(t, bob)
 
-	var (
-		batches        []deleteBatch
-		sampleBatches  []userBatch
-		workoutBatches []userBatch
-	)
+	counting, recorded := newCountingStore(dt.store)
 
-	counting := countingStore{Store: dt.store, batches: &batches, sampleBatches: &sampleBatches, workoutBatches: &workoutBatches}
-
-	require.NoError(t, deleteAccount(t.Context(), counting, bob.ID, 2))
+	require.NoError(t, deleteAccount(t.Context(), counting, bob.ID, deleteBatchSizes{rows: 2, routes: 2}))
 	require.Equal(t, []userBatch{
 		{limit: 2, deleted: 2, userExists: true},
 		{limit: 2, deleted: 2, userExists: true},
 		{limit: 2, deleted: 2, userExists: true},
 		{limit: 2, deleted: 0, userExists: true},
-	}, sampleBatches, "five samples and one stats row in batches of at most two, before the user")
+	}, recorded.samples, "five samples and one stats row in batches of at most two, before the user")
 
 	_, err := dt.store.Users().Get(t.Context(), bob.ID)
 	require.ErrorIs(t, err, store.ErrNotFound)
@@ -487,11 +501,13 @@ func TestDeleteAccount_RemovesTheSamplesInBoundedBatchesBeforeTheUser(t *testing
 	require.Equal(t, int64(2), stats[0].Count, "the samples of the other user stay")
 }
 
-// mustUpsertRuns stores count runs of user, from one source.
-func (dt deletionTest) mustUpsertRuns(t *testing.T, user store.User, count int) {
+// mustUpsertRuns stores count runs of user, from one source, and returns their ids.
+func (dt deletionTest) mustUpsertRuns(t *testing.T, user store.User, count int) []int64 {
 	t.Helper()
 
 	ctx := t.Context()
+
+	var ids []int64
 
 	source, err := dt.store.Sources().Resolve(ctx, user.ID, store.SourceInfo{Name: "Watch", DeviceModel: "Watch"},
 		store.SourceWatch, sessionsTestNow)
@@ -499,7 +515,7 @@ func (dt deletionTest) mustUpsertRuns(t *testing.T, user store.User, count int) 
 
 	for i := range count {
 		start := sessionsTestNow.Add(time.Duration(i) * time.Hour)
-		_, err := dt.store.Workouts().Upsert(ctx, user.ID, store.NewWorkout{
+		upserted, err := dt.store.Workouts().Upsert(ctx, user.ID, store.NewWorkout{
 			Workout: store.Workout{
 				SourceID:     source.ID,
 				Origin:       store.OriginXML,
@@ -513,6 +529,25 @@ func (dt deletionTest) mustUpsertRuns(t *testing.T, user store.User, count int) 
 			OnConflict: store.ConflictIgnore,
 		})
 		require.NoError(t, err)
+
+		ids = append(ids, upserted.ID)
+	}
+
+	return ids
+}
+
+// mustSetRoutes gives a route to each workout of ids of user.
+func (dt deletionTest) mustSetRoutes(t *testing.T, user store.User, ids []int64) {
+	t.Helper()
+
+	for _, id := range ids {
+		require.NoError(t, dt.store.Workouts().SetRoute(t.Context(), user.ID, id, store.WorkoutRoute{
+			Encoded:    []byte{0x01, 0x28, 0xb5, 0x2f, 0xfd},
+			Box:        store.RouteBox{MinLat: 45.74, MinLon: 4.82, MaxLat: 45.76, MaxLon: 4.85},
+			Distance:   5000,
+			PointCount: 1800,
+			Polyline:   "_p~iF~ps|U",
+		}))
 	}
 }
 
@@ -530,20 +565,14 @@ func TestDeleteAccount_RemovesTheWorkoutsInBoundedBatchesBeforeTheUser(t *testin
 
 	dt.mustRequestOwnDeletion(t, bob)
 
-	var (
-		batches        []deleteBatch
-		sampleBatches  []userBatch
-		workoutBatches []userBatch
-	)
+	counting, recorded := newCountingStore(dt.store)
 
-	counting := countingStore{Store: dt.store, batches: &batches, sampleBatches: &sampleBatches, workoutBatches: &workoutBatches}
-
-	require.NoError(t, deleteAccount(t.Context(), counting, bob.ID, 2))
+	require.NoError(t, deleteAccount(t.Context(), counting, bob.ID, deleteBatchSizes{rows: 2, routes: 2}))
 	require.Equal(t, []userBatch{
 		{limit: 2, deleted: 2, userExists: true},
 		{limit: 2, deleted: 2, userExists: true},
 		{limit: 2, deleted: 1, userExists: true},
-	}, workoutBatches, "five workouts in batches of at most two, before the user")
+	}, recorded.workouts, "five workouts in batches of at most two, before the user")
 
 	_, err := dt.store.Users().Get(t.Context(), bob.ID)
 	require.ErrorIs(t, err, store.ErrNotFound)
@@ -555,6 +584,40 @@ func TestDeleteAccount_RemovesTheWorkoutsInBoundedBatchesBeforeTheUser(t *testin
 	})
 	require.NoError(t, err)
 	require.Len(t, workouts, 2, "the workouts of the other user stay")
+}
+
+// Given workouts with routes of two users, when the account.delete job of one of them runs, then it
+// removes their routes in transactions of at most the route batch size, before the user and before
+// their workouts, whose removal would take the routes with them, and the other user keeps theirs.
+func TestDeleteAccount_RemovesTheRoutesInBoundedBatchesBeforeTheWorkouts(t *testing.T) {
+	t.Parallel()
+
+	dt := newDeletionTest(t)
+	alice := dt.mustCreateRole(t, "alice", store.RoleMember)
+	bob := dt.mustCreateRole(t, "bob", store.RoleMember)
+	aliceRuns := dt.mustUpsertRuns(t, alice, 2)
+	dt.mustSetRoutes(t, alice, aliceRuns)
+	dt.mustSetRoutes(t, bob, dt.mustUpsertRuns(t, bob, 5))
+
+	dt.mustRequestOwnDeletion(t, bob)
+
+	counting, recorded := newCountingStore(dt.store)
+
+	require.NoError(t, deleteAccount(t.Context(), counting, bob.ID, deleteBatchSizes{rows: 3, routes: 2}))
+	// A batch that ran after the workouts would find no route left.
+	require.Equal(t, []userBatch{
+		{limit: 2, deleted: 2, userExists: true},
+		{limit: 2, deleted: 2, userExists: true},
+		{limit: 2, deleted: 1, userExists: true},
+	}, recorded.routes, "five routes in batches of at most two, before the workouts and the user")
+	require.Equal(t, []userBatch{
+		{limit: 3, deleted: 3, userExists: true},
+		{limit: 3, deleted: 2, userExists: true},
+	}, recorded.workouts, "the workouts in batches of the row batch size")
+
+	thumbnails, err := dt.store.Workouts().Thumbnails(t.Context(), alice.ID, aliceRuns)
+	require.NoError(t, err)
+	require.Len(t, thumbnails, 2, "the routes of the other user stay")
 }
 
 // Given a queued and a running job of the user, then the account.delete job cancels both first: it

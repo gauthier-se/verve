@@ -161,7 +161,23 @@ type WorkoutsRepository interface {
 	// List returns the workouts of userID that query asks for. It returns ErrInvalid when the limit
 	// is below 1 or To is not after From.
 	List(ctx context.Context, userID int64, query WorkoutsQuery) ([]Workout, error)
-	// DeleteByUser removes at most limit workouts of userID and returns how many it removed. It
-	// returns ErrInvalid when limit is below 1.
+	// DeleteByUser removes at most limit workouts of userID, with their routes, and returns how many
+	// workouts it removed. It returns ErrInvalid when limit is below 1.
 	DeleteByUser(ctx context.Context, userID int64, limit int) (int64, error)
+
+	// SetRoute stores route as the route of the workout of workoutID of userID, replacing the one it
+	// had: a workout has at most one route. It returns ErrNotFound when userID has no such workout,
+	// and ErrInvalid, writing nothing, when the route has an empty encoding, a point count below 1, a
+	// distance that is negative or not finite, or a bounding box out of the latitudes [-90, 90] and
+	// longitudes [-180, 180] or whose minimum is above its maximum.
+	SetRoute(ctx context.Context, userID, workoutID int64, route WorkoutRoute) error
+	// GetRoute returns the route of the workout of workoutID of userID, or ErrNotFound when userID
+	// has no such workout or it has no route.
+	GetRoute(ctx context.Context, userID, workoutID int64) (WorkoutRoute, error)
+	// Thumbnails returns the thumbnails of the routes of the workouts of workoutIDs, by workout id.
+	// A workout without route, or that userID does not have, is skipped.
+	Thumbnails(ctx context.Context, userID int64, workoutIDs []int64) ([]RouteThumbnail, error)
+	// DeleteRoutesByUser removes at most limit routes of userID, leaving their workouts, and returns
+	// how many it removed. It returns ErrInvalid when limit is below 1.
+	DeleteRoutesByUser(ctx context.Context, userID int64, limit int) (int64, error)
 }

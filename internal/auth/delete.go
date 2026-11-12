@@ -19,6 +19,17 @@ const KindDeleteAccount = "account.delete"
 // so that it never holds the writer for long.
 const deleteBatchSize = 1000
 
+// deleteRouteBatchSize is the most workout routes that one transaction of an account deletion
+// removes: routes are the largest rows.
+const deleteRouteBatchSize = 100
+
+// deleteBatchSizes are the batch sizes of an account deletion: for the routes, and for the rows of
+// the other tables.
+type deleteBatchSizes struct {
+	rows   int
+	routes int
+}
+
 var (
 	// ErrConfirmationMismatch is returned when the confirmation of an admin deletion is not the exact
 	// username of the account. Its message is the stable code that the API answers with.
@@ -204,17 +215,17 @@ func deleteAccountJob(userID int64) (store.NewJob, error) {
 // not stopped, without removing anything. It returns ErrUserNotDeleting for an account whose
 // deletion was not requested.
 func DeleteAccount(ctx context.Context, st store.Store, userID int64) error {
-	return deleteAccount(ctx, st, userID, deleteBatchSize)
+	return deleteAccount(ctx, st, userID, deleteBatchSizes{rows: deleteBatchSize, routes: deleteRouteBatchSize})
 }
 
-// deleteAccount is DeleteAccount with the batches of batchSize rows.
-func deleteAccount(ctx context.Context, st store.Store, userID int64, batchSize int) error {
+// deleteAccount is DeleteAccount with the batches of sizes.
+func deleteAccount(ctx context.Context, st store.Store, userID int64, sizes deleteBatchSizes) error {
 	user, err := st.Users().Get(ctx, userID)
 
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		// The user was removed by an earlier run, which may have stopped before their jobs.
-		return deleteInBatches(ctx, st.Jobs().DeleteByUser, userID, batchSize)
+		return deleteInBatches(ctx, st.Jobs().DeleteByUser, userID, sizes.rows)
 	case err != nil:
 		return fmt.Errorf("delete account %d: %w", userID, err)
 	case user.Status != store.UserDeleting:
@@ -232,11 +243,17 @@ func deleteAccount(ctx context.Context, st store.Store, userID int64, batchSize 
 
 	// The large tables are removed in batches before the user, whose foreign keys remove the small
 	// tables in the transaction that records the completion.
-	if err := deleteInBatches(ctx, st.Samples().DeleteByUser, userID, batchSize); err != nil {
+	if err := deleteInBatches(ctx, st.Samples().DeleteByUser, userID, sizes.rows); err != nil {
 		return err
 	}
 
-	if err := deleteInBatches(ctx, st.Workouts().DeleteByUser, userID, batchSize); err != nil {
+	// The routes come before their workouts, whose foreign key would otherwise remove them in the
+	// batches of the workouts, too large for routes.
+	if err := deleteInBatches(ctx, st.Workouts().DeleteRoutesByUser, userID, sizes.routes); err != nil {
+		return err
+	}
+
+	if err := deleteInBatches(ctx, st.Workouts().DeleteByUser, userID, sizes.rows); err != nil {
 		return err
 	}
 
@@ -253,7 +270,7 @@ func deleteAccount(ctx context.Context, st store.Store, userID int64, batchSize 
 
 	// The jobs come last: jobs.user_id has no foreign key, and a run that stops before them finds
 	// the user gone and removes them.
-	return deleteInBatches(ctx, st.Jobs().DeleteByUser, userID, batchSize)
+	return deleteInBatches(ctx, st.Jobs().DeleteByUser, userID, sizes.rows)
 }
 
 // deleteByUser is the DeleteByUser method of a repository: it removes at most limit rows of the
@@ -263,7 +280,7 @@ type deleteByUser func(ctx context.Context, userID int64, limit int) (int64, err
 // deleteInBatches removes the rows of the user of userID with deleteBatch, in batches of batchSize,
 // until a batch removes fewer. Each batch is a transaction of its own only when deleteBatch is a
 // method of a repository of the store, never of a WithTx: the jobs, the samples, with their data
-// availability, and the workouts.
+// availability, the routes and the workouts.
 func deleteInBatches(ctx context.Context, deleteBatch deleteByUser, userID int64, batchSize int) error {
 	for {
 		deleted, err := deleteBatch(ctx, userID, batchSize)

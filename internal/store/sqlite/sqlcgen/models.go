@@ -197,3 +197,16 @@ type Workout struct {
 	ImportID      int64
 	NaturalKey    []byte
 }
+
+type WorkoutRoute struct {
+	WorkoutID  int64
+	UserID     int64
+	Encoded    []byte
+	MinLat     float64
+	MinLon     float64
+	MaxLat     float64
+	MaxLon     float64
+	Distance   float64
+	PointCount int64
+	Polyline   string
+}
