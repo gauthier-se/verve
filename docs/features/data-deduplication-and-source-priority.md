@@ -42,6 +42,7 @@ Two problems make naive sums wrong: the same data arrives several times (re-impo
 
   - The pipeline computes the natural key of each sample as a hash and chooses its rule. The key of a sample with a uuid is derived from the uuid, so that one unique index on `samples (user_id, natural_key)` covers every sample. Samples are stored in batches, in order: a sample whose key appeared earlier in its batch meets that one as stored.
   - Update if the value changed compares the value, min, max and category value, and when one of them differs replaces all four and counts the sample as updated, otherwise as a duplicate. Replace replaces the value, min and max, and always counts the sample as updated. Neither changes the other fields of the stored sample, its start included.
+  - Update, for a workout with an external id, compares every field of the stored workout but the import id. When one of them differs, it replaces every field but the id, so that the route of the workout stays attached, and counts the workout as updated. Otherwise it changes nothing, the import id included, and counts the workout as a duplicate, so that a source that sends its workouts again, as Health Auto Export does on each sync, rewrites nothing.
   - A batch with an invalid sample, such as a type that does not exist or a source of another user, is refused as a whole, and nothing of it is stored.
 
 - **FR-2**: Sources are registered per user from the source name, bundle id and device information when available.

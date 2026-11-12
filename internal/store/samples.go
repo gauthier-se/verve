@@ -42,7 +42,7 @@ const (
 	ConflictReplace ConflictRule = "replace"
 )
 
-// Known reports whether r is one of the conflict rules.
+// Known reports whether r is one of the conflict rules of a sample.
 func (r ConflictRule) Known() bool {
 	switch r {
 	case ConflictIgnore, ConflictUpdateIfChanged, ConflictReplace:

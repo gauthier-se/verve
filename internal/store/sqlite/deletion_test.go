@@ -86,6 +86,24 @@ var userRowSeeders = map[string]func(ctx context.Context, t *testing.T, s store.
 
 		seedSample(ctx, t, s, user)
 	},
+	"workouts": func(ctx context.Context, t *testing.T, s store.Store, user store.User) {
+		t.Helper()
+
+		_, err := s.Workouts().Upsert(ctx, user.ID, store.NewWorkout{
+			Workout: store.Workout{
+				SourceID:     seedSource(ctx, t, s, user).ID,
+				Origin:       store.OriginXML,
+				Activity:     "running",
+				Start:        deletionTestNow,
+				End:          deletionTestNow.Add(30 * time.Minute),
+				Duration:     1800,
+				LocationType: store.LocationOutdoor,
+				NaturalKey:   []byte("run of " + user.Username),
+			},
+			OnConflict: store.ConflictIgnore,
+		})
+		require.NoError(t, err)
+	},
 	"jobs": func(ctx context.Context, t *testing.T, s store.Store, user store.User) {
 		t.Helper()
 

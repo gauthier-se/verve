@@ -171,3 +171,29 @@ type UserPreference struct {
 	UserID   int64
 	Timezone sql.NullString
 }
+
+type Workout struct {
+	ID            int64
+	UserID        int64
+	SourceID      int64
+	Origin        string
+	ExternalID    string
+	Activity      string
+	StartAt       int64
+	EndAt         int64
+	UtcOffset     int64
+	Duration      float64
+	Distance      sql.NullFloat64
+	ActiveEnergy  sql.NullFloat64
+	TotalEnergy   sql.NullFloat64
+	ElevationGain sql.NullFloat64
+	ElevationLoss sql.NullFloat64
+	AvgHeartRate  sql.NullFloat64
+	MaxHeartRate  sql.NullFloat64
+	Indoor        sql.NullInt64
+	LocationType  string
+	Events        string
+	Metadata      sql.NullString
+	ImportID      int64
+	NaturalKey    []byte
+}

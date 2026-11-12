@@ -188,7 +188,7 @@ Every user-owned row carries a `user_id`. All queries are scoped by user, and th
 | `sources` | Devices and apps that produced data, identified by name and device model, with a display name, the details of the latest record, first and last seen, and a detected or user-set kind (watch, phone, scale, ring, app, aggregated, unknown) |
 | `samples` | Generic quantity and category samples: type, source, start, end, original UTC offset, value, optional min and max for pre-aggregated points, category value, origin, import id (referencing no table, so that purging import reports leaves samples alone), natural key, metadata |
 | `sample_stats` | Data availability per user and type: first start, last start, count, maintained in the transaction of every write that adds, removes or moves samples |
-| `workouts` | Activity type (a key from the activity type catalog shipped with the binary), time range, totals, source, external id, metadata |
+| `workouts` | Activity type (a key from the activity type catalog shipped with the binary), source, origin, external id, time range, original UTC offset, duration, totals (distance, active and total energy, elevation gain and loss, average and max heart rate), indoor flag, location type, events, import id (referencing no table), natural key, metadata |
 | `workout_routes` | One compressed, columnar encoded route per workout ([ADR 0014](decisions/0014-route-encoding.md)), plus bounding box and simplified polyline |
 | `agg_hourly`, `agg_daily` | Precomputed aggregates after source selection |
 | `source_aliases` | Merged sources (old and new device names), matched by the same name and device model as sources |
