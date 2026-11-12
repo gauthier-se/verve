@@ -93,6 +93,10 @@ func (r repositories) MetricTypes() store.MetricTypesRepository {
 	return metricTypes(r)
 }
 
+func (r repositories) Sources() store.SourcesRepository {
+	return sources(r)
+}
+
 func (r repositories) AfterCommit(fn func()) {
 	r.q.afterCommit(fn)
 }
