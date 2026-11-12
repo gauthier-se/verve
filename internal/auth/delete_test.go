@@ -276,9 +276,9 @@ type deleteBatch struct {
 	deleted int64
 }
 
-// sampleBatch is a call of Samples().DeleteByUser or Workouts().DeleteByUser: its limit, how many
-// rows it removed, and whether the user still existed when it ran.
-type sampleBatch struct {
+// userBatch is a call of Samples().DeleteByUser or Workouts().DeleteByUser: its limit, how many rows
+// it removed, and whether the user still existed when it ran.
+type userBatch struct {
 	limit      int
 	deleted    int64
 	userExists bool
@@ -290,8 +290,8 @@ type countingStore struct {
 	store.Store
 
 	batches        *[]deleteBatch
-	sampleBatches  *[]sampleBatch
-	workoutBatches *[]sampleBatch
+	sampleBatches  *[]userBatch
+	workoutBatches *[]userBatch
 }
 
 func (s countingStore) Jobs() store.JobsRepository {
@@ -306,7 +306,7 @@ type countingSamples struct {
 	store.SamplesRepository
 
 	users   store.UsersRepository
-	batches *[]sampleBatch
+	batches *[]userBatch
 }
 
 func (r countingSamples) DeleteByUser(ctx context.Context, userID int64, limit int) (int64, error) {
@@ -314,7 +314,7 @@ func (r countingSamples) DeleteByUser(ctx context.Context, userID int64, limit i
 	userExists := err == nil
 
 	deleted, err := r.SamplesRepository.DeleteByUser(ctx, userID, limit)
-	*r.batches = append(*r.batches, sampleBatch{limit: limit, deleted: deleted, userExists: userExists})
+	*r.batches = append(*r.batches, userBatch{limit: limit, deleted: deleted, userExists: userExists})
 
 	return deleted, err
 }
@@ -327,7 +327,7 @@ type countingWorkouts struct {
 	store.WorkoutsRepository
 
 	users   store.UsersRepository
-	batches *[]sampleBatch
+	batches *[]userBatch
 }
 
 func (r countingWorkouts) DeleteByUser(ctx context.Context, userID int64, limit int) (int64, error) {
@@ -335,7 +335,7 @@ func (r countingWorkouts) DeleteByUser(ctx context.Context, userID int64, limit 
 	userExists := err == nil
 
 	deleted, err := r.WorkoutsRepository.DeleteByUser(ctx, userID, limit)
-	*r.batches = append(*r.batches, sampleBatch{limit: limit, deleted: deleted, userExists: userExists})
+	*r.batches = append(*r.batches, userBatch{limit: limit, deleted: deleted, userExists: userExists})
 
 	return deleted, err
 }
@@ -374,8 +374,8 @@ func TestDeleteAccount_RemovesTheRowsInBoundedBatchesAndIsSafeToRunTwice(t *test
 
 	var (
 		batches        []deleteBatch
-		sampleBatches  []sampleBatch
-		workoutBatches []sampleBatch
+		sampleBatches  []userBatch
+		workoutBatches []userBatch
 	)
 
 	counting := countingStore{Store: dt.store, batches: &batches, sampleBatches: &sampleBatches, workoutBatches: &workoutBatches}
@@ -464,14 +464,14 @@ func TestDeleteAccount_RemovesTheSamplesInBoundedBatchesBeforeTheUser(t *testing
 
 	var (
 		batches        []deleteBatch
-		sampleBatches  []sampleBatch
-		workoutBatches []sampleBatch
+		sampleBatches  []userBatch
+		workoutBatches []userBatch
 	)
 
 	counting := countingStore{Store: dt.store, batches: &batches, sampleBatches: &sampleBatches, workoutBatches: &workoutBatches}
 
 	require.NoError(t, deleteAccount(t.Context(), counting, bob.ID, 2))
-	require.Equal(t, []sampleBatch{
+	require.Equal(t, []userBatch{
 		{limit: 2, deleted: 2, userExists: true},
 		{limit: 2, deleted: 2, userExists: true},
 		{limit: 2, deleted: 2, userExists: true},
@@ -532,14 +532,14 @@ func TestDeleteAccount_RemovesTheWorkoutsInBoundedBatchesBeforeTheUser(t *testin
 
 	var (
 		batches        []deleteBatch
-		sampleBatches  []sampleBatch
-		workoutBatches []sampleBatch
+		sampleBatches  []userBatch
+		workoutBatches []userBatch
 	)
 
 	counting := countingStore{Store: dt.store, batches: &batches, sampleBatches: &sampleBatches, workoutBatches: &workoutBatches}
 
 	require.NoError(t, deleteAccount(t.Context(), counting, bob.ID, 2))
-	require.Equal(t, []sampleBatch{
+	require.Equal(t, []userBatch{
 		{limit: 2, deleted: 2, userExists: true},
 		{limit: 2, deleted: 2, userExists: true},
 		{limit: 2, deleted: 1, userExists: true},

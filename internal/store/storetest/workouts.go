@@ -266,7 +266,8 @@ func runWorkoutsConflicts(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
 
 	// Given the rule update and a natural key already stored, then every field of the workout is
-	// replaced, it keeps its id, so that its route stays attached, and the result says updated.
+	// replaced, it keeps its id, so that its route stays attached, and the result says updated. The
+	// origin and external id stay, since they make the natural key.
 	t.Run("UpdateReplacesTheStoredWorkoutAndKeepsItsID", func(t *testing.T) {
 		t.Parallel()
 
@@ -276,7 +277,7 @@ func runWorkoutsConflicts(t *testing.T, newStore NewStoreFunc) {
 		first := st.mustUpsert(ctx, t, st.user.ID, st.fullRun("hae"))
 
 		again := st.run("hae", workoutsTime.Add(time.Minute))
-		again.Origin = store.OriginNative
+		again.Origin = store.OriginHAE
 		again.Activity = "trail_running"
 		again.ExternalID = "9B2C7E14-5A3D-4F8B-B1E6-3C0D9A7F2E58"
 		again.Distance = ptr(8100)
