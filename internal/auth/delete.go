@@ -236,6 +236,10 @@ func deleteAccount(ctx context.Context, st store.Store, userID int64, batchSize 
 		return err
 	}
 
+	if err := deleteInBatches(ctx, st.Workouts().DeleteByUser, userID, batchSize); err != nil {
+		return err
+	}
+
 	err = st.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
 		if err := tx.Users().Delete(ctx, userID); err != nil {
 			return err
@@ -258,8 +262,8 @@ type deleteByUser func(ctx context.Context, userID int64, limit int) (int64, err
 
 // deleteInBatches removes the rows of the user of userID with deleteBatch, in batches of batchSize,
 // until a batch removes fewer. Each batch is a transaction of its own only when deleteBatch is a
-// method of a repository of the store, never of a WithTx: the jobs and the samples, with their data
-// availability.
+// method of a repository of the store, never of a WithTx: the jobs, the samples, with their data
+// availability, and the workouts.
 func deleteInBatches(ctx context.Context, deleteBatch deleteByUser, userID int64, batchSize int) error {
 	for {
 		deleted, err := deleteBatch(ctx, userID, batchSize)
