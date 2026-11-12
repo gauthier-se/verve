@@ -148,6 +148,7 @@ func checkWorkout(workout store.NewWorkout) error {
 		return fmt.Errorf("empty activity: %w", store.ErrInvalid)
 	case toMillis(workout.End) < toMillis(workout.Start):
 		return fmt.Errorf("end before start: %w", store.ErrInvalid)
+	// Written so that NaN, which compares false, is refused too.
 	case !(workout.Duration >= 0):
 		return fmt.Errorf("duration %v: %w", workout.Duration, store.ErrInvalid)
 	case workout.Metadata != nil && !isJSONObject(workout.Metadata):
