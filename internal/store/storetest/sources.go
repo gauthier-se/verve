@@ -329,7 +329,7 @@ func runSourcesAliases(t *testing.T, newStore NewStoreFunc) {
 		user := mustCreateUser(ctx, t, s.Users(), newUser("camille", "camille@example.com"))
 		target := mustResolve(ctx, t, s.Sources(), user.ID, watchInfo, store.SourceWatch, sourcesTime)
 
-		require.NoError(t, s.Sources().AddAlias(ctx, user.ID, store.SourceIdentity{Name: "Ancienne montre", DeviceModel: "Watch"}, target.ID))
+		require.NoError(t, s.Sources().AddAlias(ctx, user.ID, sourceIdentity("Ancienne montre", "Watch"), target.ID))
 
 		got := mustResolve(ctx, t, s.Sources(), user.ID, sourceInfo("Ancienne montre", "Watch"), store.SourceWatch,
 			sourcesTime.Add(time.Hour))
@@ -352,15 +352,14 @@ func runSourcesAliases(t *testing.T, newStore NewStoreFunc) {
 		user := mustCreateUser(ctx, t, s.Users(), newUser("camille", "camille@example.com"))
 		target := mustResolve(ctx, t, s.Sources(), user.ID, sourceInfo("Montre", ""), store.SourceWatch, sourcesTime)
 
-		require.NoError(t, s.Sources().AddAlias(ctx, user.ID, store.SourceIdentity{Name: "Ancienne montre"}, target.ID))
+		require.NoError(t, s.Sources().AddAlias(ctx, user.ID, sourceIdentity("Ancienne montre", ""), target.ID))
 
 		got := mustResolve(ctx, t, s.Sources(), user.ID, sourceInfo("Ancienne montre", "Watch"), store.SourceWatch, sourcesTime)
 		require.Equal(t, target, got)
 
 		other := mustResolve(ctx, t, s.Sources(), user.ID, sourceInfo("Ancienne montre", "iPhone"), store.SourcePhone, sourcesTime)
 		require.NotEqual(t, target.ID, other.ID)
-		require.Equal(t, store.SourceIdentity{Name: "Ancienne montre", DeviceModel: "iPhone"},
-			store.SourceIdentity{Name: other.Name, DeviceModel: other.DeviceModel})
+		require.Equal(t, sourceIdentity("Ancienne montre", "iPhone"), sourceIdentity(other.Name, other.DeviceModel))
 	})
 
 	// Given an alias with a model, when a record of its name without model is resolved, then it
@@ -373,7 +372,7 @@ func runSourcesAliases(t *testing.T, newStore NewStoreFunc) {
 		user := mustCreateUser(ctx, t, s.Users(), newUser("camille", "camille@example.com"))
 		target := mustResolve(ctx, t, s.Sources(), user.ID, watchInfo, store.SourceWatch, sourcesTime)
 
-		require.NoError(t, s.Sources().AddAlias(ctx, user.ID, store.SourceIdentity{Name: "Ancienne montre", DeviceModel: "Watch"}, target.ID))
+		require.NoError(t, s.Sources().AddAlias(ctx, user.ID, sourceIdentity("Ancienne montre", "Watch"), target.ID))
 
 		got := mustResolve(ctx, t, s.Sources(), user.ID, sourceInfo("Ancienne montre", ""), store.SourceWatch, sourcesTime)
 		require.Equal(t, target, got)
@@ -392,7 +391,7 @@ func runSourcesAliases(t *testing.T, newStore NewStoreFunc) {
 		phone := mustResolve(ctx, t, s.Sources(), user.ID, sourceInfo("iPhone de Camille", "iPhone"), store.SourcePhone, sourcesTime)
 		foreign := mustResolve(ctx, t, s.Sources(), other.ID, watchInfo, store.SourceWatch, sourcesTime)
 
-		alias := store.SourceIdentity{Name: "Ancienne montre", DeviceModel: "Watch"}
+		alias := sourceIdentity("Ancienne montre", "Watch")
 		require.NoError(t, s.Sources().AddAlias(ctx, user.ID, alias, target.ID))
 
 		cases := []struct {
@@ -401,11 +400,11 @@ func runSourcesAliases(t *testing.T, newStore NewStoreFunc) {
 			sourceID int64
 			want     error
 		}{
-			{"IdentityOfASource", store.SourceIdentity{Name: "iPhone de Camille", DeviceModel: "iPhone"}, target.ID, store.ErrConflict},
+			{"IdentityOfASource", sourceIdentity("iPhone de Camille", "iPhone"), target.ID, store.ErrConflict},
 			{"IdentityOfAnAlias", alias, phone.ID, store.ErrConflict},
-			{"EmptyName", store.SourceIdentity{DeviceModel: "Watch"}, target.ID, store.ErrInvalid},
-			{"UnknownSource", store.SourceIdentity{Name: "Montre"}, phone.ID + foreign.ID + 1, store.ErrNotFound},
-			{"SourceOfAnotherUser", store.SourceIdentity{Name: "Montre"}, foreign.ID, store.ErrNotFound},
+			{"EmptyName", sourceIdentity("", "Watch"), target.ID, store.ErrInvalid},
+			{"UnknownSource", sourceIdentity("Montre", ""), phone.ID + foreign.ID + 1, store.ErrNotFound},
+			{"SourceOfAnotherUser", sourceIdentity("Montre", ""), foreign.ID, store.ErrNotFound},
 		}
 
 		for _, tc := range cases {
@@ -597,7 +596,7 @@ func runSourcesIdentity(t *testing.T, newStore NewStoreFunc) {
 
 			identities := make([]store.SourceIdentity, 0, len(tc.identities))
 			for _, source := range mustListSources(ctx, t, s.Sources(), user.ID) {
-				identities = append(identities, store.SourceIdentity{Name: source.Name, DeviceModel: source.DeviceModel})
+				identities = append(identities, sourceIdentity(source.Name, source.DeviceModel))
 			}
 
 			require.Equal(t, tc.identities, identities)
