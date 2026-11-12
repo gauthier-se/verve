@@ -94,7 +94,7 @@ func (r samples) Stats(ctx context.Context, userID int64) ([]store.SampleStats, 
 
 func (r samples) List(ctx context.Context, userID int64, query store.SamplesQuery) ([]store.Sample, error) {
 	if query.Limit < 1 || !query.To.After(query.From) {
-		return nil, fmt.Errorf("list samples of user %d: limit %d from %s to %s: %w", userID, query.Limit,
+		return nil, fmt.Errorf("list samples of user %d: limit %d, from %s to %s: %w", userID, query.Limit,
 			query.From, query.To, store.ErrInvalid)
 	}
 
@@ -121,7 +121,7 @@ func (r samples) List(ctx context.Context, userID int64, query store.SamplesQuer
 
 func (r samples) DeleteByUser(ctx context.Context, userID int64, limit int) (int64, error) {
 	if limit < 1 {
-		return 0, fmt.Errorf("delete samples of user %d: limit %d: %w", userID, limit, store.ErrInvalid)
+		return 0, fmt.Errorf("delete samples of user %d: limit %d below 1: %w", userID, limit, store.ErrInvalid)
 	}
 
 	var deleted int64
@@ -134,11 +134,11 @@ func (r samples) DeleteByUser(ctx context.Context, userID int64, limit int) (int
 			return err
 		}
 
-		stats, err := q.DeleteUserSampleStats(ctx, sqlcgen.DeleteUserSampleStatsParams{
+		statsDeleted, err := q.DeleteUserSampleStats(ctx, sqlcgen.DeleteUserSampleStatsParams{
 			UserID:    userID,
 			BatchSize: int64(limit) - deleted,
 		})
-		deleted += stats
+		deleted += statsDeleted
 
 		return err
 	})

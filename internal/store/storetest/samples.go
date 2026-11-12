@@ -82,6 +82,15 @@ func (st samplesTest) heartRate(key string, start time.Time, value float64, rule
 	}
 }
 
+// standHour returns a stand hour sample of the user of st, keyed stood, starting at start.
+func (st samplesTest) standHour(start time.Time) store.NewSample {
+	sample := st.heartRate("stood", start, 1, store.ConflictIgnore)
+	sample.TypeID = st.standing.ID
+	sample.Category = "stood"
+
+	return sample
+}
+
 // foreignHeartRate is heartRate for the other user of st.
 func (st samplesTest) foreignHeartRate(key string, start time.Time, value float64) store.NewSample {
 	sample := st.heartRate(key, start, value, store.ConflictIgnore)
@@ -207,12 +216,12 @@ func runSamplesUpsert(t *testing.T, newStore NewStoreFunc) {
 		require.Equal(t, samplesUTC, points[0].Start)
 		require.Equal(t, stored(point, st.user.ID, points[0].ID), points[0])
 
-		stoods := st.mustListAll(ctx, t, st.user.ID, st.standing.ID, 10)
-		require.Len(t, stoods, 1)
-		require.Equal(t, stored(stood, st.user.ID, stoods[0].ID), stoods[0])
-		require.Nil(t, stoods[0].Min)
-		require.Nil(t, stoods[0].Max)
-		require.Nil(t, stoods[0].Metadata)
+		standHours := st.mustListAll(ctx, t, st.user.ID, st.standing.ID, 10)
+		require.Len(t, standHours, 1)
+		require.Equal(t, stored(stood, st.user.ID, standHours[0].ID), standHours[0])
+		require.Nil(t, standHours[0].Min)
+		require.Nil(t, standHours[0].Max)
+		require.Nil(t, standHours[0].Metadata)
 	})
 
 	// Given a batch with a new sample and one of each rule on stored samples, of which the update if
@@ -479,8 +488,7 @@ func runSamplesStats(t *testing.T, newStore NewStoreFunc) {
 
 		require.Empty(t, st.mustStats(ctx, t, st.user.ID))
 
-		stood := st.heartRate("stood", samplesTime.Add(2*time.Hour), 1, store.ConflictIgnore)
-		stood.TypeID = st.standing.ID
+		stood := st.standHour(samplesTime.Add(2 * time.Hour))
 
 		st.mustUpsert(ctx, t, st.user.ID,
 			st.heartRate("a", samplesTime.Add(time.Hour), 60, store.ConflictIgnore),
@@ -595,8 +603,7 @@ func runSamplesList(t *testing.T, newStore NewStoreFunc) {
 		ctx := t.Context()
 
 		at := func(hours int) time.Time { return samplesTime.Add(time.Duration(hours) * time.Hour) }
-		stood := st.heartRate("stood", at(2), 1, store.ConflictIgnore)
-		stood.TypeID = st.standing.ID
+		stood := st.standHour(at(2))
 
 		st.mustUpsert(ctx, t, st.user.ID,
 			st.heartRate("before", at(-1), 1, store.ConflictIgnore),
@@ -662,8 +669,7 @@ func runSamplesDelete(t *testing.T, newStore NewStoreFunc) {
 		st := newSamplesTest(t, newStore)
 		ctx := t.Context()
 
-		stood := st.heartRate("stood", samplesTime, 1, store.ConflictIgnore)
-		stood.TypeID = st.standing.ID
+		stood := st.standHour(samplesTime)
 
 		st.mustUpsert(ctx, t, st.user.ID,
 			st.heartRate("a", samplesTime, 1, store.ConflictIgnore),

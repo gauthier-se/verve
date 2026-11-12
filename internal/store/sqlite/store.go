@@ -97,6 +97,10 @@ func (r repositories) Sources() store.SourcesRepository {
 	return sources(r)
 }
 
+func (r repositories) Samples() store.SamplesRepository {
+	return samples(r)
+}
+
 func (r repositories) AfterCommit(fn func()) {
 	r.q.afterCommit(fn)
 }
@@ -182,8 +186,4 @@ func inTx(ctx context.Context, db *sql.DB, fn func(tx *sql.Tx) error) (err error
 // Snapshot copies the database, see DB.Snapshot.
 func (s *sqliteStore) Snapshot(ctx context.Context, path string) error {
 	return s.db.Snapshot(ctx, path)
-}
-
-func (r repositories) Samples() store.SamplesRepository {
-	return samples(r)
 }
