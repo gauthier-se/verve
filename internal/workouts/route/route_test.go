@@ -165,6 +165,8 @@ func TestCodec_Encode_InvalidValue_ReturnsError(t *testing.T) {
 		{name: "altitude NaN", point: route.Point{Time: at, Altitude: ptr(math.NaN())}},
 		{name: "speed infinite", point: route.Point{Time: at, Speed: ptr(math.Inf(1))}},
 		{name: "altitude too large", point: route.Point{Time: at, Altitude: ptr(1e300)}},
+		{name: "speed negative infinite", point: route.Point{Time: at, Speed: ptr(math.Inf(-1))}},
+		{name: "course NaN", point: route.Point{Time: at, Course: ptr(math.NaN())}},
 	}
 
 	codec := newCodec(t)
@@ -230,6 +232,7 @@ func TestCodec_Decode_InvalidData_ReturnsError(t *testing.T) {
 		{name: "varint overflow", data: compressed(1, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01, 0, 0)},
 		{name: "trailing bytes", data: compressed(0, 0, 0, 0, 0, 0, 0)},
 		{name: "more points than MaxPoints", data: compressed(tooManyPoints()...)},
+		{name: "bitmap bit past the last point", data: compressed(1, 0, 0, 0, 0x03, 0x02, 0x02, 0, 0, 0, 0)},
 	}
 
 	for _, tt := range tests {
@@ -283,4 +286,60 @@ func TestCodec_Encode_MoreThanMaxPoints_ReturnsError(t *testing.T) {
 
 	_, err := newCodec(t).Encode(make([]route.Point, route.MaxPoints+1))
 	require.Error(t, err)
+}
+
+// Given times before the Unix epoch, when they are encoded and decoded, then they are rounded to
+// the millisecond halves away from zero.
+func TestCodec_RoundTrip_TimesBeforeEpochRoundAwayFromZero(t *testing.T) {
+	t.Parallel()
+
+	points := []route.Point{
+		{Time: time.Unix(0, -1_500_000)},
+		{Time: time.Unix(0, -500_000)},
+		{Time: time.Unix(0, -400_000)},
+	}
+
+	want := []route.Point{
+		{Time: time.UnixMilli(-2).UTC()},
+		{Time: time.UnixMilli(-1).UTC()},
+		{Time: time.UnixMilli(0).UTC()},
+	}
+
+	require.Equal(t, want, roundTrip(t, points))
+}
+
+// Given a route, then its encoding is the version byte and a zstd frame of the point count and the
+// columns of ADR 0014, here computed by hand.
+func TestCodec_Encode_FollowsTheLayoutOfADR(t *testing.T) {
+	t.Parallel()
+
+	points := []route.Point{
+		{Time: time.UnixMilli(1000), Lat: 0.0000001, Lon: -0.0000002, Altitude: ptr(0.01)},
+		{Time: time.UnixMilli(2000), Lat: 0.0000003, Lon: -0.0000002, Speed: ptr(0.05)},
+	}
+
+	data, err := newCodec(t).Encode(points)
+	require.NoError(t, err)
+	require.Equal(t, byte(1), data[0])
+
+	dec, err := zstd.NewReader(nil)
+	require.NoError(t, err)
+
+	defer dec.Close()
+
+	raw, err := dec.DecodeAll(data[1:], nil)
+	require.NoError(t, err)
+
+	want := []byte{
+		0x02,                   // 2 points
+		0xd0, 0x0f, 0xd0, 0x0f, // time: deltas 1000 and 1000 ms, zigzag 2000
+		0x02, 0x04, // latitude: deltas 1 and 2
+		0x03, 0x00, // longitude: deltas -2 and 0
+		0x01, 0x02, // altitude: first point only, delta 1 cm
+		0x00,       // horizontal accuracy: absent
+		0x00,       // vertical accuracy: absent
+		0x02, 0x0a, // speed: second point only, delta 5 cm/s
+		0x00, // course: absent
+	}
+	require.Equal(t, want, raw)
 }
