@@ -126,9 +126,12 @@ func (st workoutsTest) mustGet(ctx context.Context, t *testing.T, userID, id int
 	return got
 }
 
-// mustListAll returns every workout of userID, read in pages of pageSize.
-func (st workoutsTest) mustListAll(ctx context.Context, t *testing.T, userID int64, pageSize int) []store.Workout {
+// mustListAll returns every workout of userID, read in pages of two, so that a list of a few
+// workouts takes several pages.
+func (st workoutsTest) mustListAll(ctx context.Context, t *testing.T, userID int64) []store.Workout {
 	t.Helper()
+
+	const pageSize = 2
 
 	query := allWorkouts
 	query.Limit = pageSize
@@ -250,9 +253,9 @@ func runWorkoutsUpsert(t *testing.T, newStore NewStoreFunc) {
 		require.Equal(t, store.OutcomeInserted, got.Outcome)
 		require.NotEqual(t, foreign.ID, got.ID)
 
-		require.Equal(t, []store.Workout{storedWorkout(mine, st.user.ID, got.ID)}, st.mustListAll(ctx, t, st.user.ID, 10))
+		require.Equal(t, []store.Workout{storedWorkout(mine, st.user.ID, got.ID)}, st.mustListAll(ctx, t, st.user.ID))
 
-		others := st.mustListAll(ctx, t, st.other.ID, 10)
+		others := st.mustListAll(ctx, t, st.other.ID)
 		require.Len(t, others, 1)
 		require.Equal(t, foreign.ID, others[0].ID)
 	})
@@ -286,7 +289,7 @@ func runWorkoutsConflicts(t *testing.T, newStore NewStoreFunc) {
 		got := st.mustUpsert(ctx, t, st.user.ID, again)
 		require.Equal(t, store.WorkoutUpsert{ID: first.ID, Outcome: store.OutcomeUpdated}, got)
 
-		require.Equal(t, []store.Workout{storedWorkout(again, st.user.ID, first.ID)}, st.mustListAll(ctx, t, st.user.ID, 10))
+		require.Equal(t, []store.Workout{storedWorkout(again, st.user.ID, first.ID)}, st.mustListAll(ctx, t, st.user.ID))
 	})
 
 	// Given the rule ignore and a natural key already stored, then the workout counts as a duplicate
@@ -298,7 +301,7 @@ func runWorkoutsConflicts(t *testing.T, newStore NewStoreFunc) {
 		ctx := t.Context()
 
 		first := st.mustUpsert(ctx, t, st.user.ID, st.run("xml", workoutsTime))
-		before := st.mustListAll(ctx, t, st.user.ID, 10)
+		before := st.mustListAll(ctx, t, st.user.ID)
 
 		again := st.fullRun("xml")
 		again.OnConflict = store.ConflictIgnore
@@ -306,7 +309,7 @@ func runWorkoutsConflicts(t *testing.T, newStore NewStoreFunc) {
 		got := st.mustUpsert(ctx, t, st.user.ID, again)
 		require.Equal(t, store.WorkoutUpsert{ID: first.ID, Outcome: store.OutcomeDuplicate}, got)
 
-		require.Equal(t, before, st.mustListAll(ctx, t, st.user.ID, 10))
+		require.Equal(t, before, st.mustListAll(ctx, t, st.user.ID))
 	})
 }
 
@@ -360,8 +363,8 @@ func runWorkoutsInvalid(t *testing.T, newStore NewStoreFunc) {
 				return nil
 			}))
 
-			require.Empty(t, st.mustListAll(ctx, t, st.user.ID, 10))
-			require.Empty(t, st.mustListAll(ctx, t, st.other.ID, 10))
+			require.Empty(t, st.mustListAll(ctx, t, st.user.ID))
+			require.Empty(t, st.mustListAll(ctx, t, st.other.ID))
 		})
 	}
 
@@ -374,7 +377,7 @@ func runWorkoutsInvalid(t *testing.T, newStore NewStoreFunc) {
 		ctx := t.Context()
 
 		st.mustUpsert(ctx, t, st.user.ID, st.fullRun("hae"))
-		before := st.mustListAll(ctx, t, st.user.ID, 10)
+		before := st.mustListAll(ctx, t, st.user.ID)
 
 		again := st.fullRun("hae")
 		again.SourceID = st.foreign.ID
@@ -383,7 +386,7 @@ func runWorkoutsInvalid(t *testing.T, newStore NewStoreFunc) {
 		_, err := st.store.Workouts().Upsert(ctx, st.user.ID, again)
 		require.ErrorIs(t, err, store.ErrInvalid)
 
-		require.Equal(t, before, st.mustListAll(ctx, t, st.user.ID, 10))
+		require.Equal(t, before, st.mustListAll(ctx, t, st.user.ID))
 	})
 
 	// Given an unknown user, then Upsert answers ErrInvalid, since no source belongs to them.
@@ -520,8 +523,8 @@ func runWorkoutsDelete(t *testing.T, newStore NewStoreFunc) {
 		}
 
 		require.Equal(t, []int64{2, 1}, removed)
-		require.Empty(t, st.mustListAll(ctx, t, st.user.ID, 10))
-		require.Len(t, st.mustListAll(ctx, t, st.other.ID, 10), 1)
+		require.Empty(t, st.mustListAll(ctx, t, st.user.ID))
+		require.Len(t, st.mustListAll(ctx, t, st.other.ID), 1)
 
 		_, err := st.store.Workouts().DeleteByUser(ctx, st.user.ID, 0)
 		require.ErrorIs(t, err, store.ErrInvalid)
