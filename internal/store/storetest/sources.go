@@ -24,6 +24,7 @@ var watchInfo = store.SourceInfo{
 	Name:            "Montre de Camille",
 	BundleID:        "com.apple.health.81C2A1F0",
 	DeviceName:      "Apple Watch",
+	Manufacturer:    "Apple Inc.",
 	DeviceModel:     "Watch",
 	HardwareVersion: "Watch7,3",
 	SoftwareVersion: "11.1",
@@ -87,6 +88,7 @@ func RunSources(t *testing.T, newStore NewStoreFunc) {
 			DisplayName:     "Montre de Camille",
 			BundleID:        "com.apple.health.81C2A1F0",
 			DeviceName:      "Apple Watch",
+			Manufacturer:    "Apple Inc.",
 			HardwareVersion: "Watch7,3",
 			SoftwareVersion: "11.1",
 			Kind:            store.SourceWatch,
@@ -423,7 +425,7 @@ func runSourcesSeen(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
 
 	// Given a source, when a later record of it is resolved, then last seen moves to its time and
-	// the source takes its bundle id, device name and versions. First seen does not move.
+	// the source takes its bundle id, device name, manufacturer and versions. First seen does not move.
 	t.Run("ResolveOfALaterRecordMovesLastSeenAndTakesItsDetails", func(t *testing.T) {
 		t.Parallel()
 
@@ -466,12 +468,14 @@ func runSourcesSeen(t *testing.T, newStore NewStoreFunc) {
 
 		earlier := sourceInfo("Montre de Camille", "Watch")
 		earlier.BundleID = "com.apple.health.81C2A1F0"
+		earlier.Manufacturer = "Apple Inc."
 		earlier.SoftwareVersion = "10.0"
 
 		got := mustResolve(ctx, t, s.Sources(), user.ID, earlier, store.SourceWatch, sourcesTime.Add(-24*time.Hour))
 
 		want := created
 		want.BundleID = "com.apple.health.81C2A1F0"
+		want.Manufacturer = "Apple Inc."
 
 		require.Equal(t, want, got)
 	})
