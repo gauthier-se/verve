@@ -62,12 +62,35 @@ var userRowSeeders = map[string]func(ctx context.Context, t *testing.T, s store.
 		})
 		require.NoError(t, err)
 	},
+	// The alias resolves the source of the seeder of sources, so that each table holds one row.
+	"source_aliases": func(ctx context.Context, t *testing.T, s store.Store, user store.User) {
+		t.Helper()
+
+		source := seedSource(ctx, t, s, user)
+		require.NoError(t, s.Sources().AddAlias(ctx, user.ID, store.SourceIdentity{Name: "Old watch", DeviceModel: "Watch"}, source.ID))
+	},
+	"sources": func(ctx context.Context, t *testing.T, s store.Store, user store.User) {
+		t.Helper()
+
+		seedSource(ctx, t, s, user)
+	},
 	"jobs": func(ctx context.Context, t *testing.T, s store.Store, user store.User) {
 		t.Helper()
 
 		_, err := s.Jobs().Enqueue(ctx, store.NewJob{Kind: "test.job", Payload: json.RawMessage(`{}`), UserID: user.ID})
 		require.NoError(t, err)
 	},
+}
+
+// seedSource resolves the watch source of user, the same source on every call.
+func seedSource(ctx context.Context, t *testing.T, s store.Store, user store.User) store.Source {
+	t.Helper()
+
+	source, err := s.Sources().Resolve(ctx, user.ID, store.SourceInfo{Name: "Watch", DeviceModel: "Watch"},
+		store.SourceWatch, deletionTestNow)
+	require.NoError(t, err)
+
+	return source
 }
 
 // tablesWithUserID returns the tables of the schema of db that have a user_id column.

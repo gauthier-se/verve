@@ -103,6 +103,30 @@ type Session struct {
 	UserAgent  sql.NullString
 }
 
+type Source struct {
+	ID              int64
+	UserID          int64
+	Name            string
+	DeviceModel     string
+	DisplayName     string
+	BundleID        string
+	DeviceName      string
+	Manufacturer    string
+	HardwareVersion string
+	SoftwareVersion string
+	Kind            string
+	KindSetByUser   int64
+	FirstSeenAt     int64
+	LastSeenAt      int64
+}
+
+type SourceAlias struct {
+	UserID      int64
+	Name        string
+	DeviceModel string
+	SourceID    int64
+}
+
 type User struct {
 	ID           int64
 	Username     string

@@ -185,7 +185,7 @@ Every user-owned row carries a `user_id`. All queries are scoped by user, and th
 | `api_tokens` | Hashed tokens with scopes and usage metadata |
 | `oidc_identities`, `totp_secrets`, `recovery_codes` | Advanced authentication |
 | `metric_types` | Instance-wide catalog, without `user_id` and without health data: key, HealthKit identifier, kind (quantity or category), canonical unit, aggregation style (cumulative or discrete), display group, uncurated flag |
-| `sources` | Devices and apps that produced data, identified by name and device model, with a detected kind (watch, phone, scale, app, aggregated) |
+| `sources` | Devices and apps that produced data, identified by name and device model, with a display name, the details of the latest record, first and last seen, and a detected or user-set kind (watch, phone, scale, ring, app, aggregated, unknown) |
 | `samples` | Generic quantity and category samples: type, source, start, end, original UTC offset, value, optional min and max for pre-aggregated points, category value, origin, import id (referencing no table, so that purging import reports leaves samples alone), natural key, metadata |
 | `sample_stats` | Data availability per user and type: first start, last start, count, maintained in the transaction of every write that adds, removes or moves samples |
 | `workouts` | Activity type (a key from the activity type catalog shipped with the binary), time range, totals, source, external id, metadata |
