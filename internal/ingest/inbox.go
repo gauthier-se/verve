@@ -127,9 +127,10 @@ func (i *Inbox) Remove(ctx context.Context, name string) error {
 	return removeIfExists(path)
 }
 
-// Cleanup removes the files of the imports that failed more than InboxFailedRetention ago, and the
-// files without import, temporary ones included, once they are older than InboxOrphanAge. It keeps
-// the files of the other imports. It is the handler of the daily job cleanup.inbox.
+// Cleanup removes the files that no import needs, once they are older than InboxOrphanAge: those
+// of the imports that failed more than InboxFailedRetention ago, of the completed and cancelled
+// imports whose removal failed, and the files without import, temporary ones included. It keeps
+// the files of the queued and running imports and of the recent failures. It is the handler of the daily job cleanup.inbox.
 func (i *Inbox) Cleanup(ctx context.Context, imports store.ImportsRepository) error {
 	now := i.clk.Now()
 

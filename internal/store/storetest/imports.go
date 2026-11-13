@@ -690,9 +690,10 @@ func runImportsInboxFiles(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
 
 	// Given imports of two users in every status, when InboxFilesKept runs, then it returns the
-	// inbox files of every import, and leaves out those of the imports that failed before the given
-	// time and the imports without inbox file.
-	t.Run("InboxFilesKeptReturnsTheFilesOfEveryImportButOldFailures", func(t *testing.T) {
+	// inbox files of the queued and running imports and of the imports that failed since the given
+	// time, and leaves out those of the completed and cancelled imports, which no longer need them,
+	// of the older failures and the imports without inbox file.
+	t.Run("InboxFilesKeptReturnsTheFilesOfTheUnfinishedImportsAndRecentFailures", func(t *testing.T) {
 		t.Parallel()
 
 		st := newImportsTest(t, newStore)
@@ -723,7 +724,7 @@ func runImportsInboxFiles(t *testing.T, newStore NewStoreFunc) {
 
 		files, err := imports.InboxFilesKept(ctx, failedSince)
 		require.NoError(t, err)
-		require.ElementsMatch(t, []string{"failed-at", "failed-after", "completed", "cancelled", "queued", "running"}, files)
+		require.ElementsMatch(t, []string{"failed-at", "failed-after", "queued", "running"}, files)
 	})
 }
 

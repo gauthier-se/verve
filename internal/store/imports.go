@@ -153,9 +153,9 @@ type ImportsRepository interface {
 	// removes it when client is empty: a push stores its client once its job reads the payload. It
 	// returns ErrNotFound for a missing import and ErrConflict for one that is not running.
 	SetClient(ctx context.Context, userID, id int64, client map[string]string) error
-	// InboxFilesKept returns the inbox files of the imports, whatever their user, except those of the
-	// imports that failed before failedSince: the file of a failed import is kept for a while, for a
-	// retry or a diagnosis.
+	// InboxFilesKept returns the inbox files that imports still need, whatever their user: those of the
+	// queued and running imports, and those of the imports that failed since failedSince, kept for a
+	// while for a retry or a diagnosis. A completed or cancelled import needs its file no more.
 	InboxFilesKept(ctx context.Context, failedSince time.Time) ([]string, error)
 	// LastByOrigin returns, for each user of userIDs, the FinishedAt of their last completed import
 	// for each origin. The origins without a completed import are left out, and so are the users

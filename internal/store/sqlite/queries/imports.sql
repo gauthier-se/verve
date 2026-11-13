@@ -72,11 +72,11 @@ WHERE user_id = sqlc.arg(user_id)
   AND status = 'running';
 
 -- name: InboxFilesKept :many
--- The inbox files of the imports, except those of the imports that failed before a time.
+-- The inbox files of the queued and running imports, and of the imports that failed since a time.
 SELECT CAST(inbox_file AS TEXT) AS inbox_file
 FROM imports
 WHERE inbox_file IS NOT NULL
-  AND NOT (status = 'failed' AND finished_at < sqlc.arg(failed_since));
+  AND (status IN ('queued', 'running') OR (status = 'failed' AND finished_at >= sqlc.arg(failed_since)));
 
 -- name: LastCompletedUsersImports :many
 SELECT user_id, origin, CAST(max(finished_at) AS INTEGER) AS finished_at

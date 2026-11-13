@@ -233,9 +233,10 @@ func TestInbox_Cleanup_RemovesTheFilesOfOldFailuresAndOldFilesWithoutImport(t *t
 	}, e.files(t))
 }
 
-// Given the old files of a completed and of a cancelled import, when cleanup.inbox runs, then it
-// keeps them: their job removes them, also when it runs again after the process stopped before.
-func TestInbox_Cleanup_KeepsTheFilesOfFinishedImports(t *testing.T) {
+// Given the old files of a completed and of a cancelled import, which their removal missed, such as
+// a removal that failed after a cancellation committed, when cleanup.inbox runs, then it removes
+// them: neither import needs its file.
+func TestInbox_Cleanup_RemovesTheFilesOfCompletedAndCancelledImports(t *testing.T) {
 	t.Parallel()
 
 	e := newInboxEnv(t)
@@ -246,5 +247,5 @@ func TestInbox_Cleanup_KeepsTheFilesOfFinishedImports(t *testing.T) {
 	e.mustImport(t, "cancelled", store.ImportCancelled)
 
 	require.NoError(t, e.inbox.Cleanup(t.Context(), e.store.Imports()))
-	require.ElementsMatch(t, []string{"completed", "cancelled"}, e.files(t))
+	require.Empty(t, e.files(t))
 }

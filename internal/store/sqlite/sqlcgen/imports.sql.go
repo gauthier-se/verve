@@ -159,10 +159,10 @@ const inboxFilesKept = `-- name: InboxFilesKept :many
 SELECT CAST(inbox_file AS TEXT) AS inbox_file
 FROM imports
 WHERE inbox_file IS NOT NULL
-  AND NOT (status = 'failed' AND finished_at < ?1)
+  AND (status IN ('queued', 'running') OR (status = 'failed' AND finished_at >= ?1))
 `
 
-// The inbox files of the imports, except those of the imports that failed before a time.
+// The inbox files of the queued and running imports, and of the imports that failed since a time.
 func (q *Queries) InboxFilesKept(ctx context.Context, failedSince sql.NullInt64) ([]string, error) {
 	rows, err := q.db.QueryContext(ctx, inboxFilesKept, failedSince)
 	if err != nil {
