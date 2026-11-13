@@ -38,13 +38,6 @@ type NormalizedSample struct {
 	Min, Max *float64
 }
 
-// Event is an event of a workout, with its times parsed and its type as received.
-type Event struct {
-	Type  string
-	Start time.Time
-	End   time.Time
-}
-
 // NormalizedWorkout is a workout whose totals are in canonical units, and its events and route
 // parsed. A total that the workout lacks is nil.
 type NormalizedWorkout struct {
@@ -61,19 +54,30 @@ type NormalizedWorkout struct {
 	// AvgHeartRate and MaxHeartRate are in count/min.
 	AvgHeartRate *float64
 	MaxHeartRate *float64
-	// Events are in the order received, nil when the workout has none.
-	Events []Event
+	// Events are in the order received, without the ignored ones, nil when the workout has none.
+	Events []store.WorkoutEvent
 	// Route is nil when the workout has none.
 	Route []route.Point
+	// Warnings name the details that the workout lost, such as an event of an unknown type, for the
+	// warnings of the report.
+	Warnings []string
 }
 
-// The event types that pause and resume a workout.
-const (
-	eventPause         = "HKWorkoutEventTypePause"
-	eventResume        = "HKWorkoutEventTypeResume"
-	eventMotionPaused  = "HKWorkoutEventTypeMotionPaused"
-	eventMotionResumed = "HKWorkoutEventTypeMotionResumed"
-)
+// eventTypes are the types of the events of a workout, by HealthKit identifier (FR-7 of Ingestion
+// pipeline). A type that it does not list is ignored, with a warning, except a pause or resume
+// request, ignored without warning.
+var eventTypes = map[string]store.WorkoutEventType{
+	"HKWorkoutEventTypePause":         store.WorkoutEventPause,
+	"HKWorkoutEventTypeResume":        store.WorkoutEventResume,
+	"HKWorkoutEventTypeLap":           store.WorkoutEventLap,
+	"HKWorkoutEventTypeSegment":       store.WorkoutEventSegment,
+	"HKWorkoutEventTypeMarker":        store.WorkoutEventMarker,
+	"HKWorkoutEventTypeMotionPaused":  store.WorkoutEventPause,
+	"HKWorkoutEventTypeMotionResumed": store.WorkoutEventResume,
+}
+
+// eventPauseOrResumeRequest is the type of the events that are ignored without warning.
+const eventPauseOrResumeRequest = "HKWorkoutEventTypePauseOrResumeRequest"
 
 // NormalizeQuantity converts the value, min and max of s to the unit of its type t, and parses its
 // times, flagging them suspicious against importedAt, when its import was created.
@@ -108,8 +112,8 @@ func NormalizeCategory(s CategorySample, importedAt time.Time) (Times, error) {
 }
 
 // NormalizeWorkout parses the times of w, its events and its route, flagging them suspicious
-// against importedAt, when its import was created, and converts its totals to canonical units. A
-// workout without duration gets its time range without its pauses: from each pause, or motion
+// against importedAt, when its import was created, and converts its totals to canonical units. Its
+// events take the types of eventTypes, and the others are ignored. A workout without duration gets its time range without its pauses: from each pause, or motion
 // pause, to the next resume, or to its end. A route point must be within the latitudes [-90, 90],
 // the longitudes [-180, 180] and the times of the workout. A negative speed, course or accuracy,
 // which CoreLocation writes when the value is unknown, counts as left out.
@@ -121,7 +125,7 @@ func NormalizeWorkout(w Workout, importedAt time.Time) (NormalizedWorkout, error
 
 	n := NormalizedWorkout{Times: times}
 
-	if n.Events, err = parseEvents(w.Events); err != nil {
+	if n.Events, n.Warnings, err = parseEvents(w.Events); err != nil {
 		return NormalizedWorkout{}, err
 	}
 
@@ -228,29 +232,38 @@ func parseTime(s string) (time.Time, int, error) {
 	return t.UTC().Truncate(time.Millisecond), offset, nil
 }
 
-// parseEvents parses the times of events, nil when there are none.
-func parseEvents(events []WorkoutEvent) ([]Event, error) {
-	if len(events) == 0 {
-		return nil, nil
-	}
-
-	parsed := make([]Event, 0, len(events))
+// parseEvents maps the types of events and parses their times, skipping the ignored ones. It
+// returns nil events when none is left, and a warning for each event of an unknown type.
+func parseEvents(events []WorkoutEvent) ([]store.WorkoutEvent, []string, error) {
+	var (
+		parsed   []store.WorkoutEvent
+		warnings []string
+	)
 
 	for i, e := range events {
-		times, err := parseRange(e.Start, e.End)
-		if err != nil {
-			return nil, fmt.Errorf("event %d: %w", i, err)
+		typ, ok := eventTypes[e.Type]
+		if !ok {
+			if e.Type != eventPauseOrResumeRequest {
+				warnings = append(warnings, fmt.Sprintf("event %d: type %q is not a known event type, ignored", i, e.Type))
+			}
+
+			continue
 		}
 
-		parsed = append(parsed, Event{Type: e.Type, Start: times.Start, End: times.End})
+		times, err := parseRange(e.Start, e.End)
+		if err != nil {
+			return nil, nil, fmt.Errorf("event %d: %w", i, err)
+		}
+
+		parsed = append(parsed, store.WorkoutEvent{Type: typ, Start: times.Start, End: times.End})
 	}
 
-	return parsed, nil
+	return parsed, warnings, nil
 }
 
 // duration returns the duration of a workout in seconds: the one received, or else the time range
 // of the workout without its pauses.
-func duration(received *Quantity, times Times, events []Event) (float64, error) {
+func duration(received *Quantity, times Times, events []store.WorkoutEvent) (float64, error) {
 	if received == nil {
 		return activeTime(times, events).Seconds(), nil
 	}
@@ -269,9 +282,9 @@ func duration(received *Quantity, times Times, events []Event) (float64, error) 
 
 // activeTime returns the time range of a workout without its pauses, each from a pause to the next
 // resume, or to the end, and within the time range.
-func activeTime(times Times, events []Event) time.Duration {
+func activeTime(times Times, events []store.WorkoutEvent) time.Duration {
 	sorted := slices.Clone(events)
-	slices.SortStableFunc(sorted, func(a, b Event) int { return a.Start.Compare(b.Start) })
+	slices.SortStableFunc(sorted, func(a, b store.WorkoutEvent) int { return a.Start.Compare(b.Start) })
 
 	within := func(t time.Time) time.Time {
 		switch {
@@ -292,11 +305,11 @@ func activeTime(times Times, events []Event) time.Duration {
 
 	for _, e := range sorted {
 		switch e.Type {
-		case eventPause, eventMotionPaused:
+		case store.WorkoutEventPause:
 			if !paused {
 				paused, pausedAt = true, within(e.Start)
 			}
-		case eventResume, eventMotionResumed:
+		case store.WorkoutEventResume:
 			if paused {
 				paused, pauses = false, pauses+within(e.Start).Sub(pausedAt)
 			}

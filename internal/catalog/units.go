@@ -37,8 +37,8 @@ var units = map[string]unit{
 	"yd": {dimension: "length", factor: 914.4},
 	"mi": {dimension: "length", factor: 1_609_344},
 
-	// Base: mL. A US cup is 8 US fluid ounces and a US pint 16, an imperial cup is 10 imperial
-	// fluid ounces and an imperial pint 20, as HKUnit defines them.
+	// Base: mL. The ounces, cups and pints are the US customary and imperial ones, as HKUnit.h
+	// defines them: a US cup is 0.2365882365 L, not the 240 mL cup of nutrition labels.
 	"L":         {dimension: "volume", factor: 1e3, canonical: true},
 	"mL":        {dimension: "volume", factor: 1},
 	"fl_oz_us":  {dimension: "volume", factor: 29.5735295625},
