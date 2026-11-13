@@ -329,7 +329,7 @@ func TestImportJob_PayloadThatFailsAsAWhole_FailsWithoutRetryAndKeepsTheFile(t *
 		payload string
 		reason  string
 	}{
-		{name: "not JSON", payload: `{"format": "verve.ingest.v1",`, reason: "payload ends early"},
+		{name: "not JSON", payload: `{"format": "verve.ingest.v1",`, reason: "not valid JSON"},
 		{name: "other format", payload: `{"format": "verve.ingest.v2", "client": {"name": "x", "version": "1"}}`, reason: "format"},
 		{name: "samples not an array", payload: `{"format": "verve.ingest.v1", "client": {"name": "x", "version": "1"}, "samples": {}}`, reason: "samples"},
 	}
