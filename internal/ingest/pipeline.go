@@ -148,8 +148,8 @@ type batchRun struct {
 	report store.ImportReport
 	// types are the types of the batch, by identifier.
 	types map[string]mappedType
-	// keys are the keys of the types of the samples that the batch removed, by type id.
-	keys map[int64]string
+	// typeKeys are the keys of the types of the samples that the batch removed, by type id.
+	typeKeys map[int64]string
 }
 
 // mappedType is what type mapping found for an identifier.
@@ -190,7 +190,7 @@ const suspiciousReason = "start is before 2000 or more than one day after the im
 // applies its deletions.
 func (b *batchRun) run(ctx context.Context, batch []Record) error {
 	b.types = make(map[string]mappedType)
-	b.keys = make(map[int64]string)
+	b.typeKeys = make(map[int64]string)
 
 	items := make([]item, len(batch))
 	for i, r := range batch {
@@ -251,6 +251,12 @@ func (b *batchRun) run(ctx context.Context, batch []Record) error {
 	return b.applyDeletions(ctx, deletions)
 }
 
+// storable reports whether the record of it is a sample or workout that the stages after type
+// mapping handle: valid so far, of a supported type, and not a deletion.
+func (it *item) storable() bool {
+	return it.reason == "" && !it.unsupported && !it.deletion()
+}
+
 // deletion reports whether the record of it is a deletion, valid or not.
 func (it *item) deletion() bool {
 	return it.Deletion != nil || (it.Invalid != nil && it.Invalid.Of == DeletionRecord)
@@ -280,7 +286,7 @@ func (b *batchRun) applyDeletions(ctx context.Context, uuids []string) error {
 	for _, uuid := range uuids {
 		found := false
 
-		sample, err := b.tx.Samples().DeleteByKey(ctx, b.imp.UserID, sampleKey(store.Sample{UUID: uuid}, false))
+		sample, err := b.tx.Samples().DeleteByKey(ctx, b.imp.UserID, sampleUUIDKey(uuid))
 
 		switch {
 		case err == nil:
@@ -296,7 +302,7 @@ func (b *batchRun) applyDeletions(ctx context.Context, uuids []string) error {
 			return fmt.Errorf("delete sample: %w", err)
 		}
 
-		_, err = b.tx.Workouts().DeleteByKey(ctx, b.imp.UserID, workoutKey(store.Workout{Origin: store.OriginNative, ExternalID: uuid}))
+		_, err = b.tx.Workouts().DeleteByKey(ctx, b.imp.UserID, workoutIDKey(store.OriginNative, uuid))
 
 		switch {
 		case err == nil:
@@ -324,7 +330,7 @@ func (b *batchRun) applyDeletions(ctx context.Context, uuids []string) error {
 
 // typeKey returns the key of the stored type of typeID, read once per batch.
 func (b *batchRun) typeKey(ctx context.Context, typeID int64) (string, error) {
-	if key, ok := b.keys[typeID]; ok {
+	if key, ok := b.typeKeys[typeID]; ok {
 		return key, nil
 	}
 
@@ -333,7 +339,7 @@ func (b *batchRun) typeKey(ctx context.Context, typeID int64) (string, error) {
 		return "", fmt.Errorf("get type %d: %w", typeID, err)
 	}
 
-	b.keys[typeID] = mt.Key
+	b.typeKeys[typeID] = mt.Key
 
 	return mt.Key, nil
 }
@@ -550,7 +556,7 @@ func (b *batchRun) prepare(ctx context.Context, r Record) (item, error) {
 		return item{}, err
 	}
 
-	if it.reason != "" || it.unsupported || it.deletion() {
+	if !it.storable() {
 		return it, nil
 	}
 
@@ -859,7 +865,7 @@ func (b *batchRun) resolveSources(ctx context.Context, items []item) (map[store.
 	seen := make(map[store.SourceInfo]time.Time)
 
 	for _, it := range items {
-		if it.reason != "" || it.unsupported || it.deletion() {
+		if !it.storable() {
 			continue
 		}
 
