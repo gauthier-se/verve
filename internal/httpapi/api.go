@@ -10,6 +10,7 @@ import (
 	"github.com/gauthier-se/verve/internal/auth"
 	"github.com/gauthier-se/verve/internal/backup"
 	"github.com/gauthier-se/verve/internal/catalog"
+	"github.com/gauthier-se/verve/internal/clock"
 	"github.com/gauthier-se/verve/internal/config"
 	"github.com/gauthier-se/verve/internal/store"
 	"github.com/gauthier-se/verve/internal/version"
@@ -25,6 +26,8 @@ const apiVersion = "1"
 type APIDeps struct {
 	// Version is the build metadata of the running binary.
 	Version version.Info
+	// Clock tells whether the lease of a job has expired, when an import is cancelled.
+	Clock clock.Clock
 	// Store holds the data of the operations.
 	Store store.Store
 	// Logins logs users in, and Sessions lists the sessions and deletes them, such as at logout.
@@ -101,6 +104,7 @@ func NewAPI(mux *http.ServeMux, deps APIDeps) huma.API {
 	registerTokens(api, deps)
 	registerMetrics(api, deps)
 	registerIngest(api, deps)
+	registerImports(api, deps)
 
 	return api
 }

@@ -27,6 +27,10 @@ type AdminUser struct {
 	CreatedAt    time.Time  `json:"createdAt" doc:"When the account was created."`
 	LastLoginAt  *time.Time `json:"lastLoginAt,omitempty" doc:"When the user last logged in, left out when they never did."`
 	ActiveTokens int64      `json:"activeTokens" example:"2" doc:"The number of API tokens of the user that are neither revoked nor expired."`
+	Samples      int64      `json:"samples" example:"1250000" doc:"The number of samples of the user."`
+	StorageBytes int64      `json:"storageBytes" example:"222500000" doc:"An estimate of the storage that the data of the user takes, in bytes: 178 bytes per sample plus the size of their workout routes."`
+	// LastIngestions is keyed by origin.
+	LastIngestions map[string]time.Time `json:"lastIngestions" nullable:"false" doc:"The end of the last completed import of the user for each origin, xml, hae, native or cli, the origins without one left out."`
 }
 
 // adminUsersInput is the input of GET /api/v1/admin/users.
@@ -86,19 +90,9 @@ func registerAdminUsers(api huma.API, deps APIDeps) {
 			return nil, fmt.Errorf("list users: %w", err)
 		}
 
-		ids := make([]int64, 0, len(users))
-		for _, user := range users {
-			ids = append(ids, user.ID)
-		}
-
-		tokens, err := deps.Store.APITokens().CountActiveByUsers(ctx, ids)
+		items, err := adminUsersOf(ctx, deps.Store, users...)
 		if err != nil {
-			return nil, fmt.Errorf("count tokens of users: %w", err)
-		}
-
-		items := make([]AdminUser, 0, len(users))
-		for _, user := range users {
-			items = append(items, adminUserOf(user, tokens[user.ID]))
+			return nil, err
 		}
 
 		return &adminUsersOutput{Body: Page[AdminUser]{Items: items, NextCursor: next}}, nil
@@ -134,7 +128,7 @@ func registerAdminUsers(api huma.API, deps APIDeps) {
 			return nil, adminUserError("set user status", err)
 		}
 
-		out, err := adminUserWithTokens(ctx, deps.Store, user)
+		out, err := adminUserWithData(ctx, deps.Store, user)
 		if err != nil {
 			return nil, err
 		}
@@ -172,7 +166,7 @@ func registerAdminUsers(api huma.API, deps APIDeps) {
 			return nil, adminUserError("set user role", err)
 		}
 
-		out, err := adminUserWithTokens(ctx, deps.Store, user)
+		out, err := adminUserWithData(ctx, deps.Store, user)
 		if err != nil {
 			return nil, err
 		}
@@ -181,29 +175,70 @@ func registerAdminUsers(api huma.API, deps APIDeps) {
 	})
 }
 
-// adminUserOf returns what an admin sees of user, who has activeTokens active API tokens.
-func adminUserOf(user store.User, activeTokens int64) AdminUser {
-	return AdminUser{
-		ID:           user.ID,
-		Username:     user.Username,
-		Email:        user.Email,
-		Role:         string(user.Role),
-		Status:       string(user.Status),
-		CreatedAt:    user.CreatedAt,
-		LastLoginAt:  optionalTime(user.LastLoginAt),
-		ActiveTokens: activeTokens,
+// adminUsersOf returns what an admin sees of users, in order, with the number of their active API
+// tokens, their sample count, the estimate of their storage and their last ingestion per origin,
+// read in repos for every user at once. Nothing of their health is read: counts, sizes and times
+// of imports only (FR-9 and FR-10 of accounts and administration).
+func adminUsersOf(ctx context.Context, repos store.Repositories, users ...store.User) ([]AdminUser, error) {
+	ids := make([]int64, 0, len(users))
+	for _, user := range users {
+		ids = append(ids, user.ID)
 	}
+
+	tokens, err := repos.APITokens().CountActiveByUsers(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("count tokens of users: %w", err)
+	}
+
+	samples, err := repos.Samples().CountByUsers(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("count samples of users: %w", err)
+	}
+
+	routes, err := repos.Workouts().RouteBytesByUsers(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("size routes of users: %w", err)
+	}
+
+	last, err := repos.Imports().LastByOrigin(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("last imports of users: %w", err)
+	}
+
+	out := make([]AdminUser, 0, len(users))
+
+	for _, user := range users {
+		ingestions := make(map[string]time.Time, len(last[user.ID]))
+		for origin, at := range last[user.ID] {
+			ingestions[string(origin)] = at
+		}
+
+		out = append(out, AdminUser{
+			ID:             user.ID,
+			Username:       user.Username,
+			Email:          user.Email,
+			Role:           string(user.Role),
+			Status:         string(user.Status),
+			CreatedAt:      user.CreatedAt,
+			LastLoginAt:    optionalTime(user.LastLoginAt),
+			ActiveTokens:   tokens[user.ID],
+			Samples:        samples[user.ID],
+			StorageBytes:   store.EstimatedStorage(samples[user.ID], routes[user.ID]),
+			LastIngestions: ingestions,
+		})
+	}
+
+	return out, nil
 }
 
-// adminUserWithTokens returns what an admin sees of user, with the number of their active API
-// tokens read in repos, as the user list shows them.
-func adminUserWithTokens(ctx context.Context, repos store.Repositories, user store.User) (AdminUser, error) {
-	tokens, err := repos.APITokens().CountActiveByUsers(ctx, []int64{user.ID})
+// adminUserWithData returns what an admin sees of user, as the user list shows them.
+func adminUserWithData(ctx context.Context, repos store.Repositories, user store.User) (AdminUser, error) {
+	out, err := adminUsersOf(ctx, repos, user)
 	if err != nil {
-		return AdminUser{}, fmt.Errorf("count tokens of user %d: %w", user.ID, err)
+		return AdminUser{}, fmt.Errorf("read data of user %d: %w", user.ID, err)
 	}
 
-	return adminUserOf(user, tokens[user.ID]), nil
+	return out[0], nil
 }
 
 // adminUserError returns the problem of the error of a change of a user: 404 for an unknown user

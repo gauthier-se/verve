@@ -27,6 +27,18 @@ func (s ImportStatus) Finished() bool {
 	}
 }
 
+// Known reports whether s is one of the statuses of an import.
+func (s ImportStatus) Known() bool {
+	return s == ImportQueued || s == ImportRunning || s.Finished()
+}
+
+// ImportsFilter selects the imports that ImportsRepository.List returns. Its zero value selects
+// every import.
+type ImportsFilter struct {
+	// Status, when not empty, keeps the imports of that status.
+	Status ImportStatus
+}
+
 const (
 	// ImportHistoryLimit is the number of newest imports of a user among which a finished import is
 	// kept (FR-11 of Ingestion pipeline).
@@ -122,9 +134,10 @@ type ImportsRepository interface {
 	Create(ctx context.Context, imp NewImport) (Import, error)
 	// Get returns the import of id of userID, or ErrNotFound.
 	Get(ctx context.Context, userID, id int64) (Import, error)
-	// List returns the imports of userID, newest first by CreatedAt then ID: at most page.Limit of
-	// them, after page.After. It returns ErrInvalid when page.Limit is below 1.
-	List(ctx context.Context, userID int64, page PageRequest) ([]Import, error)
+	// List returns the imports of userID that filter selects, newest first by CreatedAt then ID: at
+	// most page.Limit of them, after page.After. It returns ErrInvalid when page.Limit is below 1 or
+	// the status of filter is unknown.
+	List(ctx context.Context, userID int64, filter ImportsFilter, page PageRequest) ([]Import, error)
 	// SetStatus changes the status of the import of id of userID, and returns it. Running sets its
 	// StartedAt to the current time, or keeps it for an import already running, which a resumed job
 	// runs again. A finished status sets its FinishedAt. It returns ErrNotFound for a missing import,
@@ -140,13 +153,14 @@ type ImportsRepository interface {
 	// removes it when client is empty: a push stores its client once its job reads the payload. It
 	// returns ErrNotFound for a missing import and ErrConflict for one that is not running.
 	SetClient(ctx context.Context, userID, id int64, client map[string]string) error
-	// InboxFilesKept returns the inbox files of the imports, whatever their user, except those of the
-	// imports that failed before failedSince: the file of a failed import is kept for a while, for a
-	// retry or a diagnosis.
+	// InboxFilesKept returns the inbox files that imports still need, whatever their user: those of the
+	// queued and running imports, and those of the imports that failed since failedSince, kept for a
+	// while for a retry or a diagnosis. A completed or cancelled import needs its file no more.
 	InboxFilesKept(ctx context.Context, failedSince time.Time) ([]string, error)
-	// LastByOrigin returns the FinishedAt of the last completed import of userID for each origin.
-	// The origins without a completed import are left out.
-	LastByOrigin(ctx context.Context, userID int64) (map[Origin]time.Time, error)
+	// LastByOrigin returns, for each user of userIDs, the FinishedAt of their last completed import
+	// for each origin. The origins without a completed import are left out, and so are the users
+	// without one.
+	LastByOrigin(ctx context.Context, userIDs []int64) (map[int64]map[Origin]time.Time, error)
 	// DeleteByUser removes at most limit imports of userID, whatever their status, and returns how
 	// many it removed. It returns ErrInvalid when limit is below 1.
 	DeleteByUser(ctx context.Context, userID int64, limit int) (int64, error)

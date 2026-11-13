@@ -132,6 +132,9 @@ type JobsRepository interface {
 	// ActiveJob returns the oldest job of serialKey that is queued or running, or ErrNotFound when
 	// there is none.
 	ActiveJob(ctx context.Context, serialKey string) (Job, error)
+	// ActiveJobs returns the jobs of serialKey that are queued or running, a job waiting for its
+	// retry included, oldest first by id.
+	ActiveJobs(ctx context.Context, serialKey string) ([]Job, error)
 	// PurgeFinished removes the completed and cancelled jobs that ended before completedBefore, and
 	// the failed jobs that ended before failedBefore. Queued and running jobs are never removed.
 	PurgeFinished(ctx context.Context, completedBefore, failedBefore time.Time) error

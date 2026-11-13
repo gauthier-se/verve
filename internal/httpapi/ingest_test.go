@@ -86,7 +86,7 @@ func (it ingestTest) inboxFiles(t *testing.T) []string {
 func (it ingestTest) requireNothingQueued(t *testing.T) {
 	t.Helper()
 
-	imports, err := it.store.Imports().List(t.Context(), it.alice.ID, store.PageRequest{Limit: 10})
+	imports, err := it.store.Imports().List(t.Context(), it.alice.ID, store.ImportsFilter{}, store.PageRequest{Limit: 10})
 	require.NoError(t, err)
 	require.Empty(t, imports)
 

@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/gauthier-se/verve/internal/audit"
+	"github.com/gauthier-se/verve/internal/catalog"
 	"github.com/gauthier-se/verve/internal/store"
 )
 
@@ -73,12 +74,114 @@ func TestAdminUsers_AdminListsTheMetadataOfTheUsers(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	require.JSONEq(t, fmt.Sprintf(`{"items":[
-		{"id":%d,"username":"carol","role":"member","status":"disabled","createdAt":"2026-11-04T09:00:00Z","activeTokens":0},
+		{"id":%d,"username":"carol","role":"member","status":"disabled","createdAt":"2026-11-04T09:00:00Z",
+		 "activeTokens":0,"samples":0,"storageBytes":0,"lastIngestions":{}},
 		{"id":%d,"username":"bob","email":"bob@example.com","role":"member","status":"active",
-		 "createdAt":"2026-11-04T08:00:00Z","lastLoginAt":"2026-11-04T10:00:00Z","activeTokens":0},
+		 "createdAt":"2026-11-04T08:00:00Z","lastLoginAt":"2026-11-04T10:00:00Z",
+		 "activeTokens":0,"samples":0,"storageBytes":0,"lastIngestions":{}},
 		{"id":%d,"username":"admin","email":"admin@example.com","role":"admin","status":"active",
-		 "createdAt":"2026-11-04T08:00:00Z","activeTokens":0}
+		 "createdAt":"2026-11-04T08:00:00Z","activeTokens":0,"samples":0,"storageBytes":0,"lastIngestions":{}}
 	]}`, carol.ID, u.bob.ID, u.admin.ID), rec.Body.String())
+}
+
+// Given users with samples, routes and imports, then the admin user list gives each user their
+// sample count, an estimate of their storage, 178 bytes per sample plus the size of their encoded
+// routes, and the end of their last completed import per origin, and nothing else about their
+// health: never a value, a type or a time of their data.
+func TestAdminUsers_ListShowsTheDataOfEachUserWithoutTheirHealth(t *testing.T) {
+	t.Parallel()
+
+	u := newAdminUsersTest(t)
+	ctx := t.Context()
+
+	heart, err := u.store.MetricTypes().EnsureUncurated(ctx, "HKQuantityTypeIdentifierHeartRate", catalog.KindQuantity, "count/min")
+	require.NoError(t, err)
+
+	watch, err := u.store.Sources().Resolve(ctx, u.bob.ID, store.SourceInfo{Name: "Apple Watch", DeviceModel: "Watch"},
+		store.SourceWatch, authTestNow)
+	require.NoError(t, err)
+
+	samples := make([]store.NewSample, 0, 3)
+	for i := range 3 {
+		samples = append(samples, store.NewSample{
+			Sample: store.Sample{
+				TypeID:     heart.ID,
+				SourceID:   watch.ID,
+				Start:      authTestNow.Add(time.Duration(i) * time.Minute),
+				End:        authTestNow.Add(time.Duration(i) * time.Minute),
+				Value:      61,
+				Origin:     store.OriginNative,
+				ImportID:   1,
+				NaturalKey: []byte{byte(i + 1)},
+			},
+			OnConflict: store.ConflictIgnore,
+		})
+	}
+
+	_, err = u.store.Samples().Upsert(ctx, u.bob.ID, samples)
+	require.NoError(t, err)
+
+	run, err := u.store.Workouts().Upsert(ctx, u.bob.ID, store.NewWorkout{
+		Workout: store.Workout{
+			SourceID:     watch.ID,
+			Origin:       store.OriginNative,
+			Activity:     "running",
+			Start:        authTestNow,
+			End:          authTestNow.Add(30 * time.Minute),
+			Duration:     1800,
+			LocationType: store.LocationUnknown,
+			ImportID:     1,
+			NaturalKey:   []byte("run"),
+		},
+		OnConflict: store.ConflictIgnore,
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, u.store.Workouts().SetRoute(ctx, u.bob.ID, run.ID, store.WorkoutRoute{
+		Encoded:    make([]byte, 1000),
+		Box:        store.RouteBox{MinLat: 48.85, MinLon: 2.35, MaxLat: 48.86, MaxLon: 2.36},
+		Distance:   5000,
+		PointCount: 1800,
+		Polyline:   "o}iiHmsaM~@vA",
+	}))
+
+	for _, origin := range []store.Origin{store.OriginNative, store.OriginXML, store.OriginNative} {
+		u.clock.Advance(time.Minute)
+
+		imp, err := u.store.Imports().Create(ctx, store.NewImport{UserID: u.bob.ID, Origin: origin})
+		require.NoError(t, err)
+
+		_, err = u.store.Imports().SetStatus(ctx, u.bob.ID, imp.ID, store.ImportRunning)
+		require.NoError(t, err)
+
+		_, err = u.store.Imports().SetStatus(ctx, u.bob.ID, imp.ID, store.ImportCompleted)
+		require.NoError(t, err)
+	}
+
+	failed, err := u.store.Imports().Create(ctx, store.NewImport{UserID: u.bob.ID, Origin: store.OriginHAE})
+	require.NoError(t, err)
+
+	_, err = u.store.Imports().SetStatus(ctx, u.bob.ID, failed.ID, store.ImportFailed)
+	require.NoError(t, err)
+
+	rec := getWith(t, u.handler, adminUsersPath, u.adminCookie)
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.JSONEq(t, fmt.Sprintf(`{"items":[
+		{"id":%d,"username":"bob","email":"bob@example.com","role":"member","status":"active",
+		 "createdAt":"2026-11-04T08:00:00Z","activeTokens":0,"samples":3,"storageBytes":1534,
+		 "lastIngestions":{"native":"2026-11-04T08:03:00Z","xml":"2026-11-04T08:02:00Z"}},
+		{"id":%d,"username":"admin","email":"admin@example.com","role":"admin","status":"active",
+		 "createdAt":"2026-11-04T08:00:00Z","activeTokens":0,"samples":0,"storageBytes":0,"lastIngestions":{}}
+	]}`, u.bob.ID, u.admin.ID), rec.Body.String())
+
+	// A status change answers the user as the list shows them.
+	rec = accountRequest(t, u.handler, http.MethodPut, userRolePath(u.bob.ID), `{"role":"admin"}`, u.adminCookie)
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.JSONEq(t, fmt.Sprintf(`{"id":%d,"username":"bob","email":"bob@example.com","role":"admin","status":"active",
+		"createdAt":"2026-11-04T08:00:00Z","activeTokens":0,"samples":3,"storageBytes":1534,
+		"lastIngestions":{"native":"2026-11-04T08:03:00Z","xml":"2026-11-04T08:02:00Z"}}`, u.bob.ID), rec.Body.String())
 }
 
 // Given a member, then the admin user operations answer 403 forbidden and change nothing. Given no
@@ -132,7 +235,7 @@ func TestAdminUsers_StatusChangeAnswersTheUserAndRevokesTheirSessions(t *testing
 
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	require.JSONEq(t, fmt.Sprintf(`{"id":%d,"username":"bob","email":"bob@example.com","role":"member",
-		"status":"disabled","createdAt":"2026-11-04T08:00:00Z","activeTokens":0}`, u.bob.ID), rec.Body.String())
+		"status":"disabled","createdAt":"2026-11-04T08:00:00Z","activeTokens":0,"samples":0,"storageBytes":0,"lastIngestions":{}}`, u.bob.ID), rec.Body.String())
 
 	require.Equal(t, http.StatusUnauthorized, getWith(t, u.handler, "/api/v1/auth/me", u.bobCookie).Code)
 

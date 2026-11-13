@@ -62,7 +62,52 @@ func RunWorkoutRoutes(t *testing.T, newStore NewStoreFunc) {
 	runWorkoutRoutesInvalid(t, newStore)
 	runWorkoutRoutesGet(t, newStore)
 	runWorkoutRoutesThumbnails(t, newStore)
+	runWorkoutRoutesBytes(t, newStore)
 	runWorkoutRoutesDelete(t, newStore)
+}
+
+// runWorkoutRoutesBytes runs the cases of RouteBytesByUsers.
+func runWorkoutRoutesBytes(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+
+	// Given routes of two users, a replaced route and a workout without route, then
+	// RouteBytesByUsers returns the size of the encoded routes of each user asked for, and leaves
+	// out the users without routes.
+	t.Run("RouteBytesByUsersSumsTheEncodedRoutesOfEachUser", func(t *testing.T) {
+		t.Parallel()
+
+		st := newWorkoutsTest(t, newStore)
+		ctx := t.Context()
+
+		first := st.mustUpsert(ctx, t, st.user.ID, st.run("a", workoutsTime))
+		second := st.mustUpsert(ctx, t, st.user.ID, st.run("b", workoutsTime.Add(time.Hour)))
+		st.mustUpsert(ctx, t, st.user.ID, st.run("c", workoutsTime.Add(2*time.Hour)))
+		foreign := st.mustUpsert(ctx, t, st.other.ID, st.foreignRun("a", workoutsTime))
+
+		st.mustSetRoute(ctx, t, st.user.ID, first.ID, parisRoute())
+		st.mustSetRoute(ctx, t, st.user.ID, first.ID, lyonRoute())
+		st.mustSetRoute(ctx, t, st.user.ID, second.ID, parisRoute())
+		st.mustSetRoute(ctx, t, st.other.ID, foreign.ID, parisRoute())
+
+		// The encoding of lyonRoute has 8 bytes, that of parisRoute 6.
+		got, err := st.store.Workouts().RouteBytesByUsers(ctx, []int64{st.user.ID, st.other.ID})
+		require.NoError(t, err)
+		require.Equal(t, map[int64]int64{st.user.ID: 14, st.other.ID: 6}, got)
+
+		got, err = st.store.Workouts().RouteBytesByUsers(ctx, []int64{st.other.ID})
+		require.NoError(t, err)
+		require.Equal(t, map[int64]int64{st.other.ID: 6}, got)
+
+		lonely := mustCreateUser(ctx, t, st.store.Users(), newUser("eden", "eden@example.com"))
+
+		got, err = st.store.Workouts().RouteBytesByUsers(ctx, []int64{lonely.ID})
+		require.NoError(t, err)
+		require.Empty(t, got)
+
+		got, err = st.store.Workouts().RouteBytesByUsers(ctx, nil)
+		require.NoError(t, err)
+		require.Empty(t, got)
+	})
 }
 
 // runWorkoutRoutesSet runs the cases of the routes stored by SetRoute.

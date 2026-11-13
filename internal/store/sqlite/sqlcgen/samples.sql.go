@@ -8,6 +8,7 @@ package sqlcgen
 import (
 	"context"
 	"database/sql"
+	"strings"
 )
 
 const addSampleStats = `-- name: AddSampleStats :exec
@@ -37,6 +38,52 @@ func (q *Queries) AddSampleStats(ctx context.Context, arg AddSampleStatsParams) 
 		arg.Count,
 	)
 	return err
+}
+
+const countUsersSamples = `-- name: CountUsersSamples :many
+SELECT user_id, CAST(sum(count) AS INTEGER) AS samples
+FROM sample_stats
+WHERE user_id IN (/*SLICE:user_ids*/?)
+GROUP BY user_id
+`
+
+type CountUsersSamplesRow struct {
+	UserID  int64
+	Samples int64
+}
+
+// The primary key of sample_stats, on user then type, bounds the scan to the users asked for.
+func (q *Queries) CountUsersSamples(ctx context.Context, userIds []int64) ([]CountUsersSamplesRow, error) {
+	query := countUsersSamples
+	var queryParams []interface{}
+	if len(userIds) > 0 {
+		for _, v := range userIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:user_ids*/?", strings.Repeat(",?", len(userIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:user_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CountUsersSamplesRow
+	for rows.Next() {
+		var i CountUsersSamplesRow
+		if err := rows.Scan(&i.UserID, &i.Samples); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const deleteLastSampleStats = `-- name: DeleteLastSampleStats :execrows

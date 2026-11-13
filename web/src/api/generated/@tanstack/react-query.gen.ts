@@ -3,8 +3,8 @@
 import { type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { acceptInvitation, changePassword, createAdminBackup, createFirstAdmin, createInvitation, createPasswordResetLink, createToken, deleteAccount, deleteUser, downloadAdminBackup, getCurrentUser, getMeta, getPreferences, getSetupStatus, inspectInvitation, listAccountAuditEvents, listAdminAuditEvents, listAdminBackups, listAdminJobs, listAdminUsers, listMetrics, listSessions, listTokens, login, logout, type Options, pushNative, resetPassword, revokeOtherSessions, revokeSession, revokeToken, setUserRole, setUserStatus, updatePreferences } from '../sdk.gen';
-import type { AcceptInvitationData, AcceptInvitationError, AcceptInvitationResponse, ChangePasswordData, ChangePasswordError, ChangePasswordResponse, CreateAdminBackupData, CreateAdminBackupError, CreateAdminBackupResponse, CreateFirstAdminData, CreateFirstAdminError, CreateFirstAdminResponse, CreateInvitationData, CreateInvitationError, CreateInvitationResponse, CreatePasswordResetLinkData, CreatePasswordResetLinkError, CreatePasswordResetLinkResponse, CreateTokenData, CreateTokenError, CreateTokenResponse, DeleteAccountData, DeleteAccountError, DeleteUserData, DeleteUserError, DeleteUserResponse, DownloadAdminBackupData, DownloadAdminBackupError, DownloadAdminBackupResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetMetaData, GetMetaError, GetMetaResponse, GetPreferencesData, GetPreferencesError, GetPreferencesResponse, GetSetupStatusData, GetSetupStatusError, GetSetupStatusResponse, InspectInvitationData, InspectInvitationError, InspectInvitationResponse, ListAccountAuditEventsData, ListAccountAuditEventsError, ListAccountAuditEventsResponse, ListAdminAuditEventsData, ListAdminAuditEventsError, ListAdminAuditEventsResponse, ListAdminBackupsData, ListAdminBackupsError, ListAdminBackupsResponse, ListAdminJobsData, ListAdminJobsError, ListAdminJobsResponse, ListAdminUsersData, ListAdminUsersError, ListAdminUsersResponse, ListMetricsData, ListMetricsError, ListMetricsResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, ListTokensData, ListTokensError, ListTokensResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutError, LogoutResponse, PushNativeData, PushNativeError, PushNativeResponse, ResetPasswordData, ResetPasswordError, ResetPasswordResponse, RevokeOtherSessionsData, RevokeOtherSessionsError, RevokeOtherSessionsResponse, RevokeSessionData, RevokeSessionError, RevokeSessionResponse, RevokeTokenData, RevokeTokenError, RevokeTokenResponse, SetUserRoleData, SetUserRoleError, SetUserRoleResponse, SetUserStatusData, SetUserStatusError, SetUserStatusResponse, UpdatePreferencesData, UpdatePreferencesError, UpdatePreferencesResponse } from '../types.gen';
+import { acceptInvitation, cancelImport, changePassword, createAdminBackup, createFirstAdmin, createInvitation, createPasswordResetLink, createToken, deleteAccount, deleteUser, downloadAdminBackup, getCurrentUser, getImport, getMeta, getPreferences, getSetupStatus, inspectInvitation, listAccountAuditEvents, listAdminAuditEvents, listAdminBackups, listAdminJobs, listAdminUsers, listImports, listMetrics, listSessions, listTokens, login, logout, type Options, pushNative, resetPassword, revokeOtherSessions, revokeSession, revokeToken, setUserRole, setUserStatus, updatePreferences } from '../sdk.gen';
+import type { AcceptInvitationData, AcceptInvitationError, AcceptInvitationResponse, CancelImportData, CancelImportError, CancelImportResponse, ChangePasswordData, ChangePasswordError, ChangePasswordResponse, CreateAdminBackupData, CreateAdminBackupError, CreateAdminBackupResponse, CreateFirstAdminData, CreateFirstAdminError, CreateFirstAdminResponse, CreateInvitationData, CreateInvitationError, CreateInvitationResponse, CreatePasswordResetLinkData, CreatePasswordResetLinkError, CreatePasswordResetLinkResponse, CreateTokenData, CreateTokenError, CreateTokenResponse, DeleteAccountData, DeleteAccountError, DeleteUserData, DeleteUserError, DeleteUserResponse, DownloadAdminBackupData, DownloadAdminBackupError, DownloadAdminBackupResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetImportData, GetImportError, GetImportResponse, GetMetaData, GetMetaError, GetMetaResponse, GetPreferencesData, GetPreferencesError, GetPreferencesResponse, GetSetupStatusData, GetSetupStatusError, GetSetupStatusResponse, InspectInvitationData, InspectInvitationError, InspectInvitationResponse, ListAccountAuditEventsData, ListAccountAuditEventsError, ListAccountAuditEventsResponse, ListAdminAuditEventsData, ListAdminAuditEventsError, ListAdminAuditEventsResponse, ListAdminBackupsData, ListAdminBackupsError, ListAdminBackupsResponse, ListAdminJobsData, ListAdminJobsError, ListAdminJobsResponse, ListAdminUsersData, ListAdminUsersError, ListAdminUsersResponse, ListImportsData, ListImportsError, ListImportsResponse, ListMetricsData, ListMetricsError, ListMetricsResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, ListTokensData, ListTokensError, ListTokensResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutError, LogoutResponse, PushNativeData, PushNativeError, PushNativeResponse, ResetPasswordData, ResetPasswordError, ResetPasswordResponse, RevokeOtherSessionsData, RevokeOtherSessionsError, RevokeOtherSessionsResponse, RevokeSessionData, RevokeSessionError, RevokeSessionResponse, RevokeTokenData, RevokeTokenError, RevokeTokenResponse, SetUserRoleData, SetUserRoleError, SetUserRoleResponse, SetUserStatusData, SetUserStatusError, SetUserStatusResponse, UpdatePreferencesData, UpdatePreferencesError, UpdatePreferencesResponse } from '../types.gen';
 
 /**
  * Delete the account of the current user
@@ -680,6 +680,97 @@ export const getCurrentUserOptions = (options?: Options<GetCurrentUserData>) => 
     },
     queryKey: getCurrentUserQueryKey(options)
 });
+
+export const listImportsQueryKey = (options?: Options<ListImportsData>) => createQueryKey('listImports', options);
+
+/**
+ * List the imports
+ *
+ * Returns the imports of the current user, newest first by creation, with their total counters. `GET /api/v1/imports/{id}` gives the whole report of one. Accepts a session or a token with the `read` scope.
+ */
+export const listImportsOptions = (options?: Options<ListImportsData>) => queryOptions<ListImportsResponse, ListImportsError, ListImportsResponse, ReturnType<typeof listImportsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listImports({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listImportsQueryKey(options)
+});
+
+export const listImportsInfiniteQueryKey = (options?: Options<ListImportsData>): QueryKey<Options<ListImportsData>> => createQueryKey('listImports', options, true);
+
+/**
+ * List the imports
+ *
+ * Returns the imports of the current user, newest first by creation, with their total counters. `GET /api/v1/imports/{id}` gives the whole report of one. Accepts a session or a token with the `read` scope.
+ */
+export const listImportsInfiniteOptions = (options?: Options<ListImportsData>) => {
+    const opts = infiniteQueryOptions<ListImportsResponse, ListImportsError, InfiniteData<ListImportsResponse>, QueryKey<Options<ListImportsData>>, string | Pick<QueryKey<Options<ListImportsData>>[0], 'body' | 'headers' | 'path' | 'query'>>(
+    // @ts-ignore
+    {
+        queryFn: async ({ pageParam, queryKey, signal }) => {
+            // @ts-ignore
+            const page: Pick<QueryKey<Options<ListImportsData>>[0], 'body' | 'headers' | 'path' | 'query'> = typeof pageParam === 'object' ? pageParam : {
+                query: {
+                    cursor: pageParam
+                }
+            };
+            const params = createInfiniteParams(queryKey, page);
+            const { data } = await listImports({
+                ...options,
+                ...params,
+                signal,
+                throwOnError: true
+            });
+            return data;
+        },
+        queryKey: listImportsInfiniteQueryKey(options)
+    });
+    return opts as Omit<typeof opts, 'initialData'>;
+};
+
+export const getImportQueryKey = (options: Options<GetImportData>) => createQueryKey('getImport', options);
+
+/**
+ * Get an import
+ *
+ * Returns an import of the current user with its whole report: the counters in total, per type key and for the workouts, and the sample error messages. Accepts a session or a token with the `ingest` or `read` scope, so that a client can follow the import it pushed.
+ */
+export const getImportOptions = (options: Options<GetImportData>) => queryOptions<GetImportResponse, GetImportError, GetImportResponse, ReturnType<typeof getImportQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getImport({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getImportQueryKey(options)
+});
+
+/**
+ * Cancel an import
+ *
+ * Cancels a queued or running import of the current user, and answers 202 with the import. A queued import ends cancelled at once, and a running one at the next batch boundary of its job: the data already stored stays. A finished import answers 409 `import_finished`.
+ */
+export const cancelImportMutation = (options?: Partial<Options<CancelImportData>>): UseMutationOptions<CancelImportResponse, CancelImportError, Options<CancelImportData>> => {
+    const mutationOptions: UseMutationOptions<CancelImportResponse, CancelImportError, Options<CancelImportData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await cancelImport({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
 
 /**
  * Push data in the native format

@@ -92,6 +92,24 @@ func (r samples) Stats(ctx context.Context, userID int64) ([]store.SampleStats, 
 	return stats, nil
 }
 
+func (r samples) CountByUsers(ctx context.Context, userIDs []int64) (map[int64]int64, error) {
+	counts := make(map[int64]int64, len(userIDs))
+	if len(userIDs) == 0 {
+		return counts, nil
+	}
+
+	rows, err := r.q.read().CountUsersSamples(ctx, userIDs)
+	if err != nil {
+		return nil, fmt.Errorf("count samples of %d users: %w", len(userIDs), err)
+	}
+
+	for _, row := range rows {
+		counts[row.UserID] = row.Samples
+	}
+
+	return counts, nil
+}
+
 func (r samples) List(ctx context.Context, userID int64, query store.SamplesQuery) ([]store.Sample, error) {
 	if query.Limit < 1 || !query.To.After(query.From) {
 		return nil, fmt.Errorf("list samples of user %d: limit %d, from %s to %s: %w", userID, query.Limit,

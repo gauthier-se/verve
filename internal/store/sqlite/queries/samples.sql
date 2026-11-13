@@ -41,6 +41,13 @@ FROM sample_stats
 WHERE user_id = ?
 ORDER BY type_id;
 
+-- name: CountUsersSamples :many
+-- The primary key of sample_stats, on user then type, bounds the scan to the users asked for.
+SELECT user_id, CAST(sum(count) AS INTEGER) AS samples
+FROM sample_stats
+WHERE user_id IN (sqlc.slice(user_ids))
+GROUP BY user_id;
+
 -- name: ListUserSamples :many
 -- The samples of a user and type whose start is in a range, oldest first, after a position: those
 -- that start after it, or at the same time with a larger id. The index on (user_id, type_id,

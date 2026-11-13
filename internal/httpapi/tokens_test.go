@@ -340,9 +340,9 @@ func TestAdminUsers_ListShowsTheNumberOfTokensPerUser(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	require.JSONEq(t, fmt.Sprintf(`{"items":[
 		{"id":%d,"username":"bob","email":"bob@example.com","role":"member","status":"active",
-		 "createdAt":"2026-11-04T08:00:00Z","activeTokens":2},
+		 "createdAt":"2026-11-04T08:00:00Z","activeTokens":2,"samples":0,"storageBytes":0,"lastIngestions":{}},
 		{"id":%d,"username":"admin","email":"admin@example.com","role":"admin","status":"active",
-		 "createdAt":"2026-11-04T08:00:00Z","activeTokens":0}
+		 "createdAt":"2026-11-04T08:00:00Z","activeTokens":0,"samples":0,"storageBytes":0,"lastIngestions":{}}
 	]}`, u.bob.ID, u.admin.ID), rec.Body.String())
 }
 

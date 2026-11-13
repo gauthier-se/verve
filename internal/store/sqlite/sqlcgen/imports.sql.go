@@ -8,6 +8,7 @@ package sqlcgen
 import (
 	"context"
 	"database/sql"
+	"strings"
 )
 
 const createImport = `-- name: CreateImport :one
@@ -158,10 +159,10 @@ const inboxFilesKept = `-- name: InboxFilesKept :many
 SELECT CAST(inbox_file AS TEXT) AS inbox_file
 FROM imports
 WHERE inbox_file IS NOT NULL
-  AND NOT (status = 'failed' AND finished_at < ?1)
+  AND (status IN ('queued', 'running') OR (status = 'failed' AND finished_at >= ?1))
 `
 
-// The inbox files of the imports, except those of the imports that failed before a time.
+// The inbox files of the queued and running imports, and of the imports that failed since a time.
 func (q *Queries) InboxFilesKept(ctx context.Context, failedSince sql.NullInt64) ([]string, error) {
 	rows, err := q.db.QueryContext(ctx, inboxFilesKept, failedSince)
 	if err != nil {
@@ -185,29 +186,40 @@ func (q *Queries) InboxFilesKept(ctx context.Context, failedSince sql.NullInt64)
 	return items, nil
 }
 
-const lastCompletedUserImports = `-- name: LastCompletedUserImports :many
-SELECT origin, CAST(max(finished_at) AS INTEGER) AS finished_at
+const lastCompletedUsersImports = `-- name: LastCompletedUsersImports :many
+SELECT user_id, origin, CAST(max(finished_at) AS INTEGER) AS finished_at
 FROM imports
-WHERE user_id = ?
+WHERE user_id IN (/*SLICE:user_ids*/?)
   AND status = 'completed'
-GROUP BY origin
+GROUP BY user_id, origin
 `
 
-type LastCompletedUserImportsRow struct {
+type LastCompletedUsersImportsRow struct {
+	UserID     int64
 	Origin     string
 	FinishedAt int64
 }
 
-func (q *Queries) LastCompletedUserImports(ctx context.Context, userID int64) ([]LastCompletedUserImportsRow, error) {
-	rows, err := q.db.QueryContext(ctx, lastCompletedUserImports, userID)
+func (q *Queries) LastCompletedUsersImports(ctx context.Context, userIds []int64) ([]LastCompletedUsersImportsRow, error) {
+	query := lastCompletedUsersImports
+	var queryParams []interface{}
+	if len(userIds) > 0 {
+		for _, v := range userIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:user_ids*/?", strings.Repeat(",?", len(userIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:user_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []LastCompletedUserImportsRow
+	var items []LastCompletedUsersImportsRow
 	for rows.Next() {
-		var i LastCompletedUserImportsRow
-		if err := rows.Scan(&i.Origin, &i.FinishedAt); err != nil {
+		var i LastCompletedUsersImportsRow
+		if err := rows.Scan(&i.UserID, &i.Origin, &i.FinishedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -225,25 +237,28 @@ const listUserImports = `-- name: ListUserImports :many
 SELECT id, user_id, origin, token_id, client, status, position, counters, type_counters, errors, created_at, started_at, finished_at, inbox_file
 FROM imports
 WHERE user_id = ?1
-  AND created_at <= ?2
-  AND (created_at < ?2 OR id < ?3)
+  AND (status = ?2 OR ?2 IS NULL)
+  AND created_at <= ?3
+  AND (created_at < ?3 OR id < ?4)
 ORDER BY created_at DESC, id DESC
-LIMIT ?4
+LIMIT ?5
 `
 
 type ListUserImportsParams struct {
 	UserID     int64
+	Status     sql.NullString
 	AfterAt    int64
 	AfterID    int64
 	MaxImports int64
 }
 
 // The imports of a user, newest first by creation, after a position: those created before it, or at
-// the same time with a smaller id. The position is always set, the first page starting after the
+// the same time with a smaller id, of one status when it is set. The position is always set, the first page starting after the
 // largest time and id, so that the index on user, creation and id bounds the scan.
 func (q *Queries) ListUserImports(ctx context.Context, arg ListUserImportsParams) ([]Import, error) {
 	rows, err := q.db.QueryContext(ctx, listUserImports,
 		arg.UserID,
+		arg.Status,
 		arg.AfterAt,
 		arg.AfterID,
 		arg.MaxImports,

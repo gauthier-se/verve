@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"iter"
 
+	"github.com/gauthier-se/verve/internal/audit"
 	"github.com/gauthier-se/verve/internal/ingest"
 	"github.com/gauthier-se/verve/internal/jobs"
 	"github.com/gauthier-se/verve/internal/store"
@@ -15,11 +16,6 @@ import (
 
 // KindImport is the job of a native push (Ingestion pipeline, Data and API notes).
 const KindImport = "import.native"
-
-// ImportPayload is the payload of the import.native job.
-type ImportPayload struct {
-	ImportID int64 `json:"importId"`
-}
 
 // Pipeline runs the records of an import, as *ingest.Pipeline does.
 type Pipeline interface {
@@ -45,7 +41,7 @@ var errLastAttempt = errors.New("the import stopped after the last attempt of it
 // Job returns the import.native job of the import of importID of userID. Its serial key runs the
 // imports of the user one at a time, in arrival order (FR-4 of Ingestion pipeline).
 func Job(userID, importID int64) (store.NewJob, error) {
-	payload, err := json.Marshal(ImportPayload{ImportID: importID})
+	payload, err := json.Marshal(ingest.JobPayload{ImportID: importID})
 	if err != nil {
 		return store.NewJob{}, fmt.Errorf("encode payload of job kind %q: %w", KindImport, err)
 	}
@@ -59,18 +55,20 @@ func Job(userID, importID int64) (store.NewJob, error) {
 //   - failed, without retry, for a payload that fails as a whole or a file that is gone, with the
 //     reason as its sample error message, its file kept for a diagnosis, and once the last attempt
 //     of its job fails,
-//   - cancelled at the next batch boundary once its job is cancelled, its file deleted.
+//   - cancelled at the next batch boundary once its job is cancelled, its file deleted, also when the
+//     run fails or stops, or the import has not started, before the heartbeat delivers the
+//     cancellation.
 //
 // The batches committed before the end stay. A job stopped otherwise, such as by a shutdown, leaves
 // the import running, and its next run resumes it from the stored position (FR-5).
 func Register(registry *jobs.Registry, deps JobDeps) {
-	jobs.Register(registry, KindImport, jobs.KindOptions{}, func(ctx context.Context, job jobs.Job[ImportPayload]) error {
+	jobs.Register(registry, KindImport, jobs.KindOptions{}, func(ctx context.Context, job jobs.Job[ingest.JobPayload]) error {
 		return runImport(ctx, deps, job)
 	})
 }
 
 // runImport runs the import of job.
-func runImport(ctx context.Context, deps JobDeps, job jobs.Job[ImportPayload]) error {
+func runImport(ctx context.Context, deps JobDeps, job jobs.Job[ingest.JobPayload]) error {
 	imports := deps.Store.Imports()
 	userID, importID := job.UserID, job.Payload.ImportID
 
@@ -93,22 +91,30 @@ func runImport(ctx context.Context, deps JobDeps, job jobs.Job[ImportPayload]) e
 		return nil
 	}
 
-	imp, err = imports.SetStatus(ctx, userID, importID, store.ImportRunning)
+	started, err := start(ctx, deps.Store, userID, importID)
 	if errors.Is(err, store.ErrConflict) {
 		// Ended since it was read.
 		return nil
 	}
 
 	if err != nil {
-		return fmt.Errorf("start import %d: %w", importID, err)
+		err = fmt.Errorf("start import %d: %w", importID, err)
+
+		if cancelRequested(ctx, deps.Store, job.ID) {
+			// Cancelled before it started, such as by a cancellation that the heartbeat delivered.
+			return errors.Join(err, finish(context.WithoutCancel(ctx), deps, imp, store.ImportCancelled))
+		}
+
+		return err
 	}
 
+	imp = started
 	err = process(ctx, deps, imp)
 
 	switch {
 	case err == nil:
 		return finish(ctx, deps, imp, store.ImportCompleted)
-	case jobs.Cancelled(ctx):
+	case cancelRequested(ctx, deps.Store, job.ID):
 		// The writes that end the import run once the handler context is done.
 		return errors.Join(err, finish(context.WithoutCancel(ctx), deps, imp, store.ImportCancelled))
 	case errors.Is(err, ErrInvalidPayload), errors.Is(err, errMissingPayload):
@@ -119,6 +125,21 @@ func runImport(ctx context.Context, deps JobDeps, job jobs.Job[ImportPayload]) e
 	default:
 		return err
 	}
+}
+
+// cancelRequested reports whether the cancellation of the job of jobID was requested: delivered to
+// the handler context by the heartbeat, or requested since its last heartbeat. A handler that stops
+// otherwise, by a failure or a shutdown, then ends its import itself: its job, queued again, would
+// be cancelled without a handler, and the import would stay unfinished. A failed read counts as no
+// cancellation, the import then resuming at the next run.
+func cancelRequested(ctx context.Context, s store.Store, jobID int64) bool {
+	if jobs.Cancelled(ctx) {
+		return true
+	}
+
+	job, err := s.Jobs().Get(context.WithoutCancel(ctx), jobID)
+
+	return err == nil && job.CancelRequested
 }
 
 // process reads the payload of the inbox file of imp, stores its client, and runs its records
@@ -149,37 +170,94 @@ func process(ctx context.Context, deps JobDeps, imp store.Import) (err error) {
 	return deps.Pipeline.Run(ctx, imp.UserID, imp.ID, payload.Records(ctx))
 }
 
-// finish ends imp with status, completed or cancelled, and removes its inbox file, which it no
-// longer needs.
+// start moves the import of importID of userID to running, and returns it. A queued import records
+// import.started in the same transaction, so that a resumed import, already running, records it
+// once. It returns store.ErrConflict for an import that ended.
+func start(ctx context.Context, s store.Store, userID, importID int64) (store.Import, error) {
+	var started store.Import
+
+	err := s.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
+		imp, err := tx.Imports().Get(ctx, userID, importID)
+		if err != nil {
+			return err
+		}
+
+		started, err = tx.Imports().SetStatus(ctx, userID, importID, store.ImportRunning)
+		if err != nil {
+			return err
+		}
+
+		if imp.Status != store.ImportQueued {
+			return nil
+		}
+
+		return audit.Record(ctx, tx.AuditEvents(), audit.ImportStarted(userID, importID, imp.Origin))
+	})
+
+	return started, err
+}
+
+// finish ends imp with status, completed or cancelled, recording its end in the same transaction,
+// and removes its inbox file, which it no longer needs.
 func finish(ctx context.Context, deps JobDeps, imp store.Import, status store.ImportStatus) error {
-	if _, err := deps.Store.Imports().SetStatus(ctx, imp.UserID, imp.ID, status); err != nil {
+	err := deps.Store.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
+		ended, err := tx.Imports().SetStatus(ctx, imp.UserID, imp.ID, status)
+		if err != nil {
+			return err
+		}
+
+		return audit.Record(ctx, tx.AuditEvents(), endEvent(ended))
+	})
+	if err != nil {
 		return fmt.Errorf("end import %d %s: %w", imp.ID, status, err)
 	}
 
 	return deps.Inbox.Remove(ctx, imp.InboxFile)
 }
 
-// fail ends imp failed, with the message of cause as a sample error message, in one transaction. Its
-// inbox file stays, for a retry or a diagnosis.
+// fail ends imp failed, with the message of cause as a sample error message, and records its end,
+// in one transaction. The position and the counters of the batches committed since imp was read
+// stay. Its inbox file stays, for a retry or a diagnosis.
 func fail(ctx context.Context, s store.Store, imp store.Import, cause error) error {
 	err := s.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
-		report := imp.Report
+		current, err := tx.Imports().Get(ctx, imp.UserID, imp.ID)
+		if err != nil {
+			return err
+		}
+
+		report := current.Report
 		report.Errors = append(report.Errors, cause.Error())
 
-		progress := store.ImportProgress{Position: imp.Position, Report: report}
+		progress := store.ImportProgress{Position: current.Position, Report: report}
 		if err := tx.Imports().SaveProgress(ctx, imp.UserID, imp.ID, progress); err != nil {
 			return err
 		}
 
-		_, err := tx.Imports().SetStatus(ctx, imp.UserID, imp.ID, store.ImportFailed)
+		ended, err := tx.Imports().SetStatus(ctx, imp.UserID, imp.ID, store.ImportFailed)
+		if err != nil {
+			return err
+		}
 
-		return err
+		return audit.Record(ctx, tx.AuditEvents(), endEvent(ended))
 	})
 	if err != nil {
 		return fmt.Errorf("fail import %d: %w", imp.ID, err)
 	}
 
 	return nil
+}
+
+// endEvent returns the audit event of the end of imp, which ended completed, failed or cancelled,
+// with the total counters of its report.
+func endEvent(imp store.Import) audit.Event {
+	switch imp.Status {
+	case store.ImportCompleted:
+		return audit.ImportCompleted(imp.UserID, imp.ID, imp.Origin, imp.Report.Total)
+	case store.ImportFailed:
+		return audit.ImportFailed(imp.UserID, imp.ID, imp.Origin, imp.Report.Total)
+	default:
+		return audit.ImportCancelled(imp.UserID, imp.ID, imp.Origin, imp.Report.Total)
+	}
 }
 
 // metadata returns the client metadata of the import of a payload sent by c, without the fields

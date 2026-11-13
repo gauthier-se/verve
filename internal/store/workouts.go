@@ -180,6 +180,9 @@ type WorkoutsRepository interface {
 	// Thumbnails returns the thumbnails of the routes of the workouts of workoutIDs, by workout id.
 	// A workout without route, or that userID does not have, is skipped.
 	Thumbnails(ctx context.Context, userID int64, workoutIDs []int64) ([]RouteThumbnail, error)
+	// RouteBytesByUsers returns the size in bytes of the encoded routes of each user of userIDs. The
+	// users without routes are left out. It returns sizes only, never a route.
+	RouteBytesByUsers(ctx context.Context, userIDs []int64) (map[int64]int64, error)
 	// DeleteRoutesByUser removes at most limit routes of userID, leaving their workouts, and returns
 	// how many it removed. It returns ErrInvalid when limit is below 1.
 	DeleteRoutesByUser(ctx context.Context, userID int64, limit int) (int64, error)
