@@ -252,7 +252,7 @@ func (w *Worker) run(ctx context.Context, job store.Job, final bool) jobEnd {
 	defer cancel(nil)
 
 	stopHeartbeat := w.startHeartbeat(ctx, job, cancel)
-	handlerErr := w.invoke(handlerCtx, job)
+	handlerErr := w.invoke(handlerCtx, job, final)
 
 	stopHeartbeat()
 
@@ -329,9 +329,9 @@ func Cancelled(ctx context.Context) bool {
 	return errors.Is(context.Cause(ctx), errCancelled)
 }
 
-// invoke runs the handler of job. A panic is logged and returned as errPanicked. The log carries
+// invoke runs the handler of job, for a final run when final is true. A panic is logged and returned as errPanicked. The log carries
 // the type of the panic value, never the value, which can hold anything.
-func (w *Worker) invoke(ctx context.Context, job store.Job) (err error) {
+func (w *Worker) invoke(ctx context.Context, job store.Job, final bool) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			w.logger.ErrorContext(ctx, "job handler panicked",
@@ -344,7 +344,7 @@ func (w *Worker) invoke(ctx context.Context, job store.Job) (err error) {
 		}
 	}()
 
-	return w.registry.run(ctx, job)
+	return w.registry.run(ctx, job, final)
 }
 
 // endOf decides how a run of job ended. cause is the cancellation cause of its handler. A final run

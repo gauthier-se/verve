@@ -507,3 +507,24 @@ func TestRunInProcess_RunThatDoesNotComplete_EndsTheJobForGoodAndReturnsWhy(t *t
 		})
 	}
 }
+
+// Given a job run in process, then its handler sees LastAttempt on its first run, since a failed
+// attempt of a run in process fails the job at once.
+func TestRunInProcess_LastAttempt_IsReportedAtOnce(t *testing.T) {
+	t.Parallel()
+
+	s, clk := newTestStore(t)
+	reg := NewRegistry()
+
+	var last bool
+
+	kind := Register(reg, "test.kind", KindOptions{}, func(_ context.Context, job Job[testPayload]) error {
+		last = job.LastAttempt
+
+		return nil
+	})
+
+	w, _ := newTestWorker(s, reg, clk, Options{})
+	require.NoError(t, w.RunInProcess(t.Context(), newKeyedJob(t, kind, "first"), func() {}))
+	require.True(t, last)
+}

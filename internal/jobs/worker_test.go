@@ -1480,3 +1480,34 @@ func TestTick_CancelRequestedBeforeTheHandlerEnds_KeepsTheResult(t *testing.T) {
 
 	require.Equal(t, store.JobCompleted, getJob(ctx, t, s, queued.ID).Status)
 }
+
+// Given a kind of 3 attempts whose handler keeps failing, then its handler sees LastAttempt only on
+// its third run, after which the job fails for good.
+func TestTick_LastAttempt_IsReportedOnTheRunWhoseFailureIsFinal(t *testing.T) {
+	t.Parallel()
+
+	s, clk := newTestStore(t)
+	ctx := t.Context()
+	reg := NewRegistry()
+
+	var last []bool
+
+	kind := Register(reg, "test.kind", KindOptions{MaxAttempts: 3}, func(_ context.Context, job Job[testPayload]) error {
+		last = append(last, job.LastAttempt)
+
+		return errors.New("still failing")
+	})
+	queued := enqueue(ctx, t, s, kind, "first")
+
+	w, _ := newTestWorker(s, reg, clk, Options{})
+
+	for range 3 {
+		claimed, err := w.Tick(ctx)
+		require.NoError(t, err)
+		require.True(t, claimed)
+		clk.Advance(time.Hour)
+	}
+
+	require.Equal(t, []bool{false, false, true}, last)
+	require.Equal(t, store.JobFailed, getJob(ctx, t, s, queued.ID).Status)
+}

@@ -34,6 +34,10 @@ type Job[P any] struct {
 	// UserID is the user the job belongs to, or 0 for none.
 	UserID  int64
 	Payload P
+	// LastAttempt is true when a failure of this run fails the job for good: its kind has no attempt
+	// left, or the run is final, such as a run in process. A handler that keeps records of its own,
+	// such as an import, ends them on such a failure.
+	LastAttempt bool
 }
 
 // Kind is a registered job kind whose payloads have type P.
@@ -54,7 +58,8 @@ func (k Kind[P]) New(payload P) (store.NewJob, error) {
 
 // registeredKind is what a registry holds for a kind.
 type registeredKind struct {
-	handler     func(ctx context.Context, job store.Job) error
+	// handler runs job. final is true for a run whose failure fails the job at once.
+	handler     func(ctx context.Context, job store.Job, final bool) error
 	maxAttempts int64
 }
 
@@ -75,29 +80,36 @@ func Register[P any](r *Registry, kind string, opts KindOptions, fn func(ctx con
 		panic(fmt.Sprintf("job kind %q registered twice", kind))
 	}
 
+	maxAttempts := cmp.Or(opts.MaxAttempts, defaultMaxAttempts)
+
 	r.kinds[kind] = registeredKind{
-		maxAttempts: cmp.Or(opts.MaxAttempts, defaultMaxAttempts),
-		handler: func(ctx context.Context, job store.Job) error {
+		maxAttempts: maxAttempts,
+		handler: func(ctx context.Context, job store.Job, final bool) error {
 			var payload P
 			if err := json.Unmarshal(job.Payload, &payload); err != nil {
 				return Permanent(errMalformedPayload)
 			}
 
-			return fn(ctx, Job[P]{ID: job.ID, UserID: job.UserID, Payload: payload})
+			return fn(ctx, Job[P]{
+				ID:          job.ID,
+				UserID:      job.UserID,
+				Payload:     payload,
+				LastAttempt: final || job.Attempts+1 >= maxAttempts,
+			})
 		},
 	}
 
 	return Kind[P]{name: kind}
 }
 
-// run calls the handler of the kind of job.
-func (r *Registry) run(ctx context.Context, job store.Job) error {
+// run calls the handler of the kind of job, for a final run when final is true.
+func (r *Registry) run(ctx context.Context, job store.Job, final bool) error {
 	kind, ok := r.kinds[job.Kind]
 	if !ok {
 		return Permanent(errUnknownKind)
 	}
 
-	return kind.handler(ctx, job)
+	return kind.handler(ctx, job, final)
 }
 
 // maxAttempts returns the number of failed attempts after which a job of kind is marked failed.

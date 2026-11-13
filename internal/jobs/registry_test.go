@@ -35,7 +35,7 @@ func TestRegistry_RegisteredKind_RunsHandlerWithDecodedPayload(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "test.kind", queued.Kind)
 
-	err = reg.run(t.Context(), store.Job{ID: 7, Kind: queued.Kind, Payload: queued.Payload, UserID: 3})
+	err = reg.run(t.Context(), store.Job{ID: 7, Kind: queued.Kind, Payload: queued.Payload, UserID: 3}, false)
 	require.NoError(t, err)
 	require.Equal(t, Job[testPayload]{ID: 7, UserID: 3, Payload: testPayload{Name: "first"}}, got)
 }
@@ -54,7 +54,7 @@ func TestRegistry_HandlerFails_ReturnsItsError(t *testing.T) {
 	queued, err := kind.New(testPayload{})
 	require.NoError(t, err)
 
-	err = reg.run(t.Context(), store.Job{Kind: queued.Kind, Payload: queued.Payload})
+	err = reg.run(t.Context(), store.Job{Kind: queued.Kind, Payload: queued.Payload}, false)
 	require.ErrorIs(t, err, errHandler)
 }
 
@@ -72,7 +72,7 @@ func TestRegistry_MalformedPayload_DoesNotRunTheHandler(t *testing.T) {
 		return nil
 	})
 
-	err := reg.run(t.Context(), store.Job{Kind: "test.kind", Payload: json.RawMessage(`{"name":5}`)})
+	err := reg.run(t.Context(), store.Job{Kind: "test.kind", Payload: json.RawMessage(`{"name":5}`)}, false)
 	require.EqualError(t, err, "malformed job payload")
 	require.False(t, called)
 }
@@ -81,7 +81,7 @@ func TestRegistry_MalformedPayload_DoesNotRunTheHandler(t *testing.T) {
 func TestRegistry_UnknownKind_Fails(t *testing.T) {
 	t.Parallel()
 
-	err := NewRegistry().run(t.Context(), store.Job{Kind: "test.unknown", Payload: json.RawMessage(`{}`)})
+	err := NewRegistry().run(t.Context(), store.Job{Kind: "test.unknown", Payload: json.RawMessage(`{}`)}, false)
 	require.EqualError(t, err, "unknown job kind")
 }
 
