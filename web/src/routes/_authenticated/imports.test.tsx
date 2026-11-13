@@ -410,17 +410,18 @@ describe("imports page", () => {
         expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
       });
       expect(cancelled).toEqual([queuedImport.id]);
-      await waitFor(async () => {
-        const [row] = await findImportRows();
-        expect(row && cellTexts(row)[4]).toBe("Cancelled");
+      await waitFor(() => {
+        expect(drawer).toHaveAccessibleDescription(
+          "Apple Health export, Cancelled",
+        );
       });
       expect(
-        within(
-          screen.getByRole("dialog", {
-            name: named(`Import of ${queuedDate}`),
-          }),
-        ).queryByRole("button", { name: "Cancel import" }),
+        within(drawer).queryByRole("button", { name: "Cancel import" }),
       ).not.toBeInTheDocument();
+      // The table is outside the accessibility tree while the drawer is open.
+      await user.keyboard("{Escape}");
+      const [row] = await findImportRows();
+      expect(row && cellTexts(row)[4]).toBe("Cancelled");
     });
 
     it("given the confirmation, when the user keeps the import, then nothing is cancelled", async () => {
@@ -441,6 +442,7 @@ describe("imports page", () => {
         expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
       });
       expect(cancelled).toEqual([]);
+      await user.keyboard("{Escape}");
       const [row] = await findImportRows();
       expect(row && cellTexts(row)[4]).toBe("Queued");
     });
@@ -544,8 +546,8 @@ describe("imports page", () => {
       });
       expect(
         within(byType)
-          .getAllByRole("heading")
-          .map((heading) => heading.textContent),
+          .getAllByRole("listitem")
+          .map((item) => within(item).getByRole("heading").textContent),
       ).toEqual([
         "Pas",
         "HKQuantityTypeIdentifierUVExposure",
