@@ -17,11 +17,6 @@ const (
 	ImportCancelled ImportStatus = "cancelled"
 )
 
-// Known reports whether s is one of the statuses of an import.
-func (s ImportStatus) Known() bool {
-	return s == ImportQueued || s == ImportRunning || s.Finished()
-}
-
 // Finished reports whether s is the status of an import that ended: completed, failed or cancelled.
 func (s ImportStatus) Finished() bool {
 	switch s {

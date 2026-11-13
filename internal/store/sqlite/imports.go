@@ -141,7 +141,7 @@ func (r imports) SetStatus(ctx context.Context, userID, id int64, status store.I
 		return err
 	})
 	if err != nil {
-		return store.Import{}, fmt.Errorf("set import %d of user %d %s: %w", id, userID, status, err)
+		return store.Import{}, fmt.Errorf("set import %d of user %d %q: %w", id, userID, status, err)
 	}
 
 	return importOf(row)
