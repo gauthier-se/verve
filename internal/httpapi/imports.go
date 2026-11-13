@@ -12,6 +12,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/gauthier-se/verve/internal/audit"
+	"github.com/gauthier-se/verve/internal/clock"
 	"github.com/gauthier-se/verve/internal/ingest"
 	"github.com/gauthier-se/verve/internal/logging"
 	"github.com/gauthier-se/verve/internal/store"
@@ -197,7 +198,7 @@ func cancelImport(ctx context.Context, deps APIDeps, userID, id int64) (store.Im
 			return errImportFinished
 		}
 
-		running, err := cancelJobOf(ctx, tx, imp)
+		running, err := cancelJobOf(ctx, tx, deps.Clock, imp)
 		if err != nil || running {
 			return err
 		}
@@ -226,10 +227,11 @@ func cancelImport(ctx context.Context, deps APIDeps, userID, id int64) (store.Im
 	return imp, nil
 }
 
-// cancelJobOf cancels the active job of imp through tx, and reports whether it is still running,
-// its handler then ending the import. A queued job, such as one waiting for its retry, is
-// cancelled at once, and an import without an active job has none to cancel.
-func cancelJobOf(ctx context.Context, tx store.Repositories, imp store.Import) (running bool, err error) {
+// cancelJobOf cancels the active job of imp through tx, and reports whether a handler runs it, its
+// handler then ending the import. A queued job, such as one waiting for its retry, is cancelled at
+// once, a running job whose lease expired at clk has no handler, the next claim cancelling it, and
+// an import without an active job has none to cancel.
+func cancelJobOf(ctx context.Context, tx store.Repositories, clk clock.Clock, imp store.Import) (running bool, err error) {
 	job, err := ingest.JobOfImport(ctx, tx.Jobs(), imp.UserID, imp.ID)
 	if errors.Is(err, store.ErrNotFound) {
 		return false, nil
@@ -243,7 +245,7 @@ func cancelJobOf(ctx context.Context, tx store.Repositories, imp store.Import) (
 		return false, fmt.Errorf("cancel job %d: %w", job.ID, err)
 	}
 
-	return job.Status == store.JobRunning, nil
+	return job.Status == store.JobRunning && job.LockedUntil.After(clk.Now()), nil
 }
 
 // tokenNames returns the names of the API tokens of userID by id, when one of imports was pushed by

@@ -410,8 +410,9 @@ func TestImports_CancelOfARunningImport_RequestsTheCancellationOfItsJob(t *testi
 	require.Empty(t, events, "the job records the end of the import")
 }
 
-// Given a running import whose job waits for its retry, or whose job is gone, when its user cancels
-// it, then no handler can end it: the request cancels it as it does a queued import.
+// Given a running import whose job waits for its retry, whose job lost its lease, or whose job is
+// gone, when its user cancels it, then no handler can end it: the request cancels it as it does a
+// queued import.
 func TestImports_CancelOfARunningImportWithoutAHandler_CancelsIt(t *testing.T) {
 	t.Parallel()
 
@@ -428,6 +429,17 @@ func TestImports_CancelOfARunningImportWithoutAHandler_CancelsIt(t *testing.T) {
 				job := it.mustClaimJob(t, imp)
 				it.mustRun(t, it.alice, imp.ID)
 				require.NoError(t, it.store.Jobs().Retry(t.Context(), job.ID, job.Claims, "disk error", authTestNow.Add(time.Hour)))
+			},
+		},
+		{
+			// Its process died: the next claim cancels the job without a handler.
+			name: "job whose lease expired",
+			prepare: func(t *testing.T, it importsTest, imp store.Import) {
+				t.Helper()
+
+				it.mustClaimJob(t, imp)
+				it.mustRun(t, it.alice, imp.ID)
+				it.clock.Advance(2 * time.Minute)
 			},
 		},
 		{

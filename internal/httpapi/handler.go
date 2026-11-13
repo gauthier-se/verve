@@ -82,6 +82,7 @@ func NewHandler(d Deps) http.Handler {
 
 	NewAPI(mux, APIDeps{
 		Version:        d.Version,
+		Clock:          d.Clock,
 		Store:          d.Store,
 		Logins:         logins,
 		Sessions:       sessions,
