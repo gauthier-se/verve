@@ -349,9 +349,9 @@ func TestNormalizeWorkout_Workout_ConvertsItsTotalsAndParsesItsTimes(t *testing.
 	require.InEpsilon(t, 30, *got.ElevationLoss, 1e-15)
 	require.InEpsilon(t, 150, *got.AvgHeartRate, 1e-15)
 	require.InEpsilon(t, 178, *got.MaxHeartRate, 1e-15)
-	require.Equal(t, []ingest.Event{
-		{Type: "HKWorkoutEventTypePause", Start: utc(t, "2026-11-10T17:12:00Z"), End: utc(t, "2026-11-10T17:12:00Z")},
-		{Type: "HKWorkoutEventTypeResume", Start: utc(t, "2026-11-10T17:13:00Z"), End: utc(t, "2026-11-10T17:13:00Z")},
+	require.Equal(t, []store.WorkoutEvent{
+		{Type: store.WorkoutEventPause, Start: utc(t, "2026-11-10T17:12:00Z"), End: utc(t, "2026-11-10T17:12:00Z")},
+		{Type: store.WorkoutEventResume, Start: utc(t, "2026-11-10T17:13:00Z"), End: utc(t, "2026-11-10T17:13:00Z")},
 	}, got.Events)
 	require.Equal(t, []route.Point{
 		{
@@ -366,6 +366,7 @@ func TestNormalizeWorkout_Workout_ConvertsItsTotalsAndParsesItsTimes(t *testing.
 		},
 	}, got.Route)
 	require.False(t, got.Suspicious)
+	require.Empty(t, got.Warnings)
 }
 
 // Given a workout that lacks its totals, when NormalizeWorkout runs, then they stay unknown.
@@ -602,4 +603,54 @@ func TestNormalizeWorkout_NegativeRouteValue_CountsAsLeftOut(t *testing.T) {
 	require.Equal(t, []route.Point{{
 		Time: utc(t, "2026-11-10T17:00:01Z"), Lat: 48.8566, Lon: 2.3522, Altitude: ptr(-12.5),
 	}}, got.Route)
+}
+
+// Given workout events, when NormalizeWorkout runs, then their types are stored as FR-7 of
+// Ingestion pipeline maps them, a pause or resume request is ignored, and another type is ignored
+// with a warning naming the event.
+func TestNormalizeWorkout_EventTypes_MappedAsFR7(t *testing.T) {
+	t.Parallel()
+
+	at := "2026-11-10T18:10:00+01:00"
+	w := workout()
+	w.Duration = &ingest.Quantity{Value: 30, Unit: "min"}
+	w.Events = []ingest.WorkoutEvent{
+		{Type: "HKWorkoutEventTypePause", Start: at, End: at},
+		{Type: "HKWorkoutEventTypeResume", Start: at, End: at},
+		{Type: "HKWorkoutEventTypeLap", Start: at, End: at},
+		{Type: "HKWorkoutEventTypeSegment", Start: at, End: at},
+		{Type: "HKWorkoutEventTypeMarker", Start: at, End: at},
+		{Type: "HKWorkoutEventTypeMotionPaused", Start: at, End: at},
+		{Type: "HKWorkoutEventTypeMotionResumed", Start: at, End: at},
+		{Type: "HKWorkoutEventTypePauseOrResumeRequest", Start: "broken", End: "broken"},
+		{Type: "HKWorkoutEventTypeTeleport", Start: "broken", End: "broken"},
+	}
+
+	got, err := ingest.NormalizeWorkout(w, importedAt)
+	require.NoError(t, err)
+
+	instant := utc(t, "2026-11-10T17:10:00Z")
+	require.Equal(t, []store.WorkoutEvent{
+		{Type: store.WorkoutEventPause, Start: instant, End: instant},
+		{Type: store.WorkoutEventResume, Start: instant, End: instant},
+		{Type: store.WorkoutEventLap, Start: instant, End: instant},
+		{Type: store.WorkoutEventSegment, Start: instant, End: instant},
+		{Type: store.WorkoutEventMarker, Start: instant, End: instant},
+		{Type: store.WorkoutEventPause, Start: instant, End: instant},
+		{Type: store.WorkoutEventResume, Start: instant, End: instant},
+	}, got.Events)
+	require.Equal(t, []string{`event 8: type "HKWorkoutEventTypeTeleport" is not a known event type, ignored`}, got.Warnings)
+}
+
+// Given a workout whose events are all ignored, when NormalizeWorkout runs, then it has no events.
+func TestNormalizeWorkout_OnlyIgnoredEvents_HasNoEvents(t *testing.T) {
+	t.Parallel()
+
+	w := workout()
+	w.Events = []ingest.WorkoutEvent{{Type: "HKWorkoutEventTypePauseOrResumeRequest"}}
+
+	got, err := ingest.NormalizeWorkout(w, importedAt)
+	require.NoError(t, err)
+	require.Nil(t, got.Events)
+	require.Empty(t, got.Warnings)
 }
