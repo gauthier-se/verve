@@ -213,9 +213,11 @@ func (w *Worker) loop(ctx context.Context) {
 // Tick claims the oldest due job and runs it until it ends. It reports whether it claimed a job,
 // and returns an error when the claim fails.
 func (w *Worker) Tick(ctx context.Context) (claimed bool, err error) {
-	job, abandoned, err := w.store.Jobs().Claim(ctx, w.opts.Lease)
-	for _, a := range abandoned {
-		w.logAbandoned(ctx, a)
+	job, ended, err := w.claim(ctx)
+	for _, e := range ended {
+		if e.Status == store.JobFailed {
+			w.logAbandoned(ctx, e)
+		}
 	}
 
 	if errors.Is(err, store.ErrNotFound) {
@@ -241,6 +243,38 @@ func (w *Worker) Tick(ctx context.Context) (claimed bool, err error) {
 	w.logEnd(ctx, end, err)
 
 	return true, nil
+}
+
+// claim claims the oldest due job, as JobsRepository.Claim does, and ends the records of the jobs
+// that the claim ended without a handler in the same transaction, with the functions of their
+// kinds (see OnEndedByClaim), so that the records end with their jobs. It returns the claimed job
+// and the ended ones once committed, or store.ErrNotFound with the ended jobs when no job is due.
+func (w *Worker) claim(ctx context.Context) (store.Job, []store.Job, error) {
+	var (
+		job      store.Job
+		ended    []store.Job
+		claimErr error
+	)
+
+	err := w.store.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
+		job, ended, claimErr = tx.Jobs().Claim(ctx, w.opts.Lease)
+		if claimErr != nil && !errors.Is(claimErr, store.ErrNotFound) {
+			return claimErr
+		}
+
+		for _, e := range ended {
+			if err := w.registry.endedByClaim(ctx, tx, e); err != nil {
+				return fmt.Errorf("end the records of job %d: %w", e.ID, err)
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		return store.Job{}, nil, err
+	}
+
+	return job, ended, claimErr
 }
 
 // run runs the handler of a claimed job under its heartbeat, and returns how the run ended, for the
