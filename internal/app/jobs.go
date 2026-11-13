@@ -11,23 +11,27 @@ import (
 	"github.com/gauthier-se/verve/internal/backup"
 	"github.com/gauthier-se/verve/internal/clock"
 	"github.com/gauthier-se/verve/internal/config"
+	"github.com/gauthier-se/verve/internal/ingest/native"
 	"github.com/gauthier-se/verve/internal/jobs"
 	"github.com/gauthier-se/verve/internal/store"
 )
 
-// The recurring jobs that remove finished jobs, old audit events and expired sessions.
+// The recurring jobs that remove finished jobs, old audit events, expired sessions and the inbox
+// files that no import needs.
 const (
 	kindPurgeJobs     = "jobs.purge"
 	kindPurgeAudit    = "audit.purge"
 	kindPurgeSessions = "cleanup.sessions"
+	kindCleanupInbox  = "cleanup.inbox"
 )
 
 // deleteAccountMaxAttempts lets an account deletion wait, through its retries, for hours for the
 // jobs of the user that it cancelled to stop, since the account stays disabled until it succeeds.
 const deleteAccountMaxAttempts = 10
 
-// registerJobs adds the job kinds of the server to registry and returns its recurring jobs.
-func registerJobs(registry *jobs.Registry, st store.Store, clk clock.Clock, cfg config.Config) []jobs.Schedule {
+// registerJobs adds the job kinds of the server to registry, the imports running on ing, and returns
+// its recurring jobs.
+func registerJobs(registry *jobs.Registry, st store.Store, clk clock.Clock, cfg config.Config, ing *ingestion) []jobs.Schedule {
 	jobs.Register(registry, kindPurgeJobs, jobs.KindOptions{}, func(ctx context.Context, _ jobs.Job[struct{}]) error {
 		return jobs.Purge(ctx, st.Jobs(), clk.Now())
 	})
@@ -52,10 +56,17 @@ func registerJobs(registry *jobs.Registry, st store.Store, clk clock.Clock, cfg 
 
 	backup.Register(registry, newBackups(cfg, clk), st, cfg.Backup.Keep)
 
+	native.Register(registry, native.JobDeps{Store: st, Pipeline: ing.pipeline, Inbox: ing.inbox})
+
+	jobs.Register(registry, kindCleanupInbox, jobs.KindOptions{}, func(ctx context.Context, _ jobs.Job[struct{}]) error {
+		return ing.inbox.Cleanup(ctx, st.Imports())
+	})
+
 	return []jobs.Schedule{
 		{Name: kindPurgeJobs, Kind: kindPurgeJobs, Every: 24 * time.Hour, Payload: json.RawMessage(`{}`)},
 		{Name: kindPurgeAudit, Kind: kindPurgeAudit, Every: 24 * time.Hour, Payload: json.RawMessage(`{}`)},
 		{Name: kindPurgeSessions, Kind: kindPurgeSessions, Every: 24 * time.Hour, Payload: json.RawMessage(`{}`)},
+		{Name: kindCleanupInbox, Kind: kindCleanupInbox, Every: 24 * time.Hour, Payload: json.RawMessage(`{}`)},
 		// Off leaves Cron empty, which disables the schedule and removes its stored next run.
 		{Name: backup.KindRun, Kind: backup.KindRun, Cron: cfg.Backup.Cron(), Payload: json.RawMessage(`{}`)},
 	}

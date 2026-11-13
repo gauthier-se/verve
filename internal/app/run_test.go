@@ -511,8 +511,8 @@ func storedSchedules(t *testing.T, cfg config.Config) map[string]time.Time {
 	return schedules
 }
 
-// Given serve on a new database, then the purges of jobs, of audit events and of expired sessions
-// are scheduled daily, in a day, and no job is enqueued for them yet. Given the defaults, then the
+// Given serve on a new database, then the purges of jobs, of audit events, of expired sessions and of
+// the inbox are scheduled daily, in a day, and no job is enqueued for them yet. Given the defaults, then the
 // backup is scheduled at the next 03:00 in the local time of the process.
 func TestRun_SchedulesTheDailyPurgesAndBackups(t *testing.T) {
 	t.Parallel()
@@ -522,13 +522,13 @@ func TestRun_SchedulesTheDailyPurgesAndBackups(t *testing.T) {
 	_, _, stop := startRun(t, cfg)
 
 	require.Eventually(t, func() bool {
-		return len(storedSchedules(t, cfg)) == 4
+		return len(storedSchedules(t, cfg)) == 5
 	}, 5*time.Second, 10*time.Millisecond, "the server must schedule the purges and the backup")
 
 	stop()
 
 	schedules := storedSchedules(t, cfg)
-	for _, name := range []string{"jobs.purge", "audit.purge", "cleanup.sessions"} {
+	for _, name := range []string{"jobs.purge", "audit.purge", "cleanup.sessions", "cleanup.inbox"} {
 		require.WithinDuration(t, time.Now().Add(24*time.Hour), schedules[name], time.Minute, name)
 	}
 
@@ -551,7 +551,7 @@ func TestRun_BackupScheduleOffSchedulesNoBackup(t *testing.T) {
 	_, _, stop := startRun(t, cfg)
 
 	require.Eventually(t, func() bool {
-		return len(storedSchedules(t, cfg)) == 3
+		return len(storedSchedules(t, cfg)) == 4
 	}, 5*time.Second, 10*time.Millisecond, "the server must schedule the purges")
 
 	stop()

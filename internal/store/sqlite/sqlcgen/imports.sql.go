@@ -11,9 +11,10 @@ import (
 )
 
 const createImport = `-- name: CreateImport :one
-INSERT INTO imports (user_id, origin, token_id, client, status, position, counters, type_counters, errors, created_at)
-VALUES (?, ?, ?, ?, 'queued', 0, '{}', '{}', '[]', ?)
-RETURNING id, user_id, origin, token_id, client, status, position, counters, type_counters, errors, created_at, started_at, finished_at
+INSERT INTO imports (user_id, origin, token_id, client, inbox_file, status, position, counters, type_counters, errors,
+                     created_at)
+VALUES (?, ?, ?, ?, ?, 'queued', 0, '{}', '{}', '[]', ?)
+RETURNING id, user_id, origin, token_id, client, status, position, counters, type_counters, errors, created_at, started_at, finished_at, inbox_file
 `
 
 type CreateImportParams struct {
@@ -21,6 +22,7 @@ type CreateImportParams struct {
 	Origin    string
 	TokenID   sql.NullInt64
 	Client    sql.NullString
+	InboxFile sql.NullString
 	CreatedAt int64
 }
 
@@ -30,6 +32,7 @@ func (q *Queries) CreateImport(ctx context.Context, arg CreateImportParams) (Imp
 		arg.Origin,
 		arg.TokenID,
 		arg.Client,
+		arg.InboxFile,
 		arg.CreatedAt,
 	)
 	var i Import
@@ -47,6 +50,7 @@ func (q *Queries) CreateImport(ctx context.Context, arg CreateImportParams) (Imp
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.FinishedAt,
+		&i.InboxFile,
 	)
 	return i, err
 }
@@ -80,7 +84,7 @@ SET status      = ?1,
 WHERE user_id = ?3
   AND id = ?4
   AND status IN ('queued', 'running')
-RETURNING id, user_id, origin, token_id, client, status, position, counters, type_counters, errors, created_at, started_at, finished_at
+RETURNING id, user_id, origin, token_id, client, status, position, counters, type_counters, errors, created_at, started_at, finished_at, inbox_file
 `
 
 type FinishUserImportParams struct {
@@ -112,12 +116,13 @@ func (q *Queries) FinishUserImport(ctx context.Context, arg FinishUserImportPara
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.FinishedAt,
+		&i.InboxFile,
 	)
 	return i, err
 }
 
 const getUserImport = `-- name: GetUserImport :one
-SELECT id, user_id, origin, token_id, client, status, position, counters, type_counters, errors, created_at, started_at, finished_at
+SELECT id, user_id, origin, token_id, client, status, position, counters, type_counters, errors, created_at, started_at, finished_at, inbox_file
 FROM imports
 WHERE user_id = ? AND id = ?
 `
@@ -144,8 +149,40 @@ func (q *Queries) GetUserImport(ctx context.Context, arg GetUserImportParams) (I
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.FinishedAt,
+		&i.InboxFile,
 	)
 	return i, err
+}
+
+const inboxFilesKept = `-- name: InboxFilesKept :many
+SELECT CAST(inbox_file AS TEXT) AS inbox_file
+FROM imports
+WHERE inbox_file IS NOT NULL
+  AND NOT (status = 'failed' AND finished_at < ?1)
+`
+
+// The inbox files of the imports, except those of the imports that failed before a time.
+func (q *Queries) InboxFilesKept(ctx context.Context, failedSince sql.NullInt64) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, inboxFilesKept, failedSince)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var inbox_file string
+		if err := rows.Scan(&inbox_file); err != nil {
+			return nil, err
+		}
+		items = append(items, inbox_file)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const lastCompletedUserImports = `-- name: LastCompletedUserImports :many
@@ -185,7 +222,7 @@ func (q *Queries) LastCompletedUserImports(ctx context.Context, userID int64) ([
 }
 
 const listUserImports = `-- name: ListUserImports :many
-SELECT id, user_id, origin, token_id, client, status, position, counters, type_counters, errors, created_at, started_at, finished_at
+SELECT id, user_id, origin, token_id, client, status, position, counters, type_counters, errors, created_at, started_at, finished_at, inbox_file
 FROM imports
 WHERE user_id = ?1
   AND created_at <= ?2
@@ -232,6 +269,7 @@ func (q *Queries) ListUserImports(ctx context.Context, arg ListUserImportsParams
 			&i.CreatedAt,
 			&i.StartedAt,
 			&i.FinishedAt,
+			&i.InboxFile,
 		); err != nil {
 			return nil, err
 		}
@@ -305,6 +343,28 @@ func (q *Queries) SaveUserImportProgress(ctx context.Context, arg SaveUserImport
 	return result.RowsAffected()
 }
 
+const setUserImportClient = `-- name: SetUserImportClient :execrows
+UPDATE imports
+SET client = ?1
+WHERE user_id = ?2
+  AND id = ?3
+  AND status = 'running'
+`
+
+type SetUserImportClientParams struct {
+	Client sql.NullString
+	UserID int64
+	ID     int64
+}
+
+func (q *Queries) SetUserImportClient(ctx context.Context, arg SetUserImportClientParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setUserImportClient, arg.Client, arg.UserID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const startUserImport = `-- name: StartUserImport :one
 UPDATE imports
 SET status     = 'running',
@@ -312,7 +372,7 @@ SET status     = 'running',
 WHERE user_id = ?2
   AND id = ?3
   AND status IN ('queued', 'running')
-RETURNING id, user_id, origin, token_id, client, status, position, counters, type_counters, errors, created_at, started_at, finished_at
+RETURNING id, user_id, origin, token_id, client, status, position, counters, type_counters, errors, created_at, started_at, finished_at, inbox_file
 `
 
 type StartUserImportParams struct {
@@ -339,6 +399,7 @@ func (q *Queries) StartUserImport(ctx context.Context, arg StartUserImportParams
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.FinishedAt,
+		&i.InboxFile,
 	)
 	return i, err
 }

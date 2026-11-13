@@ -1,6 +1,7 @@
 -- name: CreateImport :one
-INSERT INTO imports (user_id, origin, token_id, client, status, position, counters, type_counters, errors, created_at)
-VALUES (?, ?, ?, ?, 'queued', 0, '{}', '{}', '[]', ?)
+INSERT INTO imports (user_id, origin, token_id, client, inbox_file, status, position, counters, type_counters, errors,
+                     created_at)
+VALUES (?, ?, ?, ?, ?, 'queued', 0, '{}', '{}', '[]', ?)
 RETURNING *;
 
 -- name: PurgeUserImports :exec
@@ -61,6 +62,20 @@ SET position      = sqlc.arg(position),
 WHERE user_id = sqlc.arg(user_id)
   AND id = sqlc.arg(id)
   AND status = 'running';
+
+-- name: SetUserImportClient :execrows
+UPDATE imports
+SET client = sqlc.arg(client)
+WHERE user_id = sqlc.arg(user_id)
+  AND id = sqlc.arg(id)
+  AND status = 'running';
+
+-- name: InboxFilesKept :many
+-- The inbox files of the imports, except those of the imports that failed before a time.
+SELECT CAST(inbox_file AS TEXT) AS inbox_file
+FROM imports
+WHERE inbox_file IS NOT NULL
+  AND NOT (status = 'failed' AND finished_at < sqlc.arg(failed_since));
 
 -- name: LastCompletedUserImports :many
 SELECT origin, CAST(max(finished_at) AS INTEGER) AS finished_at

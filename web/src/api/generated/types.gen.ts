@@ -320,6 +320,129 @@ export type ErrorDetail = {
     value?: unknown;
 };
 
+export type Import = {
+    /**
+     * The metadata of the client that sent the data, left out when there is none. A push stores it once its job reads the payload.
+     */
+    client?: {
+        [key: string]: string;
+    };
+    /**
+     * When the import was created.
+     */
+    createdAt: string;
+    /**
+     * When the import ended, left out until it does.
+     */
+    finishedAt?: string;
+    /**
+     * The id of the import.
+     */
+    id: number;
+    /**
+     * Where the data comes from: the Apple Health export, Health Auto Export, the native format or the command line.
+     */
+    origin: 'xml' | 'hae' | 'native' | 'cli';
+    /**
+     * What happened to the records of the import so far.
+     */
+    report: ImportReport;
+    /**
+     * When the import first ran, left out until it does.
+     */
+    startedAt?: string;
+    /**
+     * The status of the import.
+     */
+    status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+    /**
+     * The name of the token that pushed the data, left out when there is none.
+     */
+    tokenName?: string;
+};
+
+export type ImportCounters = {
+    /**
+     * Records dropped by a block rule.
+     */
+    blocked: number;
+    /**
+     * Records removed by a deletion.
+     */
+    deleted: number;
+    /**
+     * Records identical to a stored one.
+     */
+    duplicates: number;
+    /**
+     * Records stored for the first time.
+     */
+    inserted: number;
+    /**
+     * Records rejected, such as one with a missing field or an unknown unit.
+     */
+    invalid: number;
+    /**
+     * Deleted uuids that matched no record.
+     */
+    notFound: number;
+    /**
+     * Samples and workouts read from the payload.
+     */
+    received: number;
+    /**
+     * Stored records that start before 2000 or more than one day after the import was created.
+     */
+    suspicious: number;
+    /**
+     * Records of known but excluded types, such as ECG.
+     */
+    unsupported: number;
+    /**
+     * Records that replaced a stored one.
+     */
+    updated: number;
+    /**
+     * Stored records that lost a detail.
+     */
+    warnings: number;
+};
+
+export type ImportReport = {
+    /**
+     * Up to 100 sample error messages, which name the position, the type and the reason of a record.
+     */
+    errors: Array<string>;
+    /**
+     * Every counter, for every record.
+     */
+    total: ImportCounters;
+    /**
+     * The counters of each type key, a metric type key or the identifier of an unsupported type.
+     */
+    types: {
+        [key: string]: ImportTypeCounters;
+    };
+    /**
+     * The counters of the workouts.
+     */
+    workouts: ImportTypeCounters;
+};
+
+export type ImportTypeCounters = {
+    blocked?: number;
+    deleted?: number;
+    duplicates?: number;
+    inserted?: number;
+    invalid?: number;
+    notFound?: number;
+    received?: number;
+    suspicious?: number;
+    unsupported?: number;
+    updated?: number;
+    warnings?: number;
+};
+
 export type InspectInvitationInputBody = {
     /**
      * The token of the invitation, from the fragment of its link.
@@ -1701,6 +1824,50 @@ export type GetCurrentUserResponses = {
 };
 
 export type GetCurrentUserResponse = GetCurrentUserResponses[keyof GetCurrentUserResponses];
+
+export type PushNativeData = {
+    /**
+     * A payload of the format `verve.ingest.v1`, described in the specification of the native format. It is validated by the import, not by the request.
+     */
+    body: unknown;
+    path?: never;
+    query?: never;
+    url: '/api/v1/ingest';
+};
+
+export type PushNativeErrors = {
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Forbidden
+     */
+    403: Problem;
+    /**
+     * Request Entity Too Large
+     */
+    413: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+    /**
+     * Insufficient Storage
+     */
+    507: Problem;
+};
+
+export type PushNativeError = PushNativeErrors[keyof PushNativeErrors];
+
+export type PushNativeResponses = {
+    /**
+     * Accepted
+     */
+    202: Import;
+};
+
+export type PushNativeResponse = PushNativeResponses[keyof PushNativeResponses];
 
 export type AcceptInvitationData = {
     body: AcceptInvitationInputBody;

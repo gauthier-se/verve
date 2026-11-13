@@ -55,6 +55,9 @@ type Deps struct {
 	// Catalog is the metric type catalog shipped with the binary, which gives the category values
 	// of the metric types.
 	Catalog *catalog.Catalog
+	// Inbox stores the bodies of the pushes, of at most MaxIngestBody bytes (VERVE_MAX_INGEST_BODY).
+	Inbox         Inbox
+	MaxIngestBody int64
 }
 
 // NewHandler returns the root handler of the server: the health probes, the API, a JSON 404
@@ -93,6 +96,8 @@ func NewHandler(d Deps) http.Handler {
 		Jobs:           jobs,
 		Tokens:         auth.NewTokens(d.Clock),
 		Catalog:        d.Catalog,
+		Inbox:          d.Inbox,
+		MaxIngestBody:  d.MaxIngestBody,
 	})
 
 	if d.SPA != nil {

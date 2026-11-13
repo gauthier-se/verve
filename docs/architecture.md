@@ -110,7 +110,7 @@ Domain code depends on repository interfaces declared in `internal/store`, never
 - Outside `WithTx`, the SQLite repositories read on the reader pool and run each write in its own transaction on the writer.
 - `Snapshot(ctx, path)` writes a consistent copy of the whole storage to a new file, without holding the writer, for the [backups](features/backups.md). The SQLite implementation runs `VACUUM INTO` on a connection of its own.
 - `AfterCommit(fn)` on the repositories calls `fn` once their writes are committed: at once outside `WithTx`, after the commit inside it, and never after a rollback. It is how work that follows a write, such as waking up the job worker, stays out of the transaction.
-- Missing records are reported with `store.ErrNotFound`, conflicting writes with `store.ErrConflict` and values that the store refuses with `store.ErrInvalid`, checked with `errors.Is`.
+- Missing records are reported with `store.ErrNotFound`, conflicting writes with `store.ErrConflict` and values that the store refuses with `store.ErrInvalid`, and writes that fail because the database or the disk is full with `store.ErrFull`, checked with `errors.Is`.
 - Queries are written in SQL in `internal/store/sqlite/queries` and compiled by sqlc into `internal/store/sqlite/sqlcgen` with `task generate`. CI fails when the generated code is out of date.
 - The contract suites in `internal/store/storetest` (for example `RunInstanceSettings(t, newStore)`) specify the behavior of each repository. Every implementation runs them against a real, migrated database, so that a second implementation can be validated against the same tests.
 - Time values cross the interface as `time.Time` in UTC. Each implementation chooses its own on-disk representation.
@@ -195,7 +195,7 @@ Every user-owned row carries a `user_id`. All queries are scoped by user, and th
 | `source_aliases` | Merged sources (old and new device names), matched by the same name and device model as sources |
 | `source_priorities` | Per user, per metric ordered list of sources, ignored sources, combine flag |
 | `block_rules` | Sample, source, type or source and type rules, optional time range |
-| `imports` | Import history: origin, token id (referencing no table, so that revoking a token keeps the history), client metadata, status and its times, the position of the next record, and the report (counters in total, per type key and for the workouts, sample error messages) |
+| `imports` | Import history: origin, token id (referencing no table, so that revoking a token keeps the history), client metadata, the name of its inbox file, status and its times, the position of the next record, and the report (counters in total, per type key and for the workouts, sample error messages) |
 | `uploads` | Resumable uploads |
 | `jobs` | Persistent background jobs |
 | `sleep_nights` | Assembled nights with stage statistics |

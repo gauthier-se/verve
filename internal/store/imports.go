@@ -81,6 +81,9 @@ type NewImport struct {
 	TokenID int64
 	// Client is the metadata of the client that sent the import, nil for none.
 	Client map[string]string
+	// InboxFile is the name of the inbox file that holds the payload of the import, or empty for an
+	// import without one.
+	InboxFile string
 }
 
 // Import is an import of a user and its report. Times are in UTC with millisecond precision.
@@ -90,10 +93,12 @@ type Import struct {
 	Origin  Origin
 	TokenID int64
 	// Client is nil when the import has no client metadata.
-	Client   map[string]string
-	Status   ImportStatus
-	Position int64
-	Report   ImportReport
+	Client map[string]string
+	// InboxFile is empty for an import without inbox file.
+	InboxFile string
+	Status    ImportStatus
+	Position  int64
+	Report    ImportReport
 	// CreatedAt is the time of Create.
 	CreatedAt time.Time
 	// StartedAt is the time the import first ran, or zero when it never did.
@@ -131,6 +136,14 @@ type ImportsRepository interface {
 	// writes of a batch, it commits or rolls back with them. It returns ErrNotFound for a missing
 	// import, ErrConflict for one that is not running, and ErrInvalid for a negative position.
 	SaveProgress(ctx context.Context, userID, id int64, progress ImportProgress) error
+	// SetClient replaces the client metadata of the running import of id of userID with client, or
+	// removes it when client is empty: a push stores its client once its job reads the payload. It
+	// returns ErrNotFound for a missing import and ErrConflict for one that is not running.
+	SetClient(ctx context.Context, userID, id int64, client map[string]string) error
+	// InboxFilesKept returns the inbox files of the imports, whatever their user, except those of the
+	// imports that failed before failedSince: the file of a failed import is kept for a while, for a
+	// retry or a diagnosis.
+	InboxFilesKept(ctx context.Context, failedSince time.Time) ([]string, error)
 	// LastByOrigin returns the FinishedAt of the last completed import of userID for each origin.
 	// The origins without a completed import are left out.
 	LastByOrigin(ctx context.Context, userID int64) (map[Origin]time.Time, error)

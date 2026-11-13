@@ -40,6 +40,7 @@ func (r imports) Create(ctx context.Context, imp store.NewImport) (store.Import,
 			Origin:    string(imp.Origin),
 			TokenID:   sql.NullInt64{Int64: imp.TokenID, Valid: imp.TokenID != 0},
 			Client:    client,
+			InboxFile: sql.NullString{String: imp.InboxFile, Valid: imp.InboxFile != ""},
 			CreatedAt: toMillis(r.clk.Now()),
 		})
 
@@ -181,6 +182,40 @@ func (r imports) SaveProgress(ctx context.Context, userID, id int64, progress st
 	}
 
 	return nil
+}
+
+func (r imports) SetClient(ctx context.Context, userID, id int64, client map[string]string) error {
+	encoded, err := encodeClient(client)
+	if err != nil {
+		return fmt.Errorf("set client of import %d of user %d: %w", id, userID, err)
+	}
+
+	err = r.q.write(ctx, func(q *sqlcgen.Queries) error {
+		set, err := q.SetUserImportClient(ctx, sqlcgen.SetUserImportClientParams{Client: encoded, UserID: userID, ID: id})
+		if err != nil {
+			return err
+		}
+
+		if set == 0 {
+			return missingOrConflict(ctx, q, userID, id)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("set client of import %d of user %d: %w", id, userID, err)
+	}
+
+	return nil
+}
+
+func (r imports) InboxFilesKept(ctx context.Context, failedSince time.Time) ([]string, error) {
+	files, err := r.q.read().InboxFilesKept(ctx, nullMillis(failedSince))
+	if err != nil {
+		return nil, fmt.Errorf("list kept inbox files: %w", err)
+	}
+
+	return files, nil
 }
 
 func (r imports) LastByOrigin(ctx context.Context, userID int64) (map[store.Origin]time.Time, error) {
@@ -380,6 +415,7 @@ func importOf(row sqlcgen.Import) (store.Import, error) {
 		Origin:     store.Origin(row.Origin),
 		TokenID:    row.TokenID.Int64,
 		Client:     client,
+		InboxFile:  row.InboxFile.String,
 		Status:     store.ImportStatus(row.Status),
 		Position:   row.Position,
 		Report:     report,

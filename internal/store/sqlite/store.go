@@ -6,6 +6,9 @@ import (
 	"errors"
 	"fmt"
 
+	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
+
 	"github.com/gauthier-se/verve/internal/clock"
 	"github.com/gauthier-se/verve/internal/store"
 	"github.com/gauthier-se/verve/internal/store/sqlite/sqlcgen"
@@ -135,9 +138,20 @@ func (p poolQueries) read() *sqlcgen.Queries {
 }
 
 func (p poolQueries) write(ctx context.Context, fn func(q *sqlcgen.Queries) error) error {
-	return inTx(ctx, p.writer, func(tx *sql.Tx) error {
+	return fullError(inTx(ctx, p.writer, func(tx *sql.Tx) error {
 		return fn(sqlcgen.New(tx))
-	})
+	}))
+}
+
+// fullError returns err wrapped with store.ErrFull when SQLite failed because the database or the
+// disk is full, and err otherwise.
+func fullError(err error) error {
+	var sqliteErr *sqlite.Error
+	if errors.As(err, &sqliteErr) && sqliteErr.Code()&0xff == sqlite3.SQLITE_FULL {
+		return fmt.Errorf("%w: %w", store.ErrFull, err)
+	}
+
+	return err
 }
 
 func (p poolQueries) afterCommit(fn func()) {

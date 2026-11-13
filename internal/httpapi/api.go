@@ -53,6 +53,9 @@ type APIDeps struct {
 	// Catalog is the metric type catalog shipped with the binary, which gives the category values
 	// of the metric types.
 	Catalog *catalog.Catalog
+	// Inbox stores the bodies of the pushes, of at most MaxIngestBody bytes.
+	Inbox         Inbox
+	MaxIngestBody int64
 }
 
 // useProblemErrors makes Huma build its errors as problems. huma.NewError is Huma's documented
@@ -97,6 +100,7 @@ func NewAPI(mux *http.ServeMux, deps APIDeps) huma.API {
 	registerAdminBackups(api, deps)
 	registerTokens(api, deps)
 	registerMetrics(api, deps)
+	registerIngest(api, deps)
 
 	return api
 }

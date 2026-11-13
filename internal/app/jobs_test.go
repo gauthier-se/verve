@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -12,17 +13,23 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/gauthier-se/verve/internal/auth"
+	"github.com/gauthier-se/verve/internal/catalog"
 	"github.com/gauthier-se/verve/internal/clock"
 	"github.com/gauthier-se/verve/internal/config"
+	"github.com/gauthier-se/verve/internal/ingest/native"
 	"github.com/gauthier-se/verve/internal/jobs"
 	"github.com/gauthier-se/verve/internal/store"
 	"github.com/gauthier-se/verve/internal/store/sqlite"
 )
 
-// jobsTest holds a store on a migrated database and a worker with the job kinds of the server.
+// jobsTest holds a store on a migrated database, an inbox in a temporary directory, and a worker with
+// the job kinds and the recurring jobs of the server, all on one fake clock.
 type jobsTest struct {
-	store  store.Store
-	worker *jobs.Worker
+	store     store.Store
+	clock     *clock.Fake
+	inboxDir  string
+	worker    *jobs.Worker
+	schedules []jobs.Schedule
 }
 
 func newJobsTest(t *testing.T) jobsTest {
@@ -39,10 +46,26 @@ func newJobsTest(t *testing.T) jobsTest {
 
 	t.Cleanup(func() { require.NoError(t, st.Close(context.Background())) })
 
-	registry := jobs.NewRegistry()
-	registerJobs(registry, st, clk, config.Config{})
+	shipped, err := catalog.Shipped()
+	require.NoError(t, err)
+	require.NoError(t, st.MetricTypes().Sync(t.Context(), shipped))
 
-	return jobsTest{store: st, worker: jobs.NewWorker(st, registry, clk, slog.New(slog.DiscardHandler), jobs.Options{})}
+	inboxDir := t.TempDir()
+
+	ing, err := newIngestion(st, shipped, inboxDir, clk)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, ing.Close()) })
+
+	registry := jobs.NewRegistry()
+	schedules := registerJobs(registry, st, clk, config.Config{}, ing)
+
+	return jobsTest{
+		store:     st,
+		clock:     clk,
+		inboxDir:  inboxDir,
+		worker:    jobs.NewWorker(st, registry, clk, slog.New(slog.DiscardHandler), jobs.Options{}),
+		schedules: schedules,
+	}
 }
 
 // mustCreateUser stores an active member named username with status.
@@ -131,4 +154,69 @@ func TestJobs_AccountDeleteWaitsForTheRunningJobsOfTheUser(t *testing.T) {
 
 	_, err = jt.store.Users().Get(t.Context(), bob.ID)
 	require.NoError(t, err)
+}
+
+// Given the recurring jobs of the server, then cleanup.inbox runs every day, and its job removes
+// the files of the inbox that no import needs once they are older than one hour.
+func TestJobs_CleanupInboxRunsDailyAndRemovesOldFilesWithoutImport(t *testing.T) {
+	t.Parallel()
+
+	jt := newJobsTest(t)
+
+	var schedule jobs.Schedule
+
+	for _, s := range jt.schedules {
+		if s.Name == "cleanup.inbox" {
+			schedule = s
+		}
+	}
+
+	require.Equal(t, "cleanup.inbox", schedule.Kind)
+	require.Equal(t, 24*time.Hour, schedule.Every)
+
+	old := filepath.Join(jt.inboxDir, "without-import")
+	require.NoError(t, os.WriteFile(old, []byte(`{}`), 0o600))
+
+	modified := jt.clock.Now().Add(-2 * time.Hour)
+	require.NoError(t, os.Chtimes(old, modified, modified))
+
+	_, err := jt.store.Jobs().Enqueue(t.Context(), store.NewJob{Kind: schedule.Kind, Payload: schedule.Payload})
+	require.NoError(t, err)
+
+	claimed, err := jt.worker.Tick(t.Context())
+	require.NoError(t, err)
+	require.True(t, claimed)
+	require.NoFileExists(t, old)
+}
+
+// Given a native push in the inbox, then the import.native job of the server processes it to
+// completion.
+func TestJobs_ImportNativeCompletesAPush(t *testing.T) {
+	t.Parallel()
+
+	jt := newJobsTest(t)
+	ctx := t.Context()
+	alice := jt.mustCreateUser(t, "alice", store.UserActive)
+
+	name := "0f6c2d8e4b1a9f3c7e5d2b8a6c4e1f09"
+	require.NoError(t, os.WriteFile(filepath.Join(jt.inboxDir, name),
+		[]byte(`{"format":"verve.ingest.v1","client":{"name":"Verve for iOS","version":"1.0.0"}}`), 0o600))
+
+	imp, err := jt.store.Imports().Create(ctx, store.NewImport{UserID: alice.ID, Origin: store.OriginNative, InboxFile: name})
+	require.NoError(t, err)
+
+	job, err := native.Job(alice.ID, imp.ID)
+	require.NoError(t, err)
+
+	_, err = jt.store.Jobs().Enqueue(ctx, job)
+	require.NoError(t, err)
+
+	claimed, err := jt.worker.Tick(ctx)
+	require.NoError(t, err)
+	require.True(t, claimed)
+
+	got, err := jt.store.Imports().Get(ctx, alice.ID, imp.ID)
+	require.NoError(t, err)
+	require.Equal(t, store.ImportCompleted, got.Status)
+	require.NoFileExists(t, filepath.Join(jt.inboxDir, name))
 }
