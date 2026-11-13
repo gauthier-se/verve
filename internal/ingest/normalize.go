@@ -211,7 +211,8 @@ func parseRange(start, end string) (Times, error) {
 	return Times{Start: from, End: to, UTCOffset: offset}, nil
 }
 
-// errNotATime is the reason of a time that is not an RFC 3339 time with an offset.
+// errNotATime is the reason of a time that is not an RFC 3339 time with an offset. It replaces the
+// error of time.Parse, which quotes the time received.
 var errNotATime = errors.New("is not an RFC 3339 time with an offset")
 
 // parseTime parses an RFC 3339 time with an offset to UTC with millisecond precision, and returns
