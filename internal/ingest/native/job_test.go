@@ -956,8 +956,8 @@ func TestImportJob_CancelledBeforeTheImportStarts_EndsCancelled(t *testing.T) {
 }
 
 // dies claims the job of queued as a process that dies while it runs the import of imp: the import
-// is running, the job holds its lease, and the lease expires.
-func (e *jobEnv) dies(t *testing.T, imp store.Import, queued store.Job) {
+// is running, the job holds its lease, whileRunning runs if any, and the lease expires.
+func (e *jobEnv) dies(t *testing.T, imp store.Import, queued store.Job, whileRunning ...func()) {
 	t.Helper()
 
 	ctx := t.Context()
@@ -968,6 +968,10 @@ func (e *jobEnv) dies(t *testing.T, imp store.Import, queued store.Job) {
 
 	_, err = e.store.Imports().SetStatus(ctx, e.user.ID, imp.ID, store.ImportRunning)
 	require.NoError(t, err)
+
+	for _, fn := range whileRunning {
+		fn()
+	}
 
 	e.clk.Advance(jobLease)
 }
@@ -1012,8 +1016,11 @@ func TestImportJob_CancelledAfterItsProcessDied_EndsCancelledAndDeletesItsFile(t
 	e := newJobEnv(t)
 	imp, queued := e.push(t, stepsPayload)
 
-	e.dies(t, imp, queued)
-	require.NoError(t, e.store.Jobs().Cancel(t.Context(), queued.ID))
+	// The cancellation is requested while the job holds its lease, as POST /api/v1/imports/{id}/cancel
+	// leaves it to the handler.
+	e.dies(t, imp, queued, func() {
+		require.NoError(t, e.store.Jobs().Cancel(t.Context(), queued.ID))
+	})
 
 	claimed, err := e.worker.Tick(t.Context())
 	require.NoError(t, err)
@@ -1022,4 +1029,30 @@ func TestImportJob_CancelledAfterItsProcessDied_EndsCancelledAndDeletesItsFile(t
 
 	e.requireCancelledByItsJob(t, imp.ID)
 	require.Equal(t, e.clk.Now(), e.importOf(t, imp.ID).FinishedAt)
+}
+
+// Given a queued import whose job lost its lease 5 times, its process dying each time before it
+// starts the import, when a claim abandons the job, then the import ends failed with a sample error
+// message, and the worker goes on with the next jobs.
+func TestImportJob_AbandonedBeforeTheImportStarts_FailsTheImport(t *testing.T) {
+	t.Parallel()
+
+	e := newJobEnv(t)
+	imp, queued := e.push(t, stepsPayload)
+
+	for range 5 {
+		claimed, _, err := e.store.Jobs().Claim(t.Context(), jobLease)
+		require.NoError(t, err)
+		require.Equal(t, queued.ID, claimed.ID)
+
+		e.clk.Advance(jobLease)
+	}
+
+	next, _ := e.push(t, stepsPayload)
+	e.tick(t.Context(), t)
+
+	got := e.importOf(t, imp.ID)
+	require.Equal(t, store.ImportFailed, got.Status)
+	require.Equal(t, []string{"the import stopped after its job was abandoned: its process stopped 5 times while running it"}, got.Report.Errors)
+	require.Equal(t, store.ImportCompleted, e.importOf(t, next.ID).Status)
 }

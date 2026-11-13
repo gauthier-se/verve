@@ -231,11 +231,19 @@ func endedByClaim(ctx context.Context, inbox *ingest.Inbox, tx store.Repositorie
 
 	switch status {
 	case store.JobFailed:
-		if err := failIn(ctx, tx, imp, errAbandoned); err != nil {
+		// A report only changes while its import runs: an import whose job never started it, its
+		// process dying first, runs before it fails, as its job did.
+		if imp.Status == store.ImportQueued {
+			if _, err := tx.Imports().SetStatus(ctx, job.UserID, importID, store.ImportRunning); err != nil {
+				return fmt.Errorf("start import %d: %w", importID, err)
+			}
+		}
+
+		if err := failInTx(ctx, tx, imp, errAbandoned); err != nil {
 			return fmt.Errorf("fail import %d: %w", importID, err)
 		}
 	case store.JobCancelled:
-		if err := endIn(ctx, tx, imp, store.ImportCancelled); err != nil {
+		if err := endInTx(ctx, tx, imp, store.ImportCancelled); err != nil {
 			return fmt.Errorf("end import %d %s: %w", importID, store.ImportCancelled, err)
 		}
 
@@ -253,7 +261,7 @@ func endedByClaim(ctx context.Context, inbox *ingest.Inbox, tx store.Repositorie
 // and removes its inbox file, which it no longer needs.
 func finish(ctx context.Context, deps JobDeps, imp store.Import, status store.ImportStatus) error {
 	err := deps.Store.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
-		return endIn(ctx, tx, imp, status)
+		return endInTx(ctx, tx, imp, status)
 	})
 	if err != nil {
 		return fmt.Errorf("end import %d %s: %w", imp.ID, status, err)
@@ -262,8 +270,8 @@ func finish(ctx context.Context, deps JobDeps, imp store.Import, status store.Im
 	return deps.Inbox.Remove(ctx, imp.InboxFile)
 }
 
-// endIn ends imp with status, completed or cancelled, and records its end, through tx.
-func endIn(ctx context.Context, tx store.Repositories, imp store.Import, status store.ImportStatus) error {
+// endInTx ends imp with status, completed or cancelled, and records its end, through tx.
+func endInTx(ctx context.Context, tx store.Repositories, imp store.Import, status store.ImportStatus) error {
 	ended, err := tx.Imports().SetStatus(ctx, imp.UserID, imp.ID, status)
 	if err != nil {
 		return err
@@ -273,10 +281,10 @@ func endIn(ctx context.Context, tx store.Repositories, imp store.Import, status 
 }
 
 // fail ends imp failed, with the message of cause as a sample error message, and records its end,
-// in one transaction (see failIn).
+// in one transaction (see failInTx).
 func fail(ctx context.Context, s store.Store, imp store.Import, cause error) error {
 	err := s.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
-		return failIn(ctx, tx, imp, cause)
+		return failInTx(ctx, tx, imp, cause)
 	})
 	if err != nil {
 		return fmt.Errorf("fail import %d: %w", imp.ID, err)
@@ -285,10 +293,10 @@ func fail(ctx context.Context, s store.Store, imp store.Import, cause error) err
 	return nil
 }
 
-// failIn ends imp failed, with the message of cause as a sample error message, and records its end,
+// failInTx ends imp failed, with the message of cause as a sample error message, and records its end,
 // through tx. The position and the counters of the batches committed since imp was read stay. Its
 // inbox file stays, for a retry or a diagnosis.
-func failIn(ctx context.Context, tx store.Repositories, imp store.Import, cause error) error {
+func failInTx(ctx context.Context, tx store.Repositories, imp store.Import, cause error) error {
 	current, err := tx.Imports().Get(ctx, imp.UserID, imp.ID)
 	if err != nil {
 		return err

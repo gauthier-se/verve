@@ -110,10 +110,14 @@ func Register[P any](r *Registry, kind string, opts KindOptions, fn func(ctx con
 // confirm, cancelled (FR-4 and FR-9 of Job worker). Without it, such records, such as an import,
 // would never end. fn receives the status the job ended with, and runs in the transaction of the
 // claim, through tx, so that the records end with their job. An error of fn rolls the claim back,
-// and the next claim tries again. A job whose payload does not decode has no records to end, and
-// fn does not run for it.
+// and the next claim tries again, so fn fails only when the store does. A job whose payload does
+// not decode has no records to end, and fn does not run for it. A kind that r does not have is a
+// programming error in the wiring, and panics.
 func OnEndedByClaim[P any](r *Registry, kind Kind[P], fn func(ctx context.Context, tx store.Repositories, job Job[P], status store.JobStatus) error) {
-	registered := r.kinds[kind.name]
+	registered, ok := r.kinds[kind.name]
+	if !ok {
+		panic(fmt.Sprintf("job kind %q not registered", kind.name))
+	}
 
 	registered.endedByClaim = func(ctx context.Context, tx store.Repositories, job store.Job) error {
 		var payload P
