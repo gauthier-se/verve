@@ -141,6 +141,10 @@ type SamplesRepository interface {
 	// List returns the samples of userID that query asks for. It returns ErrInvalid when the limit
 	// is below 1 or To is not after From.
 	List(ctx context.Context, userID int64, query SamplesQuery) ([]Sample, error)
+	// DeleteByKey removes the sample of userID whose natural key is key, such as the key of a uuid
+	// deleted at its source (FR-8 of Ingestion pipeline), and returns it, or ErrNotFound. The same
+	// transaction updates the data availability of its type.
+	DeleteByKey(ctx context.Context, userID int64, key []byte) (Sample, error)
 	// DeleteByUser removes at most limit rows of the samples and data availability of userID, the
 	// samples first, and returns how many it removed. The data availability is removed once no
 	// sample is left, so it may count samples already removed meanwhile. It returns ErrInvalid when

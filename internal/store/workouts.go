@@ -161,6 +161,9 @@ type WorkoutsRepository interface {
 	// List returns the workouts of userID that query asks for. It returns ErrInvalid when the limit
 	// is below 1 or To is not after From.
 	List(ctx context.Context, userID int64, query WorkoutsQuery) ([]Workout, error)
+	// DeleteByKey removes the workout of userID whose natural key is key, with its route, and returns
+	// it, or ErrNotFound.
+	DeleteByKey(ctx context.Context, userID int64, key []byte) (Workout, error)
 	// DeleteByUser removes at most limit workouts of userID, with their routes, and returns how many
 	// workouts it removed. It returns ErrInvalid when limit is below 1.
 	DeleteByUser(ctx context.Context, userID int64, limit int) (int64, error)

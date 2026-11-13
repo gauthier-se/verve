@@ -72,3 +72,25 @@ WHERE sample_stats.user_id = sqlc.arg(user_id)
                                FROM sample_stats AS old
                                WHERE old.user_id = sqlc.arg(user_id)
                                LIMIT sqlc.arg(batch_size));
+
+-- name: DeleteUserSampleByNaturalKey :one
+DELETE
+FROM samples
+WHERE user_id = ? AND natural_key = ?
+RETURNING *;
+
+-- name: DeleteLastSampleStats :execrows
+-- Removes the data availability of a user and type whose last sample was removed.
+DELETE
+FROM sample_stats
+WHERE user_id = ? AND type_id = ? AND count <= 1;
+
+-- name: RemoveSampleStats :exec
+-- Counts one removed sample of a user and type, and narrows the first and last start to those of
+-- the samples left, which the index on (user_id, type_id, start_at) gives.
+UPDATE sample_stats
+SET count    = count - 1,
+    first_at = (SELECT min(s.start_at) FROM samples AS s WHERE s.user_id = sample_stats.user_id AND s.type_id = sample_stats.type_id),
+    last_at  = (SELECT max(s.start_at) FROM samples AS s WHERE s.user_id = sample_stats.user_id AND s.type_id = sample_stats.type_id)
+WHERE sample_stats.user_id = sqlc.arg(user_id)
+  AND sample_stats.type_id = sqlc.arg(type_id);

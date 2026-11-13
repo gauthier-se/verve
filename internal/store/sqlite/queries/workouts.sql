@@ -86,3 +86,10 @@ WHERE id IN (SELECT old.id
              FROM workouts AS old
              WHERE old.user_id = sqlc.arg(user_id)
              LIMIT sqlc.arg(batch_size));
+
+-- name: DeleteUserWorkoutByNaturalKey :one
+-- Removes the workout of a natural key of a user, and its route by its foreign key.
+DELETE
+FROM workouts
+WHERE user_id = ? AND natural_key = ?
+RETURNING *;

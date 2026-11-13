@@ -149,6 +149,37 @@ func (r samples) DeleteByUser(ctx context.Context, userID int64, limit int) (int
 	return deleted, nil
 }
 
+// DeleteByKey removes the data availability of the type of the sample with its last sample, and
+// otherwise counts one sample less and narrows it to the samples left.
+func (r samples) DeleteByKey(ctx context.Context, userID int64, key []byte) (store.Sample, error) {
+	var removed store.Sample
+
+	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
+		row, err := q.DeleteUserSampleByNaturalKey(ctx, sqlcgen.DeleteUserSampleByNaturalKeyParams{UserID: userID, NaturalKey: key})
+		if errors.Is(err, sql.ErrNoRows) {
+			return store.ErrNotFound
+		}
+
+		if err != nil {
+			return err
+		}
+
+		removed = sampleOf(row)
+
+		gone, err := q.DeleteLastSampleStats(ctx, sqlcgen.DeleteLastSampleStatsParams{UserID: userID, TypeID: row.TypeID})
+		if err != nil || gone > 0 {
+			return err
+		}
+
+		return q.RemoveSampleStats(ctx, sqlcgen.RemoveSampleStatsParams{UserID: userID, TypeID: row.TypeID})
+	})
+	if err != nil {
+		return store.Sample{}, fmt.Errorf("delete sample of user %d by key: %w", userID, err)
+	}
+
+	return removed, nil
+}
+
 // sampleOutcome is what an upsert did with a sample.
 type sampleOutcome int
 

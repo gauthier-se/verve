@@ -10,6 +10,50 @@ import (
 	"database/sql"
 )
 
+const deleteUserWorkoutByNaturalKey = `-- name: DeleteUserWorkoutByNaturalKey :one
+DELETE
+FROM workouts
+WHERE user_id = ? AND natural_key = ?
+RETURNING id, user_id, source_id, origin, external_id, activity, start_at, end_at, utc_offset, duration, distance, active_energy, total_energy, elevation_gain, elevation_loss, avg_heart_rate, max_heart_rate, indoor, location_type, events, metadata, import_id, natural_key
+`
+
+type DeleteUserWorkoutByNaturalKeyParams struct {
+	UserID     int64
+	NaturalKey []byte
+}
+
+// Removes the workout of a natural key of a user, and its route by its foreign key.
+func (q *Queries) DeleteUserWorkoutByNaturalKey(ctx context.Context, arg DeleteUserWorkoutByNaturalKeyParams) (Workout, error) {
+	row := q.db.QueryRowContext(ctx, deleteUserWorkoutByNaturalKey, arg.UserID, arg.NaturalKey)
+	var i Workout
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.SourceID,
+		&i.Origin,
+		&i.ExternalID,
+		&i.Activity,
+		&i.StartAt,
+		&i.EndAt,
+		&i.UtcOffset,
+		&i.Duration,
+		&i.Distance,
+		&i.ActiveEnergy,
+		&i.TotalEnergy,
+		&i.ElevationGain,
+		&i.ElevationLoss,
+		&i.AvgHeartRate,
+		&i.MaxHeartRate,
+		&i.Indoor,
+		&i.LocationType,
+		&i.Events,
+		&i.Metadata,
+		&i.ImportID,
+		&i.NaturalKey,
+	)
+	return i, err
+}
+
 const deleteUserWorkouts = `-- name: DeleteUserWorkouts :execrows
 DELETE
 FROM workouts
