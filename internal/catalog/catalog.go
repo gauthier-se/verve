@@ -248,18 +248,6 @@ func (t Type) validate() error {
 	return nil
 }
 
-// canonicalUnit reports whether unit is a canonical unit of the Units table of docs/architecture.md.
-// A category type, whose samples are counted, has the unit count.
-func canonicalUnit(unit string) bool {
-	switch unit {
-	case "count", "kg", "m", "L", "kcal", "s", "ms", "count/min", "m/s", "W", "degC", "fraction",
-		"mg/dL", "mmHg", "mL/(kg.min)", "kcal/(kg.h)", "appleEffortScore", "dBASPL", "L/min", "S", "IU":
-		return true
-	}
-
-	return false
-}
-
 // displayGroup reports whether group is a display group of FR-1.
 func displayGroup(group Group) bool {
 	switch group {
