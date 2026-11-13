@@ -74,7 +74,9 @@ func TestMigrate_SourcesManualKind_KeepsSourcesAndTheirData(t *testing.T) {
 
 	res, err := Migrate(ctx, db, MigrateOptions{})
 	require.NoError(t, err)
-	require.Equal(t, []Migration{{Version: sourcesManualKindVersion, Name: "sources_manual_kind"}}, res.Applied)
+	require.NotEmpty(t, res.Applied)
+	require.Equal(t, Migration{Version: sourcesManualKindVersion, Name: "sources_manual_kind"}, res.Applied[0],
+		"the migration runs first, before the newer ones")
 
 	type sourceRow struct {
 		id            int64

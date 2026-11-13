@@ -36,6 +36,22 @@ type AuditEvent struct {
 	AggregationKey sql.NullString
 }
 
+type Import struct {
+	ID           int64
+	UserID       int64
+	Origin       string
+	TokenID      sql.NullInt64
+	Client       sql.NullString
+	Status       string
+	Position     int64
+	Counters     string
+	TypeCounters string
+	Errors       string
+	CreatedAt    int64
+	StartedAt    sql.NullInt64
+	FinishedAt   sql.NullInt64
+}
+
 type InstanceSetting struct {
 	Key       string
 	Value     string

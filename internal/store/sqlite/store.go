@@ -105,6 +105,10 @@ func (r repositories) Workouts() store.WorkoutsRepository {
 	return workouts(r)
 }
 
+func (r repositories) Imports() store.ImportsRepository {
+	return imports(r)
+}
+
 func (r repositories) AfterCommit(fn func()) {
 	r.q.afterCommit(fn)
 }
