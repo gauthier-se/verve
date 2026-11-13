@@ -152,17 +152,20 @@ func (r imports) SaveProgress(ctx context.Context, userID, id int64, progress st
 		return fmt.Errorf("save progress of import %d of user %d: position %d: %w", id, userID, progress.Position, store.ErrInvalid)
 	}
 
-	params, err := encodeReport(progress.Report)
+	columns, err := encodeReport(progress.Report)
 	if err != nil {
 		return fmt.Errorf("save progress of import %d of user %d: %w", id, userID, err)
 	}
 
-	params.Position = progress.Position
-	params.UserID = userID
-	params.ID = id
-
 	err = r.q.write(ctx, func(q *sqlcgen.Queries) error {
-		saved, err := q.SaveUserImportProgress(ctx, params)
+		saved, err := q.SaveUserImportProgress(ctx, sqlcgen.SaveUserImportProgressParams{
+			Position:     progress.Position,
+			Counters:     columns.counters,
+			TypeCounters: columns.typeCounters,
+			Errors:       columns.errors,
+			UserID:       userID,
+			ID:           id,
+		})
 		if err != nil {
 			return err
 		}
@@ -254,12 +257,19 @@ type typeCounters struct {
 	Workouts importCounters            `json:"workouts,omitzero"`
 }
 
-// encodeReport returns the counters, type_counters and errors columns of report, keeping its first
-// store.ImportErrorsLimit error messages.
-func encodeReport(report store.ImportReport) (sqlcgen.SaveUserImportProgressParams, error) {
+// reportColumns are the JSON columns that hold the report of an import.
+type reportColumns struct {
+	counters     string
+	typeCounters string
+	errors       string
+}
+
+// encodeReport returns the columns of report, keeping its first store.ImportErrorsLimit error
+// messages.
+func encodeReport(report store.ImportReport) (reportColumns, error) {
 	counters, err := json.Marshal(importCounters(report.Total))
 	if err != nil {
-		return sqlcgen.SaveUserImportProgressParams{}, fmt.Errorf("encode counters: %w", err)
+		return reportColumns{}, fmt.Errorf("encode counters: %w", err)
 	}
 
 	perType := typeCounters{Workouts: importCounters(report.Workouts)}
@@ -272,7 +282,7 @@ func encodeReport(report store.ImportReport) (sqlcgen.SaveUserImportProgressPara
 
 	types, err := json.Marshal(perType)
 	if err != nil {
-		return sqlcgen.SaveUserImportProgressParams{}, fmt.Errorf("encode type counters: %w", err)
+		return reportColumns{}, fmt.Errorf("encode type counters: %w", err)
 	}
 
 	messages := report.Errors[:min(len(report.Errors), store.ImportErrorsLimit)]
@@ -282,10 +292,10 @@ func encodeReport(report store.ImportReport) (sqlcgen.SaveUserImportProgressPara
 
 	errs, err := json.Marshal(messages)
 	if err != nil {
-		return sqlcgen.SaveUserImportProgressParams{}, fmt.Errorf("encode errors: %w", err)
+		return reportColumns{}, fmt.Errorf("encode errors: %w", err)
 	}
 
-	return sqlcgen.SaveUserImportProgressParams{Counters: string(counters), TypeCounters: string(types), Errors: string(errs)}, nil
+	return reportColumns{counters: string(counters), typeCounters: string(types), errors: string(errs)}, nil
 }
 
 // decodeReport returns the report of the counters, type_counters and errors columns of row, its

@@ -22,9 +22,6 @@ var importsTime = time.Date(2026, 11, 13, 10, 0, 0, 456_789_123, time.FixedZone(
 // importsUTC is importsTime truncated to the millisecond, in UTC.
 var importsUTC = time.Date(2026, 11, 13, 9, 0, 0, 456_000_000, time.UTC)
 
-// errRollback makes a transaction of the suite roll back.
-var errRollback = errors.New("roll back")
-
 // importsTest holds a store on a fake clock with two users, a source of the first one and a
 // quantity type, for the samples that an import writes.
 type importsTest struct {
@@ -407,6 +404,7 @@ func runImportsSaveProgress(t *testing.T, newStore NewStoreFunc) {
 
 		require.NoError(t, st.store.WithTx(ctx, batch("committed", 1)))
 
+		errRollback := errors.New("roll back")
 		err := st.store.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
 			if err := batch("rolled back", 2)(ctx, tx); err != nil {
 				return err
@@ -778,6 +776,7 @@ func runImportsPurge(t *testing.T, newStore NewStoreFunc) {
 
 		_, _, finished := seedHistory(ctx, t, st, store.ImportHistoryLimit)
 
+		errRollback := errors.New("roll back")
 		err := st.store.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
 			mustCreateImport(ctx, t, tx.Imports(), xmlUpload(st.user.ID))
 
