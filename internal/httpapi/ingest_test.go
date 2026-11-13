@@ -316,7 +316,7 @@ func (fullInbox) Write(context.Context, io.Reader) (string, error) {
 	return "", fmt.Errorf("write inbox file: %w", syscall.ENOSPC)
 }
 
-func (fullInbox) Remove(string) error {
+func (fullInbox) Remove(context.Context, string) error {
 	return errors.New("no file to remove")
 }
 
@@ -371,6 +371,37 @@ func (f *failAfterWrite) Write(ctx context.Context, body io.Reader) (string, err
 	return name, err
 }
 
-func (f *failAfterWrite) Remove(name string) error {
-	return f.inbox.Remove(name)
+func (f *failAfterWrite) Remove(ctx context.Context, name string) error {
+	return f.inbox.Remove(ctx, name)
+}
+
+// fullStore is a store whose transactions fail as on a full disk.
+type fullStore struct {
+	store.Store
+}
+
+func (fullStore) WithTx(context.Context, func(context.Context, store.Repositories) error) error {
+	return fmt.Errorf("commit transaction: %w", store.ErrFull)
+}
+
+// Given a disk that fills up in the transaction that creates the import, then the server answers
+// 507 and removes the file it wrote, so that the client retries later.
+func TestIngest_DiskFullInTheTransaction_Answers507AndLeavesNoFile(t *testing.T) {
+	t.Parallel()
+
+	it := newIngestTest(t)
+	token, _ := it.mustCreateToken(t, it.alice, time.Time{}, store.ScopeIngest)
+
+	deps := it.deps(t, "")
+	deps.Store = fullStore{Store: it.store}
+	deps.Inbox = it.inbox()
+	deps.MaxIngestBody = ingestTestMaxBody
+
+	rec := push(t, NewHandler(deps), strings.NewReader(ingestPayload), "", token)
+
+	status, code := problemCode(t, rec)
+	require.Equal(t, http.StatusInsufficientStorage, status)
+	require.Equal(t, "internal", code)
+	require.Empty(t, it.inboxFiles(t))
+	it.requireNothingQueued(t)
 }

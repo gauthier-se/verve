@@ -689,10 +689,10 @@ func runImportsSetClient(t *testing.T, newStore NewStoreFunc) {
 func runImportsInboxFiles(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
 
-	// Given imports of two users in every status, when InboxFilesInUse runs, then it returns the
-	// inbox files of the queued and running imports, and of the imports that failed at or after the
-	// given time, and leaves out the others and the imports without inbox file.
-	t.Run("InboxFilesInUseReturnsTheFilesOfActiveAndRecentlyFailedImports", func(t *testing.T) {
+	// Given imports of two users in every status, when InboxFilesKept runs, then it returns the
+	// inbox files of every import, and leaves out those of the imports that failed before the given
+	// time and the imports without inbox file.
+	t.Run("InboxFilesKeptReturnsTheFilesOfEveryImportButOldFailures", func(t *testing.T) {
 		t.Parallel()
 
 		st := newImportsTest(t, newStore)
@@ -721,9 +721,9 @@ func runImportsInboxFiles(t *testing.T, newStore NewStoreFunc) {
 		running := mustCreateImport(ctx, t, imports, push(st.other.ID, "running"))
 		mustSetImportStatus(ctx, t, imports, st.other.ID, running.ID, store.ImportRunning)
 
-		files, err := imports.InboxFilesInUse(ctx, failedSince)
+		files, err := imports.InboxFilesKept(ctx, failedSince)
 		require.NoError(t, err)
-		require.ElementsMatch(t, []string{"failed-at", "failed-after", "queued", "running"}, files)
+		require.ElementsMatch(t, []string{"failed-at", "failed-after", "completed", "cancelled", "queued", "running"}, files)
 	})
 }
 

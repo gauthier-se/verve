@@ -23,7 +23,7 @@ type Inbox interface {
 	// its error wraps syscall.ENOSPC when the disk is full.
 	Write(ctx context.Context, body io.Reader) (name string, err error)
 	// Remove removes the file of name.
-	Remove(name string) error
+	Remove(ctx context.Context, name string) error
 }
 
 // pushInput is the input of POST /api/v1/ingest. It has no Body field, so Huma reads no body:
@@ -133,20 +133,21 @@ func acceptPush(ctx context.Context, deps APIDeps, principal auth.Principal, in 
 	if err != nil {
 		err = fmt.Errorf("queue import of push: %w", err)
 
-		return store.Import{}, pushError(errors.Join(err, deps.Inbox.Remove(name)), deps.MaxIngestBody)
+		return store.Import{}, pushError(errors.Join(err, deps.Inbox.Remove(context.WithoutCancel(ctx), name)), deps.MaxIngestBody)
 	}
 
 	return imp, nil
 }
 
 // pushError returns the response of a push that failed with err: 413 for a body larger than
-// maxBody, 507 for a full disk, and err otherwise.
+// maxBody, 507 for a full disk, while the body is written or in the transaction of the import, and
+// err otherwise.
 func pushError(err error, maxBody int64) error {
 	if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
 		return bodyTooLarge(maxBody)
 	}
 
-	if errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.EDQUOT) {
+	if errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.EDQUOT) || errors.Is(err, store.ErrFull) {
 		return huma.NewError(http.StatusInsufficientStorage, "the server is out of storage, retry later")
 	}
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -324,4 +325,34 @@ func TestStore_WritesOutsideWithTxEachCommitOnTheWriter(t *testing.T) {
 	all, err := s.InstanceSettings().List(ctx)
 	require.NoError(t, err)
 	require.Len(t, all, writers+1)
+}
+
+// Given a database that cannot grow, as on a full disk, when a write or a transaction needs a new
+// page, then it fails with store.ErrFull, and the database keeps what was committed before.
+func TestStore_DatabaseFull_ReturnsErrFull(t *testing.T) {
+	t.Parallel()
+
+	s, db := newTestStore(t, clock.NewFake(txTestNow))
+	ctx := boundedContext(t)
+
+	require.NoError(t, s.InstanceSettings().Set(ctx, "map.mode", "none"))
+
+	var pages int64
+	require.NoError(t, db.Write().QueryRowContext(ctx, "PRAGMA page_count").Scan(&pages))
+
+	// The writer pool has one connection, which keeps the limit.
+	_, err := db.Write().ExecContext(ctx, fmt.Sprintf("PRAGMA max_page_count = %d", pages))
+	require.NoError(t, err)
+
+	large := strings.Repeat("x", 64*1024)
+
+	err = s.InstanceSettings().Set(ctx, "large.outside", large)
+	require.ErrorIs(t, err, store.ErrFull)
+
+	err = s.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
+		return tx.InstanceSettings().Set(ctx, "large.inside", large)
+	})
+	require.ErrorIs(t, err, store.ErrFull)
+
+	requireSetting(ctx, t, s, "map.mode", "none")
 }

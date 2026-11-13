@@ -154,17 +154,16 @@ func (q *Queries) GetUserImport(ctx context.Context, arg GetUserImportParams) (I
 	return i, err
 }
 
-const inboxFilesInUse = `-- name: InboxFilesInUse :many
+const inboxFilesKept = `-- name: InboxFilesKept :many
 SELECT CAST(inbox_file AS TEXT) AS inbox_file
 FROM imports
 WHERE inbox_file IS NOT NULL
-  AND (status IN ('queued', 'running') OR (status = 'failed' AND finished_at >= ?1))
+  AND NOT (status = 'failed' AND finished_at < ?1)
 `
 
-// The inbox files that imports still need: those of the queued and running imports, and of the
-// imports that failed at or after a time.
-func (q *Queries) InboxFilesInUse(ctx context.Context, failedSince sql.NullInt64) ([]string, error) {
-	rows, err := q.db.QueryContext(ctx, inboxFilesInUse, failedSince)
+// The inbox files of the imports, except those of the imports that failed before a time.
+func (q *Queries) InboxFilesKept(ctx context.Context, failedSince sql.NullInt64) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, inboxFilesKept, failedSince)
 	if err != nil {
 		return nil, err
 	}

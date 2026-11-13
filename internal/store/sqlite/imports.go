@@ -209,10 +209,10 @@ func (r imports) SetClient(ctx context.Context, userID, id int64, client map[str
 	return nil
 }
 
-func (r imports) InboxFilesInUse(ctx context.Context, failedSince time.Time) ([]string, error) {
-	files, err := r.q.read().InboxFilesInUse(ctx, nullMillis(failedSince))
+func (r imports) InboxFilesKept(ctx context.Context, failedSince time.Time) ([]string, error) {
+	files, err := r.q.read().InboxFilesKept(ctx, nullMillis(failedSince))
 	if err != nil {
-		return nil, fmt.Errorf("list inbox files in use: %w", err)
+		return nil, fmt.Errorf("list kept inbox files: %w", err)
 	}
 
 	return files, nil

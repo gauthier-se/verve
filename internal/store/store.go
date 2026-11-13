@@ -15,6 +15,9 @@ var (
 	ErrConflict = errors.New("store: conflict")
 	// ErrInvalid is returned when a write or a request holds a value that the store refuses.
 	ErrInvalid = errors.New("store: invalid")
+	// ErrFull is returned when a write fails because the storage is full, so that a caller can ask
+	// its client to retry later.
+	ErrFull = errors.New("store: storage full")
 )
 
 // Repositories gives access to every repository. Used outside WithTx, each write is committed on
