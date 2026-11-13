@@ -80,14 +80,20 @@ describe("import banner", () => {
     },
   );
 
-  it("given a running import, then screen readers announce that it runs, without the count that changes at every poll", async () => {
-    fakeImports([runningImport]);
+  it("given no running import, when one starts, then a live region that stays on the page announces it, without the count that changes at every poll", async () => {
+    const { replace } = fakeImports([]);
     openPage("/");
+    await screen.findByRole("heading", { level: 1 });
+    await elapse(1000);
+    const status = screen.getByRole("status");
+    expect(status).toBeEmptyDOMElement();
 
-    const banner = await findBanner();
-    expect(within(banner).getByRole("status")).toHaveTextContent(
-      /^An import is running\.$/,
-    );
+    replace([runningImport]);
+    await elapse(60_500);
+    await findBanner();
+
+    expect(screen.getByRole("status")).toBe(status);
+    expect(status).toHaveTextContent(/^An import is running\.$/);
   });
 
   it("given a running import without a received record yet, then the banner shows without a count", async () => {
