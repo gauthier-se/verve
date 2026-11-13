@@ -17,11 +17,6 @@ import (
 // KindImport is the job of a native push (Ingestion pipeline, Data and API notes).
 const KindImport = "import.native"
 
-// ImportPayload is the payload of the import.native job.
-type ImportPayload struct {
-	ImportID int64 `json:"importId"`
-}
-
 // Pipeline runs the records of an import, as *ingest.Pipeline does.
 type Pipeline interface {
 	Run(ctx context.Context, userID, importID int64, records iter.Seq2[ingest.Record, error]) error
@@ -46,7 +41,7 @@ var errLastAttempt = errors.New("the import stopped after the last attempt of it
 // Job returns the import.native job of the import of importID of userID. Its serial key runs the
 // imports of the user one at a time, in arrival order (FR-4 of Ingestion pipeline).
 func Job(userID, importID int64) (store.NewJob, error) {
-	payload, err := json.Marshal(ImportPayload{ImportID: importID})
+	payload, err := json.Marshal(ingest.JobPayload{ImportID: importID})
 	if err != nil {
 		return store.NewJob{}, fmt.Errorf("encode payload of job kind %q: %w", KindImport, err)
 	}
@@ -65,13 +60,13 @@ func Job(userID, importID int64) (store.NewJob, error) {
 // The batches committed before the end stay. A job stopped otherwise, such as by a shutdown, leaves
 // the import running, and its next run resumes it from the stored position (FR-5).
 func Register(registry *jobs.Registry, deps JobDeps) {
-	jobs.Register(registry, KindImport, jobs.KindOptions{}, func(ctx context.Context, job jobs.Job[ImportPayload]) error {
+	jobs.Register(registry, KindImport, jobs.KindOptions{}, func(ctx context.Context, job jobs.Job[ingest.JobPayload]) error {
 		return runImport(ctx, deps, job)
 	})
 }
 
 // runImport runs the import of job.
-func runImport(ctx context.Context, deps JobDeps, job jobs.Job[ImportPayload]) error {
+func runImport(ctx context.Context, deps JobDeps, job jobs.Job[ingest.JobPayload]) error {
 	imports := deps.Store.Imports()
 	userID, importID := job.UserID, job.Payload.ImportID
 

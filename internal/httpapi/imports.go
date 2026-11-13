@@ -230,7 +230,7 @@ func cancelImport(ctx context.Context, deps APIDeps, userID, id int64) (store.Im
 // its handler then ending the import. A queued job, such as one waiting for its retry, is
 // cancelled at once, and an import without an active job has none to cancel.
 func cancelJobOf(ctx context.Context, tx store.Repositories, imp store.Import) (running bool, err error) {
-	job, err := ingest.ActiveJob(ctx, tx.Jobs(), imp.UserID, imp.ID)
+	job, err := ingest.JobOfImport(ctx, tx.Jobs(), imp.UserID, imp.ID)
 	if errors.Is(err, store.ErrNotFound) {
 		return false, nil
 	}

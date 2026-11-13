@@ -16,23 +16,23 @@ func SerialKey(userID int64) string {
 	return "import:" + strconv.FormatInt(userID, 10)
 }
 
-// jobPayload is the payload of every import job, whatever its kind (Ingestion pipeline, Data and
+// JobPayload is the payload of every import job, whatever its kind (Ingestion pipeline, Data and
 // API notes).
-type jobPayload struct {
+type JobPayload struct {
 	ImportID int64 `json:"importId"`
 }
 
-// ActiveJob returns the queued or running job of the import of importID of userID, the job of the
+// JobOfImport returns the queued or running job of the import of importID of userID, the job of the
 // serial key of the user whose payload names the import, or store.ErrNotFound when the import has
 // none, such as an import whose job ended.
-func ActiveJob(ctx context.Context, jobs store.JobsRepository, userID, importID int64) (store.Job, error) {
+func JobOfImport(ctx context.Context, jobs store.JobsRepository, userID, importID int64) (store.Job, error) {
 	active, err := jobs.ActiveJobs(ctx, SerialKey(userID))
 	if err != nil {
 		return store.Job{}, fmt.Errorf("find job of import %d: %w", importID, err)
 	}
 
 	for _, job := range active {
-		var payload jobPayload
+		var payload JobPayload
 		if err := json.Unmarshal(job.Payload, &payload); err != nil {
 			return store.Job{}, fmt.Errorf("find job of import %d: decode payload of job %d: %w", importID, job.ID, err)
 		}
