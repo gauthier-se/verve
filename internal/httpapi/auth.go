@@ -36,9 +36,14 @@ func sessionSecurity() []map[string][]string {
 }
 
 // scopeSecurity returns the security requirement of the operations of the public API that need a
-// session or a token with scope, as requireScope checks.
-func scopeSecurity(scope store.TokenScope) []map[string][]string {
-	return []map[string][]string{{sessionCookieSchemeName: {}}, {bearerTokenSchemeName: {string(scope)}}}
+// session or a token with one of scopes, as requireScope checks.
+func scopeSecurity(scopes ...store.TokenScope) []map[string][]string {
+	security := []map[string][]string{{sessionCookieSchemeName: {}}}
+	for _, scope := range scopes {
+		security = append(security, map[string][]string{bearerTokenSchemeName: {string(scope)}})
+	}
+
+	return security
 }
 
 // sessionCookieScheme describes the session cookie in the OpenAPI document. The document is the
@@ -337,21 +342,28 @@ func requireUser(ctx context.Context) (auth.Principal, error) {
 }
 
 // requireScope returns the principal of the request of ctx when it has a session, or a token with
-// scope: the operations of the public API accept both. It returns a 401 problem when the request is
-// not authenticated, a 403 scope_missing problem for a token without scope, or the error of the
-// lookup.
-func requireScope(ctx context.Context, scope store.TokenScope) (auth.Principal, error) {
+// one of scopes: the operations of the public API accept both. It returns a 401 problem when the
+// request is not authenticated, a 403 scope_missing problem for a token without any of scopes, or
+// the error of the lookup.
+func requireScope(ctx context.Context, scopes ...store.TokenScope) (auth.Principal, error) {
 	principal, err := authenticated(ctx)
 	if err != nil {
 		return auth.Principal{}, err
 	}
 
-	if principal.Method == auth.MethodToken && !slices.Contains(principal.Scopes, scope) {
+	if principal.Method == auth.MethodToken && !slices.ContainsFunc(scopes, func(scope store.TokenScope) bool {
+		return slices.Contains(principal.Scopes, scope)
+	}) {
+		names := make([]string, 0, len(scopes))
+		for _, scope := range scopes {
+			names = append(names, string(scope))
+		}
+
 		return auth.Principal{}, &Problem{
 			Type:   "about:blank",
 			Title:  http.StatusText(http.StatusForbidden),
 			Status: http.StatusForbidden,
-			Detail: "the token lacks the scope " + string(scope),
+			Detail: "the token lacks the scope " + strings.Join(names, " or "),
 			Code:   "scope_missing",
 		}
 	}

@@ -101,6 +101,7 @@ func NewAPI(mux *http.ServeMux, deps APIDeps) huma.API {
 	registerTokens(api, deps)
 	registerMetrics(api, deps)
 	registerIngest(api, deps)
+	registerImports(api, deps)
 
 	return api
 }
