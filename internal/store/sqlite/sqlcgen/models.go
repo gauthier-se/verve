@@ -50,6 +50,7 @@ type Import struct {
 	CreatedAt    int64
 	StartedAt    sql.NullInt64
 	FinishedAt   sql.NullInt64
+	InboxFile    sql.NullString
 }
 
 type InstanceSetting struct {
