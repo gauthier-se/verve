@@ -110,7 +110,7 @@ func registerAccountDeletion(api huma.API, deps APIDeps) {
 			return nil, adminUserError("delete user", err)
 		}
 
-		deleted, err := adminUserWithTokens(ctx, deps.Store, user)
+		deleted, err := adminUserWithData(ctx, deps.Store, user)
 		if err != nil {
 			return nil, err
 		}
