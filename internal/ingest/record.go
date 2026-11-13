@@ -30,7 +30,11 @@ type QuantitySample struct {
 	Unit  string
 	// Min and Max are those of a pre-aggregated point, in Unit, nil for other samples.
 	Min, Max *float64
-	Source   store.SourceInfo
+	// PreAggregated is true for a point that summarizes the samples of its time range, such as a
+	// summarized Health Auto Export point: a later point of the same type, source and times replaces
+	// it.
+	PreAggregated bool
+	Source        store.SourceInfo
 	// Metadata is a JSON object, nil when the sample has none.
 	Metadata json.RawMessage
 }
@@ -107,4 +111,17 @@ type RoutePoint struct {
 	Course *float64
 	// HorizontalAccuracy and VerticalAccuracy are in meters.
 	HorizontalAccuracy, VerticalAccuracy *float64
+}
+
+// Record is a normalized record of a payload at its position: exactly one of Quantity, Category
+// and Workout is set.
+type Record struct {
+	// Position is where the record is in its payload, defined by the adapter, such as its index or
+	// its byte offset. The positions of a payload increase strictly, and are the same on every run
+	// of it, so that a resumed run skips the records before the position it stored (FR-5 of
+	// Ingestion pipeline).
+	Position int64
+	Quantity *QuantitySample
+	Category *CategorySample
+	Workout  *Workout
 }
