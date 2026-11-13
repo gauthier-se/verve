@@ -1,0 +1,33 @@
+{
+  "format": "verve.ingest.v1",
+  "client": {"name": "Verve for iOS", "version": "1.2.0", "deviceModel": "iPhone17,1", "osVersion": "27.1"},
+  "samples": [
+    {"type": "HKQuantityTypeIdentifierStepCount", "start": "2026-11-10T08:00:00Z", "end": "2026-11-10T08:10:00Z", "value": 120, "unit": "count", "source": {"name": "iPhone"}},
+    42,
+    {"start": "2026-11-10T08:00:00Z", "end": "2026-11-10T08:10:00Z", "value": 120, "unit": "count", "source": {"name": "iPhone"}},
+    {"type": 5, "start": "2026-11-10T08:00:00Z", "end": "2026-11-10T08:10:00Z", "value": 120, "unit": "count", "source": {"name": "iPhone"}},
+    {"type": "HKCategoryTypeIdentifierSleepAnalysis", "start": "2026-11-10T01:00:00Z", "end": "2026-11-10T02:00:00Z", "value": 1, "unit": "count", "categoryValue": "HKCategoryValueSleepAnalysisAsleepCore", "source": {"name": "Apple Watch"}},
+    {"type": "HKCategoryTypeIdentifierSleepAnalysis", "start": "2026-11-10T01:00:00Z", "end": "2026-11-10T02:00:00Z", "source": {"name": "Apple Watch"}},
+    {"type": "HKQuantityTypeIdentifierStepCount", "start": "2026-11-10T08:00:00Z", "end": "2026-11-10T08:10:00Z", "value": "120", "unit": "count", "source": {"name": "iPhone"}},
+    {"type": "HKQuantityTypeIdentifierStepCount", "start": "2026-11-10T08:00:00Z", "end": "2026-11-10T08:10:00Z", "value": 120, "source": {"name": "iPhone"}},
+    {"type": "HKQuantityTypeIdentifierStepCount", "end": "2026-11-10T08:10:00Z", "value": 120, "unit": "count", "source": {"name": "iPhone"}},
+    {"type": "HKQuantityTypeIdentifierStepCount", "start": "2026-11-10T08:00:00Z", "end": "2026-11-10T08:10:00Z", "value": 120, "unit": "count"},
+    {"type": "HKQuantityTypeIdentifierStepCount", "start": "2026-11-10T08:00:00Z", "end": "2026-11-10T08:10:00Z", "value": 120, "unit": "count", "source": {"bundleId": "com.example.steps"}},
+    {"type": "HKQuantityTypeIdentifierStepCount", "start": "2026-11-10T08:00:00Z", "end": "2026-11-10T08:10:00Z", "value": 120, "unit": "count", "source": {"name": "iPhone"}, "metadata": {"HKExternalUUID": "x", "nested": {"a": 1}}},
+    {"uuid": "6F1C2B9E-3D4A-4E0B-9C59", "type": "HKQuantityTypeIdentifierStepCount", "start": "2026-11-10T08:00:00Z", "end": "2026-11-10T08:10:00Z", "value": 120, "unit": "count", "source": {"name": "iPhone"}},
+    {"type": "HKQuantityTypeIdentifierStepCount", "start": "2026-11-10T08:00:00Z", "end": "2026-11-10T08:10:00Z", "value": 1e400, "unit": "count", "source": {"name": "iPhone"}},
+    {"type": "HKQuantityTypeIdentifierStepCount", "start": 1762761600, "end": "2026-11-10T08:10:00Z", "value": 120, "unit": "count", "source": {"name": "iPhone"}}
+  ],
+  "workouts": [
+    {"uuid": "9E7D5C3B-1A2F-4E6D-8C0B-2F4A6E8C0D1B", "activityType": "HKWorkoutActivityTypeWalking", "start": "2026-11-10T12:00:00Z", "end": "2026-11-10T12:20:00Z", "duration": 1200, "source": {"name": "Apple Watch"}},
+    {"activityType": "HKWorkoutActivityTypeWalking", "start": "2026-11-10T12:00:00Z", "end": "2026-11-10T12:20:00Z", "duration": 1200, "source": {"name": "Apple Watch"}},
+    {"uuid": "1D2C3B4A-5E6F-4A7B-8C9D-0E1F2A3B4C5D", "activityType": "HKWorkoutActivityTypeWalking", "start": "2026-11-10T12:00:00Z", "end": "2026-11-10T12:20:00Z", "duration": "1200", "source": {"name": "Apple Watch"}},
+    {"uuid": "1D2C3B4A-5E6F-4A7B-8C9D-0E1F2A3B4C5D", "activityType": "HKWorkoutActivityTypeWalking", "start": "2026-11-10T12:00:00Z", "end": "2026-11-10T12:20:00Z", "duration": 1200, "source": {"name": "Apple Watch"}, "route": [{"time": "2026-11-10T12:00:01Z", "latitude": 45.7, "longitude": 4.8}, {"time": "2026-11-10T12:00:02Z", "longitude": 4.8}]},
+    {"uuid": "1D2C3B4A-5E6F-4A7B-8C9D-0E1F2A3B4C5D", "activityType": "HKWorkoutActivityTypeWalking", "start": "2026-11-10T12:00:00Z", "end": "2026-11-10T12:20:00Z", "duration": 1200, "source": {"name": "Apple Watch"}, "events": {"type": "HKWorkoutEventTypePause"}},
+    {"uuid": "1D2C3B4A-5E6F-4A7B-8C9D-0E1F2A3B4C5D", "activityType": "HKWorkoutActivityTypeWalking", "start": "2026-11-10T12:00:00Z", "end": "2026-11-10T12:20:00Z", "duration": 1200, "source": {"name": "Apple Watch"}, "totals": {"distance": {"value": 1.4}}},
+    {"uuid": "1D2C3B4A-5E6F-4A7B-8C9D-0E1F2A3B4C5D", "activityType": "HKWorkoutActivityTypeWalking", "start": "2026-11-10T12:00:00Z", "end": "2026-11-10T12:20:00Z", "duration": 1200, "source": {"name": "Apple Watch"}, "indoor": "yes"},
+    {"uuid": "1D2C3B4A-5E6F-4A7B-8C9D-0E1F2A3B4C5D", "activityType": "HKWorkoutActivityTypeWalking", "start": "2026-11-10T12:00:00Z", "end": "2026-11-10T12:20:00Z", "duration": 1200, "source": {"name": "Apple Watch"}, "events": [{"type": "HKWorkoutEventTypeLap", "start": "2026-11-10T12:05:00Z"}]},
+    [1, 2]
+  ],
+  "deletions": ["5A4B3C2D-1E0F-4A9B-8C7D-6E5F4A3B2C1D", 42, "5A4B3C2D1E0F4A9B8C7D6E5F4A3B2C1D", {"uuid": "5A4B3C2D-1E0F-4A9B-8C7D-6E5F4A3B2C1D"}]
+}

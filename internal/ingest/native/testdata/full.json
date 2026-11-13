@@ -1,0 +1,75 @@
+{
+  "deletions": ["5A4B3C2D-1E0F-4A9B-8C7D-6E5F4A3B2C1D", "c3a9f5d7-1e2b-4c8a-b6d4-5f7e9a1c3b2d"],
+  "workouts": [
+    {
+      "uuid": "9E7D5C3B-1A2F-4E6D-8C0B-2F4A6E8C0D1B",
+      "activityType": "HKWorkoutActivityTypeCycling",
+      "start": "2026-11-09T17:00:00+01:00",
+      "end": "2026-11-09T18:00:00.500+01:00",
+      "duration": 3540.5,
+      "totals": {
+        "distance": {"value": 24.6, "unit": "km"},
+        "activeEnergy": {"value": 610, "unit": "kcal"},
+        "totalEnergy": {"value": 2800, "unit": "kJ"},
+        "elevationAscended": {"value": 120, "unit": "m"},
+        "elevationDescended": {"value": 118.5, "unit": "m"},
+        "cadence": {"value": 85, "unit": "count/min"}
+      },
+      "indoor": true,
+      "source": {"name": "Apple Watch", "device": {"model": "Watch", "softwareVersion": "12.1"}},
+      "metadata": {"HKIndoorWorkout": 1, "HKTimeZone": "Europe/Paris", "HKWasUserEntered": false},
+      "events": [
+        {"type": "HKWorkoutEventTypeMotionPaused", "start": "2026-11-09T17:20:00+01:00", "end": "2026-11-09T17:20:00+01:00"},
+        {"type": "HKWorkoutEventTypeMotionResumed", "start": "2026-11-09T17:21:00+01:00", "end": "2026-11-09T17:21:00+01:00", "metadata": {"x": 1}}
+      ],
+      "route": [
+        {"time": "2026-11-09T17:00:01+01:00", "latitude": 45.764, "longitude": 4.8357},
+        {"time": "2026-11-09T17:00:02+01:00", "latitude": 45.7641, "longitude": 4.8358, "altitude": null, "speed": 6.2, "course": -1, "horizontalAccuracy": 5, "verticalAccuracy": null}
+      ]
+    },
+    {
+      "uuid": "1d2c3b4a-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+      "activityType": "HKWorkoutActivityTypeYoga",
+      "start": "2026-11-10T07:00:00Z",
+      "end": "2026-11-10T07:30:00Z",
+      "duration": 1800,
+      "source": {"name": "Yoga Studio", "bundleId": "com.example.yoga"}
+    }
+  ],
+  "client": {"name": "Verve for iOS", "version": "1.2.0", "platform": "iOS"},
+  "samples": [
+    {
+      "uuid": "6F1C2B9E-3D4A-4E0B-9C59-1A2B3C4D5E6F",
+      "type": "HKQuantityTypeIdentifierHeartRate",
+      "start": "2026-11-10T08:00:00+01:00",
+      "end": "2026-11-10T08:00:00+01:00",
+      "value": 62,
+      "unit": "count/min",
+      "source": {
+        "name": "Apple Watch",
+        "bundleId": "com.apple.health.81C9A0F2-6E43-4A6B-9D8E-2B7C5F1A0E93",
+        "device": {"name": "Apple Watch", "manufacturer": "Apple Inc.", "model": "Watch", "hardwareVersion": "Watch7,1", "softwareVersion": "12.1"}
+      },
+      "metadata": {"HKHeartRateMotionContext": 1, "HKDeviceSerial": "SYNTH-0001"}
+    },
+    {
+      "type": "HKCategoryTypeIdentifierMindfulSession",
+      "start": "2026-11-10T09:00:00.125Z",
+      "end": "2026-11-10T09:10:00Z",
+      "categoryValue": "HKCategoryValueNotApplicable",
+      "source": {"name": "Breathe", "device": null},
+      "metadata": null,
+      "newMember": {"nested": [1, 2, {"deep": true}]}
+    },
+    {
+      "uuid": "0b8d4e21-77c3-4f5a-8e16-9a3d2c1b0f4e",
+      "type": "HKQuantityTypeIdentifierBodyMass",
+      "start": "2026-11-10T07:00:00-05:00",
+      "end": "2026-11-10T07:00:00-05:00",
+      "value": 154.3,
+      "unit": "lb",
+      "source": {"name": "Smart Scale"}
+    }
+  ],
+  "format": "verve.ingest.v1"
+}

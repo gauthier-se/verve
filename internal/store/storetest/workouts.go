@@ -191,6 +191,7 @@ func RunWorkouts(t *testing.T, newStore NewStoreFunc) {
 	runWorkoutsList(t, newStore)
 	runWorkoutsGet(t, newStore)
 	runWorkoutsDelete(t, newStore)
+	runWorkoutsDeleteByKey(t, newStore)
 }
 
 // runWorkoutsUpsert runs the cases of the workouts stored by an upsert.
@@ -594,5 +595,78 @@ func runWorkoutsDelete(t *testing.T, newStore NewStoreFunc) {
 
 		_, err := st.store.Workouts().DeleteByUser(ctx, st.user.ID, 0)
 		require.ErrorIs(t, err, store.ErrInvalid)
+	})
+}
+
+// runWorkoutsDeleteByKey runs the cases of DeleteByKey.
+func runWorkoutsDeleteByKey(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+
+	// Given two workouts of a user, one with a route, when DeleteByKey removes the one with the
+	// route, then it returns it, its route is gone with it, and the other workout stays.
+	t.Run("DeleteByKeyRemovesTheWorkoutWithItsRoute", func(t *testing.T) {
+		t.Parallel()
+
+		st := newWorkoutsTest(t, newStore)
+		ctx := t.Context()
+
+		full := st.fullRun("full")
+		removed := st.mustUpsert(ctx, t, st.user.ID, full)
+		kept := st.mustUpsert(ctx, t, st.user.ID, st.run("kept", workoutsTime.Add(time.Hour)))
+		st.mustSetRoute(ctx, t, st.user.ID, removed.ID, lyonRoute())
+
+		got, err := st.store.Workouts().DeleteByKey(ctx, st.user.ID, []byte("full"))
+		require.NoError(t, err)
+		require.Equal(t, storedWorkout(full, st.user.ID, removed.ID), got)
+
+		_, err = st.store.Workouts().Get(ctx, st.user.ID, removed.ID)
+		require.ErrorIs(t, err, store.ErrNotFound)
+
+		_, err = st.store.Workouts().GetRoute(ctx, st.user.ID, removed.ID)
+		require.ErrorIs(t, err, store.ErrNotFound)
+
+		listed := st.mustListAll(ctx, t, st.user.ID)
+		require.Len(t, listed, 1)
+		require.Equal(t, kept.ID, listed[0].ID)
+	})
+
+	// Given a key that no workout of the user has, when DeleteByKey runs, then it returns
+	// ErrNotFound and removes nothing.
+	t.Run("DeleteByKeyOfAnUnknownKeyReturnsNotFound", func(t *testing.T) {
+		t.Parallel()
+
+		st := newWorkoutsTest(t, newStore)
+		ctx := t.Context()
+
+		st.mustUpsert(ctx, t, st.user.ID, st.run("a", workoutsTime))
+
+		_, err := st.store.Workouts().DeleteByKey(ctx, st.user.ID, []byte("b"))
+		require.ErrorIs(t, err, store.ErrNotFound)
+		require.Len(t, st.mustListAll(ctx, t, st.user.ID), 1)
+	})
+
+	// Given a workout with a route of another user, when the user deletes its key, then nothing of
+	// the other user is removed: the user's own workout of that key goes, and a key that only the
+	// other user has returns ErrNotFound.
+	t.Run("DeleteByKeyNeverRemovesAWorkoutOfAnotherUser", func(t *testing.T) {
+		t.Parallel()
+
+		st := newWorkoutsTest(t, newStore)
+		ctx := t.Context()
+
+		st.mustUpsert(ctx, t, st.user.ID, st.run("shared", workoutsTime))
+		foreign := st.mustUpsert(ctx, t, st.other.ID, st.foreignRun("shared", workoutsTime))
+		st.mustUpsert(ctx, t, st.other.ID, st.foreignRun("theirs", workoutsTime.Add(time.Hour)))
+		st.mustSetRoute(ctx, t, st.other.ID, foreign.ID, parisRoute())
+
+		_, err := st.store.Workouts().DeleteByKey(ctx, st.user.ID, []byte("theirs"))
+		require.ErrorIs(t, err, store.ErrNotFound)
+
+		got, err := st.store.Workouts().DeleteByKey(ctx, st.user.ID, []byte("shared"))
+		require.NoError(t, err)
+		require.Equal(t, st.user.ID, got.UserID)
+
+		require.Len(t, st.mustListAll(ctx, t, st.other.ID), 2)
+		require.Equal(t, parisRoute(), st.mustGetRoute(ctx, t, st.other.ID, foreign.ID))
 	})
 }
