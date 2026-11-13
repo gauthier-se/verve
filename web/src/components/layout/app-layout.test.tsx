@@ -61,7 +61,12 @@ describe("AppLayout", () => {
       await screen.findByRole("heading", { level: 1, name: "Verve" }),
     ).toBeInTheDocument();
     expect(screen.getByRole("contentinfo")).toHaveTextContent(/^Verve$/);
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Verve is starting" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Server unreachable" }),
+    ).not.toBeInTheDocument();
   });
 
   it("given a public page, then the header shows neither the navigation nor a user menu, and the footer stays visible", async () => {
