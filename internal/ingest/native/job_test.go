@@ -817,3 +817,140 @@ func eventTypes(events []importEvent) []string {
 
 	return types
 }
+
+// requireCancelledByItsJob requires that the import of id ended cancelled with its inbox file
+// deleted, and that import.cancelled was recorded once.
+func (e *jobEnv) requireCancelledByItsJob(t *testing.T, id int64) {
+	t.Helper()
+
+	got := e.importOf(t, id)
+	require.Equal(t, store.ImportCancelled, got.Status)
+	e.requireInboxFile(t, got, false)
+
+	var cancelled int
+
+	for _, event := range e.importEvents(t) {
+		if event.Type == "import.cancelled" {
+			cancelled++
+		}
+	}
+
+	require.Equal(t, 1, cancelled, "import.cancelled is recorded once")
+}
+
+// Given a cancellation of the job of a running import, when the handler fails before the heartbeat
+// delivers it, then the import ends cancelled instead of staying running: the job, queued again for
+// its retry, would be cancelled without a handler.
+func TestImportJob_CancelledThenFailed_EndsCancelled(t *testing.T) {
+	t.Parallel()
+
+	e := newJobEnv(t)
+	imp, queued := e.push(t, stepsPayload)
+
+	e.hook.set(func(ctx context.Context, position int64) error {
+		if position == 1 {
+			if err := e.store.Jobs().Cancel(ctx, queued.ID); err != nil {
+				return err
+			}
+
+			return errors.New("read inbox file: input/output error")
+		}
+
+		return nil
+	})
+
+	e.tick(t.Context(), t)
+
+	e.requireCancelledByItsJob(t, imp.ID)
+	require.Len(t, e.samples(t), 1, "the committed batch stays")
+}
+
+// Given a cancellation of the job of a running import, when the process stops before the heartbeat
+// delivers it, then the import ends cancelled instead of staying running: the job, released to
+// queued, would be cancelled without a handler.
+func TestImportJob_CancelledThenStopped_EndsCancelled(t *testing.T) {
+	t.Parallel()
+
+	e := newJobEnv(t)
+	imp, queued := e.push(t, stepsPayload)
+
+	stopped, stop := context.WithCancel(t.Context())
+
+	e.hook.set(func(ctx context.Context, position int64) error {
+		if position == 1 {
+			if err := e.store.Jobs().Cancel(ctx, queued.ID); err != nil {
+				return err
+			}
+
+			stop()
+			<-ctx.Done()
+		}
+
+		return nil
+	})
+
+	e.tick(stopped, t)
+
+	e.requireCancelledByItsJob(t, imp.ID)
+}
+
+// hookedImports calls before with the handler context on the first Get, then reads the import even
+// once that context is done.
+type hookedImports struct {
+	store.ImportsRepository
+
+	once   sync.Once
+	before func(ctx context.Context)
+}
+
+func (h *hookedImports) Get(ctx context.Context, userID, id int64) (store.Import, error) {
+	h.once.Do(func() { h.before(ctx) })
+
+	return h.ImportsRepository.Get(context.WithoutCancel(ctx), userID, id)
+}
+
+// hookedStore is a store whose Imports, outside transactions, are hooked.
+type hookedStore struct {
+	store.Store
+
+	imports *hookedImports
+}
+
+func (s hookedStore) Imports() store.ImportsRepository { return s.imports }
+
+// Given a queued import whose job is cancelled once claimed, when the heartbeat delivers the
+// cancellation before the job starts the import, then the import ends cancelled instead of staying
+// queued without a job.
+func TestImportJob_CancelledBeforeTheImportStarts_EndsCancelled(t *testing.T) {
+	t.Parallel()
+
+	e := newJobEnv(t)
+	imp, queued := e.push(t, stepsPayload)
+
+	hooked := hookedStore{Store: e.store, imports: &hookedImports{
+		ImportsRepository: e.store.Imports(),
+		before: func(ctx context.Context) {
+			if err := e.store.Jobs().Cancel(context.WithoutCancel(ctx), queued.ID); err != nil {
+				panic(err)
+			}
+
+			// The heartbeat delivers the cancellation.
+			<-ctx.Done()
+		},
+	}}
+
+	registry := jobs.NewRegistry()
+	native.Register(registry, native.JobDeps{Store: hooked, Pipeline: e.hook, Inbox: e.inbox})
+
+	worker := jobs.NewWorker(e.store, registry, e.clk, slog.New(slog.DiscardHandler), jobs.Options{
+		Lease:             jobLease,
+		HeartbeatInterval: 10 * time.Millisecond,
+	})
+
+	claimed, err := worker.Tick(t.Context())
+	require.NoError(t, err)
+	require.True(t, claimed)
+
+	e.requireCancelledByItsJob(t, imp.ID)
+	require.Equal(t, store.JobCancelled, e.jobOf(t, queued.ID).Status)
+}

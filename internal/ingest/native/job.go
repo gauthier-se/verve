@@ -55,7 +55,9 @@ func Job(userID, importID int64) (store.NewJob, error) {
 //   - failed, without retry, for a payload that fails as a whole or a file that is gone, with the
 //     reason as its sample error message, its file kept for a diagnosis, and once the last attempt
 //     of its job fails,
-//   - cancelled at the next batch boundary once its job is cancelled, its file deleted.
+//   - cancelled at the next batch boundary once its job is cancelled, its file deleted, also when the
+//     run fails or stops, or the import has not started, before the heartbeat delivers the
+//     cancellation.
 //
 // The batches committed before the end stay. A job stopped otherwise, such as by a shutdown, leaves
 // the import running, and its next run resumes it from the stored position (FR-5).
@@ -89,22 +91,30 @@ func runImport(ctx context.Context, deps JobDeps, job jobs.Job[ingest.JobPayload
 		return nil
 	}
 
-	imp, err = start(ctx, deps.Store, userID, importID)
+	started, err := start(ctx, deps.Store, userID, importID)
 	if errors.Is(err, store.ErrConflict) {
 		// Ended since it was read.
 		return nil
 	}
 
 	if err != nil {
-		return fmt.Errorf("start import %d: %w", importID, err)
+		err = fmt.Errorf("start import %d: %w", importID, err)
+
+		if cancelRequested(ctx, deps.Store, job.ID) {
+			// Cancelled before it started, such as by a cancellation that the heartbeat delivered.
+			return errors.Join(err, finish(context.WithoutCancel(ctx), deps, imp, store.ImportCancelled))
+		}
+
+		return err
 	}
 
+	imp = started
 	err = process(ctx, deps, imp)
 
 	switch {
 	case err == nil:
 		return finish(ctx, deps, imp, store.ImportCompleted)
-	case jobs.Cancelled(ctx):
+	case cancelRequested(ctx, deps.Store, job.ID):
 		// The writes that end the import run once the handler context is done.
 		return errors.Join(err, finish(context.WithoutCancel(ctx), deps, imp, store.ImportCancelled))
 	case errors.Is(err, ErrInvalidPayload), errors.Is(err, errMissingPayload):
@@ -115,6 +125,21 @@ func runImport(ctx context.Context, deps JobDeps, job jobs.Job[ingest.JobPayload
 	default:
 		return err
 	}
+}
+
+// cancelRequested reports whether the cancellation of the job of jobID was requested: delivered to
+// the handler context by the heartbeat, or requested since its last heartbeat. A handler that stops
+// otherwise, by a failure or a shutdown, then ends its import itself: its job, queued again, would
+// be cancelled without a handler, and the import would stay unfinished. A failed read counts as no
+// cancellation, the import then resuming at the next run.
+func cancelRequested(ctx context.Context, s store.Store, jobID int64) bool {
+	if jobs.Cancelled(ctx) {
+		return true
+	}
+
+	job, err := s.Jobs().Get(context.WithoutCancel(ctx), jobID)
+
+	return err == nil && job.CancelRequested
 }
 
 // process reads the payload of the inbox file of imp, stores its client, and runs its records
