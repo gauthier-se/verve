@@ -35,6 +35,10 @@ const (
 	TypeTokenCreated                 = "token.created"
 	TypeTokenRevoked                 = "token.revoked"
 	TypeTokenRejected                = "token.rejected"
+	TypeImportStarted                = "import.started"
+	TypeImportCompleted              = "import.completed"
+	TypeImportFailed                 = "import.failed"
+	TypeImportCancelled              = "import.cancelled"
 )
 
 // Event is an audit event to record, built by a constructor of this package.
@@ -376,6 +380,70 @@ func APITokenRevoked(userID, tokenID int64, name string) Event {
 		actorID:   userID,
 		payload:   apiTokenRevokedPayload{ID: tokenID, Name: name},
 	}
+}
+
+type importStartedPayload struct {
+	ID     int64        `json:"id"`
+	Origin store.Origin `json:"origin"`
+}
+
+// ImportStarted is a job starting the import of importID of the user of userID, from origin.
+func ImportStarted(userID, importID int64, origin store.Origin) Event {
+	return Event{
+		eventType: TypeImportStarted,
+		actorID:   userID,
+		payload:   importStartedPayload{ID: importID, Origin: origin},
+	}
+}
+
+// importCounters is the JSON of the total counters of an import, every counter given. Counters
+// count records, never hold a value.
+type importCounters struct {
+	Received    int64 `json:"received"`
+	Inserted    int64 `json:"inserted"`
+	Updated     int64 `json:"updated"`
+	Duplicates  int64 `json:"duplicates"`
+	Blocked     int64 `json:"blocked"`
+	Invalid     int64 `json:"invalid"`
+	Unsupported int64 `json:"unsupported"`
+	Suspicious  int64 `json:"suspicious"`
+	Warnings    int64 `json:"warnings"`
+	Deleted     int64 `json:"deleted"`
+	NotFound    int64 `json:"notFound"`
+}
+
+type importEndedPayload struct {
+	ID       int64          `json:"id"`
+	Origin   store.Origin   `json:"origin"`
+	Counters importCounters `json:"counters"`
+}
+
+// importEnded is the end of the import of importID of the user of userID, from origin, with the
+// total counters of its report, as an event of eventType.
+func importEnded(eventType string, userID, importID int64, origin store.Origin, counters store.ImportCounters) Event {
+	return Event{
+		eventType: eventType,
+		actorID:   userID,
+		payload:   importEndedPayload{ID: importID, Origin: origin, Counters: importCounters(counters)},
+	}
+}
+
+// ImportCompleted is the import of importID of the user of userID, from origin, ending completed
+// with the total counters of its report.
+func ImportCompleted(userID, importID int64, origin store.Origin, counters store.ImportCounters) Event {
+	return importEnded(TypeImportCompleted, userID, importID, origin, counters)
+}
+
+// ImportFailed is the import of importID of the user of userID, from origin, ending failed with the
+// total counters of its report.
+func ImportFailed(userID, importID int64, origin store.Origin, counters store.ImportCounters) Event {
+	return importEnded(TypeImportFailed, userID, importID, origin, counters)
+}
+
+// ImportCancelled is the import of importID of the user of userID, from origin, ending cancelled
+// with the total counters of its report.
+func ImportCancelled(userID, importID int64, origin store.Origin, counters store.ImportCounters) Event {
+	return importEnded(TypeImportCancelled, userID, importID, origin, counters)
 }
 
 // Record appends event to repo, with the client of ctx. For the event to commit with the action it

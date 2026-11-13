@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"iter"
 
+	"github.com/gauthier-se/verve/internal/audit"
 	"github.com/gauthier-se/verve/internal/ingest"
 	"github.com/gauthier-se/verve/internal/jobs"
 	"github.com/gauthier-se/verve/internal/store"
@@ -93,7 +94,7 @@ func runImport(ctx context.Context, deps JobDeps, job jobs.Job[ImportPayload]) e
 		return nil
 	}
 
-	imp, err = imports.SetStatus(ctx, userID, importID, store.ImportRunning)
+	imp, err = start(ctx, deps.Store, userID, importID)
 	if errors.Is(err, store.ErrConflict) {
 		// Ended since it was read.
 		return nil
@@ -149,31 +150,75 @@ func process(ctx context.Context, deps JobDeps, imp store.Import) (err error) {
 	return deps.Pipeline.Run(ctx, imp.UserID, imp.ID, payload.Records(ctx))
 }
 
-// finish ends imp with status, completed or cancelled, and removes its inbox file, which it no
-// longer needs.
+// start moves the import of importID of userID to running, and returns it. A queued import records
+// import.started in the same transaction, so that a resumed import, already running, records it
+// once. It returns store.ErrConflict for an import that ended.
+func start(ctx context.Context, s store.Store, userID, importID int64) (store.Import, error) {
+	var started store.Import
+
+	err := s.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
+		imp, err := tx.Imports().Get(ctx, userID, importID)
+		if err != nil {
+			return err
+		}
+
+		started, err = tx.Imports().SetStatus(ctx, userID, importID, store.ImportRunning)
+		if err != nil {
+			return err
+		}
+
+		if imp.Status != store.ImportQueued {
+			return nil
+		}
+
+		return audit.Record(ctx, tx.AuditEvents(), audit.ImportStarted(userID, importID, imp.Origin))
+	})
+
+	return started, err
+}
+
+// finish ends imp with status, completed or cancelled, recording its end in the same transaction,
+// and removes its inbox file, which it no longer needs.
 func finish(ctx context.Context, deps JobDeps, imp store.Import, status store.ImportStatus) error {
-	if _, err := deps.Store.Imports().SetStatus(ctx, imp.UserID, imp.ID, status); err != nil {
+	err := deps.Store.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
+		ended, err := tx.Imports().SetStatus(ctx, imp.UserID, imp.ID, status)
+		if err != nil {
+			return err
+		}
+
+		return audit.Record(ctx, tx.AuditEvents(), endEvent(ended))
+	})
+	if err != nil {
 		return fmt.Errorf("end import %d %s: %w", imp.ID, status, err)
 	}
 
 	return deps.Inbox.Remove(ctx, imp.InboxFile)
 }
 
-// fail ends imp failed, with the message of cause as a sample error message, in one transaction. Its
-// inbox file stays, for a retry or a diagnosis.
+// fail ends imp failed, with the message of cause as a sample error message, and records its end,
+// in one transaction. The position and the counters of the batches committed since imp was read
+// stay. Its inbox file stays, for a retry or a diagnosis.
 func fail(ctx context.Context, s store.Store, imp store.Import, cause error) error {
 	err := s.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
-		report := imp.Report
+		current, err := tx.Imports().Get(ctx, imp.UserID, imp.ID)
+		if err != nil {
+			return err
+		}
+
+		report := current.Report
 		report.Errors = append(report.Errors, cause.Error())
 
-		progress := store.ImportProgress{Position: imp.Position, Report: report}
+		progress := store.ImportProgress{Position: current.Position, Report: report}
 		if err := tx.Imports().SaveProgress(ctx, imp.UserID, imp.ID, progress); err != nil {
 			return err
 		}
 
-		_, err := tx.Imports().SetStatus(ctx, imp.UserID, imp.ID, store.ImportFailed)
+		ended, err := tx.Imports().SetStatus(ctx, imp.UserID, imp.ID, store.ImportFailed)
+		if err != nil {
+			return err
+		}
 
-		return err
+		return audit.Record(ctx, tx.AuditEvents(), endEvent(ended))
 	})
 	if err != nil {
 		return fmt.Errorf("fail import %d: %w", imp.ID, err)
@@ -182,6 +227,18 @@ func fail(ctx context.Context, s store.Store, imp store.Import, cause error) err
 	return nil
 }
 
+// endEvent returns the audit event of the end of imp, which ended completed, failed or cancelled,
+// with the total counters of its report.
+func endEvent(imp store.Import) audit.Event {
+	switch imp.Status {
+	case store.ImportCompleted:
+		return audit.ImportCompleted(imp.UserID, imp.ID, imp.Origin, imp.Report.Total)
+	case store.ImportFailed:
+		return audit.ImportFailed(imp.UserID, imp.ID, imp.Origin, imp.Report.Total)
+	default:
+		return audit.ImportCancelled(imp.UserID, imp.ID, imp.Origin, imp.Report.Total)
+	}
+}
 // metadata returns the client metadata of the import of a payload sent by c, without the fields
 // that c leaves out.
 func (c Client) metadata() map[string]string {
