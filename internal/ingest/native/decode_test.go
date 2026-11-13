@@ -49,7 +49,7 @@ func requireGolden(t *testing.T, path string, got []byte) {
 	t.Helper()
 
 	if *update {
-		require.NoError(t, os.WriteFile(path, got, 0o600))
+		require.NoError(t, os.WriteFile(path, got, 0o600)) //nolint:gosec // G703: a golden file of testdata
 	}
 
 	want, err := os.ReadFile(path) //nolint:gosec // G304: a golden file of testdata

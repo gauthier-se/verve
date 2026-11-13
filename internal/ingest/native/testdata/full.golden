@@ -1,0 +1,242 @@
+{
+  "Client": {
+    "Name": "Verve for iOS",
+    "Version": "1.2.0",
+    "DeviceModel": "",
+    "OSVersion": ""
+  },
+  "Records": [
+    {
+      "Position": 0,
+      "Quantity": {
+        "UUID": "6F1C2B9E-3D4A-4E0B-9C59-1A2B3C4D5E6F",
+        "Type": "HKQuantityTypeIdentifierHeartRate",
+        "Start": "2026-11-10T08:00:00+01:00",
+        "End": "2026-11-10T08:00:00+01:00",
+        "Value": 62,
+        "Unit": "count/min",
+        "Min": null,
+        "Max": null,
+        "PreAggregated": false,
+        "Source": {
+          "Name": "Apple Watch",
+          "DeviceModel": "Watch",
+          "BundleID": "com.apple.health.81C9A0F2-6E43-4A6B-9D8E-2B7C5F1A0E93",
+          "DeviceName": "Apple Watch",
+          "Manufacturer": "Apple Inc.",
+          "HardwareVersion": "Watch7,1",
+          "SoftwareVersion": "12.1"
+        },
+        "Metadata": {
+          "HKHeartRateMotionContext": 1,
+          "HKDeviceSerial": "SYNTH-0001"
+        }
+      },
+      "Category": null,
+      "Workout": null,
+      "Deletion": null,
+      "Invalid": null
+    },
+    {
+      "Position": 1,
+      "Quantity": null,
+      "Category": {
+        "UUID": "",
+        "Type": "HKCategoryTypeIdentifierMindfulSession",
+        "Start": "2026-11-10T09:00:00.125Z",
+        "End": "2026-11-10T09:10:00Z",
+        "Value": "HKCategoryValueNotApplicable",
+        "Source": {
+          "Name": "Breathe",
+          "DeviceModel": "",
+          "BundleID": "",
+          "DeviceName": "",
+          "Manufacturer": "",
+          "HardwareVersion": "",
+          "SoftwareVersion": ""
+        },
+        "Metadata": null
+      },
+      "Workout": null,
+      "Deletion": null,
+      "Invalid": null
+    },
+    {
+      "Position": 2,
+      "Quantity": {
+        "UUID": "0b8d4e21-77c3-4f5a-8e16-9a3d2c1b0f4e",
+        "Type": "HKQuantityTypeIdentifierBodyMass",
+        "Start": "2026-11-10T07:00:00-05:00",
+        "End": "2026-11-10T07:00:00-05:00",
+        "Value": 154.3,
+        "Unit": "lb",
+        "Min": null,
+        "Max": null,
+        "PreAggregated": false,
+        "Source": {
+          "Name": "Smart Scale",
+          "DeviceModel": "",
+          "BundleID": "",
+          "DeviceName": "",
+          "Manufacturer": "",
+          "HardwareVersion": "",
+          "SoftwareVersion": ""
+        },
+        "Metadata": null
+      },
+      "Category": null,
+      "Workout": null,
+      "Deletion": null,
+      "Invalid": null
+    },
+    {
+      "Position": 3,
+      "Quantity": null,
+      "Category": null,
+      "Workout": {
+        "UUID": "9E7D5C3B-1A2F-4E6D-8C0B-2F4A6E8C0D1B",
+        "ActivityType": "HKWorkoutActivityTypeCycling",
+        "Start": "2026-11-09T17:00:00+01:00",
+        "End": "2026-11-09T18:00:00.500+01:00",
+        "Duration": {
+          "Value": 3540.5,
+          "Unit": "s"
+        },
+        "Totals": {
+          "Distance": {
+            "Value": 24.6,
+            "Unit": "km"
+          },
+          "ActiveEnergy": {
+            "Value": 610,
+            "Unit": "kcal"
+          },
+          "TotalEnergy": {
+            "Value": 2800,
+            "Unit": "kJ"
+          },
+          "ElevationAscended": {
+            "Value": 120,
+            "Unit": "m"
+          },
+          "ElevationDescended": {
+            "Value": 118.5,
+            "Unit": "m"
+          },
+          "AvgHeartRate": null,
+          "MaxHeartRate": null
+        },
+        "Indoor": true,
+        "Source": {
+          "Name": "Apple Watch",
+          "DeviceModel": "Watch",
+          "BundleID": "",
+          "DeviceName": "",
+          "Manufacturer": "",
+          "HardwareVersion": "",
+          "SoftwareVersion": "12.1"
+        },
+        "Metadata": {
+          "HKIndoorWorkout": 1,
+          "HKTimeZone": "Europe/Paris",
+          "HKWasUserEntered": false
+        },
+        "Events": [
+          {
+            "Type": "HKWorkoutEventTypeMotionPaused",
+            "Start": "2026-11-09T17:20:00+01:00",
+            "End": "2026-11-09T17:20:00+01:00"
+          },
+          {
+            "Type": "HKWorkoutEventTypeMotionResumed",
+            "Start": "2026-11-09T17:21:00+01:00",
+            "End": "2026-11-09T17:21:00+01:00"
+          }
+        ],
+        "Route": [
+          {
+            "Time": "2026-11-09T17:00:01+01:00",
+            "Latitude": 45.764,
+            "Longitude": 4.8357,
+            "Altitude": null,
+            "Speed": null,
+            "Course": null,
+            "HorizontalAccuracy": null,
+            "VerticalAccuracy": null
+          },
+          {
+            "Time": "2026-11-09T17:00:02+01:00",
+            "Latitude": 45.7641,
+            "Longitude": 4.8358,
+            "Altitude": null,
+            "Speed": 6.2,
+            "Course": -1,
+            "HorizontalAccuracy": 5,
+            "VerticalAccuracy": null
+          }
+        ]
+      },
+      "Deletion": null,
+      "Invalid": null
+    },
+    {
+      "Position": 4,
+      "Quantity": null,
+      "Category": null,
+      "Workout": {
+        "UUID": "1d2c3b4a-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+        "ActivityType": "HKWorkoutActivityTypeYoga",
+        "Start": "2026-11-10T07:00:00Z",
+        "End": "2026-11-10T07:30:00Z",
+        "Duration": {
+          "Value": 1800,
+          "Unit": "s"
+        },
+        "Totals": {
+          "Distance": null,
+          "ActiveEnergy": null,
+          "TotalEnergy": null,
+          "ElevationAscended": null,
+          "ElevationDescended": null,
+          "AvgHeartRate": null,
+          "MaxHeartRate": null
+        },
+        "Indoor": null,
+        "Source": {
+          "Name": "Yoga Studio",
+          "DeviceModel": "",
+          "BundleID": "com.example.yoga",
+          "DeviceName": "",
+          "Manufacturer": "",
+          "HardwareVersion": "",
+          "SoftwareVersion": ""
+        },
+        "Metadata": null,
+        "Events": null,
+        "Route": null
+      },
+      "Deletion": null,
+      "Invalid": null
+    },
+    {
+      "Position": 5,
+      "Quantity": null,
+      "Category": null,
+      "Workout": null,
+      "Deletion": {
+        "UUID": "5A4B3C2D-1E0F-4A9B-8C7D-6E5F4A3B2C1D"
+      },
+      "Invalid": null
+    },
+    {
+      "Position": 6,
+      "Quantity": null,
+      "Category": null,
+      "Workout": null,
+      "Deletion": {
+        "UUID": "c3a9f5d7-1e2b-4c8a-b6d4-5f7e9a1c3b2d"
+      },
+      "Invalid": null
+    }
+  ]
+}
