@@ -120,6 +120,7 @@ export default interface Resources {
       "email_invalid": "Enter an email address with an @.",
       "email_taken": "Another account already has this email address.",
       "forbidden": "You do not have permission to do this.",
+      "import_finished": "This import already ended.",
       "invalid_credentials": "The username, email or password is incorrect.",
       "invitation_invalid": "This invitation link is no longer valid: it was already used, it expired, or it is incomplete. Ask an admin for a new link.",
       "password_too_common": "This password is too common. Choose another one.",
@@ -137,6 +138,81 @@ export default interface Resources {
     },
     "home": {
       "tagline": "Your health data, on your server."
+    },
+    "importBanner": {
+      "label": "Import in progress",
+      "received_one": "An import is running: {{received}} record received so far.",
+      "received_other": "An import is running: {{received}} records received so far.",
+      "running": "An import is running.",
+      "view": "View imports"
+    },
+    "imports": {
+      "cancel": {
+        "action": "Cancel import",
+        "confirm": "Cancel import",
+        "description": "Verve stops the import. The data that it already stored stays.",
+        "keep": "Keep import",
+        "title": "Cancel this import?"
+      },
+      "columns": {
+        "actions": "Actions",
+        "client": "Client",
+        "date": "Date",
+        "duration": "Duration",
+        "origin": "Origin",
+        "status": "Status"
+      },
+      "counters": {
+        "blocked": "Blocked",
+        "deleted": "Deleted",
+        "duplicates": "Duplicates",
+        "inserted": "Added",
+        "invalid": "Invalid",
+        "notFound": "Not found",
+        "received": "Received",
+        "suspicious": "Suspicious",
+        "unsupported": "Unsupported",
+        "updated": "Updated",
+        "warnings": "Warnings"
+      },
+      "description": "The data sent to Verve, newest first, with what happened to its records.",
+      "details": {
+        "action": "Details",
+        "byType": "By type",
+        "close": "Close",
+        "description": "{{origin}}, {{status}}",
+        "errors": "Sample errors",
+        "label": "Details of the import of {{date}}",
+        "noError": "No error.",
+        "noRecord": "No record yet.",
+        "title": "Import of {{date}}",
+        "totals": "Totals",
+        "workouts": "Workouts"
+      },
+      "empty": {
+        "description": "Your imports appear here once an app sends data to Verve. Create an API token for Health Auto Export or another app to start.",
+        "title": "No import yet",
+        "tokens": "Create an API token"
+      },
+      "inProgress": "In progress",
+      "more": "Show more",
+      "noClient": "None",
+      "notStarted": "Not started",
+      "origin": {
+        "cli": "Command line",
+        "hae": "Health Auto Export",
+        "native": "Native format",
+        "xml": "Apple Health export"
+      },
+      "status": {
+        "cancelled": "Cancelled",
+        "completed": "Completed",
+        "failed": "Failed",
+        "queued": "Queued",
+        "running": "Running"
+      },
+      "title": "Imports",
+      "token": "via {{name}}"
     },
     "invite": {
       "askNewInvitation": "Ask an admin for a new invitation.",
@@ -161,6 +237,7 @@ export default interface Resources {
     "nav": {
       "admin": "Administration",
       "home": "Home",
+      "imports": "Imports",
       "main": "Main"
     },
     "notFound": {

@@ -264,8 +264,9 @@ Every way of getting data into Verve goes through one pipeline that works on nor
 
 ## UX notes
 
-- "Imports" page: TanStack Table of imports with origin, automation name, date, duration, status and counters. A detail drawer reads the counters per type key of the report (FR-3) and shows them with the sample errors.
-- A banner on every page while an import of the current user is running, with progress when known.
+- "Imports" page (`/imports`, in the main navigation): TanStack Table of the imports of the user, newest first, with origin, client (the name and version of its `client`, and the name of its token), creation date, duration (from its first run to its end), status and the counters `received`, `inserted`, `updated`, `duplicates` and `invalid` of `total`. The next pages load on demand, with a "Show more" button. Without any import, the page points to the API tokens page.
+- A detail drawer per import reads `GET /api/v1/imports/{id}` and shows every counter of `total`, the counters of each type key of the report (FR-3), the types with the most records first and the workouts last, and the sample errors. A type key is shown by the translated name of its metric type, by the identifier of an uncurated type, as `GET /api/v1/metrics` gives it, and as it is for an unsupported type, whose key is its identifier. A queued or running import offers to cancel it (FR-10), behind a confirmation.
+- A banner on every page of a session while an import of the current user is running, with the number of records received so far once there is one, and a link to the imports page. It polls `GET /api/v1/imports?status=running` every 5 seconds while an import runs, and every minute otherwise.
 
 ## Data and API notes
 

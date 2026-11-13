@@ -5,6 +5,7 @@ import {
   getCurrentUserOptions,
   getSetupStatusOptions,
 } from "@/api/generated/@tanstack/react-query.gen";
+import { ImportBanner } from "@/components/import-banner";
 import { TimezoneDialog } from "@/components/timezone-dialog";
 
 /**
@@ -12,7 +13,8 @@ import { TimezoneDialog } from "@/components/timezone-dialog";
  * of the session in the route context, from the query cache when it holds
  * them, and without a session goes to the login page with the current URL as
  * the target, or to the setup page while the instance has no account. Its
- * pages ask a user without a timezone to confirm one.
+ * pages show a banner while an import of the user runs, and ask a user
+ * without a timezone to confirm one.
  */
 export const Route = createFileRoute("/_authenticated")({
   beforeLoad: async ({ context: { queryClient }, location }) => {
@@ -43,6 +45,7 @@ function Authenticated() {
 
   return (
     <>
+      <ImportBanner />
       <Outlet />
       <TimezoneDialog user={user} />
     </>
