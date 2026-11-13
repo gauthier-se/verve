@@ -195,7 +195,8 @@ Every user-owned row carries a `user_id`. All queries are scoped by user, and th
 | `source_aliases` | Merged sources (old and new device names), matched by the same name and device model as sources |
 | `source_priorities` | Per user, per metric ordered list of sources, ignored sources, combine flag |
 | `block_rules` | Sample, source, type or source and type rules, optional time range |
-| `imports`, `uploads` | Import history and resumable uploads |
+| `imports` | Import history: origin, token id (referencing no table, so that revoking a token keeps the history), client metadata, status and its times, the position of the next record, and the report (counters in total, per type key and for the workouts, sample error messages) |
+| `uploads` | Resumable uploads |
 | `jobs` | Persistent background jobs |
 | `sleep_nights` | Assembled nights with stage statistics |
 | `personal_records` | Best efforts and records per sport, with history |
