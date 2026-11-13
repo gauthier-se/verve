@@ -72,6 +72,12 @@ export type AdminUser = {
      */
     id: number;
     /**
+     * The end of the last completed import of the user for each origin, xml, hae, native or cli, the origins without one left out.
+     */
+    lastIngestions: {
+        [key: string]: string;
+    };
+    /**
      * When the user last logged in, left out when they never did.
      */
     lastLoginAt?: string;
@@ -80,9 +86,17 @@ export type AdminUser = {
      */
     role: 'admin' | 'member';
     /**
+     * The number of samples of the user.
+     */
+    samples: number;
+    /**
      * The status of the account. A disabled user cannot log in.
      */
     status: 'active' | 'disabled' | 'deleting';
+    /**
+     * An estimate of the storage that the data of the user takes, in bytes: 178 bytes per sample plus the size of their workout routes.
+     */
+    storageBytes: number;
     /**
      * The username, in the case it was created with.
      */
@@ -429,6 +443,54 @@ export type ImportReport = {
     workouts: ImportTypeCounters;
 };
 
+export type ImportSummary = {
+    /**
+     * The metadata of the client that sent the data, left out when there is none.
+     */
+    client?: {
+        [key: string]: string;
+    };
+    /**
+     * When the import was created.
+     */
+    createdAt: string;
+    /**
+     * When the import ended, left out until it does.
+     */
+    finishedAt?: string;
+    /**
+     * The id of the import.
+     */
+    id: number;
+    /**
+     * Where the data comes from: the Apple Health export, Health Auto Export, the native format or the command line.
+     */
+    origin: 'xml' | 'hae' | 'native' | 'cli';
+    /**
+     * The total counters of the import so far.
+     */
+    report: ImportSummaryReport;
+    /**
+     * When the import first ran, left out until it does.
+     */
+    startedAt?: string;
+    /**
+     * The status of the import.
+     */
+    status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+    /**
+     * The name of the token that pushed the data, left out when there is none.
+     */
+    tokenName?: string;
+};
+
+export type ImportSummaryReport = {
+    /**
+     * Every counter, for every record.
+     */
+    total: ImportCounters;
+};
+
 export type ImportTypeCounters = {
     blocked?: number;
     deleted?: number;
@@ -626,6 +688,17 @@ export type PageAuditEvent = {
      * The items of the page, newest first.
      */
     items: Array<AuditEvent>;
+    /**
+     * The cursor of the next page, left out on the last page.
+     */
+    nextCursor?: string;
+};
+
+export type PageImportSummary = {
+    /**
+     * The items of the page, newest first.
+     */
+    items: Array<ImportSummary>;
     /**
      * The cursor of the next page, left out on the last page.
      */
@@ -1824,6 +1897,148 @@ export type GetCurrentUserResponses = {
 };
 
 export type GetCurrentUserResponse = GetCurrentUserResponses[keyof GetCurrentUserResponses];
+
+export type ListImportsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * The nextCursor of the previous page, left out for the first page.
+         */
+        cursor?: string;
+        /**
+         * The maximum number of items of the page, at most 200: a larger limit counts as 200.
+         */
+        limit?: number;
+        /**
+         * Keeps the imports of this status, left out for every import.
+         */
+        status?: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+    };
+    url: '/api/v1/imports';
+};
+
+export type ListImportsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Forbidden
+     */
+    403: Problem;
+    /**
+     * Unprocessable Entity
+     */
+    422: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type ListImportsError = ListImportsErrors[keyof ListImportsErrors];
+
+export type ListImportsResponses = {
+    /**
+     * OK
+     */
+    200: PageImportSummary;
+};
+
+export type ListImportsResponse = ListImportsResponses[keyof ListImportsResponses];
+
+export type GetImportData = {
+    body?: never;
+    path: {
+        /**
+         * The id of the import.
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/api/v1/imports/{id}';
+};
+
+export type GetImportErrors = {
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Forbidden
+     */
+    403: Problem;
+    /**
+     * Not Found
+     */
+    404: Problem;
+    /**
+     * Unprocessable Entity
+     */
+    422: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type GetImportError = GetImportErrors[keyof GetImportErrors];
+
+export type GetImportResponses = {
+    /**
+     * OK
+     */
+    200: Import;
+};
+
+export type GetImportResponse = GetImportResponses[keyof GetImportResponses];
+
+export type CancelImportData = {
+    body?: never;
+    path: {
+        /**
+         * The id of the import.
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/api/v1/imports/{id}/cancel';
+};
+
+export type CancelImportErrors = {
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Not Found
+     */
+    404: Problem;
+    /**
+     * Conflict
+     */
+    409: Problem;
+    /**
+     * Unprocessable Entity
+     */
+    422: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type CancelImportError = CancelImportErrors[keyof CancelImportErrors];
+
+export type CancelImportResponses = {
+    /**
+     * Accepted
+     */
+    202: Import;
+};
+
+export type CancelImportResponse = CancelImportResponses[keyof CancelImportResponses];
 
 export type PushNativeData = {
     /**

@@ -239,6 +239,7 @@ func endEvent(imp store.Import) audit.Event {
 		return audit.ImportCancelled(imp.UserID, imp.ID, imp.Origin, imp.Report.Total)
 	}
 }
+
 // metadata returns the client metadata of the import of a payload sent by c, without the fields
 // that c leaves out.
 func (c Client) metadata() map[string]string {

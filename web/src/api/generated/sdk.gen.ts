@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AcceptInvitationData, AcceptInvitationErrors, AcceptInvitationResponses, ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, CreateAdminBackupData, CreateAdminBackupErrors, CreateAdminBackupResponses, CreateFirstAdminData, CreateFirstAdminErrors, CreateFirstAdminResponses, CreateInvitationData, CreateInvitationErrors, CreateInvitationResponses, CreatePasswordResetLinkData, CreatePasswordResetLinkErrors, CreatePasswordResetLinkResponses, CreateTokenData, CreateTokenErrors, CreateTokenResponses, DeleteAccountData, DeleteAccountErrors, DeleteAccountResponses, DeleteUserData, DeleteUserErrors, DeleteUserResponses, DownloadAdminBackupData, DownloadAdminBackupErrors, DownloadAdminBackupResponses, GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetMetaData, GetMetaErrors, GetMetaResponses, GetPreferencesData, GetPreferencesErrors, GetPreferencesResponses, GetSetupStatusData, GetSetupStatusErrors, GetSetupStatusResponses, InspectInvitationData, InspectInvitationErrors, InspectInvitationResponses, ListAccountAuditEventsData, ListAccountAuditEventsErrors, ListAccountAuditEventsResponses, ListAdminAuditEventsData, ListAdminAuditEventsErrors, ListAdminAuditEventsResponses, ListAdminBackupsData, ListAdminBackupsErrors, ListAdminBackupsResponses, ListAdminJobsData, ListAdminJobsErrors, ListAdminJobsResponses, ListAdminUsersData, ListAdminUsersErrors, ListAdminUsersResponses, ListMetricsData, ListMetricsErrors, ListMetricsResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, ListTokensData, ListTokensErrors, ListTokensResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutErrors, LogoutResponses, PushNativeData, PushNativeErrors, PushNativeResponses, ResetPasswordData, ResetPasswordErrors, ResetPasswordResponses, RevokeOtherSessionsData, RevokeOtherSessionsErrors, RevokeOtherSessionsResponses, RevokeSessionData, RevokeSessionErrors, RevokeSessionResponses, RevokeTokenData, RevokeTokenErrors, RevokeTokenResponses, SetUserRoleData, SetUserRoleErrors, SetUserRoleResponses, SetUserStatusData, SetUserStatusErrors, SetUserStatusResponses, UpdatePreferencesData, UpdatePreferencesErrors, UpdatePreferencesResponses } from './types.gen';
+import type { AcceptInvitationData, AcceptInvitationErrors, AcceptInvitationResponses, CancelImportData, CancelImportErrors, CancelImportResponses, ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, CreateAdminBackupData, CreateAdminBackupErrors, CreateAdminBackupResponses, CreateFirstAdminData, CreateFirstAdminErrors, CreateFirstAdminResponses, CreateInvitationData, CreateInvitationErrors, CreateInvitationResponses, CreatePasswordResetLinkData, CreatePasswordResetLinkErrors, CreatePasswordResetLinkResponses, CreateTokenData, CreateTokenErrors, CreateTokenResponses, DeleteAccountData, DeleteAccountErrors, DeleteAccountResponses, DeleteUserData, DeleteUserErrors, DeleteUserResponses, DownloadAdminBackupData, DownloadAdminBackupErrors, DownloadAdminBackupResponses, GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetImportData, GetImportErrors, GetImportResponses, GetMetaData, GetMetaErrors, GetMetaResponses, GetPreferencesData, GetPreferencesErrors, GetPreferencesResponses, GetSetupStatusData, GetSetupStatusErrors, GetSetupStatusResponses, InspectInvitationData, InspectInvitationErrors, InspectInvitationResponses, ListAccountAuditEventsData, ListAccountAuditEventsErrors, ListAccountAuditEventsResponses, ListAdminAuditEventsData, ListAdminAuditEventsErrors, ListAdminAuditEventsResponses, ListAdminBackupsData, ListAdminBackupsErrors, ListAdminBackupsResponses, ListAdminJobsData, ListAdminJobsErrors, ListAdminJobsResponses, ListAdminUsersData, ListAdminUsersErrors, ListAdminUsersResponses, ListImportsData, ListImportsErrors, ListImportsResponses, ListMetricsData, ListMetricsErrors, ListMetricsResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, ListTokensData, ListTokensErrors, ListTokensResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutErrors, LogoutResponses, PushNativeData, PushNativeErrors, PushNativeResponses, ResetPasswordData, ResetPasswordErrors, ResetPasswordResponses, RevokeOtherSessionsData, RevokeOtherSessionsErrors, RevokeOtherSessionsResponses, RevokeSessionData, RevokeSessionErrors, RevokeSessionResponses, RevokeTokenData, RevokeTokenErrors, RevokeTokenResponses, SetUserRoleData, SetUserRoleErrors, SetUserRoleResponses, SetUserStatusData, SetUserStatusErrors, SetUserStatusResponses, UpdatePreferencesData, UpdatePreferencesErrors, UpdatePreferencesResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -413,6 +413,51 @@ export const getCurrentUser = <ThrowOnError extends boolean = false>(options?: O
             type: 'apiKey'
         }],
     url: '/api/v1/auth/me',
+    ...options
+});
+
+/**
+ * List the imports
+ *
+ * Returns the imports of the current user, newest first by creation, with their total counters. `GET /api/v1/imports/{id}` gives the whole report of one. Accepts a session or a token with the `read` scope.
+ */
+export const listImports = <ThrowOnError extends boolean = false>(options?: Options<ListImportsData, ThrowOnError>): RequestResult<ListImportsResponses, ListImportsErrors, ThrowOnError> => (options?.client ?? client).get<ListImportsResponses, ListImportsErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'verve_session',
+            type: 'apiKey'
+        }, { scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/imports',
+    ...options
+});
+
+/**
+ * Get an import
+ *
+ * Returns an import of the current user with its whole report: the counters in total, per type key and for the workouts, and the sample error messages. Accepts a session or a token with the `ingest` or `read` scope, so that a client can follow the import it pushed.
+ */
+export const getImport = <ThrowOnError extends boolean = false>(options: Options<GetImportData, ThrowOnError>): RequestResult<GetImportResponses, GetImportErrors, ThrowOnError> => (options.client ?? client).get<GetImportResponses, GetImportErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'verve_session',
+            type: 'apiKey'
+        }, { scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/imports/{id}',
+    ...options
+});
+
+/**
+ * Cancel an import
+ *
+ * Cancels a queued or running import of the current user, and answers 202 with the import. A queued import ends cancelled at once, and a running one at the next batch boundary of its job: the data already stored stays. A finished import answers 409 `import_finished`.
+ */
+export const cancelImport = <ThrowOnError extends boolean = false>(options: Options<CancelImportData, ThrowOnError>): RequestResult<CancelImportResponses, CancelImportErrors, ThrowOnError> => (options.client ?? client).post<CancelImportResponses, CancelImportErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'verve_session',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/imports/{id}/cancel',
     ...options
 });
 
