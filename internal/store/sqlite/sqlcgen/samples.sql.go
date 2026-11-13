@@ -39,6 +39,62 @@ func (q *Queries) AddSampleStats(ctx context.Context, arg AddSampleStatsParams) 
 	return err
 }
 
+const deleteLastSampleStats = `-- name: DeleteLastSampleStats :execrows
+DELETE
+FROM sample_stats
+WHERE user_id = ? AND type_id = ? AND count <= 1
+`
+
+type DeleteLastSampleStatsParams struct {
+	UserID int64
+	TypeID int64
+}
+
+// Removes the data availability of a user and type whose last sample was removed.
+func (q *Queries) DeleteLastSampleStats(ctx context.Context, arg DeleteLastSampleStatsParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteLastSampleStats, arg.UserID, arg.TypeID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const deleteUserSampleByNaturalKey = `-- name: DeleteUserSampleByNaturalKey :one
+DELETE
+FROM samples
+WHERE user_id = ? AND natural_key = ?
+RETURNING id, user_id, type_id, source_id, start_at, end_at, utc_offset, value, min, max, category, origin, import_id, uuid, natural_key, metadata
+`
+
+type DeleteUserSampleByNaturalKeyParams struct {
+	UserID     int64
+	NaturalKey []byte
+}
+
+func (q *Queries) DeleteUserSampleByNaturalKey(ctx context.Context, arg DeleteUserSampleByNaturalKeyParams) (Sample, error) {
+	row := q.db.QueryRowContext(ctx, deleteUserSampleByNaturalKey, arg.UserID, arg.NaturalKey)
+	var i Sample
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.TypeID,
+		&i.SourceID,
+		&i.StartAt,
+		&i.EndAt,
+		&i.UtcOffset,
+		&i.Value,
+		&i.Min,
+		&i.Max,
+		&i.Category,
+		&i.Origin,
+		&i.ImportID,
+		&i.Uuid,
+		&i.NaturalKey,
+		&i.Metadata,
+	)
+	return i, err
+}
+
 const deleteUserSampleStats = `-- name: DeleteUserSampleStats :execrows
 DELETE
 FROM sample_stats
@@ -242,6 +298,27 @@ func (q *Queries) ListUserSamples(ctx context.Context, arg ListUserSamplesParams
 		return nil, err
 	}
 	return items, nil
+}
+
+const removeSampleStats = `-- name: RemoveSampleStats :exec
+UPDATE sample_stats
+SET count    = count - 1,
+    first_at = (SELECT min(s.start_at) FROM samples AS s WHERE s.user_id = sample_stats.user_id AND s.type_id = sample_stats.type_id),
+    last_at  = (SELECT max(s.start_at) FROM samples AS s WHERE s.user_id = sample_stats.user_id AND s.type_id = sample_stats.type_id)
+WHERE sample_stats.user_id = ?1
+  AND sample_stats.type_id = ?2
+`
+
+type RemoveSampleStatsParams struct {
+	UserID int64
+	TypeID int64
+}
+
+// Counts one removed sample of a user and type, and narrows the first and last start to those of
+// the samples left, which the index on (user_id, type_id, start_at) gives.
+func (q *Queries) RemoveSampleStats(ctx context.Context, arg RemoveSampleStatsParams) error {
+	_, err := q.db.ExecContext(ctx, removeSampleStats, arg.UserID, arg.TypeID)
+	return err
 }
 
 const replaceSample = `-- name: ReplaceSample :execrows

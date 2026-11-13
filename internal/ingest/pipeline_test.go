@@ -841,3 +841,199 @@ func TestRun_StopsAtTheNextBatchBoundaryWhenCancelled(t *testing.T) {
 	require.Equal(t, store.ImportCounters{Received: 2, Inserted: 2}, got.Report.Total)
 	require.Len(t, env.samples(t, "HKQuantityTypeIdentifierHeartRate"), 2)
 }
+
+// deletion returns a record of the deletion of uuid.
+func deletion(uuid string) ingest.Record {
+	return ingest.Record{Deletion: &ingest.Deletion{UUID: uuid}}
+}
+
+// Given samples of a uuid of any origin, and workouts of a uuid of the origins native and xml, when
+// a native payload sends a sample and deletes uuids after its samples and workouts, its own sample
+// included, then the samples of those uuids and the native workout with its route are removed,
+// whatever the case of the uuid, while the xml workout stays. Each removal counts as deleted under
+// its type key or the workouts, the data availability follows, and the ranges of the samples
+// removed are recorded as dirty.
+func TestRun_DeletionsRemoveTheRecordsOfTheirUUID(t *testing.T) {
+	t.Parallel()
+
+	env := newPipelineEnv(t)
+	ctx := t.Context()
+
+	kept := quantitySample()
+	kept.UUID, kept.Start, kept.End = "", "2026-11-10T10:00:00+01:00", "2026-11-10T10:00:00+01:00"
+
+	env.run(t, store.OriginHAE, quantity(quantitySample()), quantity(kept))
+	env.run(t, store.OriginXML, workoutRecord(workout()))
+	env.run(t, store.OriginNative, workoutRecord(workout()))
+
+	workouts := env.workouts(t)
+	require.Len(t, workouts, 2)
+
+	native := workouts[slices.IndexFunc(workouts, func(w store.Workout) bool { return w.Origin == store.OriginNative })]
+	_, err := env.store.Workouts().GetRoute(ctx, env.user.ID, native.ID)
+	require.NoError(t, err)
+
+	dirty := &dirtyFake{}
+	imp := env.running(t, store.OriginNative)
+	pipeline := env.pipeline(func(cfg *ingest.Config) { cfg.DirtyRanges = dirty })
+	require.NoError(t, pipeline.Run(ctx, env.user.ID, imp.ID, recordsOf(
+		category(categorySample()),
+		deletion(strings.ToLower(quantitySample().UUID)),
+		deletion(workout().UUID),
+		deletion(strings.ToLower(categorySample().UUID)),
+	)))
+
+	require.Equal(t, store.ImportReport{
+		Total: store.ImportCounters{Received: 1, Inserted: 1, Deleted: 3},
+		Types: map[string]store.ImportCounters{
+			"heart_rate":     {Deleted: 1},
+			"sleep_analysis": {Received: 1, Inserted: 1, Deleted: 1},
+		},
+		Workouts: store.ImportCounters{Deleted: 1},
+	}, env.importOf(t, imp.ID).Report)
+
+	hr := env.samples(t, "HKQuantityTypeIdentifierHeartRate")
+	require.Len(t, hr, 1)
+	require.Empty(t, hr[0].UUID, "the sample without uuid stays")
+	require.Empty(t, env.samples(t, "HKCategoryTypeIdentifierSleepAnalysis"), "a sample sent and deleted in one payload ends up deleted")
+
+	workouts = env.workouts(t)
+	require.Len(t, workouts, 1)
+	require.Equal(t, store.OriginXML, workouts[0].Origin, "a deletion removes the native workouts only")
+
+	_, err = env.store.Workouts().GetRoute(ctx, env.user.ID, native.ID)
+	require.ErrorIs(t, err, store.ErrNotFound)
+
+	hrType := env.metricType(t, "HKQuantityTypeIdentifierHeartRate")
+	sleepType := env.metricType(t, "HKCategoryTypeIdentifierSleepAnalysis")
+
+	stats, err := env.store.Samples().Stats(ctx, env.user.ID)
+	require.NoError(t, err)
+	require.Equal(t, []store.SampleStats{{
+		TypeID:  hrType.ID,
+		FirstAt: time.Date(2026, 11, 10, 9, 0, 0, 0, time.UTC),
+		LastAt:  time.Date(2026, 11, 10, 9, 0, 0, 0, time.UTC),
+		Count:   1,
+	}}, stats)
+
+	sleep := ingest.DirtyRange{
+		TypeID: sleepType.ID,
+		From:   time.Date(2026, 11, 10, 0, 12, 0, 0, time.UTC),
+		To:     time.Date(2026, 11, 10, 1, 3, 30, 250_000_000, time.UTC),
+	}
+	require.Equal(t, []ingest.DirtyRange{
+		sleep,
+		{TypeID: hrType.ID, From: time.Date(2026, 11, 10, 7, 0, 0, 0, time.UTC), To: time.Date(2026, 11, 10, 7, 0, 0, 0, time.UTC)},
+		sleep,
+	}, dirty.ranges)
+}
+
+// Given uuids that match no record, a uuid deleted twice included, when a native payload deletes
+// them, then each counts as notFound in the total only, nothing is removed, and no block rule
+// sees them, so that none can be created.
+func TestRun_DeletionOfAnUnknownUUIDCountsNotFound(t *testing.T) {
+	t.Parallel()
+
+	env := newPipelineEnv(t)
+	ctx := t.Context()
+
+	env.run(t, store.OriginNative, quantity(quantitySample()))
+
+	blocks := &blockFake{}
+	dirty := &dirtyFake{}
+	imp := env.running(t, store.OriginNative)
+	pipeline := env.pipeline(func(cfg *ingest.Config) { cfg.BlockRules, cfg.DirtyRanges = blocks, dirty })
+	require.NoError(t, pipeline.Run(ctx, env.user.ID, imp.ID, recordsOf(
+		deletion("5A4B3C2D-1E0F-4A9B-8C7D-6E5F4A3B2C1D"),
+		deletion(quantitySample().UUID),
+		deletion(quantitySample().UUID),
+	)))
+
+	require.Equal(t, store.ImportReport{
+		Total: store.ImportCounters{Deleted: 1, NotFound: 2},
+		Types: map[string]store.ImportCounters{"heart_rate": {Deleted: 1}},
+	}, env.importOf(t, imp.ID).Report)
+	require.Empty(t, blocks.candidates)
+	require.Len(t, dirty.ranges, 1, "only the removal records a dirty range")
+}
+
+// Given a sample and a workout of a uuid of another user, when a native payload of the user deletes
+// that uuid, then nothing of the other user is removed, and the uuid counts as notFound.
+func TestRun_DeletionNeverRemovesTheRecordsOfAnotherUser(t *testing.T) {
+	t.Parallel()
+
+	env := newPipelineEnv(t)
+	ctx := t.Context()
+
+	other, err := env.store.Users().Create(ctx, store.NewUser{Username: "bob", Role: store.RoleMember})
+	require.NoError(t, err)
+
+	theirs, err := env.store.Imports().Create(ctx, store.NewImport{UserID: other.ID, Origin: store.OriginNative})
+	require.NoError(t, err)
+
+	_, err = env.store.Imports().SetStatus(ctx, other.ID, theirs.ID, store.ImportRunning)
+	require.NoError(t, err)
+
+	w := workout()
+	w.UUID = quantitySample().UUID
+	require.NoError(t, env.pipeline().Run(ctx, other.ID, theirs.ID, recordsOf(quantity(quantitySample()), workoutRecord(w))))
+
+	imp := env.run(t, store.OriginNative, deletion(quantitySample().UUID))
+	require.Equal(t, store.ImportReport{Total: store.ImportCounters{NotFound: 1}}, imp.Report)
+
+	samples, err := env.store.Samples().Stats(ctx, other.ID)
+	require.NoError(t, err)
+	require.Len(t, samples, 1)
+	require.Equal(t, int64(1), samples[0].Count)
+
+	workouts, err := env.store.Workouts().List(ctx, other.ID, store.WorkoutsQuery{
+		From:  time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC),
+		To:    time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC),
+		Limit: 10,
+	})
+	require.NoError(t, err)
+	require.Len(t, workouts, 1)
+}
+
+// Given records that their adapter found invalid while reading them, then each counts as invalid
+// with its reason: a sample under the type key of a stored type, and in the total only without
+// type or of a type not stored yet, which it does not create; a workout under the workouts; a
+// deletion as invalid in the total only, never as received. A sample of an unsupported type counts
+// as unsupported, as type mapping comes first.
+func TestRun_RecordsThatTheAdapterFoundInvalid(t *testing.T) {
+	t.Parallel()
+
+	env := newPipelineEnv(t)
+
+	invalid := func(of ingest.RecordKind, typ, reason string) ingest.Record {
+		return ingest.Record{Invalid: &ingest.Invalid{Of: of, Type: typ, Reason: reason}}
+	}
+
+	imp := env.run(t, store.OriginNative,
+		invalid(ingest.SampleRecord, "HKQuantityTypeIdentifierStepCount", "value is not a number"),
+		invalid(ingest.SampleRecord, "", "type is missing"),
+		invalid(ingest.WorkoutRecord, "", "uuid is missing"),
+		invalid(ingest.DeletionRecord, "", "deletion is not a uuid"),
+		invalid(ingest.SampleRecord, "HKQuantityTypeIdentifierSomethingNew", "unit is missing"),
+		invalid(ingest.SampleRecord, "HKDataTypeIdentifierElectrocardiogram", "start is missing"),
+	)
+
+	require.Equal(t, store.ImportReport{
+		Total: store.ImportCounters{Received: 5, Invalid: 5, Unsupported: 1},
+		Types: map[string]store.ImportCounters{
+			"step_count":                            {Received: 1, Invalid: 1},
+			"HKDataTypeIdentifierElectrocardiogram": {Received: 1, Unsupported: 1},
+		},
+		Workouts: store.ImportCounters{Received: 1, Invalid: 1},
+		Errors: []string{
+			`record 0 (HKQuantityTypeIdentifierStepCount): value is not a number`,
+			`record 1: type is missing`,
+			`record 2 (workout): uuid is missing`,
+			`record 3 (deletion): deletion is not a uuid`,
+			`record 4 (HKQuantityTypeIdentifierSomethingNew): unit is missing`,
+		},
+	}, imp.Report)
+
+	_, err := env.store.MetricTypes().GetByIdentifier(t.Context(), "HKQuantityTypeIdentifierSomethingNew")
+	require.ErrorIs(t, err, store.ErrNotFound, "an invalid record creates no type")
+}

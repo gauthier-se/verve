@@ -132,6 +132,30 @@ func (r workouts) DeleteByUser(ctx context.Context, userID int64, limit int) (in
 	return deleted, nil
 }
 
+func (r workouts) DeleteByKey(ctx context.Context, userID int64, key []byte) (store.Workout, error) {
+	var removed store.Workout
+
+	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
+		row, err := q.DeleteUserWorkoutByNaturalKey(ctx, sqlcgen.DeleteUserWorkoutByNaturalKeyParams{UserID: userID, NaturalKey: key})
+		if errors.Is(err, sql.ErrNoRows) {
+			return store.ErrNotFound
+		}
+
+		if err != nil {
+			return err
+		}
+
+		removed, err = workoutOf(row)
+
+		return err
+	})
+	if err != nil {
+		return store.Workout{}, fmt.Errorf("delete workout of user %d by key: %w", userID, err)
+	}
+
+	return removed, nil
+}
+
 // checkWorkout returns ErrInvalid when workout has a field that the store refuses, the reference to
 // its source aside.
 func checkWorkout(workout store.NewWorkout) error {

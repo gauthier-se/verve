@@ -43,7 +43,7 @@ func sampleKey(s store.Sample, preAggregated bool) []byte {
 
 	switch {
 	case s.UUID != "":
-		k.text(keySampleUUID).text(strings.ToUpper(s.UUID))
+		return sampleUUIDKey(s.UUID)
 	case preAggregated:
 		k.text(keySamplePoint).int(s.TypeID).int(s.SourceID).time(s.Start).time(s.End)
 	default:
@@ -67,15 +67,27 @@ func workoutRule(w store.Workout) store.ConflictRule {
 // workoutKey returns the natural key of w: from its origin and external id, or from its activity
 // type, source, start and end when it has no external id.
 func workoutKey(w store.Workout) []byte {
-	var k key
-
 	if w.ExternalID != "" {
-		k.text(keyWorkoutID).text(string(w.Origin)).text(strings.ToUpper(w.ExternalID))
-	} else {
-		k.text(keyWorkoutNoID).text(w.Activity).int(w.SourceID).time(w.Start).time(w.End)
+		return workoutIDKey(w.Origin, w.ExternalID)
 	}
 
-	return k.sum()
+	var k key
+
+	return k.text(keyWorkoutNoID).text(w.Activity).int(w.SourceID).time(w.Start).time(w.End).sum()
+}
+
+// sampleUUIDKey returns the natural key of the sample of uuid, whatever its origin.
+func sampleUUIDKey(uuid string) []byte {
+	var k key
+
+	return k.text(keySampleUUID).text(strings.ToUpper(uuid)).sum()
+}
+
+// workoutIDKey returns the natural key of the workout of origin whose external id is id.
+func workoutIDKey(origin store.Origin, id string) []byte {
+	var k key
+
+	return k.text(keyWorkoutID).text(string(origin)).text(strings.ToUpper(id)).sum()
 }
 
 // key builds the input of a natural key hash, each field self-delimiting, by its length or its

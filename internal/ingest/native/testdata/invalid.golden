@@ -1,0 +1,429 @@
+{
+  "Client": {
+    "Name": "Verve for iOS",
+    "Version": "1.2.0",
+    "DeviceModel": "iPhone17,1",
+    "OSVersion": "27.1"
+  },
+  "Records": [
+    {
+      "Position": 0,
+      "Quantity": {
+        "UUID": "",
+        "Type": "HKQuantityTypeIdentifierStepCount",
+        "Start": "2026-11-10T08:00:00Z",
+        "End": "2026-11-10T08:10:00Z",
+        "Value": 120,
+        "Unit": "count",
+        "Min": null,
+        "Max": null,
+        "PreAggregated": false,
+        "Source": {
+          "Name": "iPhone",
+          "DeviceModel": "",
+          "BundleID": "",
+          "DeviceName": "",
+          "Manufacturer": "",
+          "HardwareVersion": "",
+          "SoftwareVersion": ""
+        },
+        "Metadata": null
+      },
+      "Category": null,
+      "Workout": null,
+      "Deletion": null,
+      "Invalid": null
+    },
+    {
+      "Position": 1,
+      "Quantity": null,
+      "Category": null,
+      "Workout": null,
+      "Deletion": null,
+      "Invalid": {
+        "Of": "sample",
+        "Type": "",
+        "Reason": "sample is not an object"
+      }
+    },
+    {
+      "Position": 2,
+      "Quantity": null,
+      "Category": null,
+      "Workout": null,
+      "Deletion": null,
+      "Invalid": {
+        "Of": "sample",
+        "Type": "",
+        "Reason": "type is missing"
+      }
+    },
+    {
+      "Position": 3,
+      "Quantity": null,
+      "Category": null,
+      "Workout": null,
+      "Deletion": null,
+      "Invalid": {
+        "Of": "sample",
+        "Type": "",
+        "Reason": "type is not a string"
+      }
+    },
+    {
+      "Position": 4,
+      "Quantity": null,
+      "Category": null,
+      "Workout": null,
+      "Deletion": null,
+      "Invalid": {
+        "Of": "sample",
+        "Type": "HKCategoryTypeIdentifierSleepAnalysis",
+        "Reason": "sample has both a value and a category value"
+      }
+    },
+    {
+      "Position": 5,
+      "Quantity": null,
+      "Category": null,
+      "Workout": null,
+      "Deletion": null,
+      "Invalid": {
+        "Of": "sample",
+        "Type": "HKCategoryTypeIdentifierSleepAnalysis",
+        "Reason": "sample has neither a value nor a category value"
+      }
+    },
+    {
+      "Position": 6,
+      "Quantity": null,
+      "Category": null,
+      "Workout": null,
+      "Deletion": null,
+      "Invalid": {
+        "Of": "sample",
+        "Type": "HKQuantityTypeIdentifierStepCount",
+        "Reason": "value is not a number"
+      }
+    },
+    {
+      "Position": 7,
+      "Quantity": null,
+      "Category": null,
+      "Workout": null,
+      "Deletion": null,
+      "Invalid": {
+        "Of": "sample",
+        "Type": "HKQuantityTypeIdentifierStepCount",
+        "Reason": "unit is missing"
+      }
+    },
+    {
+      "Position": 8,
+      "Quantity": null,
+      "Category": null,
+      "Workout": null,
+      "Deletion": null,
+      "Invalid": {
+        "Of": "sample",
+        "Type": "HKQuantityTypeIdentifierStepCount",
+        "Reason": "start is missing"
+      }
+    },
+    {
+      "Position": 9,
+      "Quantity": null,
+      "Category": null,
+      "Workout": null,
+      "Deletion": null,
+      "Invalid": {
+        "Of": "sample",
+        "Type": "HKQuantityTypeIdentifierStepCount",
+        "Reason": "source is missing"
+      }
+    },
+    {
+      "Position": 10,
+      "Quantity": null,
+      "Category": null,
+      "Workout": null,
+      "Deletion": null,
+      "Invalid": {
+        "Of": "sample",
+        "Type": "HKQuantityTypeIdentifierStepCount",
+        "Reason": "source: name is missing"
+      }
+    },
+    {
+      "Position": 11,
+      "Quantity": null,
+      "Category": null,
+      "Workout": null,
+      "Deletion": null,
+      "Invalid": {
+        "Of": "sample",
+        "Type": "HKQuantityTypeIdentifierStepCount",
+        "Reason": "metadata has a value that is not a string, a number or a boolean"
+      }
+    },
+    {
+      "Position": 12,
+      "Quantity": null,
+      "Category": null,
+      "Workout": null,
+      "Deletion": null,
+      "Invalid": {
+        "Of": "sample",
+        "Type": "HKQuantityTypeIdentifierStepCount",
+        "Reason": "uuid is not a uuid"
+      }
+    },
+    {
+      "Position": 13,
+      "Quantity": null,
+      "Category": null,
+      "Workout": null,
+      "Deletion": null,
+      "Invalid": {
+        "Of": "sample",
+        "Type": "HKQuantityTypeIdentifierStepCount",
+        "Reason": "value is not a finite number"
+      }
+    },
+    {
+      "Position": 14,
+      "Quantity": null,
+      "Category": null,
+      "Workout": null,
+      "Deletion": null,
+      "Invalid": {
+        "Of": "sample",
+        "Type": "HKQuantityTypeIdentifierStepCount",
+        "Reason": "start is not a string"
+      }
+    },
+    {
+      "Position": 15,
+      "Quantity": null,
+      "Category": null,
+      "Workout": {
+        "UUID": "9E7D5C3B-1A2F-4E6D-8C0B-2F4A6E8C0D1B",
+        "ActivityType": "HKWorkoutActivityTypeWalking",
+        "Start": "2026-11-10T12:00:00Z",
+        "End": "2026-11-10T12:20:00Z",
+        "Duration": {
+          "Value": 1200,
+          "Unit": "s"
+        },
+        "Totals": {
+          "Distance": null,
+          "ActiveEnergy": null,
+          "TotalEnergy": null,
+          "ElevationAscended": null,
+          "ElevationDescended": null,
+          "AvgHeartRate": null,
+          "MaxHeartRate": null
+        },
+        "Indoor": null,
+        "Source": {
+          "Name": "Apple Watch",
+          "DeviceModel": "",
+          "BundleID": "",
+          "DeviceName": "",
+          "Manufacturer": "",
+          "HardwareVersion": "",
+          "SoftwareVersion": ""
+        },
+        "Metadata": null,
+        "Events": null,
+        "Route": null
+      },
+      "Deletion": null,
+      "Invalid": null
+    },
+    {
+      "Position": 16,
+      "Quantity": null,
+      "Category": null,
+      "Workout": null,
+      "Deletion": null,
+      "Invalid": {
+        "Of": "workout",
+        "Type": "",
+        "Reason": "uuid is missing"
+      }
+    },
+    {
+      "Position": 17,
+      "Quantity": null,
+      "Category": null,
+      "Workout": null,
+      "Deletion": null,
+      "Invalid": {
+        "Of": "workout",
+        "Type": "",
+        "Reason": "duration is not a number"
+      }
+    },
+    {
+      "Position": 18,
+      "Quantity": null,
+      "Category": null,
+      "Workout": null,
+      "Deletion": null,
+      "Invalid": {
+        "Of": "workout",
+        "Type": "",
+        "Reason": "route point 1: latitude is missing"
+      }
+    },
+    {
+      "Position": 19,
+      "Quantity": null,
+      "Category": null,
+      "Workout": null,
+      "Deletion": null,
+      "Invalid": {
+        "Of": "workout",
+        "Type": "",
+        "Reason": "events is not an array"
+      }
+    },
+    {
+      "Position": 20,
+      "Quantity": null,
+      "Category": null,
+      "Workout": null,
+      "Deletion": null,
+      "Invalid": {
+        "Of": "workout",
+        "Type": "",
+        "Reason": "totals: distance: unit is missing"
+      }
+    },
+    {
+      "Position": 21,
+      "Quantity": null,
+      "Category": null,
+      "Workout": null,
+      "Deletion": null,
+      "Invalid": {
+        "Of": "workout",
+        "Type": "",
+        "Reason": "indoor is not a boolean"
+      }
+    },
+    {
+      "Position": 22,
+      "Quantity": null,
+      "Category": null,
+      "Workout": null,
+      "Deletion": null,
+      "Invalid": {
+        "Of": "workout",
+        "Type": "",
+        "Reason": "event 0: end is missing"
+      }
+    },
+    {
+      "Position": 23,
+      "Quantity": null,
+      "Category": null,
+      "Workout": {
+        "UUID": "1D2C3B4A-5E6F-4A7B-8C9D-0E1F2A3B4C5D",
+        "ActivityType": "HKWorkoutActivityTypeWalking",
+        "Start": "2026-11-10T12:00:00Z",
+        "End": "2026-11-10T12:20:00Z",
+        "Duration": {
+          "Value": 1200,
+          "Unit": "s"
+        },
+        "Totals": {
+          "Distance": {
+            "Value": 1.4,
+            "Unit": ""
+          },
+          "ActiveEnergy": null,
+          "TotalEnergy": null,
+          "ElevationAscended": null,
+          "ElevationDescended": null,
+          "AvgHeartRate": null,
+          "MaxHeartRate": null
+        },
+        "Indoor": null,
+        "Source": {
+          "Name": "Apple Watch",
+          "DeviceModel": "",
+          "BundleID": "",
+          "DeviceName": "",
+          "Manufacturer": "",
+          "HardwareVersion": "",
+          "SoftwareVersion": ""
+        },
+        "Metadata": null,
+        "Events": null,
+        "Route": null
+      },
+      "Deletion": null,
+      "Invalid": null
+    },
+    {
+      "Position": 24,
+      "Quantity": null,
+      "Category": null,
+      "Workout": null,
+      "Deletion": null,
+      "Invalid": {
+        "Of": "workout",
+        "Type": "",
+        "Reason": "workout is not an object"
+      }
+    },
+    {
+      "Position": 25,
+      "Quantity": null,
+      "Category": null,
+      "Workout": null,
+      "Deletion": {
+        "UUID": "5A4B3C2D-1E0F-4A9B-8C7D-6E5F4A3B2C1D"
+      },
+      "Invalid": null
+    },
+    {
+      "Position": 26,
+      "Quantity": null,
+      "Category": null,
+      "Workout": null,
+      "Deletion": null,
+      "Invalid": {
+        "Of": "deletion",
+        "Type": "",
+        "Reason": "deletion is not a string"
+      }
+    },
+    {
+      "Position": 27,
+      "Quantity": null,
+      "Category": null,
+      "Workout": null,
+      "Deletion": null,
+      "Invalid": {
+        "Of": "deletion",
+        "Type": "",
+        "Reason": "deletion is not a uuid"
+      }
+    },
+    {
+      "Position": 28,
+      "Quantity": null,
+      "Category": null,
+      "Workout": null,
+      "Deletion": null,
+      "Invalid": {
+        "Of": "deletion",
+        "Type": "",
+        "Reason": "deletion is not a string"
+      }
+    }
+  ]
+}

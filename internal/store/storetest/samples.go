@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/rand/v2"
 	"slices"
@@ -167,6 +168,7 @@ func RunSamples(t *testing.T, newStore NewStoreFunc) {
 	runSamplesStats(t, newStore)
 	runSamplesList(t, newStore)
 	runSamplesDelete(t, newStore)
+	runSamplesDeleteByKey(t, newStore)
 }
 
 // runSamplesUpsert runs the cases of the samples stored by an upsert.
@@ -513,8 +515,8 @@ func runSamplesStats(t *testing.T, newStore NewStoreFunc) {
 	})
 
 	// Given any sequence of random batches of two users, over a few natural keys, both types and
-	// every rule, then after each batch Stats equals a computation over the samples that List
-	// returns.
+	// every rule, each followed or not by the deletion of a key, then after each batch Stats equals
+	// a computation over the samples that List returns.
 	for seed := range uint64(8) {
 		t.Run(fmt.Sprintf("StatsMatchTheSamplesAfterRandomBatches/Seed%d", seed), func(t *testing.T) {
 			t.Parallel()
@@ -547,6 +549,13 @@ func runSamplesStats(t *testing.T, newStore NewStoreFunc) {
 				}
 
 				st.mustUpsert(ctx, t, userID, samples...)
+
+				if rng.IntN(2) == 0 {
+					_, err := st.store.Samples().DeleteByKey(ctx, userID, []byte(fmt.Sprintf("key-%d", rng.IntN(15))))
+					if !errors.Is(err, store.ErrNotFound) {
+						require.NoError(t, err)
+					}
+				}
 
 				for _, user := range []int64{st.user.ID, st.other.ID} {
 					require.Equal(t, st.statsOfTable(ctx, t, user), st.mustStats(ctx, t, user), "batch %d", batch)
@@ -705,5 +714,92 @@ func runSamplesDelete(t *testing.T, newStore NewStoreFunc) {
 
 		_, err := st.store.Samples().DeleteByUser(ctx, st.user.ID, 0)
 		require.ErrorIs(t, err, store.ErrInvalid)
+	})
+}
+
+// runSamplesDeleteByKey runs the cases of DeleteByKey.
+func runSamplesDeleteByKey(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+
+	// Given three heart rate samples of a user, when DeleteByKey removes them one by one, then each
+	// call returns the sample it removed, and the data availability follows: its first and last
+	// start move to those of the samples left, and it is gone with the last sample.
+	t.Run("DeleteByKeyRemovesTheSampleAndUpdatesTheStats", func(t *testing.T) {
+		t.Parallel()
+
+		st := newSamplesTest(t, newStore)
+		ctx := t.Context()
+
+		early := st.heartRate("early", samplesTime.Add(-time.Hour), 60, store.ConflictUpdateIfChanged)
+		middle := st.heartRate("middle", samplesTime, 61, store.ConflictUpdateIfChanged)
+		late := st.heartRate("late", samplesTime.Add(time.Hour), 62, store.ConflictUpdateIfChanged)
+		early.UUID = "6F1C2B9E-3D4A-4E0B-9C59-1A2B3C4D5E6F"
+
+		st.mustUpsert(ctx, t, st.user.ID, early, middle, late)
+		listed := st.mustListAll(ctx, t, st.user.ID, st.heart.ID, 10)
+		require.Len(t, listed, 3)
+
+		got, err := st.store.Samples().DeleteByKey(ctx, st.user.ID, []byte("early"))
+		require.NoError(t, err)
+		require.Equal(t, stored(early, st.user.ID, listed[0].ID), got)
+		require.Equal(t, []store.Sample{listed[1], listed[2]}, st.mustListAll(ctx, t, st.user.ID, st.heart.ID, 10))
+		require.Equal(t, []store.SampleStats{
+			{TypeID: st.heart.ID, FirstAt: samplesUTC, LastAt: samplesUTC.Add(time.Hour), Count: 2},
+		}, st.mustStats(ctx, t, st.user.ID))
+
+		_, err = st.store.Samples().DeleteByKey(ctx, st.user.ID, []byte("late"))
+		require.NoError(t, err)
+		require.Equal(t, []store.SampleStats{
+			{TypeID: st.heart.ID, FirstAt: samplesUTC, LastAt: samplesUTC, Count: 1},
+		}, st.mustStats(ctx, t, st.user.ID))
+
+		_, err = st.store.Samples().DeleteByKey(ctx, st.user.ID, []byte("middle"))
+		require.NoError(t, err)
+		require.Empty(t, st.mustListAll(ctx, t, st.user.ID, st.heart.ID, 10))
+		require.Empty(t, st.mustStats(ctx, t, st.user.ID))
+	})
+
+	// Given a key that no sample of the user has, when DeleteByKey runs, then it returns
+	// ErrNotFound and removes nothing.
+	t.Run("DeleteByKeyOfAnUnknownKeyReturnsNotFound", func(t *testing.T) {
+		t.Parallel()
+
+		st := newSamplesTest(t, newStore)
+		ctx := t.Context()
+
+		st.mustUpsert(ctx, t, st.user.ID, st.heartRate("a", samplesTime, 60, store.ConflictIgnore))
+
+		_, err := st.store.Samples().DeleteByKey(ctx, st.user.ID, []byte("b"))
+		require.ErrorIs(t, err, store.ErrNotFound)
+		require.Len(t, st.mustListAll(ctx, t, st.user.ID, st.heart.ID, 10), 1)
+		require.Len(t, st.mustStats(ctx, t, st.user.ID), 1)
+	})
+
+	// Given a sample of another user, when the user deletes its key, then nothing of the other user
+	// is removed: the user's own sample of that key goes, and a key that only the other user has
+	// returns ErrNotFound.
+	t.Run("DeleteByKeyNeverRemovesASampleOfAnotherUser", func(t *testing.T) {
+		t.Parallel()
+
+		st := newSamplesTest(t, newStore)
+		ctx := t.Context()
+
+		st.mustUpsert(ctx, t, st.user.ID, st.heartRate("shared", samplesTime, 60, store.ConflictIgnore))
+		st.mustUpsert(ctx, t, st.other.ID,
+			st.foreignHeartRate("shared", samplesTime, 70),
+			st.foreignHeartRate("theirs", samplesTime.Add(time.Hour), 71),
+		)
+
+		_, err := st.store.Samples().DeleteByKey(ctx, st.user.ID, []byte("theirs"))
+		require.ErrorIs(t, err, store.ErrNotFound)
+
+		got, err := st.store.Samples().DeleteByKey(ctx, st.user.ID, []byte("shared"))
+		require.NoError(t, err)
+		require.Equal(t, st.user.ID, got.UserID)
+
+		require.Len(t, st.mustListAll(ctx, t, st.other.ID, st.heart.ID, 10), 2)
+		require.Equal(t, []store.SampleStats{
+			{TypeID: st.heart.ID, FirstAt: samplesUTC, LastAt: samplesUTC.Add(time.Hour), Count: 2},
+		}, st.mustStats(ctx, t, st.other.ID))
 	})
 }
