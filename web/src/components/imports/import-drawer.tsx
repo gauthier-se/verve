@@ -17,8 +17,9 @@ import { CancelImportDialog } from "@/components/imports/cancel-import-dialog";
 import {
   counterLabel,
   counterNames,
+  activePollMs,
   formatImportDate,
-  isCancellable,
+  isActive,
   originLabel,
   statusLabel,
   typeLabel,
@@ -50,7 +51,12 @@ interface ImportDrawerProps {
 export function ImportDrawer({ summary, timeZone }: ImportDrawerProps) {
   const { t, i18n } = useTranslation();
   const [open, setOpen] = useState(false);
-  const date = formatImportDate(summary.createdAt, i18n.language, timeZone);
+  const date = formatImportDate(
+    summary.createdAt,
+    i18n.language,
+    timeZone,
+    "medium",
+  );
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -76,7 +82,7 @@ export function ImportDrawer({ summary, timeZone }: ImportDrawerProps) {
         </SheetHeader>
         {open && <ImportDetails id={summary.id} />}
         <SheetFooter className="flex-row flex-wrap justify-end">
-          {isCancellable(summary.status) && (
+          {isActive(summary.status) && (
             <CancelImportDialog importId={summary.id} />
           )}
           <SheetClose asChild>
@@ -90,10 +96,19 @@ export function ImportDrawer({ summary, timeZone }: ImportDrawerProps) {
   );
 }
 
-/** The whole report of the import `id`, once it is loaded. */
+/**
+ * The whole report of the import `id`, once it is loaded, polled while the
+ * import is queued or running.
+ */
 function ImportDetails({ id }: { id: number }) {
   const { i18n } = useTranslation();
-  const details = useQuery(getImportOptions({ path: { id } }));
+  const details = useQuery({
+    ...getImportOptions({ path: { id } }),
+    refetchInterval: (query) =>
+      query.state.data && isActive(query.state.data.status)
+        ? activePollMs
+        : false,
+  });
 
   if (details.isError) {
     return (
@@ -122,24 +137,28 @@ function Report({ report }: { report: Import["report"] }) {
   );
 
   // The types with the most records first, then the workouts.
-  const types = Object.entries(report.types)
-    .map(([key, counters]) => ({
-      key,
-      name: typeLabel(key, i18n, uncuratedIdentifiers),
-      counters,
-    }))
-    .sort(
-      (a, b) =>
-        (b.counters.received ?? 0) - (a.counters.received ?? 0) ||
-        a.name.localeCompare(b.name, i18n.language),
-    );
-  if (Object.keys(report.workouts).length > 0) {
-    types.push({
-      key: "workouts",
-      name: t("imports.details.workouts"),
-      counters: report.workouts,
-    });
-  }
+  const types = [
+    ...Object.entries(report.types)
+      .map(([key, counters]) => ({
+        key,
+        name: typeLabel(key, i18n, uncuratedIdentifiers),
+        counters,
+      }))
+      .sort(
+        (a, b) =>
+          (b.counters.received ?? 0) - (a.counters.received ?? 0) ||
+          a.name.localeCompare(b.name, i18n.language),
+      ),
+    ...(Object.keys(report.workouts).length > 0
+      ? [
+          {
+            key: "workouts",
+            name: t("imports.details.workouts"),
+            counters: report.workouts,
+          },
+        ]
+      : []),
+  ];
 
   return (
     <div className="flex flex-col gap-6 px-4">

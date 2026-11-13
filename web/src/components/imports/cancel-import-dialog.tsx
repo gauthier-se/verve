@@ -6,6 +6,7 @@ import { errorMessage } from "@/api/errors";
 import {
   cancelImportMutation,
   getImportQueryKey,
+  listImportsQueryKey,
 } from "@/api/generated/@tanstack/react-query.gen";
 import {
   AlertDialog,
@@ -41,7 +42,7 @@ export function CancelImportDialog({ importId }: CancelImportDialogProps) {
       );
       // The page of imports and the banner, whatever their parameters.
       await queryClient.invalidateQueries({
-        queryKey: [{ _id: "listImports" }],
+        queryKey: listImportsQueryKey(),
       });
       setOpen(false);
     },

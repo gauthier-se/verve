@@ -54,9 +54,9 @@
   },
   "importBanner": {
     "label": "Importation en cours",
-    "received_one": "Une importation est en cours : {{received}} enregistrement reçu pour l'instant.",
-    "received_many": "Une importation est en cours : {{received}} enregistrements reçus pour l'instant.",
-    "received_other": "Une importation est en cours : {{received}} enregistrements reçus pour l'instant.",
+    "received_one": "{{received}} enregistrement reçu pour l'instant.",
+    "received_many": "{{received}} enregistrements reçus pour l'instant.",
+    "received_other": "{{received}} enregistrements reçus pour l'instant.",
     "running": "Une importation est en cours.",
     "view": "Voir les importations"
   },

@@ -80,20 +80,31 @@ export function counterLabel(
   }
 }
 
-/** Whether an import can still be cancelled. */
-export function isCancellable(status: ImportSummary["status"]) {
+/** How often the views of an import poll it while it is queued or running. */
+export const activePollMs = 5_000;
+
+/**
+ * Whether an import is queued or running: it can still be cancelled, and
+ * its status and counters still change.
+ */
+export function isActive(status: ImportSummary["status"]) {
   return status === "queued" || status === "running";
 }
 
-/** The creation time of an import, in the timezone of the user. */
+/**
+ * The creation time of an import, in the timezone of the user: to the
+ * minute in the table, and to the second in the names of its drawer, so that
+ * two imports of the same minute differ.
+ */
 export function formatImportDate(
   iso: string,
   lng: string,
   timeZone: string | null,
+  timeStyle: "short" | "medium" = "short",
 ) {
   return formatDate(new Date(iso), lng, {
     dateStyle: "medium",
-    timeStyle: "short",
+    timeStyle,
     timeZone: timeZone ?? undefined,
   });
 }

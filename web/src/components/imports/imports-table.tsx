@@ -11,6 +11,7 @@ import type { ImportSummary } from "@/api/generated";
 import { ImportDrawer } from "@/components/imports/import-drawer";
 import {
   counterLabel,
+  type counterNames,
   formatImportDate,
   originLabel,
   statusLabel,
@@ -33,7 +34,7 @@ const tableCounters = [
   "updated",
   "duplicates",
   "invalid",
-] as const;
+] as const satisfies readonly (typeof counterNames)[number][];
 
 const features = tableFeatures({});
 const columnHelper = createColumnHelper<typeof features, ImportSummary>();
@@ -78,7 +79,7 @@ export function ImportsTable({
         columnHelper.display({
           id: "duration",
           header: () => t("imports.columns.duration"),
-          cell: ({ row }) => duration(row.original, t, lng),
+          cell: ({ row }) => durationLabel(row.original, t, lng),
         }),
         columnHelper.accessor("status", {
           header: () => t("imports.columns.status"),
@@ -177,7 +178,7 @@ function Client({ summary, t }: { summary: ImportSummary; t: TFunction }) {
  * How long an import ran, from its first run to its end, or what keeps it
  * from having a duration yet.
  */
-function duration(summary: ImportSummary, t: TFunction, lng: string) {
+function durationLabel(summary: ImportSummary, t: TFunction, lng: string) {
   if (summary.startedAt === undefined) {
     return t("imports.notStarted");
   }

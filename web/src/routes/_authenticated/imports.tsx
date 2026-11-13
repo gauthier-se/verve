@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { errorMessage } from "@/api/errors";
 import { listImportsInfiniteOptions } from "@/api/generated/@tanstack/react-query.gen";
 import { ImportsTable } from "@/components/imports/imports-table";
+import { activePollMs, isActive } from "@/components/imports/labels";
 import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/_authenticated/imports")({
@@ -14,7 +15,8 @@ export const Route = createFileRoute("/_authenticated/imports")({
 
 /**
  * The imports of the user of the session, newest first: a table of them
- * whose next pages load on demand, or how to send data while there is none.
+ * whose next pages load on demand, polled while one is queued or running, or
+ * how to send data while there is none.
  */
 function Imports() {
   const { t, i18n } = useTranslation();
@@ -25,6 +27,13 @@ function Imports() {
     // The first page, without a cursor.
     initialPageParam: {},
     getNextPageParam: (page) => page.nextCursor,
+    // Until every listed import ends, so that the rows show their outcome.
+    refetchInterval: (query) =>
+      query.state.data?.pages.some((page) =>
+        page.items.some((summary) => isActive(summary.status)),
+      )
+        ? activePollMs
+        : false,
   });
   const items = imports.data?.pages.flatMap((page) => page.items);
 

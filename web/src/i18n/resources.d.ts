@@ -141,8 +141,8 @@ export default interface Resources {
     },
     "importBanner": {
       "label": "Import in progress",
-      "received_one": "An import is running: {{received}} record received so far.",
-      "received_other": "An import is running: {{received}} records received so far.",
+      "received_one": "{{received}} record received so far.",
+      "received_other": "{{received}} records received so far.",
       "running": "An import is running.",
       "view": "View imports"
     },
