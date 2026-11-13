@@ -113,8 +113,34 @@ type RoutePoint struct {
 	HorizontalAccuracy, VerticalAccuracy *float64
 }
 
-// Record is a normalized record of a payload at its position: exactly one of Quantity, Category
-// and Workout is set.
+// Deletion is a uuid deleted at the source, which removes the records of that uuid (FR-8 of
+// Ingestion pipeline).
+type Deletion struct {
+	UUID string
+}
+
+// RecordKind is what a record of a payload is.
+type RecordKind string
+
+// The kinds of records.
+const (
+	SampleRecord   RecordKind = "sample"
+	WorkoutRecord  RecordKind = "workout"
+	DeletionRecord RecordKind = "deletion"
+)
+
+// Invalid is a record that its adapter found invalid while reading it, such as a sample with a
+// field of the wrong type.
+type Invalid struct {
+	Of RecordKind
+	// Type is the type identifier of a sample, empty when it has none and for other kinds.
+	Type string
+	// Reason is the reason for the sample error message of the report, never a value.
+	Reason string
+}
+
+// Record is a normalized record of a payload at its position: exactly one of Quantity, Category,
+// Workout, Deletion and Invalid is set.
 type Record struct {
 	// Position is where the record is in its payload, defined by the adapter, such as its index or
 	// its byte offset. The positions of a payload increase strictly, and are the same on every run
@@ -124,4 +150,6 @@ type Record struct {
 	Quantity *QuantitySample
 	Category *CategorySample
 	Workout  *Workout
+	Deletion *Deletion
+	Invalid  *Invalid
 }

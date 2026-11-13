@@ -148,6 +148,8 @@ type batchRun struct {
 	report store.ImportReport
 	// types are the types of the batch, by identifier.
 	types map[string]mappedType
+	// keys are the keys of the types of the samples that the batch removed, by type id.
+	keys map[int64]string
 }
 
 // mappedType is what type mapping found for an identifier.
@@ -184,9 +186,11 @@ type item struct {
 // suspiciousReason is the sample error message of a suspicious record.
 const suspiciousReason = "start is before 2000 or more than one day after the import was created, stored as suspicious"
 
-// run maps and normalizes the records of batch, resolves their sources, and stores them.
+// run maps and normalizes the records of batch, resolves their sources, stores them, and then
+// applies its deletions.
 func (b *batchRun) run(ctx context.Context, batch []Record) error {
 	b.types = make(map[string]mappedType)
+	b.keys = make(map[int64]string)
 
 	items := make([]item, len(batch))
 	for i, r := range batch {
@@ -204,12 +208,21 @@ func (b *batchRun) run(ctx context.Context, batch []Record) error {
 	}
 
 	var (
-		samples  = newSampleGroups()
-		workouts []*item
+		samples   = newSampleGroups()
+		workouts  []*item
+		deletions []string
 	)
 
 	for i := range items {
 		it := &items[i]
+
+		if it.deletion() {
+			if uuid, ok := b.filterDeletion(it); ok {
+				deletions = append(deletions, uuid)
+			}
+
+			continue
+		}
 
 		keep, err := b.filter(ctx, it, sources)
 		if err != nil {
@@ -235,7 +248,94 @@ func (b *batchRun) run(ctx context.Context, batch []Record) error {
 		}
 	}
 
+	return b.applyDeletions(ctx, deletions)
+}
+
+// deletion reports whether the record of it is a deletion, valid or not.
+func (it *item) deletion() bool {
+	return it.Deletion != nil || (it.Invalid != nil && it.Invalid.Of == DeletionRecord)
+}
+
+// filterDeletion returns the uuid of the deletion of it, or counts it as invalid in the total
+// only: a deletion is not a sample or workout received.
+func (b *batchRun) filterDeletion(it *item) (string, bool) {
+	if it.reason != "" {
+		b.report.Total.Invalid++
+		b.addError(it.Record, it.reason)
+
+		return "", false
+	}
+
+	return it.Deletion.UUID, true
+}
+
+// applyDeletions removes, for each uuid of uuids, the sample of that uuid whatever its origin and
+// the native workout of that uuid with its route (FR-8 of Ingestion pipeline), after the samples
+// and workouts of the batch, so that a record sent and deleted in one payload ends up deleted. Each
+// record removed counts as deleted, and a uuid that removes nothing counts as not found in the
+// total only. The ranges of the samples removed are recorded as dirty.
+func (b *batchRun) applyDeletions(ctx context.Context, uuids []string) error {
+	var dirty []DirtyRange
+
+	for _, uuid := range uuids {
+		found := false
+
+		sample, err := b.tx.Samples().DeleteByKey(ctx, b.imp.UserID, sampleKey(store.Sample{UUID: uuid}, false))
+
+		switch {
+		case err == nil:
+			key, err := b.typeKey(ctx, sample.TypeID)
+			if err != nil {
+				return err
+			}
+
+			found = true
+			counter{key: key}.add(&b.report, func(c *store.ImportCounters) { c.Deleted++ })
+			dirty = append(dirty, DirtyRange{TypeID: sample.TypeID, From: sample.Start, To: sample.End})
+		case !errors.Is(err, store.ErrNotFound):
+			return fmt.Errorf("delete sample: %w", err)
+		}
+
+		_, err = b.tx.Workouts().DeleteByKey(ctx, b.imp.UserID, workoutKey(store.Workout{Origin: store.OriginNative, ExternalID: uuid}))
+
+		switch {
+		case err == nil:
+			found = true
+			counter{workout: true}.add(&b.report, func(c *store.ImportCounters) { c.Deleted++ })
+		case !errors.Is(err, store.ErrNotFound):
+			return fmt.Errorf("delete workout: %w", err)
+		}
+
+		if !found {
+			b.report.Total.NotFound++
+		}
+	}
+
+	if len(dirty) == 0 {
+		return nil
+	}
+
+	if err := b.p.cfg.DirtyRanges.Record(ctx, b.tx, b.imp.UserID, dirty); err != nil {
+		return fmt.Errorf("record dirty ranges: %w", err)
+	}
+
 	return nil
+}
+
+// typeKey returns the key of the stored type of typeID, read once per batch.
+func (b *batchRun) typeKey(ctx context.Context, typeID int64) (string, error) {
+	if key, ok := b.keys[typeID]; ok {
+		return key, nil
+	}
+
+	mt, err := b.tx.MetricTypes().Get(ctx, typeID)
+	if err != nil {
+		return "", fmt.Errorf("get type %d: %w", typeID, err)
+	}
+
+	b.keys[typeID] = mt.Key
+
+	return mt.Key, nil
 }
 
 // filter counts it as received, then drops it when it is unsupported, invalid or blocked, counting
@@ -450,7 +550,7 @@ func (b *batchRun) prepare(ctx context.Context, r Record) (item, error) {
 		return item{}, err
 	}
 
-	if it.reason != "" || it.unsupported {
+	if it.reason != "" || it.unsupported || it.deletion() {
 		return it, nil
 	}
 
@@ -517,11 +617,57 @@ func (b *batchRun) prepareRecord(ctx context.Context, r Record) (item, error) {
 		if err := b.prepareWorkout(&it); err != nil {
 			it.reason = err.Error()
 		}
+	case r.Deletion != nil:
+		if r.Deletion.UUID == "" {
+			it.reason = "uuid is missing"
+		}
+	case r.Invalid != nil:
+		if err := b.prepareInvalid(ctx, &it); err != nil {
+			return item{}, err
+		}
 	default:
 		return item{}, fmt.Errorf("record at position %d holds no sample or workout", r.Position)
 	}
 
 	return it, nil
+}
+
+// prepareInvalid sets the reason of the record of it, which its adapter found invalid, and where it
+// counts: a sample under the key of its type when that type is stored, without creating it, and
+// as unsupported under its identifier for an unsupported type, since type mapping comes first.
+func (b *batchRun) prepareInvalid(ctx context.Context, it *item) error {
+	invalid := it.Invalid
+	it.reason = invalid.Reason
+
+	switch invalid.Of {
+	case WorkoutRecord:
+		it.counter = counter{workout: true}
+
+		return nil
+	case SampleRecord:
+		if invalid.Type == "" {
+			return nil
+		}
+	default:
+		return nil
+	}
+
+	if _, status := b.p.cfg.Catalog.Lookup(invalid.Type); status == catalog.Unsupported {
+		it.counter, it.unsupported = counter{key: invalid.Type}, true
+
+		return nil
+	}
+
+	mt, err := b.tx.MetricTypes().GetByIdentifier(ctx, invalid.Type)
+
+	switch {
+	case err == nil:
+		it.counter = counter{key: mt.Key}
+	case !errors.Is(err, store.ErrNotFound):
+		return fmt.Errorf("get type %q: %w", invalid.Type, err)
+	}
+
+	return nil
 }
 
 // prepareWorkout normalizes the workout of it, maps its activity type, and encodes its route. It
@@ -713,7 +859,7 @@ func (b *batchRun) resolveSources(ctx context.Context, items []item) (map[store.
 	seen := make(map[store.SourceInfo]time.Time)
 
 	for _, it := range items {
-		if it.reason != "" || it.unsupported {
+		if it.reason != "" || it.unsupported || it.deletion() {
 			continue
 		}
 
@@ -785,8 +931,14 @@ func (r Record) typeName() string {
 		return r.Quantity.Type
 	case r.Category != nil:
 		return r.Category.Type
+	case r.Deletion != nil:
+		return string(DeletionRecord)
+	case r.Invalid != nil && r.Invalid.Of == SampleRecord:
+		return r.Invalid.Type
+	case r.Invalid != nil:
+		return string(r.Invalid.Of)
 	default:
-		return "workout"
+		return string(WorkoutRecord)
 	}
 }
 
