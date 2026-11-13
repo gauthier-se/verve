@@ -15,7 +15,7 @@ import { fakeAuth, member, server } from "@/test/server";
 import { fakeTokens } from "@/test/tokens";
 
 /** The text of the banner of `runningImport`. */
-const runningText = "An import is running: 5,000 records received so far.";
+const runningText = "An import is running. 5,000 records received so far.";
 
 /** A running import that has not received a record yet. */
 const startingImport: Import = {
@@ -31,12 +31,12 @@ function openPage(path: string) {
 
 /** The banner of the running import, once it shows. */
 function findBanner() {
-  return screen.findByRole("status", { name: "Import in progress" });
+  return screen.findByRole("region", { name: "Import in progress" });
 }
 
 /** The banner of the running import, or null while it does not show. */
 function queryBanner() {
-  return screen.queryByRole("status", { name: "Import in progress" });
+  return screen.queryByRole("region", { name: "Import in progress" });
 }
 
 /** Lets `ms` of time pass for the timers of the page and its requests. */
@@ -79,6 +79,16 @@ describe("import banner", () => {
       ).toHaveAttribute("href", "/imports");
     },
   );
+
+  it("given a running import, then screen readers announce that it runs, without the count that changes at every poll", async () => {
+    fakeImports([runningImport]);
+    openPage("/");
+
+    const banner = await findBanner();
+    expect(within(banner).getByRole("status")).toHaveTextContent(
+      /^An import is running\.$/,
+    );
+  });
 
   it("given a running import without a received record yet, then the banner shows without a count", async () => {
     fakeImports([startingImport]);
@@ -128,7 +138,7 @@ describe("import banner", () => {
     await elapse(5500);
 
     expect(await findBanner()).toHaveTextContent(
-      "An import is running: 10,000 records received so far.",
+      "An import is running. 10,000 records received so far.",
     );
   });
 

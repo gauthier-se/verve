@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
 import { http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -27,6 +27,15 @@ const queuedDate = "Nov 9, 2026, 8:30 PM";
 
 /** The creation of `failedImport`, in the timezone of `member`. */
 const failedDate = "Nov 8, 2026, 8:00 AM";
+
+/**
+ * The creation times of the imports to the second, which name their drawer
+ * and its button, so that two imports of the same minute differ.
+ */
+const completedTime = "Nov 10, 2026, 9:00:00 AM";
+const queuedTime = "Nov 9, 2026, 8:30:00 PM";
+const failedTime = "Nov 8, 2026, 8:00:00 AM";
+const runningTime = "Nov 11, 2026, 12:58:00 PM";
 
 /**
  * `text` with each run of white space, such as the narrow no-break space of
@@ -253,7 +262,7 @@ describe("imports page", () => {
       fakeImports([completedImport]);
       await openImportsPage();
 
-      const drawer = await openDrawer(user, completedDate);
+      const drawer = await openDrawer(user, completedTime);
 
       const totals = await within(drawer).findByRole("region", {
         name: "Totals",
@@ -278,7 +287,7 @@ describe("imports page", () => {
       fakeImports([completedImport]);
       await openImportsPage();
 
-      const drawer = await openDrawer(user, completedDate);
+      const drawer = await openDrawer(user, completedTime);
 
       const byType = await within(drawer).findByRole("region", {
         name: "By type",
@@ -318,7 +327,7 @@ describe("imports page", () => {
       fakeImports([failedImport]);
       await openImportsPage();
 
-      const drawer = await openDrawer(user, failedDate);
+      const drawer = await openDrawer(user, failedTime);
 
       const errors = await within(drawer).findByRole("region", {
         name: "Sample errors",
@@ -335,7 +344,7 @@ describe("imports page", () => {
       fakeImports([queuedImport]);
       await openImportsPage();
 
-      const drawer = await openDrawer(user, queuedDate);
+      const drawer = await openDrawer(user, queuedTime);
 
       expect(
         await within(
@@ -354,14 +363,14 @@ describe("imports page", () => {
       fakeImports([completedImport]);
       await openImportsPage();
       const details = await screen.findByRole("button", {
-        name: named(`Details of the import of ${completedDate}`),
+        name: named(`Details of the import of ${completedTime}`),
       });
 
       await tabTo(user, details);
       await user.keyboard("{Enter}");
       expect(
         await screen.findByRole("dialog", {
-          name: named(`Import of ${completedDate}`),
+          name: named(`Import of ${completedTime}`),
         }),
       ).toBeInTheDocument();
       await user.keyboard("{Escape}");
@@ -372,11 +381,24 @@ describe("imports page", () => {
       expect(details).toHaveFocus();
     });
 
+    it("given two imports created in the same minute, then their buttons have different names", async () => {
+      const user = userEvent.setup();
+      fakeImports([
+        { ...completedImport, id: 5, createdAt: "2026-11-10T08:00:30Z" },
+        completedImport,
+      ]);
+      await openImportsPage();
+
+      const drawer = await openDrawer(user, "Nov 10, 2026, 9:00:30 AM");
+
+      expect(drawer).toBeInTheDocument();
+    });
+
     it("given the drawer, when the user chooses Close, then it closes", async () => {
       const user = userEvent.setup();
       fakeImports([completedImport]);
       await openImportsPage();
-      const drawer = await openDrawer(user, completedDate);
+      const drawer = await openDrawer(user, completedTime);
 
       await user.click(within(drawer).getByRole("button", { name: "Close" }));
 
@@ -391,7 +413,7 @@ describe("imports page", () => {
       const user = userEvent.setup();
       const { cancelled } = fakeImports([queuedImport]);
       await openImportsPage();
-      const drawer = await openDrawer(user, queuedDate);
+      const drawer = await openDrawer(user, queuedTime);
 
       await user.click(
         await within(drawer).findByRole("button", { name: "Cancel import" }),
@@ -424,11 +446,60 @@ describe("imports page", () => {
       expect(row && cellTexts(row)[4]).toBe("Cancelled");
     });
 
+    it("given a running import, when the user cancels it and its job stops it at its next batch, then the drawer and the row show it cancelled", async () => {
+      // The page polls with timers that advance on their own with real time.
+      vi.useRealTimers();
+      vi.useFakeTimers({
+        toFake: [
+          "setTimeout",
+          "clearTimeout",
+          "setInterval",
+          "clearInterval",
+          "Date",
+        ],
+        shouldAdvanceTime: true,
+      });
+      vi.setSystemTime(now);
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      const { cancelled, replace } = fakeImports([runningImport]);
+      await openImportsPage();
+      const drawer = await openDrawer(user, runningTime);
+
+      await user.click(
+        await within(drawer).findByRole("button", { name: "Cancel import" }),
+      );
+      const confirmation = await screen.findByRole("alertdialog");
+      await user.click(
+        within(confirmation).getByRole("button", { name: "Cancel import" }),
+      );
+      await waitFor(() => {
+        expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+      });
+      expect(cancelled).toEqual([runningImport.id]);
+      expect(drawer).toHaveAccessibleDescription("Native format, Running");
+
+      replace([
+        {
+          ...runningImport,
+          status: "cancelled",
+          finishedAt: "2026-11-11T12:00:03Z",
+        },
+      ]);
+      await act(() => vi.advanceTimersByTimeAsync(5_500));
+
+      await waitFor(() => {
+        expect(drawer).toHaveAccessibleDescription("Native format, Cancelled");
+      });
+      await user.keyboard("{Escape}");
+      const [row] = await findImportRows();
+      expect(row && cellTexts(row)[4]).toBe("Cancelled");
+    });
+
     it("given the confirmation, when the user keeps the import, then nothing is cancelled", async () => {
       const user = userEvent.setup();
       const { cancelled } = fakeImports([queuedImport]);
       await openImportsPage();
-      const drawer = await openDrawer(user, queuedDate);
+      const drawer = await openDrawer(user, queuedTime);
 
       await user.click(
         await within(drawer).findByRole("button", { name: "Cancel import" }),
@@ -452,7 +523,7 @@ describe("imports page", () => {
       fakeImports([completedImport]);
       await openImportsPage();
 
-      const drawer = await openDrawer(user, completedDate);
+      const drawer = await openDrawer(user, completedTime);
 
       await within(drawer).findByRole("region", { name: "Totals" });
       expect(
@@ -473,7 +544,7 @@ describe("imports page", () => {
         ),
       );
       await openImportsPage();
-      const drawer = await openDrawer(user, queuedDate);
+      const drawer = await openDrawer(user, queuedTime);
 
       await user.click(
         await within(drawer).findByRole("button", { name: "Cancel import" }),
@@ -535,11 +606,11 @@ describe("imports page", () => {
 
       await user.click(
         screen.getByRole("button", {
-          name: named("Détails de l'importation du 10 nov. 2026, 09:00"),
+          name: named("Détails de l'importation du 10 nov. 2026, 09:00:00"),
         }),
       );
       const drawer = await screen.findByRole("dialog", {
-        name: named("Importation du 10 nov. 2026, 09:00"),
+        name: named("Importation du 10 nov. 2026, 09:00:00"),
       });
       const byType = await within(drawer).findByRole("region", {
         name: "Par type",

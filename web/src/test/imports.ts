@@ -147,7 +147,9 @@ interface FakeImportsOptions {
  * Fakes the import endpoints of the user of the session, and the metric
  * types, starting with `initial`, newest first, as the server lists them.
  * The list pages through them by `pageSize`, with the index of the next one
- * as its cursor, and keeps the imports of the `status` filter. A cancellation
+ * as its cursor, answers 422 to another cursor, as the server does to a
+ * cursor that it did not produce, and keeps the imports of the `status`
+ * filter. A cancellation
  * ends a queued import `cancelled` at once, keeps a running one `running`,
  * which its job ends at its next batch, and answers 409 for a finished one.
  * Returns the replace function, to change the imports between requests, and
@@ -164,7 +166,15 @@ export function fakeImports(
     http.get(importsPath, ({ request }) => {
       const url = new URL(request.url);
       const status = url.searchParams.get("status");
-      const start = Number(url.searchParams.get("cursor") ?? 0);
+      const cursor = url.searchParams.get("cursor");
+      if (cursor !== null && !/^\d+$/.test(cursor)) {
+        return problemResponse({
+          title: "Unprocessable Entity",
+          status: 422,
+          code: "validation_failed",
+        });
+      }
+      const start = Number(cursor ?? 0);
       const matching = imports.filter(
         (imp) => status === null || imp.status === status,
       );
