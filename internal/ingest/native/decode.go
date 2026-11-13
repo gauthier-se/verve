@@ -6,6 +6,7 @@ package native
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,9 +21,9 @@ import (
 const Format = "verve.ingest.v1"
 
 // ErrInvalidPayload is the error of a body that is not a payload of Format: not valid JSON, not an
-// object, without its format or client, or with a list of records that is not an array. Such a body
-// fails as a whole (FR-6 of Ingestion pipeline), and the message of the error is its reason, which
-// never quotes the body.
+// object, without its format or client, with a member of the payload twice, or with a list of
+// records that is not an array. Such a body fails as a whole (FR-6 of Ingestion pipeline), and the
+// message of the error is its reason, which never quotes the body.
 var ErrInvalidPayload = errors.New("invalid payload")
 
 // Client is the client that sent a payload.
@@ -59,8 +60,8 @@ type Payload struct {
 
 // Open reads the whole payload of r once, as a stream, and checks that it is valid JSON and a
 // payload of Format, its records aside. It returns an error wrapping ErrInvalidPayload when it is
-// not, and another error when r fails.
-func Open(r io.ReaderAt) (*Payload, error) {
+// not, and another error when r fails or ctx is done.
+func Open(ctx context.Context, r io.ReaderAt) (*Payload, error) {
 	p := &Payload{r: r, starts: [lists]int64{-1, -1, -1}}
 	dec := json.NewDecoder(io.NewSectionReader(r, 0, math.MaxInt64))
 
@@ -75,23 +76,36 @@ func Open(r io.ReaderAt) (*Payload, error) {
 
 	var format, client json.RawMessage
 
+	seen := make(map[string]bool)
+
 	for dec.More() {
 		tok, err := dec.Token()
 		if err != nil {
 			return nil, readError(err)
 		}
 
-		switch key := tok.(string); key {
+		key := tok.(string)
+
+		switch key {
+		case "format", "client", names[samples], names[workouts], names[deletions]:
+			if seen[key] {
+				return nil, invalid(key + " appears twice")
+			}
+
+			seen[key] = true
+		}
+
+		switch key {
 		case "format":
 			err = dec.Decode(&format)
 		case "client":
 			err = dec.Decode(&client)
 		case names[samples]:
-			err = p.scan(dec, samples)
+			err = p.scan(ctx, dec, samples)
 		case names[workouts]:
-			err = p.scan(dec, workouts)
+			err = p.scan(ctx, dec, workouts)
 		case names[deletions]:
-			err = p.scan(dec, deletions)
+			err = p.scan(ctx, dec, deletions)
 		default:
 			err = skip(dec)
 		}
@@ -135,8 +149,8 @@ func (p *Payload) Client() Client {
 // wrong type is an ingest.Invalid record with its reason, and the others are read. Each call reads
 // the payload again, and yields the same records.
 //
-// It yields an error, and stops, when the payload fails to read.
-func (p *Payload) Records() iter.Seq2[ingest.Record, error] {
+// It yields an error, and stops, when the payload fails to read or ctx is done.
+func (p *Payload) Records(ctx context.Context) iter.Seq2[ingest.Record, error] {
 	decoders := [lists]func(json.RawMessage) ingest.Record{
 		samples:   decodeSample,
 		workouts:  decodeWorkout,
@@ -164,6 +178,12 @@ func (p *Payload) Records() iter.Seq2[ingest.Record, error] {
 			}
 
 			for dec.More() {
+				if err := ctx.Err(); err != nil {
+					yield(ingest.Record{}, fmt.Errorf("read record %d: %w", position, err))
+
+					return
+				}
+
 				var raw json.RawMessage
 				if err := dec.Decode(&raw); err != nil {
 					yield(ingest.Record{}, fmt.Errorf("read record %d: %w", position, err))
@@ -185,7 +205,7 @@ func (p *Payload) Records() iter.Seq2[ingest.Record, error] {
 
 // scan checks the array of records of l, one element at a time, and stores where its elements
 // start. A null list counts as left out.
-func (p *Payload) scan(dec *json.Decoder, l list) error {
+func (p *Payload) scan(ctx context.Context, dec *json.Decoder, l list) error {
 	tok, err := dec.Token()
 
 	switch {
@@ -206,6 +226,10 @@ func (p *Payload) scan(dec *json.Decoder, l list) error {
 	p.starts[l] = dec.InputOffset()
 
 	for dec.More() {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("check %s: %w", names[l], err)
+		}
+
 		var raw json.RawMessage
 		if err := dec.Decode(&raw); err != nil {
 			return readError(err)

@@ -2,6 +2,7 @@ package native_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -30,12 +31,12 @@ type decoded struct {
 func decode(t *testing.T, payload []byte) decoded {
 	t.Helper()
 
-	p, err := native.Open(bytes.NewReader(payload))
+	p, err := native.Open(t.Context(), bytes.NewReader(payload))
 	require.NoError(t, err)
 
 	got := decoded{Client: p.Client()}
 
-	for r, err := range p.Records() {
+	for r, err := range p.Records(t.Context()) {
 		require.NoError(t, err)
 
 		got.Records = append(got.Records, r)
@@ -91,13 +92,13 @@ func TestRecords_ReadTwice_YieldTheSameRecords(t *testing.T) {
 	payload, err := os.ReadFile(filepath.Join("testdata", "full.json"))
 	require.NoError(t, err)
 
-	p, err := native.Open(bytes.NewReader(payload))
+	p, err := native.Open(t.Context(), bytes.NewReader(payload))
 	require.NoError(t, err)
 
 	read := func() []ingest.Record {
 		var records []ingest.Record
 
-		for r, err := range p.Records() {
+		for r, err := range p.Records(t.Context()) {
 			require.NoError(t, err)
 
 			records = append(records, r)
@@ -174,13 +175,15 @@ func TestOpen_BodyThatIsNotAPayload_Fails(t *testing.T) {
 		{name: "samples not an array", body: `{"format": "verve.ingest.v1", ` + client + `, "samples": {}}`},
 		{name: "workouts not an array", body: `{"format": "verve.ingest.v1", ` + client + `, "workouts": "none"}`},
 		{name: "deletions not an array", body: `{"format": "verve.ingest.v1", ` + client + `, "deletions": 3}`},
+		{name: "samples twice", body: `{"format": "verve.ingest.v1", ` + client + `, "samples": [], "samples": []}`},
+		{name: "client twice", body: `{"format": "verve.ingest.v1", ` + client + `, ` + client + `}`},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := native.Open(strings.NewReader(tt.body))
+			_, err := native.Open(t.Context(), strings.NewReader(tt.body))
 			require.ErrorIs(t, err, native.ErrInvalidPayload)
 		})
 	}
@@ -236,13 +239,13 @@ func TestRecords_LargePayload_StreamsRecordByRecord(t *testing.T) {
 
 	payload := &readCounter{payload: []byte(body.String())}
 
-	p, err := native.Open(payload)
+	p, err := native.Open(t.Context(), payload)
 	require.NoError(t, err)
 
 	opened := payload.read.Load()
 	n := 0
 
-	for r, err := range p.Records() {
+	for r, err := range p.Records(t.Context()) {
 		require.NoError(t, err)
 		require.Equal(t, int64(n), r.Position)
 
@@ -267,14 +270,14 @@ func TestRecords_ReadFailure_YieldsTheError(t *testing.T) {
 
 	r := &failingReader{payload: payload}
 
-	p, err := native.Open(r)
+	p, err := native.Open(t.Context(), r)
 	require.NoError(t, err)
 
 	r.fail.Store(true)
 
 	var got error
 
-	for _, err := range p.Records() {
+	for _, err := range p.Records(t.Context()) {
 		if err != nil {
 			got = err
 
@@ -300,4 +303,33 @@ func (r *failingReader) ReadAt(p []byte, off int64) (int, error) {
 	}
 
 	return bytes.NewReader(r.payload).ReadAt(p, off)
+}
+
+// Given a cancelled context, when a payload is opened or its records are read, then they stop with
+// the error of the context.
+func TestOpenAndRecords_CancelledContext_Stop(t *testing.T) {
+	t.Parallel()
+
+	payload, err := os.ReadFile(filepath.Join("testdata", "full.json"))
+	require.NoError(t, err)
+
+	cancelled, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	_, err = native.Open(cancelled, bytes.NewReader(payload))
+	require.ErrorIs(t, err, context.Canceled)
+	require.NotErrorIs(t, err, native.ErrInvalidPayload)
+
+	p, err := native.Open(t.Context(), bytes.NewReader(payload))
+	require.NoError(t, err)
+
+	var got error
+
+	for _, err := range p.Records(cancelled) {
+		got = err
+
+		break
+	}
+
+	require.ErrorIs(t, got, context.Canceled)
 }

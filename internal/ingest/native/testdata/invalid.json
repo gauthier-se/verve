@@ -27,6 +27,7 @@
     {"uuid": "1D2C3B4A-5E6F-4A7B-8C9D-0E1F2A3B4C5D", "activityType": "HKWorkoutActivityTypeWalking", "start": "2026-11-10T12:00:00Z", "end": "2026-11-10T12:20:00Z", "duration": 1200, "source": {"name": "Apple Watch"}, "totals": {"distance": {"value": 1.4}}},
     {"uuid": "1D2C3B4A-5E6F-4A7B-8C9D-0E1F2A3B4C5D", "activityType": "HKWorkoutActivityTypeWalking", "start": "2026-11-10T12:00:00Z", "end": "2026-11-10T12:20:00Z", "duration": 1200, "source": {"name": "Apple Watch"}, "indoor": "yes"},
     {"uuid": "1D2C3B4A-5E6F-4A7B-8C9D-0E1F2A3B4C5D", "activityType": "HKWorkoutActivityTypeWalking", "start": "2026-11-10T12:00:00Z", "end": "2026-11-10T12:20:00Z", "duration": 1200, "source": {"name": "Apple Watch"}, "events": [{"type": "HKWorkoutEventTypeLap", "start": "2026-11-10T12:05:00Z"}]},
+    {"uuid": "1D2C3B4A-5E6F-4A7B-8C9D-0E1F2A3B4C5D", "activityType": "HKWorkoutActivityTypeWalking", "start": "2026-11-10T12:00:00Z", "end": "2026-11-10T12:20:00Z", "duration": 1200, "source": {"name": "Apple Watch"}, "totals": {"distance": {"value": 1.4, "unit": ""}}},
     [1, 2]
   ],
   "deletions": ["5A4B3C2D-1E0F-4A9B-8C7D-6E5F4A3B2C1D", 42, "5A4B3C2D1E0F4A9B8C7D6E5F4A3B2C1D", {"uuid": "5A4B3C2D-1E0F-4A9B-8C7D-6E5F4A3B2C1D"}]

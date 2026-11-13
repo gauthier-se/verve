@@ -329,6 +329,48 @@
       "Position": 23,
       "Quantity": null,
       "Category": null,
+      "Workout": {
+        "UUID": "1D2C3B4A-5E6F-4A7B-8C9D-0E1F2A3B4C5D",
+        "ActivityType": "HKWorkoutActivityTypeWalking",
+        "Start": "2026-11-10T12:00:00Z",
+        "End": "2026-11-10T12:20:00Z",
+        "Duration": {
+          "Value": 1200,
+          "Unit": "s"
+        },
+        "Totals": {
+          "Distance": {
+            "Value": 1.4,
+            "Unit": ""
+          },
+          "ActiveEnergy": null,
+          "TotalEnergy": null,
+          "ElevationAscended": null,
+          "ElevationDescended": null,
+          "AvgHeartRate": null,
+          "MaxHeartRate": null
+        },
+        "Indoor": null,
+        "Source": {
+          "Name": "Apple Watch",
+          "DeviceModel": "",
+          "BundleID": "",
+          "DeviceName": "",
+          "Manufacturer": "",
+          "HardwareVersion": "",
+          "SoftwareVersion": ""
+        },
+        "Metadata": null,
+        "Events": null,
+        "Route": null
+      },
+      "Deletion": null,
+      "Invalid": null
+    },
+    {
+      "Position": 24,
+      "Quantity": null,
+      "Category": null,
       "Workout": null,
       "Deletion": null,
       "Invalid": {
@@ -338,7 +380,7 @@
       }
     },
     {
-      "Position": 24,
+      "Position": 25,
       "Quantity": null,
       "Category": null,
       "Workout": null,
@@ -348,7 +390,7 @@
       "Invalid": null
     },
     {
-      "Position": 25,
+      "Position": 26,
       "Quantity": null,
       "Category": null,
       "Workout": null,
@@ -360,7 +402,7 @@
       }
     },
     {
-      "Position": 26,
+      "Position": 27,
       "Quantity": null,
       "Category": null,
       "Workout": null,
@@ -372,7 +414,7 @@
       }
     },
     {
-      "Position": 27,
+      "Position": 28,
       "Quantity": null,
       "Category": null,
       "Workout": null,

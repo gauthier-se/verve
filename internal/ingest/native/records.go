@@ -349,7 +349,8 @@ func (o object) array(name string) []json.RawMessage {
 	return elements
 }
 
-// quantity returns the quantity member name, nil when it is left out or invalid.
+// quantity returns the quantity member name, nil when it is left out or invalid. Its unit is kept as
+// received, for unit conversion to check.
 func (o object) quantity(name string) *ingest.Quantity {
 	q, ok := o.object(name, false)
 	if !ok {
@@ -357,7 +358,7 @@ func (o object) quantity(name string) *ingest.Quantity {
 	}
 
 	value, unit := q.number("value", true), q.str("unit", true)
-	if value == nil || unit == "" {
+	if value == nil {
 		return nil
 	}
 
