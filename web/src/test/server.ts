@@ -18,12 +18,14 @@ export const meta: Meta = {
 };
 
 /**
- * The app shell queries GET /api/v1/meta on every page, so the server answers
- * it by default. Tests register the other handlers they need, or replace this
- * one, with `server.use()`.
+ * The app shell queries GET /api/v1/meta on every page, and the import banner
+ * GET /api/v1/imports on every page of a session, so the server answers them
+ * by default, the second without any import. Tests register the other
+ * handlers they need, or replace these, with `server.use()`.
  */
 export const server = setupServer(
   http.get("/api/v1/meta", () => HttpResponse.json(meta)),
+  http.get("/api/v1/imports", () => HttpResponse.json({ items: [] })),
 );
 
 /** A member account, with an email address and a timezone. */

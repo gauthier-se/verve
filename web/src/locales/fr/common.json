@@ -33,6 +33,7 @@
     "email_invalid": "Saisissez une adresse e-mail avec un @.",
     "email_taken": "Un autre compte a déjà cette adresse e-mail.",
     "forbidden": "Vous n'avez pas l'autorisation d'effectuer cette action.",
+    "import_finished": "Cette importation est déjà terminée.",
     "invalid_credentials": "Le nom d'utilisateur, l'e-mail ou le mot de passe est incorrect.",
     "invitation_invalid": "Ce lien d'invitation n'est plus valide : il a déjà servi, il a expiré ou il est incomplet. Demandez un nouveau lien à un administrateur.",
     "password_too_common": "Ce mot de passe est trop courant. Choisissez-en un autre.",
@@ -50,6 +51,82 @@
   },
   "home": {
     "tagline": "Vos données de santé, sur votre serveur."
+  },
+  "importBanner": {
+    "label": "Importation en cours",
+    "received_one": "{{received}} enregistrement reçu pour l'instant.",
+    "received_many": "{{received}} enregistrements reçus pour l'instant.",
+    "received_other": "{{received}} enregistrements reçus pour l'instant.",
+    "running": "Une importation est en cours.",
+    "view": "Voir les importations"
+  },
+  "imports": {
+    "cancel": {
+      "action": "Annuler l'importation",
+      "confirm": "Annuler l'importation",
+      "description": "Verve arrête l'importation. Les données déjà enregistrées restent.",
+      "keep": "Garder l'importation",
+      "title": "Annuler cette importation ?"
+    },
+    "columns": {
+      "actions": "Actions",
+      "client": "Client",
+      "date": "Date",
+      "duration": "Durée",
+      "origin": "Origine",
+      "status": "Statut"
+    },
+    "counters": {
+      "blocked": "Bloqués",
+      "deleted": "Supprimés",
+      "duplicates": "Doublons",
+      "inserted": "Ajoutés",
+      "invalid": "Invalides",
+      "notFound": "Introuvables",
+      "received": "Reçus",
+      "suspicious": "Suspects",
+      "unsupported": "Non pris en charge",
+      "updated": "Mis à jour",
+      "warnings": "Avertissements"
+    },
+    "description": "Les données envoyées à Verve, des plus récentes aux plus anciennes, avec ce qu'il est advenu de leurs enregistrements.",
+    "details": {
+      "action": "Détails",
+      "byType": "Par type",
+      "close": "Fermer",
+      "description": "{{origin}}, {{status}}",
+      "errors": "Exemples d'erreurs",
+      "label": "Détails de l'importation du {{date}}",
+      "noError": "Aucune erreur.",
+      "noRecord": "Aucun enregistrement pour l'instant.",
+      "title": "Importation du {{date}}",
+      "totals": "Totaux",
+      "workouts": "Entraînements"
+    },
+    "empty": {
+      "description": "Vos importations apparaissent ici dès qu'une app envoie des données à Verve. Créez un jeton d'API pour Health Auto Export ou une autre app pour commencer.",
+      "title": "Aucune importation",
+      "tokens": "Créer un jeton d'API"
+    },
+    "inProgress": "En cours",
+    "more": "Afficher plus",
+    "noClient": "Aucun",
+    "notStarted": "Pas commencée",
+    "origin": {
+      "cli": "Ligne de commande",
+      "hae": "Health Auto Export",
+      "native": "Format natif",
+      "xml": "Export Apple Santé"
+    },
+    "status": {
+      "cancelled": "Annulée",
+      "completed": "Terminée",
+      "failed": "Échouée",
+      "queued": "En attente",
+      "running": "En cours"
+    },
+    "title": "Importations",
+    "token": "via {{name}}"
   },
   "invite": {
     "askNewInvitation": "Demandez une nouvelle invitation à un administrateur.",
@@ -74,6 +151,7 @@
   "nav": {
     "admin": "Administration",
     "home": "Accueil",
+    "imports": "Importations",
     "main": "Principale"
   },
   "notFound": {

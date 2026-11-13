@@ -93,6 +93,11 @@ function Navigation({
               {t("nav.home")}
             </Link>
           </li>
+          <li>
+            <Link to="/imports" className={navLinkClassName}>
+              {t("nav.imports")}
+            </Link>
+          </li>
         </ul>
       </nav>
       {user.role === "admin" && (

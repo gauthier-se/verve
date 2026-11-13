@@ -19,6 +19,43 @@ async function expectNoHorizontalScroll(page: Page) {
   expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
 }
 
+/** A running import of the faked session, which shows the import banner. */
+const runningImport = {
+  id: 1,
+  origin: "native",
+  status: "running",
+  client: { name: "Verve for iOS", version: "1.0.0" },
+  createdAt: "2026-11-11T11:58:00Z",
+  startedAt: "2026-11-11T11:58:02Z",
+  report: {
+    total: {
+      received: 1_234_567,
+      inserted: 1_234_567,
+      updated: 0,
+      duplicates: 0,
+      blocked: 0,
+      invalid: 0,
+      unsupported: 0,
+      suspicious: 0,
+      warnings: 0,
+      deleted: 0,
+      notFound: 0,
+    },
+  },
+};
+
+/**
+ * Answers the imports of the faked session, which the import banner of every
+ * protected page lists: the server would answer 401 to a session it did not
+ * open.
+ */
+async function fakeImports(page: Page, items: unknown[] = []) {
+  await page.route(
+    (url) => url.pathname === "/api/v1/imports",
+    (route) => route.fulfill({ json: { items } }),
+  );
+}
+
 async function expectTouchTarget(target: Locator) {
   const box = await target.boundingBox();
   expect(box?.width).toBeGreaterThanOrEqual(minTouchTarget);
@@ -47,6 +84,7 @@ test("given a phone screen and a session, when a protected page loads, then the 
   // created the admin or not. A long username checks that the user menu cannot
   // push the page wider.
   const username = "an-admin-with-a-username-longer-than-a-phone-screen";
+  await fakeImports(page, [runningImport]);
   await page.route("/api/v1/auth/me", (route) =>
     route.fulfill({
       json: { id: 1, username, role: "admin", timezone: "Europe/Paris" },
@@ -61,8 +99,12 @@ test("given a phone screen and a session, when a protected page loads, then the 
   await expectNoHorizontalScroll(page);
   await expectTouchTarget(header.getByRole("link", { name: "Verve" }));
   await expectTouchTarget(header.getByRole("link", { name: "Home" }));
+  await expectTouchTarget(header.getByRole("link", { name: "Imports" }));
   await expectTouchTarget(header.getByRole("link", { name: "Administration" }));
   await expectTouchTarget(userMenu);
+  const banner = page.getByRole("region", { name: "Import in progress" });
+  await expect(banner).toBeVisible();
+  await expectTouchTarget(banner.getByRole("link", { name: "View imports" }));
 
   await userMenu.click();
   // The menu zooms in as it opens, which scales its items until it ends.
@@ -78,6 +120,7 @@ test("given a phone screen and a session, when a protected page loads, then the 
 test("given a phone screen and a user without a timezone, when a protected page loads, then the timezone dialog fits without horizontal scroll and its controls are touch targets", async ({
   page,
 }) => {
+  await fakeImports(page);
   await page.route("/api/v1/auth/me", (route) =>
     route.fulfill({
       json: { id: 1, username: "admin", role: "admin", timezone: null },
@@ -101,6 +144,7 @@ test("given a phone screen and a user without a timezone, when a protected page 
 test("given a phone screen and tokens, when the tokens page loads, then the page fits without horizontal scroll, the table scrolls on its own and the creation dialog fits, also once it shows the token", async ({
   page,
 }) => {
+  await fakeImports(page);
   await page.route("/api/v1/auth/me", (route) =>
     route.fulfill({
       json: {
