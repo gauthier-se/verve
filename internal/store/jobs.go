@@ -90,12 +90,13 @@ type JobsRepository interface {
 	// serial key never has two running jobs.
 	//
 	// A job that lost its lease 5 times is marked failed instead of being claimed again, so that a
-	// job that kills the process cannot loop forever. Claim returns these abandoned jobs, as they
-	// are once failed, so that the caller can log their end: no later claim returns them again. A
-	// job whose cancellation was requested and that no handler can confirm, because it is queued or
-	// its lease has expired, is marked cancelled instead of being claimed. Claim returns ErrNotFound
-	// when no job is due, along with the jobs it abandoned. The claim is atomic across processes.
-	Claim(ctx context.Context, lease time.Duration) (claimed Job, abandoned []Job, err error)
+	// job that kills the process cannot loop forever. A job whose cancellation was requested and
+	// that no handler can confirm, because it is queued or its lease has expired, is marked
+	// cancelled instead of being claimed. Claim returns these jobs that it ended without a handler,
+	// as they are once ended, so that the caller can end their records and log their end: no later
+	// claim returns them again. Claim returns ErrNotFound when no job is due, along with the jobs it
+	// ended. The claim is atomic across processes.
+	Claim(ctx context.Context, lease time.Duration) (claimed Job, ended []Job, err error)
 	// EnqueueClaimed stores job and claims it in one atomic write, for a process that runs the job
 	// itself: it returns the job running with a lease from now, and with now as its RunAt and
 	// CreatedAt, whatever the RunAt of job. It returns ErrConflict and stores nothing while the serial

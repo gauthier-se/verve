@@ -61,6 +61,9 @@ type registeredKind struct {
 	// handler runs job. final is true for a run whose failure fails the job at once.
 	handler     func(ctx context.Context, job store.Job, final bool) error
 	maxAttempts int64
+	// endedByClaim ends the records of job, which a claim ended without a handler, through tx. It is
+	// nil for a kind without records of its own.
+	endedByClaim func(ctx context.Context, tx store.Repositories, job store.Job) error
 }
 
 // Registry holds the handlers of the job kinds. It is built once, in internal/app.
@@ -100,6 +103,43 @@ func Register[P any](r *Registry, kind string, opts KindOptions, fn func(ctx con
 	}
 
 	return Kind[P]{name: kind}
+}
+
+// OnEndedByClaim sets fn as what ends the records of the jobs of kind that a claim ends without a
+// handler: a job abandoned after 5 lost leases, failed, and a cancellation that no handler can
+// confirm, cancelled (FR-4 and FR-9 of Job worker). Without it, such records, such as an import,
+// would never end. fn receives the status the job ended with, and runs in the transaction of the
+// claim, through tx, so that the records end with their job. An error of fn rolls the claim back,
+// and the next claim tries again, so fn fails only when the store does. A job whose payload does
+// not decode has no records to end, and fn does not run for it. A kind that r does not have is a
+// programming error in the wiring, and panics.
+func OnEndedByClaim[P any](r *Registry, kind Kind[P], fn func(ctx context.Context, tx store.Repositories, job Job[P], status store.JobStatus) error) {
+	registered, ok := r.kinds[kind.name]
+	if !ok {
+		panic(fmt.Sprintf("job kind %q not registered", kind.name))
+	}
+
+	registered.endedByClaim = func(ctx context.Context, tx store.Repositories, job store.Job) error {
+		var payload P
+		if err := json.Unmarshal(job.Payload, &payload); err != nil {
+			return nil
+		}
+
+		return fn(ctx, tx, Job[P]{ID: job.ID, UserID: job.UserID, Payload: payload}, job.Status)
+	}
+
+	r.kinds[kind.name] = registered
+}
+
+// endedByClaim ends the records of job, which a claim ended without a handler, through tx, with the
+// function that the kind of job set with OnEndedByClaim, if any.
+func (r *Registry) endedByClaim(ctx context.Context, tx store.Repositories, job store.Job) error {
+	kind, ok := r.kinds[job.Kind]
+	if !ok || kind.endedByClaim == nil {
+		return nil
+	}
+
+	return kind.endedByClaim(ctx, tx, job)
 }
 
 // run calls the handler of the kind of job, for a final run when final is true.

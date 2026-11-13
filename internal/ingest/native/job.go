@@ -38,6 +38,10 @@ var errMissingPayload = errors.New("the payload of the import is missing from th
 // fixed text: the error of the attempt is the last error of the job, which admins see.
 var errLastAttempt = errors.New("the import stopped after the last attempt of its job failed")
 
+// errAbandoned is the sample error message of an import whose job was abandoned after its lost
+// leases (FR-4 of Job worker). It is a fixed text, as errLastAttempt is.
+var errAbandoned = errors.New("the import stopped after its job was abandoned: its process stopped 5 times while running it")
+
 // Job returns the import.native job of the import of importID of userID. Its serial key runs the
 // imports of the user one at a time, in arrival order (FR-4 of Ingestion pipeline).
 func Job(userID, importID int64) (store.NewJob, error) {
@@ -59,12 +63,20 @@ func Job(userID, importID int64) (store.NewJob, error) {
 //     run fails or stops, or the import has not started, before the heartbeat delivers the
 //     cancellation.
 //
-// The batches committed before the end stay. A job stopped otherwise, such as by a shutdown, leaves
-// the import running, and its next run resumes it from the stored position (FR-5).
+// A claim that ends the job without a handler ends the import too, in the same transaction: failed
+// once the job is abandoned after its lost leases, its file kept, and cancelled for a cancellation
+// that no handler can confirm, its file deleted. The batches committed before the end stay. A job
+// stopped otherwise, such as by a shutdown, leaves the import running, and its next run resumes it
+// from the stored position (FR-5).
 func Register(registry *jobs.Registry, deps JobDeps) {
-	jobs.Register(registry, KindImport, jobs.KindOptions{}, func(ctx context.Context, job jobs.Job[ingest.JobPayload]) error {
+	kind := jobs.Register(registry, KindImport, jobs.KindOptions{}, func(ctx context.Context, job jobs.Job[ingest.JobPayload]) error {
 		return runImport(ctx, deps, job)
 	})
+
+	jobs.OnEndedByClaim(registry, kind,
+		func(ctx context.Context, tx store.Repositories, job jobs.Job[ingest.JobPayload], status store.JobStatus) error {
+			return endedByClaim(ctx, deps.Inbox, tx, job, status)
+		})
 }
 
 // runImport runs the import of job.
@@ -197,16 +209,59 @@ func start(ctx context.Context, s store.Store, userID, importID int64) (store.Im
 	return started, err
 }
 
+// endedByClaim ends the import of job, whose job a claim ended with status without a handler,
+// through tx: failed with a sample error message once its job is abandoned after its lost leases,
+// its inbox file kept for a diagnosis, and cancelled for a cancellation that no handler can
+// confirm, its inbox file deleted once committed. An import that ended or is gone changes nothing.
+func endedByClaim(ctx context.Context, inbox *ingest.Inbox, tx store.Repositories, job jobs.Job[ingest.JobPayload], status store.JobStatus) error {
+	importID := job.Payload.ImportID
+
+	imp, err := tx.Imports().Get(ctx, job.UserID, importID)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil
+	}
+
+	if err != nil {
+		return fmt.Errorf("get import %d: %w", importID, err)
+	}
+
+	if imp.Status.Finished() {
+		return nil
+	}
+
+	switch status {
+	case store.JobFailed:
+		// A report only changes while its import runs: an import whose job never started it, its
+		// process dying first, runs before it fails, as its job did.
+		if imp.Status == store.ImportQueued {
+			if _, err := tx.Imports().SetStatus(ctx, job.UserID, importID, store.ImportRunning); err != nil {
+				return fmt.Errorf("start import %d: %w", importID, err)
+			}
+		}
+
+		if err := failInTx(ctx, tx, imp, errAbandoned); err != nil {
+			return fmt.Errorf("fail import %d: %w", importID, err)
+		}
+	case store.JobCancelled:
+		if err := endInTx(ctx, tx, imp, store.ImportCancelled); err != nil {
+			return fmt.Errorf("end import %d %s: %w", importID, store.ImportCancelled, err)
+		}
+
+		tx.AfterCommit(func() {
+			// A file that the removal leaves behind is removed by cleanup.inbox: a cancelled import
+			// needs it no more.
+			_ = inbox.Remove(context.WithoutCancel(ctx), imp.InboxFile)
+		})
+	}
+
+	return nil
+}
+
 // finish ends imp with status, completed or cancelled, recording its end in the same transaction,
 // and removes its inbox file, which it no longer needs.
 func finish(ctx context.Context, deps JobDeps, imp store.Import, status store.ImportStatus) error {
 	err := deps.Store.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
-		ended, err := tx.Imports().SetStatus(ctx, imp.UserID, imp.ID, status)
-		if err != nil {
-			return err
-		}
-
-		return audit.Record(ctx, tx.AuditEvents(), endEvent(ended))
+		return endInTx(ctx, tx, imp, status)
 	})
 	if err != nil {
 		return fmt.Errorf("end import %d %s: %w", imp.ID, status, err)
@@ -215,36 +270,52 @@ func finish(ctx context.Context, deps JobDeps, imp store.Import, status store.Im
 	return deps.Inbox.Remove(ctx, imp.InboxFile)
 }
 
+// endInTx ends imp with status, completed or cancelled, and records its end, through tx.
+func endInTx(ctx context.Context, tx store.Repositories, imp store.Import, status store.ImportStatus) error {
+	ended, err := tx.Imports().SetStatus(ctx, imp.UserID, imp.ID, status)
+	if err != nil {
+		return err
+	}
+
+	return audit.Record(ctx, tx.AuditEvents(), endEvent(ended))
+}
+
 // fail ends imp failed, with the message of cause as a sample error message, and records its end,
-// in one transaction. The position and the counters of the batches committed since imp was read
-// stay. Its inbox file stays, for a retry or a diagnosis.
+// in one transaction (see failInTx).
 func fail(ctx context.Context, s store.Store, imp store.Import, cause error) error {
 	err := s.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
-		current, err := tx.Imports().Get(ctx, imp.UserID, imp.ID)
-		if err != nil {
-			return err
-		}
-
-		report := current.Report
-		report.Errors = append(report.Errors, cause.Error())
-
-		progress := store.ImportProgress{Position: current.Position, Report: report}
-		if err := tx.Imports().SaveProgress(ctx, imp.UserID, imp.ID, progress); err != nil {
-			return err
-		}
-
-		ended, err := tx.Imports().SetStatus(ctx, imp.UserID, imp.ID, store.ImportFailed)
-		if err != nil {
-			return err
-		}
-
-		return audit.Record(ctx, tx.AuditEvents(), endEvent(ended))
+		return failInTx(ctx, tx, imp, cause)
 	})
 	if err != nil {
 		return fmt.Errorf("fail import %d: %w", imp.ID, err)
 	}
 
 	return nil
+}
+
+// failInTx ends imp failed, with the message of cause as a sample error message, and records its end,
+// through tx. The position and the counters of the batches committed since imp was read stay. Its
+// inbox file stays, for a retry or a diagnosis.
+func failInTx(ctx context.Context, tx store.Repositories, imp store.Import, cause error) error {
+	current, err := tx.Imports().Get(ctx, imp.UserID, imp.ID)
+	if err != nil {
+		return err
+	}
+
+	report := current.Report
+	report.Errors = append(report.Errors, cause.Error())
+
+	progress := store.ImportProgress{Position: current.Position, Report: report}
+	if err := tx.Imports().SaveProgress(ctx, imp.UserID, imp.ID, progress); err != nil {
+		return err
+	}
+
+	ended, err := tx.Imports().SetStatus(ctx, imp.UserID, imp.ID, store.ImportFailed)
+	if err != nil {
+		return err
+	}
+
+	return audit.Record(ctx, tx.AuditEvents(), endEvent(ended))
 }
 
 // endEvent returns the audit event of the end of imp, which ended completed, failed or cancelled,

@@ -191,20 +191,55 @@ func (q *Queries) CancelJobsOfUser(ctx context.Context, arg CancelJobsOfUserPara
 	return err
 }
 
-const cancelUnconfirmedJobs = `-- name: CancelUnconfirmedJobs :exec
+const cancelUnconfirmedJobs = `-- name: CancelUnconfirmedJobs :many
 UPDATE jobs
 SET status = 'cancelled',
     locked_until = NULL,
     finished_at = ?1
 WHERE cancel_requested = 1
   AND (status = 'queued' OR (status = 'running' AND locked_until <= ?1))
+RETURNING id, kind, payload, status, attempts, claims, lost_leases, run_at, locked_until, user_id, serial_key, last_error, created_at, finished_at, cancel_requested
 `
 
 // Cancels the jobs that no handler can confirm: back to queued after the request, or left by a
 // process that died.
-func (q *Queries) CancelUnconfirmedJobs(ctx context.Context, now sql.NullInt64) error {
-	_, err := q.db.ExecContext(ctx, cancelUnconfirmedJobs, now)
-	return err
+func (q *Queries) CancelUnconfirmedJobs(ctx context.Context, now sql.NullInt64) ([]Job, error) {
+	rows, err := q.db.QueryContext(ctx, cancelUnconfirmedJobs, now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Job
+	for rows.Next() {
+		var i Job
+		if err := rows.Scan(
+			&i.ID,
+			&i.Kind,
+			&i.Payload,
+			&i.Status,
+			&i.Attempts,
+			&i.Claims,
+			&i.LostLeases,
+			&i.RunAt,
+			&i.LockedUntil,
+			&i.UserID,
+			&i.SerialKey,
+			&i.LastError,
+			&i.CreatedAt,
+			&i.FinishedAt,
+			&i.CancelRequested,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const claimJob = `-- name: ClaimJob :one

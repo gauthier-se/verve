@@ -1558,7 +1558,8 @@ func runJobsCancel(t *testing.T, newStore NewStoreFunc) {
 	})
 
 	// Given a cancellation that its handler could not confirm, because the job went back to queued
-	// or its process died, then the next Claim cancels the job instead of running it.
+	// or its process died, then the next Claim cancels the job instead of running it, and returns it
+	// among the jobs it ended, once.
 	for name, end := range map[string]func(ctx context.Context, jobs store.JobsRepository, clk *clock.Fake, job store.Job) error{
 		"Retried": func(ctx context.Context, jobs store.JobsRepository, _ *clock.Fake, job store.Job) error {
 			return jobs.Retry(ctx, job.ID, job.Claims, "handler failed", jobsTime)
@@ -1584,12 +1585,19 @@ func runJobsCancel(t *testing.T, newStore NewStoreFunc) {
 
 			require.NoError(t, jobs.Cancel(ctx, claimed.ID))
 			require.NoError(t, end(ctx, jobs, clk, claimed))
-			requireNoClaim(ctx, t, jobs)
+
+			_, ended, err := jobs.Claim(ctx, jobLease)
+			require.ErrorIs(t, err, store.ErrNotFound)
 
 			got := mustGet(ctx, t, jobs, claimed.ID)
 			require.Equal(t, store.JobCancelled, got.Status)
 			require.Equal(t, clk.Now(), got.FinishedAt)
 			require.True(t, got.LockedUntil.IsZero())
+			require.Equal(t, []store.Job{got}, ended)
+
+			_, ended, err = jobs.Claim(ctx, jobLease)
+			require.ErrorIs(t, err, store.ErrNotFound)
+			require.Empty(t, ended)
 		})
 	}
 }

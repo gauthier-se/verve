@@ -8,7 +8,7 @@ SELECT *
 FROM jobs
 WHERE id = ?;
 
--- name: CancelUnconfirmedJobs :exec
+-- name: CancelUnconfirmedJobs :many
 -- Cancels the jobs that no handler can confirm: back to queued after the request, or left by a
 -- process that died.
 UPDATE jobs
@@ -16,7 +16,8 @@ SET status = 'cancelled',
     locked_until = NULL,
     finished_at = sqlc.arg(now)
 WHERE cancel_requested = 1
-  AND (status = 'queued' OR (status = 'running' AND locked_until <= sqlc.arg(now)));
+  AND (status = 'queued' OR (status = 'running' AND locked_until <= sqlc.arg(now)))
+RETURNING *;
 
 -- name: AbandonJobs :many
 -- lost_leases does not count the lease that has just expired yet, as ClaimJob would.
