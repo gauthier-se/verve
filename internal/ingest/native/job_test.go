@@ -420,7 +420,7 @@ func TestImportJob_TwoPushesOfOneUser_RunOneAtATimeInArrivalOrder(t *testing.T) 
 	got := e.importOf(t, second.ID)
 	require.Equal(t, store.ImportCompleted, got.Status)
 	require.Equal(t, store.ImportCounters{Received: 3, Duplicates: 3, NotFound: 1}, got.Report.Total)
-	require.True(t, got.StartedAt.Compare(e.importOf(t, first.ID).FinishedAt) >= 0)
+	require.False(t, got.StartedAt.Before(e.importOf(t, first.ID).FinishedAt), "the second starts once the first ended")
 }
 
 // Given a process stopped in the middle of an import, after its first batch, when the job is

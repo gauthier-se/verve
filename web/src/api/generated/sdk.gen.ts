@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AcceptInvitationData, AcceptInvitationErrors, AcceptInvitationResponses, ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, CreateAdminBackupData, CreateAdminBackupErrors, CreateAdminBackupResponses, CreateFirstAdminData, CreateFirstAdminErrors, CreateFirstAdminResponses, CreateInvitationData, CreateInvitationErrors, CreateInvitationResponses, CreatePasswordResetLinkData, CreatePasswordResetLinkErrors, CreatePasswordResetLinkResponses, CreateTokenData, CreateTokenErrors, CreateTokenResponses, DeleteAccountData, DeleteAccountErrors, DeleteAccountResponses, DeleteUserData, DeleteUserErrors, DeleteUserResponses, DownloadAdminBackupData, DownloadAdminBackupErrors, DownloadAdminBackupResponses, GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetMetaData, GetMetaErrors, GetMetaResponses, GetPreferencesData, GetPreferencesErrors, GetPreferencesResponses, GetSetupStatusData, GetSetupStatusErrors, GetSetupStatusResponses, InspectInvitationData, InspectInvitationErrors, InspectInvitationResponses, ListAccountAuditEventsData, ListAccountAuditEventsErrors, ListAccountAuditEventsResponses, ListAdminAuditEventsData, ListAdminAuditEventsErrors, ListAdminAuditEventsResponses, ListAdminBackupsData, ListAdminBackupsErrors, ListAdminBackupsResponses, ListAdminJobsData, ListAdminJobsErrors, ListAdminJobsResponses, ListAdminUsersData, ListAdminUsersErrors, ListAdminUsersResponses, ListMetricsData, ListMetricsErrors, ListMetricsResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, ListTokensData, ListTokensErrors, ListTokensResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutErrors, LogoutResponses, ResetPasswordData, ResetPasswordErrors, ResetPasswordResponses, RevokeOtherSessionsData, RevokeOtherSessionsErrors, RevokeOtherSessionsResponses, RevokeSessionData, RevokeSessionErrors, RevokeSessionResponses, RevokeTokenData, RevokeTokenErrors, RevokeTokenResponses, SetUserRoleData, SetUserRoleErrors, SetUserRoleResponses, SetUserStatusData, SetUserStatusErrors, SetUserStatusResponses, UpdatePreferencesData, UpdatePreferencesErrors, UpdatePreferencesResponses } from './types.gen';
+import type { AcceptInvitationData, AcceptInvitationErrors, AcceptInvitationResponses, ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, CreateAdminBackupData, CreateAdminBackupErrors, CreateAdminBackupResponses, CreateFirstAdminData, CreateFirstAdminErrors, CreateFirstAdminResponses, CreateInvitationData, CreateInvitationErrors, CreateInvitationResponses, CreatePasswordResetLinkData, CreatePasswordResetLinkErrors, CreatePasswordResetLinkResponses, CreateTokenData, CreateTokenErrors, CreateTokenResponses, DeleteAccountData, DeleteAccountErrors, DeleteAccountResponses, DeleteUserData, DeleteUserErrors, DeleteUserResponses, DownloadAdminBackupData, DownloadAdminBackupErrors, DownloadAdminBackupResponses, GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetMetaData, GetMetaErrors, GetMetaResponses, GetPreferencesData, GetPreferencesErrors, GetPreferencesResponses, GetSetupStatusData, GetSetupStatusErrors, GetSetupStatusResponses, InspectInvitationData, InspectInvitationErrors, InspectInvitationResponses, ListAccountAuditEventsData, ListAccountAuditEventsErrors, ListAccountAuditEventsResponses, ListAdminAuditEventsData, ListAdminAuditEventsErrors, ListAdminAuditEventsResponses, ListAdminBackupsData, ListAdminBackupsErrors, ListAdminBackupsResponses, ListAdminJobsData, ListAdminJobsErrors, ListAdminJobsResponses, ListAdminUsersData, ListAdminUsersErrors, ListAdminUsersResponses, ListMetricsData, ListMetricsErrors, ListMetricsResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, ListTokensData, ListTokensErrors, ListTokensResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutErrors, LogoutResponses, PushNativeData, PushNativeErrors, PushNativeResponses, ResetPasswordData, ResetPasswordErrors, ResetPasswordResponses, RevokeOtherSessionsData, RevokeOtherSessionsErrors, RevokeOtherSessionsResponses, RevokeSessionData, RevokeSessionErrors, RevokeSessionResponses, RevokeTokenData, RevokeTokenErrors, RevokeTokenResponses, SetUserRoleData, SetUserRoleErrors, SetUserRoleResponses, SetUserStatusData, SetUserStatusErrors, SetUserStatusResponses, UpdatePreferencesData, UpdatePreferencesErrors, UpdatePreferencesResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -414,6 +414,25 @@ export const getCurrentUser = <ThrowOnError extends boolean = false>(options?: O
         }],
     url: '/api/v1/auth/me',
     ...options
+});
+
+/**
+ * Push data in the native format
+ *
+ * Stores a payload of the native format `verve.ingest.v1` for processing, and answers 202 with its queued import, which `GET /api/v1/imports/{id}` follows. A 202 means that the payload is safely stored and will be processed. The request only checks the authentication and the size of the body, bounded by `VERVE_MAX_INGEST_BODY`: a larger body answers 413. The import validates the payload, and fails as a whole for a body that is not a payload of the format. A full disk answers 507: retry later. Accepts a session or a token with the `ingest` scope.
+ */
+export const pushNative = <ThrowOnError extends boolean = false>(options: Options<PushNativeData, ThrowOnError>): RequestResult<PushNativeResponses, PushNativeErrors, ThrowOnError> => (options.client ?? client).post<PushNativeResponses, PushNativeErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'verve_session',
+            type: 'apiKey'
+        }, { scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/ingest',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
 });
 
 /**

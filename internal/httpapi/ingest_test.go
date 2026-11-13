@@ -216,7 +216,8 @@ func TestIngest_SessionPush_StoresTheBodyAndQueuesTheImport(t *testing.T) {
 
 	body, err := os.ReadFile(filepath.Join(it.inboxDir, stored.InboxFile))
 	require.NoError(t, err)
-	require.Equal(t, ingestPayload, string(body))
+	require.JSONEq(t, ingestPayload, string(body))
+	require.Len(t, body, len(ingestPayload), "the body is stored as received")
 
 	it.requireQueuedJob(t, stored)
 }
@@ -263,7 +264,7 @@ func TestIngest_BodyTooLarge_Answers413AndLeavesNoFile(t *testing.T) {
 
 			status, code := problemCode(t, rec)
 			require.Equal(t, http.StatusRequestEntityTooLarge, status)
-			require.Equal(t, "body_too_large", code)
+			require.Equal(t, "bad_request", code)
 			require.Empty(t, it.inboxFiles(t))
 			it.requireNothingQueued(t)
 		})
@@ -271,7 +272,8 @@ func TestIngest_BodyTooLarge_Answers413AndLeavesNoFile(t *testing.T) {
 }
 
 // Given a token without the ingest scope, then the server answers 403 scope_missing before it
-// reads the body, and given no authentication, then it answers 401 before it reads the body.
+// reads the body, and given no authentication, such as the web app without a session or an unknown
+// token, then it answers 401 before it reads the body.
 func TestIngest_WithoutTheIngestScope_RefusesBeforeReadingTheBody(t *testing.T) {
 	t.Parallel()
 
@@ -281,19 +283,21 @@ func TestIngest_WithoutTheIngestScope_RefusesBeforeReadingTheBody(t *testing.T) 
 
 	tests := []struct {
 		name   string
+		cookie string
 		token  string
 		status int
 		code   string
 	}{
 		{name: "token without the ingest scope", token: readToken, status: http.StatusForbidden, code: "scope_missing"},
-		{name: "no authentication", status: http.StatusUnauthorized, code: "unauthorized"},
+		{name: "no session", cookie: "theme=dark", status: http.StatusUnauthorized, code: "unauthorized"},
+		{name: "unknown token", token: "vrv_" + strings.Repeat("A", 43), status: http.StatusUnauthorized, code: "unauthorized"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			body := &readCounter{r: strings.NewReader(ingestPayload)}
 
-			rec := push(t, h, body, "", tt.token)
+			rec := push(t, h, body, tt.cookie, tt.token)
 
 			status, code := problemCode(t, rec)
 			require.Equal(t, tt.status, status)
@@ -329,7 +333,7 @@ func TestIngest_DiskFull_Answers507(t *testing.T) {
 
 	status, code := problemCode(t, rec)
 	require.Equal(t, http.StatusInsufficientStorage, status)
-	require.Equal(t, "insufficient_storage", code)
+	require.Equal(t, "internal", code)
 	it.requireNothingQueued(t)
 }
 

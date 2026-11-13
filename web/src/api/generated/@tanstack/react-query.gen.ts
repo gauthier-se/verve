@@ -3,8 +3,8 @@
 import { type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { acceptInvitation, changePassword, createAdminBackup, createFirstAdmin, createInvitation, createPasswordResetLink, createToken, deleteAccount, deleteUser, downloadAdminBackup, getCurrentUser, getMeta, getPreferences, getSetupStatus, inspectInvitation, listAccountAuditEvents, listAdminAuditEvents, listAdminBackups, listAdminJobs, listAdminUsers, listMetrics, listSessions, listTokens, login, logout, type Options, resetPassword, revokeOtherSessions, revokeSession, revokeToken, setUserRole, setUserStatus, updatePreferences } from '../sdk.gen';
-import type { AcceptInvitationData, AcceptInvitationError, AcceptInvitationResponse, ChangePasswordData, ChangePasswordError, ChangePasswordResponse, CreateAdminBackupData, CreateAdminBackupError, CreateAdminBackupResponse, CreateFirstAdminData, CreateFirstAdminError, CreateFirstAdminResponse, CreateInvitationData, CreateInvitationError, CreateInvitationResponse, CreatePasswordResetLinkData, CreatePasswordResetLinkError, CreatePasswordResetLinkResponse, CreateTokenData, CreateTokenError, CreateTokenResponse, DeleteAccountData, DeleteAccountError, DeleteUserData, DeleteUserError, DeleteUserResponse, DownloadAdminBackupData, DownloadAdminBackupError, DownloadAdminBackupResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetMetaData, GetMetaError, GetMetaResponse, GetPreferencesData, GetPreferencesError, GetPreferencesResponse, GetSetupStatusData, GetSetupStatusError, GetSetupStatusResponse, InspectInvitationData, InspectInvitationError, InspectInvitationResponse, ListAccountAuditEventsData, ListAccountAuditEventsError, ListAccountAuditEventsResponse, ListAdminAuditEventsData, ListAdminAuditEventsError, ListAdminAuditEventsResponse, ListAdminBackupsData, ListAdminBackupsError, ListAdminBackupsResponse, ListAdminJobsData, ListAdminJobsError, ListAdminJobsResponse, ListAdminUsersData, ListAdminUsersError, ListAdminUsersResponse, ListMetricsData, ListMetricsError, ListMetricsResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, ListTokensData, ListTokensError, ListTokensResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutError, LogoutResponse, ResetPasswordData, ResetPasswordError, ResetPasswordResponse, RevokeOtherSessionsData, RevokeOtherSessionsError, RevokeOtherSessionsResponse, RevokeSessionData, RevokeSessionError, RevokeSessionResponse, RevokeTokenData, RevokeTokenError, RevokeTokenResponse, SetUserRoleData, SetUserRoleError, SetUserRoleResponse, SetUserStatusData, SetUserStatusError, SetUserStatusResponse, UpdatePreferencesData, UpdatePreferencesError, UpdatePreferencesResponse } from '../types.gen';
+import { acceptInvitation, changePassword, createAdminBackup, createFirstAdmin, createInvitation, createPasswordResetLink, createToken, deleteAccount, deleteUser, downloadAdminBackup, getCurrentUser, getMeta, getPreferences, getSetupStatus, inspectInvitation, listAccountAuditEvents, listAdminAuditEvents, listAdminBackups, listAdminJobs, listAdminUsers, listMetrics, listSessions, listTokens, login, logout, type Options, pushNative, resetPassword, revokeOtherSessions, revokeSession, revokeToken, setUserRole, setUserStatus, updatePreferences } from '../sdk.gen';
+import type { AcceptInvitationData, AcceptInvitationError, AcceptInvitationResponse, ChangePasswordData, ChangePasswordError, ChangePasswordResponse, CreateAdminBackupData, CreateAdminBackupError, CreateAdminBackupResponse, CreateFirstAdminData, CreateFirstAdminError, CreateFirstAdminResponse, CreateInvitationData, CreateInvitationError, CreateInvitationResponse, CreatePasswordResetLinkData, CreatePasswordResetLinkError, CreatePasswordResetLinkResponse, CreateTokenData, CreateTokenError, CreateTokenResponse, DeleteAccountData, DeleteAccountError, DeleteUserData, DeleteUserError, DeleteUserResponse, DownloadAdminBackupData, DownloadAdminBackupError, DownloadAdminBackupResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetMetaData, GetMetaError, GetMetaResponse, GetPreferencesData, GetPreferencesError, GetPreferencesResponse, GetSetupStatusData, GetSetupStatusError, GetSetupStatusResponse, InspectInvitationData, InspectInvitationError, InspectInvitationResponse, ListAccountAuditEventsData, ListAccountAuditEventsError, ListAccountAuditEventsResponse, ListAdminAuditEventsData, ListAdminAuditEventsError, ListAdminAuditEventsResponse, ListAdminBackupsData, ListAdminBackupsError, ListAdminBackupsResponse, ListAdminJobsData, ListAdminJobsError, ListAdminJobsResponse, ListAdminUsersData, ListAdminUsersError, ListAdminUsersResponse, ListMetricsData, ListMetricsError, ListMetricsResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, ListTokensData, ListTokensError, ListTokensResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutError, LogoutResponse, PushNativeData, PushNativeError, PushNativeResponse, ResetPasswordData, ResetPasswordError, ResetPasswordResponse, RevokeOtherSessionsData, RevokeOtherSessionsError, RevokeOtherSessionsResponse, RevokeSessionData, RevokeSessionError, RevokeSessionResponse, RevokeTokenData, RevokeTokenError, RevokeTokenResponse, SetUserRoleData, SetUserRoleError, SetUserRoleResponse, SetUserStatusData, SetUserStatusError, SetUserStatusResponse, UpdatePreferencesData, UpdatePreferencesError, UpdatePreferencesResponse } from '../types.gen';
 
 /**
  * Delete the account of the current user
@@ -680,6 +680,25 @@ export const getCurrentUserOptions = (options?: Options<GetCurrentUserData>) => 
     },
     queryKey: getCurrentUserQueryKey(options)
 });
+
+/**
+ * Push data in the native format
+ *
+ * Stores a payload of the native format `verve.ingest.v1` for processing, and answers 202 with its queued import, which `GET /api/v1/imports/{id}` follows. A 202 means that the payload is safely stored and will be processed. The request only checks the authentication and the size of the body, bounded by `VERVE_MAX_INGEST_BODY`: a larger body answers 413. The import validates the payload, and fails as a whole for a body that is not a payload of the format. A full disk answers 507: retry later. Accepts a session or a token with the `ingest` scope.
+ */
+export const pushNativeMutation = (options?: Partial<Options<PushNativeData>>): UseMutationOptions<PushNativeResponse, PushNativeError, Options<PushNativeData>> => {
+    const mutationOptions: UseMutationOptions<PushNativeResponse, PushNativeError, Options<PushNativeData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await pushNative({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
 
 /**
  * Accept an invitation

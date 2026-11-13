@@ -82,8 +82,21 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger, stderr io.
 	// Issued once the schema is migrated, when no user exists.
 	setupToken := new(auth.SetupToken)
 
+	layout := newLayout(cfg.DataDir)
+
+	ing, err := newIngestion(st, shipped, layout.Inbox, clk)
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		if closeErr := ing.Close(); closeErr != nil {
+			logger.Error("close ingestion", slog.Any("error", closeErr))
+		}
+	}()
+
 	// Built before the routes, which queue jobs on it, and started once the schema is migrated.
-	schedules := registerJobs(registry, st, clk, cfg)
+	schedules := registerJobs(registry, st, clk, cfg, ing)
 	worker := jobs.NewWorker(st, registry, clk, logger, jobs.Options{Schedules: schedules})
 
 	handler := httpapi.NewHandler(httpapi.Deps{
@@ -101,6 +114,8 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger, stderr io.
 		Jobs:           worker,
 		Backups:        newBackups(cfg, clk),
 		Catalog:        shipped,
+		Inbox:          ing.inbox,
+		MaxIngestBody:  int64(cfg.MaxIngestBody),
 	})
 	srv := NewServer(ServerConfig{Addr: cfg.ListenAddr}, handler, logger)
 
