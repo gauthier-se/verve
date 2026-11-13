@@ -103,6 +103,12 @@ var userRowSeeders = map[string]func(ctx context.Context, t *testing.T, s store.
 			Polyline:   "_p~iF~ps|U",
 		}))
 	},
+	"imports": func(ctx context.Context, t *testing.T, s store.Store, user store.User) {
+		t.Helper()
+
+		_, err := s.Imports().Create(ctx, store.NewImport{UserID: user.ID, Origin: store.OriginNative, TokenID: 7})
+		require.NoError(t, err)
+	},
 	"jobs": func(ctx context.Context, t *testing.T, s store.Store, user store.User) {
 		t.Helper()
 

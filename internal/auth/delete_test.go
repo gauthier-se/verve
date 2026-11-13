@@ -277,8 +277,8 @@ type deleteBatch struct {
 }
 
 // userBatch is a call of Samples().DeleteByUser, Workouts().DeleteByUser or
-// Workouts().DeleteRoutesByUser: its limit, how many rows it removed, and whether the user still
-// existed when it ran.
+// Workouts().DeleteRoutesByUser or Imports().DeleteByUser: its limit, how many rows it removed, and
+// whether the user still existed when it ran.
 type userBatch struct {
 	limit      int
 	deleted    int64
@@ -291,10 +291,12 @@ type recordedBatches struct {
 	samples  []userBatch
 	workouts []userBatch
 	routes   []userBatch
+	imports  []userBatch
 }
 
 // countingStore records the calls of Jobs().DeleteByUser, Samples().DeleteByUser,
-// Workouts().DeleteByUser and Workouts().DeleteRoutesByUser on the store it wraps.
+// Workouts().DeleteByUser, Workouts().DeleteRoutesByUser and Imports().DeleteByUser on the store it
+// wraps.
 type countingStore struct {
 	store.Store
 
@@ -323,6 +325,10 @@ func (s countingStore) Workouts() store.WorkoutsRepository {
 		batches:            &s.recorded.workouts,
 		routeBatches:       &s.recorded.routes,
 	}
+}
+
+func (s countingStore) Imports() store.ImportsRepository {
+	return countingImports{ImportsRepository: s.Store.Imports(), users: s.Users(), batches: &s.recorded.imports}
 }
 
 // recordUserBatch removes a batch of rows of the user of userID with deleteBatch, and appends the
@@ -364,6 +370,17 @@ func (r countingWorkouts) DeleteByUser(ctx context.Context, userID int64, limit 
 
 func (r countingWorkouts) DeleteRoutesByUser(ctx context.Context, userID int64, limit int) (int64, error) {
 	return recordUserBatch(ctx, r.users, r.routeBatches, r.WorkoutsRepository.DeleteRoutesByUser, userID, limit)
+}
+
+type countingImports struct {
+	store.ImportsRepository
+
+	users   store.UsersRepository
+	batches *[]userBatch
+}
+
+func (r countingImports) DeleteByUser(ctx context.Context, userID int64, limit int) (int64, error) {
+	return recordUserBatch(ctx, r.users, r.batches, r.ImportsRepository.DeleteByUser, userID, limit)
 }
 
 type countingJobs struct {
@@ -618,6 +635,57 @@ func TestDeleteAccount_RemovesTheRoutesInBoundedBatchesBeforeTheWorkouts(t *test
 	thumbnails, err := dt.store.Workouts().Thumbnails(t.Context(), alice.ID, aliceRuns)
 	require.NoError(t, err)
 	require.Len(t, thumbnails, 2, "the routes of the other user stay")
+}
+
+// mustCreateImports creates count imports of user, the first one completed and the others queued.
+func (dt deletionTest) mustCreateImports(t *testing.T, user store.User, count int) {
+	t.Helper()
+
+	ctx := t.Context()
+
+	for i := range count {
+		created, err := dt.store.Imports().Create(ctx, store.NewImport{UserID: user.ID, Origin: store.OriginNative})
+		require.NoError(t, err)
+
+		if i == 0 {
+			_, err = dt.store.Imports().SetStatus(ctx, user.ID, created.ID, store.ImportRunning)
+			require.NoError(t, err)
+
+			_, err = dt.store.Imports().SetStatus(ctx, user.ID, created.ID, store.ImportCompleted)
+			require.NoError(t, err)
+		}
+	}
+}
+
+// Given imports of two users, when the account.delete job of one of them runs, then it removes
+// their imports in transactions of at most the batch size, before the user, and the other user
+// keeps theirs.
+func TestDeleteAccount_RemovesTheImportsInBoundedBatchesBeforeTheUser(t *testing.T) {
+	t.Parallel()
+
+	dt := newDeletionTest(t)
+	alice := dt.mustCreateRole(t, "alice", store.RoleMember)
+	bob := dt.mustCreateRole(t, "bob", store.RoleMember)
+	dt.mustCreateImports(t, alice, 2)
+	dt.mustCreateImports(t, bob, 5)
+
+	dt.mustRequestOwnDeletion(t, bob)
+
+	counting, recorded := newCountingStore(dt.store)
+
+	require.NoError(t, deleteAccount(t.Context(), counting, bob.ID, deleteBatchSizes{rows: 2, routes: 2}))
+	require.Equal(t, []userBatch{
+		{limit: 2, deleted: 2, userExists: true},
+		{limit: 2, deleted: 2, userExists: true},
+		{limit: 2, deleted: 1, userExists: true},
+	}, recorded.imports, "five imports in batches of at most two, before the user")
+
+	_, err := dt.store.Users().Get(t.Context(), bob.ID)
+	require.ErrorIs(t, err, store.ErrNotFound)
+
+	imports, err := dt.store.Imports().List(t.Context(), alice.ID, store.PageRequest{Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, imports, 2, "the imports of the other user stay")
 }
 
 // Given a queued and a running job of the user, then the account.delete job cancels both first: it
