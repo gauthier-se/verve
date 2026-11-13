@@ -94,7 +94,11 @@ func (i *Inbox) Write(ctx context.Context, body io.Reader) (name string, err err
 }
 
 // Open opens the inbox file of name for reading.
-func (i *Inbox) Open(name string) (*os.File, error) {
+func (i *Inbox) Open(ctx context.Context, name string) (*os.File, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("open inbox file: %w", err)
+	}
+
 	path, err := i.path(name)
 	if err != nil {
 		return nil, err
@@ -110,7 +114,11 @@ func (i *Inbox) Open(name string) (*os.File, error) {
 
 // Remove removes the inbox file of name. A file already gone is not an error, so that removing a
 // file twice is harmless.
-func (i *Inbox) Remove(name string) error {
+func (i *Inbox) Remove(ctx context.Context, name string) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("remove inbox file: %w", err)
+	}
+
 	path, err := i.path(name)
 	if err != nil {
 		return err
@@ -119,21 +127,19 @@ func (i *Inbox) Remove(name string) error {
 	return removeIfExists(path)
 }
 
-// Cleanup removes the inbox files that no import needs once they are older than InboxOrphanAge: the
-// files of the imports that failed more than InboxFailedRetention ago, of the completed and
-// cancelled imports whose job stopped before removing them, and the files without import,
-// temporary ones included. It keeps the files of the queued and running imports and of the imports
-// that failed more recently. It is the handler of the daily job cleanup.inbox.
+// Cleanup removes the files of the imports that failed more than InboxFailedRetention ago, and the
+// files without import, temporary ones included, once they are older than InboxOrphanAge. It keeps
+// the files of the other imports. It is the handler of the daily job cleanup.inbox.
 func (i *Inbox) Cleanup(ctx context.Context, imports store.ImportsRepository) error {
 	now := i.clk.Now()
 
-	inUse, err := imports.InboxFilesInUse(ctx, now.Add(-InboxFailedRetention))
+	names, err := imports.InboxFilesKept(ctx, now.Add(-InboxFailedRetention))
 	if err != nil {
 		return err
 	}
 
-	kept := make(map[string]bool, len(inUse))
-	for _, name := range inUse {
+	kept := make(map[string]bool, len(names))
+	for _, name := range names {
 		kept[name] = true
 	}
 

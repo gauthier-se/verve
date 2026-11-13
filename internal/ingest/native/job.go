@@ -38,6 +38,10 @@ type JobDeps struct {
 // sample error message of the import.
 var errMissingPayload = errors.New("the payload of the import is missing from the inbox")
 
+// errLastAttempt is the sample error message of an import whose job failed its last attempt. It is a
+// fixed text: the error of the attempt is the last error of the job, which admins see.
+var errLastAttempt = errors.New("the import stopped after the last attempt of its job failed")
+
 // Job returns the import.native job of the import of importID of userID. Its serial key runs the
 // imports of the user one at a time, in arrival order (FR-4 of Ingestion pipeline).
 func Job(userID, importID int64) (store.NewJob, error) {
@@ -53,20 +57,22 @@ func Job(userID, importID int64) (store.NewJob, error) {
 // import through the pipeline, and ends the import:
 //   - completed once every record is processed, its file deleted,
 //   - failed, without retry, for a payload that fails as a whole or a file that is gone, with the
-//     reason as its sample error message, its file kept for a diagnosis,
+//     reason as its sample error message, its file kept for a diagnosis, and once the last attempt
+//     of its job fails,
 //   - cancelled at the next batch boundary once its job is cancelled, its file deleted.
 //
 // The batches committed before the end stay. A job stopped otherwise, such as by a shutdown, leaves
 // the import running, and its next run resumes it from the stored position (FR-5).
 func Register(registry *jobs.Registry, deps JobDeps) {
 	jobs.Register(registry, KindImport, jobs.KindOptions{}, func(ctx context.Context, job jobs.Job[ImportPayload]) error {
-		return runImport(ctx, deps, job.UserID, job.Payload.ImportID)
+		return runImport(ctx, deps, job)
 	})
 }
 
-// runImport runs the import of importID of userID.
-func runImport(ctx context.Context, deps JobDeps, userID, importID int64) error {
+// runImport runs the import of job.
+func runImport(ctx context.Context, deps JobDeps, job jobs.Job[ImportPayload]) error {
 	imports := deps.Store.Imports()
+	userID, importID := job.UserID, job.Payload.ImportID
 
 	imp, err := imports.Get(ctx, userID, importID)
 	if errors.Is(err, store.ErrNotFound) {
@@ -81,7 +87,7 @@ func runImport(ctx context.Context, deps JobDeps, userID, importID int64) error 
 		// Ended without its job, such as an import cancelled while queued: a completed or cancelled
 		// import no longer needs its file.
 		if imp.Status != store.ImportFailed {
-			return deps.Inbox.Remove(imp.InboxFile)
+			return deps.Inbox.Remove(ctx, imp.InboxFile)
 		}
 
 		return nil
@@ -107,6 +113,9 @@ func runImport(ctx context.Context, deps JobDeps, userID, importID int64) error 
 		return errors.Join(err, finish(context.WithoutCancel(ctx), deps, imp, store.ImportCancelled))
 	case errors.Is(err, ErrInvalidPayload), errors.Is(err, errMissingPayload):
 		return jobs.Permanent(errors.Join(err, fail(ctx, deps.Store, imp, err)))
+	case job.LastAttempt && ctx.Err() == nil:
+		// The job fails for good: the import would otherwise stay running.
+		return errors.Join(err, fail(ctx, deps.Store, imp, errLastAttempt))
 	default:
 		return err
 	}
@@ -115,7 +124,7 @@ func runImport(ctx context.Context, deps JobDeps, userID, importID int64) error 
 // process reads the payload of the inbox file of imp, stores its client, and runs its records
 // through the pipeline.
 func process(ctx context.Context, deps JobDeps, imp store.Import) (err error) {
-	f, err := deps.Inbox.Open(imp.InboxFile)
+	f, err := deps.Inbox.Open(ctx, imp.InboxFile)
 	if errors.Is(err, fs.ErrNotExist) {
 		return errMissingPayload
 	}
@@ -147,7 +156,7 @@ func finish(ctx context.Context, deps JobDeps, imp store.Import, status store.Im
 		return fmt.Errorf("end import %d %s: %w", imp.ID, status, err)
 	}
 
-	return deps.Inbox.Remove(imp.InboxFile)
+	return deps.Inbox.Remove(ctx, imp.InboxFile)
 }
 
 // fail ends imp failed, with the message of cause as a sample error message, in one transaction. Its

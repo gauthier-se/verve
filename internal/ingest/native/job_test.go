@@ -2,6 +2,7 @@ package native_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"iter"
 	"log/slog"
@@ -370,7 +371,7 @@ func TestImportJob_MissingInboxFile_FailsWithoutRetry(t *testing.T) {
 
 	e := newJobEnv(t)
 	imp, queued := e.push(t, stepsPayload)
-	require.NoError(t, e.inbox.Remove(imp.InboxFile))
+	require.NoError(t, e.inbox.Remove(t.Context(), imp.InboxFile))
 
 	e.tick(t.Context(), t)
 
@@ -506,8 +507,9 @@ func TestImportJob_Cancelled_EndsCancelledAndKeepsTheCommittedData(t *testing.T)
 	require.Zero(t, job.Attempts)
 }
 
-// Given the job of an import that already ended, such as one cancelled while it was queued, when
-// it runs, then it changes nothing and completes.
+// Given the job of an import that already ended, such as one cancelled while it was queued, or one
+// whose process stopped between its end and the removal of its file, when it runs, then it changes
+// nothing but removes the inbox file, and completes.
 func TestImportJob_FinishedImport_ChangesNothing(t *testing.T) {
 	t.Parallel()
 
@@ -521,6 +523,7 @@ func TestImportJob_FinishedImport_ChangesNothing(t *testing.T) {
 
 	require.Equal(t, cancelled, e.importOf(t, imp.ID))
 	require.Empty(t, e.samples(t))
+	e.requireInboxFile(t, cancelled, false)
 	require.Equal(t, store.JobCompleted, e.jobOf(t, queued.ID).Status)
 }
 
@@ -543,4 +546,38 @@ func TestImportJob_MissingImport_FailsWithoutRetry(t *testing.T) {
 	require.Equal(t, store.JobFailed, got.Status)
 	require.Equal(t, int64(1), got.Attempts)
 	require.NotContains(t, got.LastError, "importId", "the error never quotes the payload")
+}
+
+// Given a pipeline that keeps failing, when the job of an import runs out of attempts, then the
+// import ends failed with a sample error message instead of staying running, and its inbox file is
+// kept for a retry or a diagnosis.
+func TestImportJob_LastAttemptFails_FailsTheImport(t *testing.T) {
+	t.Parallel()
+
+	e := newJobEnv(t)
+	imp, queued := e.push(t, stepsPayload)
+
+	e.hook.set(func(context.Context, int64) error {
+		return errors.New("read inbox file: input/output error")
+	})
+
+	var statuses []store.ImportStatus
+
+	for range 5 {
+		e.tick(t.Context(), t)
+		statuses = append(statuses, e.importOf(t, imp.ID).Status)
+		e.clk.Advance(2 * time.Hour)
+	}
+
+	require.Equal(t, []store.ImportStatus{
+		store.ImportRunning, store.ImportRunning, store.ImportRunning, store.ImportRunning, store.ImportFailed,
+	}, statuses, "the import runs again until the last attempt")
+
+	got := e.importOf(t, imp.ID)
+	require.Equal(t, []string{"the import stopped after the last attempt of its job failed"}, got.Report.Errors)
+	e.requireInboxFile(t, got, true)
+
+	job := e.jobOf(t, queued.ID)
+	require.Equal(t, store.JobFailed, job.Status)
+	require.Equal(t, int64(5), job.Attempts)
 }

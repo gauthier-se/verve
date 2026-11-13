@@ -116,7 +116,7 @@ func TestInbox_Write_StoresTheBodyUnderARandomName(t *testing.T) {
 	require.NotEqual(t, first, second)
 	require.ElementsMatch(t, []string{first, second}, e.files(t))
 
-	f, err := e.inbox.Open(first)
+	f, err := e.inbox.Open(t.Context(), first)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, f.Close()) })
 
@@ -177,17 +177,17 @@ func TestInbox_Remove_MissingFileSucceedsAndOtherNamesFail(t *testing.T) {
 	e := newInboxEnv(t)
 	name := e.mustWrite(t, `{}`)
 
-	require.NoError(t, e.inbox.Remove(name))
-	require.NoError(t, e.inbox.Remove(name))
+	require.NoError(t, e.inbox.Remove(t.Context(), name))
+	require.NoError(t, e.inbox.Remove(t.Context(), name))
 	require.Empty(t, e.files(t))
 
 	outside := filepath.Join(t.TempDir(), "outside")
 	require.NoError(t, os.WriteFile(outside, []byte(`{}`), 0o600))
 
 	for _, bad := range []string{"", ".", "..", "../outside", outside, "a/b"} {
-		require.Error(t, e.inbox.Remove(bad), "name %q", bad)
+		require.Error(t, e.inbox.Remove(t.Context(), bad), "name %q", bad)
 
-		_, err := e.inbox.Open(bad)
+		_, err := e.inbox.Open(t.Context(), bad)
 		require.Error(t, err, "name %q", bad)
 	}
 
@@ -233,10 +233,9 @@ func TestInbox_Cleanup_RemovesTheFilesOfOldFailuresAndOldFilesWithoutImport(t *t
 	}, e.files(t))
 }
 
-// Given a file that a completed or cancelled import left behind, because the process stopped before
-// its job removed it, when cleanup.inbox runs, then it removes the file once it is older than one
-// hour, as a file that no import needs.
-func TestInbox_Cleanup_RemovesTheFilesLeftByFinishedImports(t *testing.T) {
+// Given the old files of a completed and of a cancelled import, when cleanup.inbox runs, then it
+// keeps them: their job removes them, also when it runs again after the process stopped before.
+func TestInbox_Cleanup_KeepsTheFilesOfFinishedImports(t *testing.T) {
 	t.Parallel()
 
 	e := newInboxEnv(t)
@@ -247,5 +246,5 @@ func TestInbox_Cleanup_RemovesTheFilesLeftByFinishedImports(t *testing.T) {
 	e.mustImport(t, "cancelled", store.ImportCancelled)
 
 	require.NoError(t, e.inbox.Cleanup(t.Context(), e.store.Imports()))
-	require.Empty(t, e.files(t))
+	require.ElementsMatch(t, []string{"completed", "cancelled"}, e.files(t))
 }
