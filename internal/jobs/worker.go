@@ -322,6 +322,13 @@ func isLost(err error) bool {
 	return errors.Is(err, store.ErrConflict) || errors.Is(err, store.ErrNotFound)
 }
 
+// Cancelled reports whether the context of a handler was cancelled because its job was cancelled
+// (FR-9 of Job worker), rather than by a shutdown or a lost lease, after which the job runs again.
+// A handler calls it once ctx is done, to end its own records as cancelled.
+func Cancelled(ctx context.Context) bool {
+	return errors.Is(context.Cause(ctx), errCancelled)
+}
+
 // invoke runs the handler of job. A panic is logged and returned as errPanicked. The log carries
 // the type of the panic value, never the value, which can hold anything.
 func (w *Worker) invoke(ctx context.Context, job store.Job) (err error) {
