@@ -124,6 +124,21 @@ type SamplesQuery struct {
 	Limit int
 }
 
+// SampleRowBytes is the average storage of a sample, its row and its index entries together. It was
+// measured once with the dbstat table of SQLite: 178.3 bytes, over the 141,928 samples that the
+// native pipeline stores from the records of a synthetic export (internal/synthexport) of seed 1,
+// 60 days and a density of 12. The export of the fixture, 1,523 samples, gives 193.6 bytes, mostly
+// the overhead of half-empty pages.
+const SampleRowBytes = 178
+
+// EstimatedStorage returns the estimated storage in bytes of a user with samples samples and
+// routeBytes bytes of encoded routes. SQLite cannot measure the storage of one user: samples are
+// counted at SampleRowBytes, and routes, the only rows of variable size that matter, at their size
+// (FR-9 of Accounts and administration).
+func EstimatedStorage(samples, routeBytes int64) int64 {
+	return samples*SampleRowBytes + routeBytes
+}
+
 // SamplesRepository stores the samples of each user and their data availability. A sample of
 // another user is never returned.
 type SamplesRepository interface {
@@ -138,6 +153,11 @@ type SamplesRepository interface {
 	// Stats returns the data availability of userID for each type they have samples of, sorted by
 	// type id, or an empty list.
 	Stats(ctx context.Context, userID int64) ([]SampleStats, error)
+	// CountByUsers returns the number of samples of each user of userIDs, from their data
+	// availability, every type together. The users without samples are left out. It reads no sample,
+	// so that an admin sees how much data a user has, never their health (FR-9 and FR-10 of Accounts
+	// and administration).
+	CountByUsers(ctx context.Context, userIDs []int64) (map[int64]int64, error)
 	// List returns the samples of userID that query asks for. It returns ErrInvalid when the limit
 	// is below 1 or To is not after From.
 	List(ctx context.Context, userID int64, query SamplesQuery) ([]Sample, error)

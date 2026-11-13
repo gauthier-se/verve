@@ -75,14 +75,19 @@ func (r imports) Get(ctx context.Context, userID, id int64) (store.Import, error
 	return importOf(row)
 }
 
-func (r imports) List(ctx context.Context, userID int64, page store.PageRequest) ([]store.Import, error) {
+func (r imports) List(ctx context.Context, userID int64, filter store.ImportsFilter, page store.PageRequest) ([]store.Import, error) {
 	if page.Limit < 1 {
 		return nil, fmt.Errorf("list imports of user %d: limit %d below 1: %w", userID, page.Limit, store.ErrInvalid)
+	}
+
+	if filter.Status != "" && !filter.Status.Known() {
+		return nil, fmt.Errorf("list imports of user %d: status %q: %w", userID, filter.Status, store.ErrInvalid)
 	}
 
 	// The position before every import, so that the query always has one.
 	params := sqlcgen.ListUserImportsParams{
 		UserID:     userID,
+		Status:     sql.NullString{String: string(filter.Status), Valid: filter.Status != ""},
 		AfterAt:    math.MaxInt64,
 		AfterID:    math.MaxInt64,
 		MaxImports: int64(page.Limit),
@@ -218,15 +223,23 @@ func (r imports) InboxFilesKept(ctx context.Context, failedSince time.Time) ([]s
 	return files, nil
 }
 
-func (r imports) LastByOrigin(ctx context.Context, userID int64) (map[store.Origin]time.Time, error) {
-	rows, err := r.q.read().LastCompletedUserImports(ctx, userID)
-	if err != nil {
-		return nil, fmt.Errorf("last imports of user %d: %w", userID, err)
+func (r imports) LastByOrigin(ctx context.Context, userIDs []int64) (map[int64]map[store.Origin]time.Time, error) {
+	last := make(map[int64]map[store.Origin]time.Time, len(userIDs))
+	if len(userIDs) == 0 {
+		return last, nil
 	}
 
-	last := make(map[store.Origin]time.Time, len(rows))
+	rows, err := r.q.read().LastCompletedUsersImports(ctx, userIDs)
+	if err != nil {
+		return nil, fmt.Errorf("last imports of %d users: %w", len(userIDs), err)
+	}
+
 	for _, row := range rows {
-		last[store.Origin(row.Origin)] = fromMillis(row.FinishedAt)
+		if last[row.UserID] == nil {
+			last[row.UserID] = map[store.Origin]time.Time{}
+		}
+
+		last[row.UserID][store.Origin(row.Origin)] = fromMillis(row.FinishedAt)
 	}
 
 	return last, nil

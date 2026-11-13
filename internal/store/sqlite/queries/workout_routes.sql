@@ -37,6 +37,13 @@ WHERE user_id = sqlc.arg(user_id)
   AND workout_id IN (sqlc.slice(workout_ids))
 ORDER BY workout_id;
 
+-- name: SumUsersRouteBytes :many
+-- The index on user_id bounds the scan to the routes of the users asked for.
+SELECT user_id, CAST(sum(length(encoded)) AS INTEGER) AS bytes
+FROM workout_routes
+WHERE user_id IN (sqlc.slice(user_ids))
+GROUP BY user_id;
+
 -- name: DeleteUserWorkoutRoutes :execrows
 DELETE
 FROM workout_routes

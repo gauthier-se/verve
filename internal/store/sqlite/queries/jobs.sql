@@ -156,6 +156,13 @@ WHERE serial_key = ?
 ORDER BY id
 LIMIT 1;
 
+-- name: ActiveJobs :many
+SELECT *
+FROM jobs
+WHERE serial_key = ?
+  AND status IN ('queued', 'running')
+ORDER BY id;
+
 -- name: ListJobsByStatus :many
 -- The jobs of a finished status, newest first by the time they ended, after a position: those that
 -- ended before it, or at the same time with a smaller id. The position is always set, the first

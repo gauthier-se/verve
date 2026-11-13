@@ -124,6 +124,52 @@ func (q *Queries) ListUserRouteThumbnails(ctx context.Context, arg ListUserRoute
 	return items, nil
 }
 
+const sumUsersRouteBytes = `-- name: SumUsersRouteBytes :many
+SELECT user_id, CAST(sum(length(encoded)) AS INTEGER) AS bytes
+FROM workout_routes
+WHERE user_id IN (/*SLICE:user_ids*/?)
+GROUP BY user_id
+`
+
+type SumUsersRouteBytesRow struct {
+	UserID int64
+	Bytes  int64
+}
+
+// The index on user_id bounds the scan to the routes of the users asked for.
+func (q *Queries) SumUsersRouteBytes(ctx context.Context, userIds []int64) ([]SumUsersRouteBytesRow, error) {
+	query := sumUsersRouteBytes
+	var queryParams []interface{}
+	if len(userIds) > 0 {
+		for _, v := range userIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:user_ids*/?", strings.Repeat(",?", len(userIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:user_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SumUsersRouteBytesRow
+	for rows.Next() {
+		var i SumUsersRouteBytesRow
+		if err := rows.Scan(&i.UserID, &i.Bytes); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const upsertWorkoutRoute = `-- name: UpsertWorkoutRoute :execrows
 INSERT INTO workout_routes (workout_id, user_id, encoded, min_lat, min_lon, max_lat, max_lon, distance, point_count,
                             polyline)

@@ -90,6 +90,24 @@ func (r workouts) Thumbnails(ctx context.Context, userID int64, workoutIDs []int
 	return thumbnails, nil
 }
 
+func (r workouts) RouteBytesByUsers(ctx context.Context, userIDs []int64) (map[int64]int64, error) {
+	sizes := make(map[int64]int64, len(userIDs))
+	if len(userIDs) == 0 {
+		return sizes, nil
+	}
+
+	rows, err := r.q.read().SumUsersRouteBytes(ctx, userIDs)
+	if err != nil {
+		return nil, fmt.Errorf("sum route sizes of %d users: %w", len(userIDs), err)
+	}
+
+	for _, row := range rows {
+		sizes[row.UserID] = row.Bytes
+	}
+
+	return sizes, nil
+}
+
 func (r workouts) DeleteRoutesByUser(ctx context.Context, userID int64, limit int) (int64, error) {
 	if limit < 1 {
 		return 0, fmt.Errorf("delete routes of user %d: limit %d below 1: %w", userID, limit, store.ErrInvalid)

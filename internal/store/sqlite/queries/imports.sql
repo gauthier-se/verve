@@ -24,11 +24,12 @@ WHERE user_id = ? AND id = ?;
 
 -- name: ListUserImports :many
 -- The imports of a user, newest first by creation, after a position: those created before it, or at
--- the same time with a smaller id. The position is always set, the first page starting after the
+-- the same time with a smaller id, of one status when it is set. The position is always set, the first page starting after the
 -- largest time and id, so that the index on user, creation and id bounds the scan.
 SELECT *
 FROM imports
 WHERE user_id = sqlc.arg(user_id)
+  AND (status = sqlc.narg(status) OR sqlc.narg(status) IS NULL)
   AND created_at <= sqlc.arg(after_at)
   AND (created_at < sqlc.arg(after_at) OR id < sqlc.arg(after_id))
 ORDER BY created_at DESC, id DESC
@@ -77,12 +78,12 @@ FROM imports
 WHERE inbox_file IS NOT NULL
   AND NOT (status = 'failed' AND finished_at < sqlc.arg(failed_since));
 
--- name: LastCompletedUserImports :many
-SELECT origin, CAST(max(finished_at) AS INTEGER) AS finished_at
+-- name: LastCompletedUsersImports :many
+SELECT user_id, origin, CAST(max(finished_at) AS INTEGER) AS finished_at
 FROM imports
-WHERE user_id = ?
+WHERE user_id IN (sqlc.slice(user_ids))
   AND status = 'completed'
-GROUP BY origin;
+GROUP BY user_id, origin;
 
 -- name: DeleteUserImports :execrows
 DELETE
