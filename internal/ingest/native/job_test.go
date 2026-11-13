@@ -954,3 +954,72 @@ func TestImportJob_CancelledBeforeTheImportStarts_EndsCancelled(t *testing.T) {
 	e.requireCancelledByItsJob(t, imp.ID)
 	require.Equal(t, store.JobCancelled, e.jobOf(t, queued.ID).Status)
 }
+
+// dies claims the job of queued as a process that dies while it runs the import of imp: the import
+// is running, the job holds its lease, and the lease expires.
+func (e *jobEnv) dies(t *testing.T, imp store.Import, queued store.Job) {
+	t.Helper()
+
+	ctx := t.Context()
+
+	claimed, _, err := e.store.Jobs().Claim(ctx, jobLease)
+	require.NoError(t, err)
+	require.Equal(t, queued.ID, claimed.ID)
+
+	_, err = e.store.Imports().SetStatus(ctx, e.user.ID, imp.ID, store.ImportRunning)
+	require.NoError(t, err)
+
+	e.clk.Advance(jobLease)
+}
+
+// Given an import whose job lost its lease 5 times, its process dying each time, when a claim
+// abandons the job, then the import ends failed with a sample error message, import.failed is
+// recorded, and its inbox file is kept for 7 days like the file of any failed import.
+func TestImportJob_AbandonedAfterFiveLostLeases_FailsTheImportAndKeepsItsFile(t *testing.T) {
+	t.Parallel()
+
+	e := newJobEnv(t)
+	imp, queued := e.push(t, stepsPayload)
+
+	for range 5 {
+		e.dies(t, imp, queued)
+	}
+
+	claimed, err := e.worker.Tick(t.Context())
+	require.NoError(t, err)
+	require.False(t, claimed)
+	require.Equal(t, store.JobFailed, e.jobOf(t, queued.ID).Status)
+
+	got := e.importOf(t, imp.ID)
+	require.Equal(t, store.ImportFailed, got.Status)
+	require.Equal(t, e.clk.Now(), got.FinishedAt)
+	require.Equal(t, []string{"the import stopped after its job was abandoned: its process stopped 5 times while running it"}, got.Report.Errors)
+	e.requireInboxFile(t, got, true)
+
+	kept, err := e.store.Imports().InboxFilesKept(t.Context(), e.clk.Now().Add(-ingest.InboxFailedRetention))
+	require.NoError(t, err)
+	require.Contains(t, kept, got.InboxFile, "cleanup.inbox keeps the file of a failed import for 7 days")
+
+	require.Equal(t, []string{"import.failed"}, eventTypes(e.importEvents(t)))
+}
+
+// Given a cancellation of the job of a running import whose process died, when a claim cancels the
+// job without a handler, then the import ends cancelled, import.cancelled is recorded once, and its
+// inbox file is deleted.
+func TestImportJob_CancelledAfterItsProcessDied_EndsCancelledAndDeletesItsFile(t *testing.T) {
+	t.Parallel()
+
+	e := newJobEnv(t)
+	imp, queued := e.push(t, stepsPayload)
+
+	e.dies(t, imp, queued)
+	require.NoError(t, e.store.Jobs().Cancel(t.Context(), queued.ID))
+
+	claimed, err := e.worker.Tick(t.Context())
+	require.NoError(t, err)
+	require.False(t, claimed)
+	require.Equal(t, store.JobCancelled, e.jobOf(t, queued.ID).Status)
+
+	e.requireCancelledByItsJob(t, imp.ID)
+	require.Equal(t, e.clk.Now(), e.importOf(t, imp.ID).FinishedAt)
+}

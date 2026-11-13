@@ -1170,6 +1170,133 @@ func TestTick_AbandonedJob_IsLogged(t *testing.T) {
 	}
 }
 
+// endedByClaim is a job that a claim ended without a handler, as the hook of its kind sees it.
+type endedByClaim struct {
+	job    Job[testPayload]
+	status store.JobStatus
+	// stored is the job as the hook reads it through the transaction of the claim.
+	stored store.Job
+}
+
+// claimEnds makes the claims of a worker end the job of queued without a handler: abandoned after 5
+// lost leases, or cancelled once its process died.
+var claimEnds = map[string]struct {
+	end  func(ctx context.Context, t *testing.T, s store.Store, clk *clock.Fake, queued store.Job)
+	want store.JobStatus
+}{
+	"Abandoned": {
+		end: func(ctx context.Context, t *testing.T, s store.Store, clk *clock.Fake, _ store.Job) {
+			t.Helper()
+
+			for range 5 {
+				_, _, err := s.Jobs().Claim(ctx, time.Minute)
+				require.NoError(t, err)
+
+				clk.Advance(time.Minute)
+			}
+		},
+		want: store.JobFailed,
+	},
+	"CancelledAfterItsProcessDied": {
+		end: func(ctx context.Context, t *testing.T, s store.Store, clk *clock.Fake, queued store.Job) {
+			t.Helper()
+
+			_, _, err := s.Jobs().Claim(ctx, time.Minute)
+			require.NoError(t, err)
+			require.NoError(t, s.Jobs().Cancel(ctx, queued.ID))
+
+			clk.Advance(time.Minute)
+		},
+		want: store.JobCancelled,
+	},
+}
+
+// Given a job that a claim ends without a handler, abandoned after 5 lost leases or cancelled once
+// its process died, then the hook of its kind runs once, in the transaction of the claim, with the
+// job, its payload and the status it ended with.
+func TestTick_JobEndedByAClaim_RunsTheHookOfItsKindInTheClaimTransaction(t *testing.T) {
+	t.Parallel()
+
+	for name, tt := range claimEnds {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			s, clk := newTestStore(t)
+			ctx := t.Context()
+			reg := NewRegistry()
+			kind := Register(reg, "test.kind", KindOptions{}, func(context.Context, Job[testPayload]) error {
+				return nil
+			})
+
+			var calls []endedByClaim
+
+			OnEndedByClaim(reg, kind, func(ctx context.Context, tx store.Repositories, job Job[testPayload], status store.JobStatus) error {
+				stored, err := tx.Jobs().Get(ctx, job.ID)
+				calls = append(calls, endedByClaim{job: job, status: status, stored: stored})
+
+				return err
+			})
+
+			queued := enqueue(ctx, t, s, kind, "payload-name")
+			tt.end(ctx, t, s, clk, queued)
+
+			w, _ := newTestWorker(s, reg, clk, Options{})
+			requireNoTick(ctx, t, w)
+			requireNoTick(ctx, t, w)
+
+			require.Len(t, calls, 1)
+			require.Equal(t, Job[testPayload]{ID: queued.ID, Payload: testPayload{Name: "payload-name"}}, calls[0].job)
+			require.Equal(t, tt.want, calls[0].status)
+			require.Equal(t, tt.want, calls[0].stored.Status, "the hook sees the end of the job")
+			require.Equal(t, tt.want, getJob(ctx, t, s, queued.ID).Status)
+		})
+	}
+}
+
+// Given a job that a claim ends without a handler, when the hook of its kind fails, then Tick
+// returns the error, the claim is rolled back, and the next claim ends the job again.
+func TestTick_HookOfAJobEndedByAClaimFails_RollsTheClaimBack(t *testing.T) {
+	t.Parallel()
+
+	for name, tt := range claimEnds {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			s, clk := newTestStore(t)
+			ctx := t.Context()
+			reg := NewRegistry()
+			kind := Register(reg, "test.kind", KindOptions{}, func(context.Context, Job[testPayload]) error {
+				return nil
+			})
+
+			var calls int
+
+			OnEndedByClaim(reg, kind, func(context.Context, store.Repositories, Job[testPayload], store.JobStatus) error {
+				calls++
+				if calls == 1 {
+					return errors.New("database is locked")
+				}
+
+				return nil
+			})
+
+			queued := enqueue(ctx, t, s, kind, "payload-name")
+			tt.end(ctx, t, s, clk, queued)
+
+			w, _ := newTestWorker(s, reg, clk, Options{})
+
+			claimed, err := w.Tick(ctx)
+			require.ErrorContains(t, err, "database is locked")
+			require.False(t, claimed)
+			require.Equal(t, store.JobRunning, getJob(ctx, t, s, queued.ID).Status, "the claim is rolled back")
+
+			requireNoTick(ctx, t, w)
+			require.Equal(t, 2, calls)
+			require.Equal(t, tt.want, getJob(ctx, t, s, queued.ID).Status)
+		})
+	}
+}
+
 // lockedResults is a store that cannot write the end of a job, as when another process holds the
 // write lock for longer than the busy timeout.
 type lockedResults struct {
@@ -1364,6 +1491,23 @@ type flakyStore struct {
 
 func (s *flakyStore) Jobs() store.JobsRepository {
 	return flakyJobs{JobsRepository: s.Store.Jobs(), store: s}
+}
+
+func (s *flakyStore) WithTx(ctx context.Context, fn func(ctx context.Context, tx store.Repositories) error) error {
+	return s.Store.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
+		return fn(ctx, flakyRepositories{Repositories: tx, store: s})
+	})
+}
+
+// flakyRepositories are the repositories of a transaction of a flakyStore.
+type flakyRepositories struct {
+	store.Repositories
+
+	store *flakyStore
+}
+
+func (r flakyRepositories) Jobs() store.JobsRepository {
+	return flakyJobs{JobsRepository: r.Repositories.Jobs(), store: r.store}
 }
 
 type flakyJobs struct {
