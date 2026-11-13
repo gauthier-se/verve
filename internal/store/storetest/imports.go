@@ -55,12 +55,17 @@ func newImportsTest(t *testing.T, newStore NewStoreFunc) importsTest {
 	}
 }
 
-// nativePush returns a native import of userID pushed by the token of id 7 from an iOS client.
+// pushInboxFile is the inbox file of the payload of nativePush.
+const pushInboxFile = "0f6c2d8e4b1a9f3c7e5d2b8a6c4e1f09"
+
+// nativePush returns a native import of userID pushed by the token of id 7 from an iOS client, whose
+// payload waits in the inbox file pushInboxFile.
 func nativePush(userID int64) store.NewImport {
 	return store.NewImport{
-		UserID:  userID,
-		Origin:  store.OriginNative,
-		TokenID: 7,
+		UserID:    userID,
+		Origin:    store.OriginNative,
+		TokenID:   7,
+		InboxFile: pushInboxFile,
 		Client: map[string]string{
 			"name":        "Verve for iOS",
 			"version":     "1.0.0",
@@ -208,6 +213,8 @@ func RunImports(t *testing.T, newStore NewStoreFunc) {
 	runImportsCreate(t, newStore)
 	runImportsSaveProgress(t, newStore)
 	runImportsSetStatus(t, newStore)
+	runImportsSetClient(t, newStore)
+	runImportsInboxFiles(t, newStore)
 	runImportsList(t, newStore)
 	runImportsPurge(t, newStore)
 	runImportsLastByOrigin(t, newStore)
@@ -218,7 +225,7 @@ func runImportsCreate(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
 
 	// Given a new import, when Create runs, then it is stored queued with its user, origin, token id,
-	// client metadata and creation time, and returned with its id.
+	// client metadata, inbox file and creation time, and returned with its id.
 	t.Run("CreateStoresAQueuedImportWithItsUserOriginTokenAndClient", func(t *testing.T) {
 		t.Parallel()
 
@@ -233,14 +240,15 @@ func runImportsCreate(t *testing.T, newStore NewStoreFunc) {
 			Origin:    store.OriginNative,
 			TokenID:   7,
 			Client:    nativePush(st.user.ID).Client,
+			InboxFile: pushInboxFile,
 			Status:    store.ImportQueued,
 			CreatedAt: importsUTC,
 		}, created)
 		require.Equal(t, created, mustGetImport(ctx, t, st.store.Imports(), st.user.ID, created.ID))
 	})
 
-	// Given a new import without token or client, when Create runs, then it is stored with no token
-	// id and no client metadata.
+	// Given a new import without token, client or inbox file, when Create runs, then it is stored
+	// with no token id, no client metadata and no inbox file.
 	t.Run("CreateStoresAnImportWithoutTokenOrClient", func(t *testing.T) {
 		t.Parallel()
 
@@ -255,6 +263,7 @@ func runImportsCreate(t *testing.T, newStore NewStoreFunc) {
 		require.Equal(t, store.OriginXML, got.Origin)
 		require.Zero(t, got.TokenID)
 		require.Nil(t, got.Client)
+		require.Empty(t, got.InboxFile)
 	})
 
 	// Given an unknown origin, when Create runs, then it answers ErrInvalid and stores nothing.
@@ -610,6 +619,111 @@ func runImportsSetStatus(t *testing.T, newStore NewStoreFunc) {
 		require.ErrorIs(t, err, store.ErrNotFound)
 
 		require.Equal(t, foreign, mustGetImport(ctx, t, imports, st.other.ID, foreign.ID))
+	})
+}
+
+func runImportsSetClient(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+
+	// Given a running import, when SetClient runs, then its client metadata is replaced, and its
+	// other fields are kept.
+	t.Run("SetClientReplacesTheClientOfARunningImport", func(t *testing.T) {
+		t.Parallel()
+
+		st := newImportsTest(t, newStore)
+		ctx := t.Context()
+		imports := st.store.Imports()
+
+		created := mustCreateImport(ctx, t, imports, store.NewImport{UserID: st.user.ID, Origin: store.OriginNative, InboxFile: pushInboxFile})
+		running := mustSetImportStatus(ctx, t, imports, st.user.ID, created.ID, store.ImportRunning)
+
+		client := map[string]string{"name": "Verve for iOS", "version": "1.0.0"}
+		require.NoError(t, imports.SetClient(ctx, st.user.ID, created.ID, client))
+
+		want := running
+		want.Client = client
+		require.Equal(t, want, mustGetImport(ctx, t, imports, st.user.ID, created.ID))
+	})
+
+	// Given a queued or a finished import, when SetClient runs, then it answers ErrConflict and
+	// stores nothing.
+	t.Run("SetClientOfAnImportThatIsNotRunningReturnsErrConflict", func(t *testing.T) {
+		t.Parallel()
+
+		st := newImportsTest(t, newStore)
+		ctx := t.Context()
+		imports := st.store.Imports()
+
+		queued := mustCreateImport(ctx, t, imports, xmlUpload(st.user.ID))
+		failed := mustCreateFinished(ctx, t, imports, xmlUpload(st.user.ID), store.ImportFailed)
+
+		for _, imp := range []store.Import{queued, failed} {
+			err := imports.SetClient(ctx, st.user.ID, imp.ID, map[string]string{"name": "Verve for iOS"})
+			require.ErrorIs(t, err, store.ErrConflict, "import %s", imp.Status)
+			require.Equal(t, imp, mustGetImport(ctx, t, imports, st.user.ID, imp.ID))
+		}
+	})
+
+	// Given an import of another user, or an unknown id, when SetClient runs, then it answers
+	// ErrNotFound and stores nothing.
+	t.Run("SetClientOfAnImportOfAnotherUserReturnsErrNotFound", func(t *testing.T) {
+		t.Parallel()
+
+		st := newImportsTest(t, newStore)
+		ctx := t.Context()
+		imports := st.store.Imports()
+
+		foreign := mustCreateImport(ctx, t, imports, xmlUpload(st.other.ID))
+		foreign = mustSetImportStatus(ctx, t, imports, st.other.ID, foreign.ID, store.ImportRunning)
+
+		err := imports.SetClient(ctx, st.user.ID, foreign.ID, map[string]string{"name": "Verve for iOS"})
+		require.ErrorIs(t, err, store.ErrNotFound)
+
+		err = imports.SetClient(ctx, st.other.ID, foreign.ID+1, map[string]string{"name": "Verve for iOS"})
+		require.ErrorIs(t, err, store.ErrNotFound)
+
+		require.Equal(t, foreign, mustGetImport(ctx, t, imports, st.other.ID, foreign.ID))
+	})
+}
+
+func runImportsInboxFiles(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+
+	// Given imports of two users in every status, when InboxFilesInUse runs, then it returns the
+	// inbox files of the queued and running imports, and of the imports that failed at or after the
+	// given time, and leaves out the others and the imports without inbox file.
+	t.Run("InboxFilesInUseReturnsTheFilesOfActiveAndRecentlyFailedImports", func(t *testing.T) {
+		t.Parallel()
+
+		st := newImportsTest(t, newStore)
+		ctx := t.Context()
+		imports := st.store.Imports()
+
+		push := func(userID int64, file string) store.NewImport {
+			return store.NewImport{UserID: userID, Origin: store.OriginNative, InboxFile: file}
+		}
+
+		mustCreateFinished(ctx, t, imports, push(st.user.ID, "failed-before"), store.ImportFailed)
+
+		st.clk.Advance(time.Hour)
+		failedSince := st.clk.Now()
+
+		mustCreateFinished(ctx, t, imports, push(st.user.ID, "failed-at"), store.ImportFailed)
+
+		st.clk.Advance(time.Hour)
+
+		mustCreateFinished(ctx, t, imports, push(st.other.ID, "failed-after"), store.ImportFailed)
+		mustCreateFinished(ctx, t, imports, push(st.user.ID, "completed"), store.ImportCompleted)
+		mustCreateFinished(ctx, t, imports, push(st.user.ID, "cancelled"), store.ImportCancelled)
+		mustCreateImport(ctx, t, imports, push(st.user.ID, "queued"))
+		mustCreateImport(ctx, t, imports, xmlUpload(st.user.ID))
+
+		running := mustCreateImport(ctx, t, imports, push(st.other.ID, "running"))
+		mustSetImportStatus(ctx, t, imports, st.other.ID, running.ID, store.ImportRunning)
+
+		files, err := imports.InboxFilesInUse(ctx, failedSince)
+		require.NoError(t, err)
+		require.ElementsMatch(t, []string{"failed-at", "failed-after", "queued", "running"}, files)
 	})
 }
 

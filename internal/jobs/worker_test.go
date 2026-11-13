@@ -470,6 +470,85 @@ func TestTick_CancelledRunningJob_CancelsTheHandlerAndEndsCancelled(t *testing.T
 	}
 }
 
+// Given a running job that is cancelled, then Cancelled reports the cancellation to its handler,
+// and given a shutdown, then it does not, so that a handler can tell a job that ends from a job
+// that resumes later.
+func TestCancelled_ReportsTheCancellationOfTheJobButNotAShutdown(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// stop stops the running job queued, through w.
+		stop func(t *testing.T, s store.Store, queued store.Job, stopWorker func())
+		want bool
+	}{
+		{
+			name: "job cancelled",
+			stop: func(t *testing.T, s store.Store, queued store.Job, _ func()) {
+				t.Helper()
+				require.NoError(t, s.Jobs().Cancel(t.Context(), queued.ID))
+			},
+			want: true,
+		},
+		{
+			name: "worker shut down",
+			stop: func(t *testing.T, _ store.Store, _ store.Job, stopWorker func()) {
+				t.Helper()
+				stopWorker()
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			s, clk := newTestStore(t)
+			ctx := t.Context()
+			reg := NewRegistry()
+			started := make(chan struct{})
+			stopped := make(chan struct{})
+
+			var cancelled bool
+
+			kind := Register(reg, "test.kind", KindOptions{}, func(ctx context.Context, _ Job[testPayload]) error {
+				if Cancelled(ctx) {
+					t.Error("a running job is not cancelled")
+				}
+
+				close(started)
+				<-ctx.Done()
+
+				cancelled = Cancelled(ctx)
+
+				close(stopped)
+
+				return ctx.Err()
+			})
+			queued := enqueue(ctx, t, s, kind, "first")
+
+			w, _ := newTestWorker(s, reg, clk, Options{Workers: 1, PollInterval: shortInterval, HeartbeatInterval: shortInterval})
+			stopWorker := startWorker(t, w)
+
+			waitClosed(t, started, "the handler did not start")
+			tt.stop(t, s, queued, stopWorker)
+			waitClosed(t, stopped, "the handler did not stop")
+			require.Equal(t, tt.want, cancelled)
+		})
+	}
+}
+
+// Given a context that no worker runs, then Cancelled reports no cancellation, even once it is done.
+func TestCancelled_ContextOfNoJob_ReportsNoCancellation(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	require.False(t, Cancelled(ctx))
+}
+
 // Given a cancellation requested while the handler fails, before a heartbeat reports it, then the
 // job ends cancelled and does not run again.
 func TestTick_CancelRequestedWhileTheHandlerFails_NeverRunsAgain(t *testing.T) {
