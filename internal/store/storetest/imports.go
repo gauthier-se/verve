@@ -130,7 +130,7 @@ func mustListAllImports(ctx context.Context, t *testing.T, imports store.Imports
 	var all []store.Import
 
 	for {
-		got, err := imports.List(ctx, userID, page)
+		got, err := imports.List(ctx, userID, store.ImportsFilter{}, page)
 		require.NoError(t, err)
 		require.LessOrEqual(t, len(got), pageSize)
 
@@ -761,9 +761,78 @@ func runImportsList(t *testing.T, newStore NewStoreFunc) {
 			require.Equal(t, want, importIDs(mustListAllImports(ctx, t, imports, st.user.ID, pageSize)...), "pages of %d", pageSize)
 		}
 
-		got, err := imports.List(ctx, st.user.ID, store.PageRequest{Limit: 1})
+		got, err := imports.List(ctx, st.user.ID, store.ImportsFilter{}, store.PageRequest{Limit: 1})
 		require.NoError(t, err)
 		require.Equal(t, []store.Import{mustGetImport(ctx, t, imports, st.user.ID, created[6].ID)}, got)
+	})
+
+	// Given imports of every status of two users, when List runs with a status, then it returns the
+	// imports of the user of that status only, newest first, in pages.
+	t.Run("ListWithAStatusReturnsTheImportsOfThatStatus", func(t *testing.T) {
+		t.Parallel()
+
+		st := newImportsTest(t, newStore)
+		ctx := t.Context()
+		imports := st.store.Imports()
+
+		byStatus := map[store.ImportStatus][]int64{}
+
+		for range 2 {
+			for _, status := range []store.ImportStatus{
+				store.ImportQueued, store.ImportRunning, store.ImportCompleted, store.ImportFailed, store.ImportCancelled,
+			} {
+				st.clk.Advance(time.Second)
+
+				imp := mustCreateImport(ctx, t, imports, nativePush(st.user.ID))
+				if status != store.ImportQueued {
+					mustSetImportStatus(ctx, t, imports, st.user.ID, imp.ID, store.ImportRunning)
+				}
+
+				if status.Finished() {
+					mustSetImportStatus(ctx, t, imports, st.user.ID, imp.ID, status)
+				}
+
+				// Newest first.
+				byStatus[status] = append([]int64{imp.ID}, byStatus[status]...)
+			}
+
+			mustCreateImport(ctx, t, imports, nativePush(st.other.ID))
+			mustCreateFinished(ctx, t, imports, nativePush(st.other.ID), store.ImportCompleted)
+		}
+
+		for status, want := range byStatus {
+			var got []int64
+
+			page := store.PageRequest{Limit: 1}
+
+			for {
+				listed, err := imports.List(ctx, st.user.ID, store.ImportsFilter{Status: status}, page)
+				require.NoError(t, err)
+
+				if len(listed) == 0 {
+					break
+				}
+
+				for _, imp := range listed {
+					require.Equal(t, status, imp.Status)
+				}
+
+				got = append(got, importIDs(listed...)...)
+				page.After = listed[len(listed)-1].Cursor()
+			}
+
+			require.Equal(t, want, got, "status %s", status)
+		}
+	})
+
+	// Given an unknown status, then List answers ErrInvalid.
+	t.Run("ListWithAnUnknownStatusReturnsErrInvalid", func(t *testing.T) {
+		t.Parallel()
+
+		st := newImportsTest(t, newStore)
+
+		_, err := st.store.Imports().List(t.Context(), st.user.ID, store.ImportsFilter{Status: "paused"}, store.PageRequest{Limit: 10})
+		require.ErrorIs(t, err, store.ErrInvalid)
 	})
 
 	// Given a user without imports, then List returns none.
@@ -785,7 +854,7 @@ func runImportsList(t *testing.T, newStore NewStoreFunc) {
 		st := newImportsTest(t, newStore)
 
 		for _, limit := range []int{0, -1} {
-			_, err := st.store.Imports().List(t.Context(), st.user.ID, store.PageRequest{Limit: limit})
+			_, err := st.store.Imports().List(t.Context(), st.user.ID, store.ImportsFilter{}, store.PageRequest{Limit: limit})
 			require.ErrorIs(t, err, store.ErrInvalid, "limit %d", limit)
 		}
 	})
@@ -910,7 +979,8 @@ func runImportsLastByOrigin(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
 
 	// Given imports of two users of several origins and statuses, then LastByOrigin returns the end
-	// of the last completed import of the user per origin, and leaves out the origins without one.
+	// of the last completed import of each user asked for per origin, and leaves out the origins
+	// without one and the users not asked for.
 	t.Run("LastByOriginReturnsTheEndOfTheLastCompletedImportPerOrigin", func(t *testing.T) {
 		t.Parallel()
 
@@ -937,15 +1007,24 @@ func runImportsLastByOrigin(t *testing.T, newStore NewStoreFunc) {
 		mustCreateImport(ctx, t, imports, store.NewImport{UserID: st.user.ID, Origin: store.OriginCLI})
 		mustCreateFinished(ctx, t, imports, store.NewImport{UserID: st.other.ID, Origin: store.OriginCLI}, store.ImportCompleted)
 
-		got, err := imports.LastByOrigin(ctx, st.user.ID)
+		got, err := imports.LastByOrigin(ctx, []int64{st.user.ID, st.other.ID})
 		require.NoError(t, err)
-		require.Equal(t, map[store.Origin]time.Time{
-			store.OriginXML: importsUTC.Add(3 * time.Minute),
-			store.OriginHAE: importsUTC.Add(2 * time.Minute),
+		require.Equal(t, map[int64]map[store.Origin]time.Time{
+			st.user.ID: {
+				store.OriginXML: importsUTC.Add(3 * time.Minute),
+				store.OriginHAE: importsUTC.Add(2 * time.Minute),
+			},
+			st.other.ID: {store.OriginCLI: importsUTC.Add(4 * time.Minute)},
+		}, got)
+
+		got, err = imports.LastByOrigin(ctx, []int64{st.other.ID})
+		require.NoError(t, err)
+		require.Equal(t, map[int64]map[store.Origin]time.Time{
+			st.other.ID: {store.OriginCLI: importsUTC.Add(4 * time.Minute)},
 		}, got)
 	})
 
-	// Given a user without completed imports, then LastByOrigin returns an empty map.
+	// Given a user without completed imports, or no user, then LastByOrigin returns an empty map.
 	t.Run("LastByOriginWithoutCompletedImportsReturnsNone", func(t *testing.T) {
 		t.Parallel()
 
@@ -954,7 +1033,11 @@ func runImportsLastByOrigin(t *testing.T, newStore NewStoreFunc) {
 
 		mustCreateFinished(ctx, t, st.store.Imports(), xmlUpload(st.user.ID), store.ImportFailed)
 
-		got, err := st.store.Imports().LastByOrigin(ctx, st.user.ID)
+		got, err := st.store.Imports().LastByOrigin(ctx, []int64{st.user.ID})
+		require.NoError(t, err)
+		require.Empty(t, got)
+
+		got, err = st.store.Imports().LastByOrigin(ctx, nil)
 		require.NoError(t, err)
 		require.Empty(t, got)
 	})

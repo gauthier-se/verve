@@ -514,6 +514,46 @@ func runSamplesStats(t *testing.T, newStore NewStoreFunc) {
 		}, st.mustStats(ctx, t, st.other.ID))
 	})
 
+	// Given samples of two types of a user, a sample of another user and a removed sample, then
+	// CountByUsers returns the number of samples of each user asked for, every type together, and
+	// leaves out the users without samples.
+	t.Run("CountByUsersCountsTheSamplesOfEachUser", func(t *testing.T) {
+		t.Parallel()
+
+		st := newSamplesTest(t, newStore)
+		ctx := t.Context()
+
+		st.mustUpsert(ctx, t, st.user.ID,
+			st.heartRate("a", samplesTime, 60, store.ConflictIgnore),
+			st.heartRate("b", samplesTime.Add(time.Hour), 61, store.ConflictIgnore),
+			st.heartRate("c", samplesTime.Add(2*time.Hour), 62, store.ConflictIgnore),
+			st.standHour(samplesTime),
+		)
+		st.mustUpsert(ctx, t, st.user.ID, st.heartRate("a", samplesTime, 70, store.ConflictReplace))
+		st.mustUpsert(ctx, t, st.other.ID, st.foreignHeartRate("a", samplesTime, 60))
+
+		_, err := st.store.Samples().DeleteByKey(ctx, st.user.ID, []byte("c"))
+		require.NoError(t, err)
+
+		got, err := st.store.Samples().CountByUsers(ctx, []int64{st.user.ID, st.other.ID})
+		require.NoError(t, err)
+		require.Equal(t, map[int64]int64{st.user.ID: 3, st.other.ID: 1}, got)
+
+		got, err = st.store.Samples().CountByUsers(ctx, []int64{st.other.ID})
+		require.NoError(t, err)
+		require.Equal(t, map[int64]int64{st.other.ID: 1}, got)
+
+		lonely := mustCreateUser(ctx, t, st.store.Users(), newUser("eden", "eden@example.com"))
+
+		got, err = st.store.Samples().CountByUsers(ctx, []int64{lonely.ID})
+		require.NoError(t, err)
+		require.Empty(t, got)
+
+		got, err = st.store.Samples().CountByUsers(ctx, nil)
+		require.NoError(t, err)
+		require.Empty(t, got)
+	})
+
 	// Given any sequence of random batches of two users, over a few natural keys, both types and
 	// every rule, each followed or not by the deletion of a key, then after each batch Stats equals
 	// a computation over the samples that List returns.

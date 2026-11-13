@@ -683,7 +683,7 @@ func TestDeleteAccount_RemovesTheImportsInBoundedBatchesBeforeTheUser(t *testing
 	_, err := dt.store.Users().Get(t.Context(), bob.ID)
 	require.ErrorIs(t, err, store.ErrNotFound)
 
-	imports, err := dt.store.Imports().List(t.Context(), alice.ID, store.PageRequest{Limit: 10})
+	imports, err := dt.store.Imports().List(t.Context(), alice.ID, store.ImportsFilter{}, store.PageRequest{Limit: 10})
 	require.NoError(t, err)
 	require.Len(t, imports, 2, "the imports of the other user stay")
 }

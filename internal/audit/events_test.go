@@ -44,6 +44,10 @@ func eventsByConstructor() map[string]Event {
 		"TokenRejected":            TokenRejected(7, 3, TokenRevoked),
 		"APITokenCreated":          APITokenCreated(7, 3, "sync", []store.TokenScope{store.ScopeIngest}),
 		"APITokenRevoked":          APITokenRevoked(7, 3, "sync"),
+		"ImportStarted":            ImportStarted(7, 42, store.OriginNative),
+		"ImportCompleted":          ImportCompleted(7, 42, store.OriginNative, store.ImportCounters{Received: 3}),
+		"ImportFailed":             ImportFailed(7, 42, store.OriginNative, store.ImportCounters{Invalid: 1}),
+		"ImportCancelled":          ImportCancelled(7, 42, store.OriginNative, store.ImportCounters{}),
 	}
 }
 
@@ -609,4 +613,65 @@ func TestAPITokenRevoked(t *testing.T) {
 	data, err := json.Marshal(event.payload)
 	require.NoError(t, err)
 	require.JSONEq(t, `{"id":3,"name":"Health Auto Export"}`, string(data))
+}
+
+// Given an import that a job starts, then the event has the import start type, the user of the
+// import as actor, no subject, and the id and the origin of the import. It is never aggregated.
+func TestImportStarted(t *testing.T) {
+	t.Parallel()
+
+	event := ImportStarted(7, 42, store.OriginNative)
+
+	require.Equal(t, TypeImportStarted, event.eventType)
+	require.Equal(t, "import.started", TypeImportStarted)
+	require.Equal(t, int64(7), event.actorID)
+	require.Zero(t, event.subjectID)
+	require.False(t, event.aggregateOnClientIP)
+	require.Empty(t, event.aggregationKey)
+
+	data, err := json.Marshal(event.payload)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"id":42,"origin":"native"}`, string(data))
+}
+
+// Given an import that ends completed, failed or cancelled, then the event has the type of its end,
+// the user of the import as actor, no subject, and the id, the origin and every total counter of
+// the import, those at zero included. It is never aggregated.
+func TestImportEnded(t *testing.T) {
+	t.Parallel()
+
+	counters := store.ImportCounters{
+		Received: 1201, Inserted: 1180, Duplicates: 18, Invalid: 2, Unsupported: 1, Warnings: 1, Deleted: 1,
+	}
+
+	tests := []struct {
+		event    Event
+		wantType string
+	}{
+		{event: ImportCompleted(7, 42, store.OriginHAE, counters), wantType: "import.completed"},
+		{event: ImportFailed(7, 42, store.OriginHAE, counters), wantType: "import.failed"},
+		{event: ImportCancelled(7, 42, store.OriginHAE, counters), wantType: "import.cancelled"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.wantType, func(t *testing.T) {
+			t.Parallel()
+
+			require.Equal(t, tt.wantType, tt.event.eventType)
+			require.Equal(t, int64(7), tt.event.actorID)
+			require.Zero(t, tt.event.subjectID)
+			require.False(t, tt.event.aggregateOnClientIP)
+			require.Empty(t, tt.event.aggregationKey)
+
+			data, err := json.Marshal(tt.event.payload)
+			require.NoError(t, err)
+			require.JSONEq(t, `{"id":42,"origin":"hae","counters":{
+				"received":1201,"inserted":1180,"updated":0,"duplicates":18,"blocked":0,"invalid":2,
+				"unsupported":1,"suspicious":0,"warnings":1,"deleted":1,"notFound":0}}`, string(data))
+		})
+	}
+
+	require.Equal(t, "import.completed", TypeImportCompleted)
+	require.Equal(t, "import.failed", TypeImportFailed)
+	require.Equal(t, "import.cancelled", TypeImportCancelled)
 }

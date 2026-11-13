@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -580,4 +581,239 @@ func TestImportJob_LastAttemptFails_FailsTheImport(t *testing.T) {
 	job := e.jobOf(t, queued.ID)
 	require.Equal(t, store.JobFailed, job.Status)
 	require.Equal(t, int64(5), job.Attempts)
+}
+
+// importEvent is an audit event of an import, as the job tests read it.
+type importEvent struct {
+	Type    string
+	ActorID int64
+	// Payload is the JSON of the payload.
+	Payload string
+	// ClientIP and UserAgent are empty for an event of a job.
+	ClientIP  string
+	UserAgent string
+}
+
+// importEvents returns the audit events of the user of e whose type starts with "import.", oldest
+// first.
+func (e *jobEnv) importEvents(t *testing.T) []importEvent {
+	t.Helper()
+
+	events, err := e.store.AuditEvents().List(t.Context(), store.AuditEventsFilter{UserID: e.user.ID}, store.PageRequest{Limit: 100})
+	require.NoError(t, err)
+
+	var got []importEvent
+
+	for _, event := range slices.Backward(events) {
+		if !strings.HasPrefix(event.Type, "import.") {
+			continue
+		}
+
+		require.Zero(t, event.SubjectID, "an event of an import has no subject")
+
+		got = append(got, importEvent{
+			Type:      event.Type,
+			ActorID:   event.ActorID,
+			Payload:   string(event.Payload),
+			ClientIP:  event.ClientIP,
+			UserAgent: event.UserAgent,
+		})
+	}
+
+	return got
+}
+
+// requireImportEvents requires that the import events of the user of e have the types of want,
+// in order, with the user as actor, no client, and the payloads of want.
+func (e *jobEnv) requireImportEvents(t *testing.T, want ...importEvent) {
+	t.Helper()
+
+	got := e.importEvents(t)
+	require.Len(t, got, len(want), "events %+v", got)
+
+	for i := range want {
+		require.Equal(t, want[i].Type, got[i].Type)
+		require.Equal(t, e.user.ID, got[i].ActorID)
+		require.JSONEq(t, want[i].Payload, got[i].Payload, "event %d", i)
+		require.Empty(t, got[i].ClientIP, "a job has no client")
+		require.Empty(t, got[i].UserAgent, "a job has no client")
+	}
+}
+
+// startedEvent and endedEvent return the expected events of the start and the end of the import of
+// id, of the origin native, the latter with counters as the JSON of its total counters.
+func startedEvent(id int64) importEvent {
+	return importEvent{Type: "import.started", Payload: fmt.Sprintf(`{"id":%d,"origin":"native"}`, id)}
+}
+
+func endedEvent(eventType string, id int64, counters string) importEvent {
+	return importEvent{Type: eventType, Payload: fmt.Sprintf(`{"id":%d,"origin":"native","counters":%s}`, id, counters)}
+}
+
+// Given a queued import, when its job runs and completes it, then import.started is recorded when
+// it starts and import.completed when it ends, with the id, the origin and the total counters of
+// the import, and no value.
+func TestImportJob_CompletedImport_RecordsItsStartAndItsEnd(t *testing.T) {
+	t.Parallel()
+
+	e := newJobEnv(t)
+	imp, _ := e.push(t, stepsPayload)
+
+	var during []importEvent
+
+	e.hook.set(func(context.Context, int64) error {
+		during = e.importEvents(t)
+
+		return nil
+	})
+
+	e.tick(t.Context(), t)
+
+	require.Equal(t, []string{"import.started"}, eventTypes(during), "import.started is recorded once the import runs")
+	e.requireImportEvents(t,
+		startedEvent(imp.ID),
+		endedEvent("import.completed", imp.ID, `{"received":3,"inserted":3,"updated":0,"duplicates":0,"blocked":0,
+			"invalid":0,"unsupported":0,"suspicious":0,"warnings":0,"deleted":0,"notFound":1}`),
+	)
+}
+
+// Given a process stopped in the middle of an import, when the job resumes it, then import.started
+// is recorded once, for the move from queued to running, and import.completed once, with the
+// counters of the whole import.
+func TestImportJob_ResumedImport_RecordsItsStartOnce(t *testing.T) {
+	t.Parallel()
+
+	e := newJobEnv(t)
+	imp, _ := e.push(t, stepsPayload)
+
+	stopped, stop := context.WithCancel(t.Context())
+
+	e.hook.set(func(ctx context.Context, position int64) error {
+		if position == 1 {
+			stop()
+			<-ctx.Done()
+		}
+
+		return nil
+	})
+
+	e.tick(stopped, t)
+	e.hook.set(nil)
+
+	e.requireImportEvents(t, startedEvent(imp.ID))
+
+	e.clk.Advance(jobLease + time.Second)
+	e.tick(t.Context(), t)
+
+	e.requireImportEvents(t,
+		startedEvent(imp.ID),
+		endedEvent("import.completed", imp.ID, `{"received":3,"inserted":3,"updated":0,"duplicates":0,"blocked":0,
+			"invalid":0,"unsupported":0,"suspicious":0,"warnings":0,"deleted":0,"notFound":1}`),
+	)
+}
+
+// Given a payload that fails as a whole, when its job runs, then import.started and import.failed
+// are recorded, the latter with the counters of the import, all at zero.
+func TestImportJob_PayloadThatFailsAsAWhole_RecordsTheFailure(t *testing.T) {
+	t.Parallel()
+
+	e := newJobEnv(t)
+	imp, _ := e.push(t, `{"format": "verve.ingest.v2", "client": {"name": "x", "version": "1"}}`)
+
+	e.tick(t.Context(), t)
+
+	e.requireImportEvents(t,
+		startedEvent(imp.ID),
+		endedEvent("import.failed", imp.ID, `{"received":0,"inserted":0,"updated":0,"duplicates":0,"blocked":0,
+			"invalid":0,"unsupported":0,"suspicious":0,"warnings":0,"deleted":0,"notFound":0}`),
+	)
+}
+
+// Given a pipeline that fails after the first batch of an import, when the job runs out of
+// attempts, then the import ends failed with the counters and the position of the committed batch,
+// and import.failed is recorded with those counters, after a single import.started.
+func TestImportJob_LastAttemptFails_RecordsTheFailureWithTheCommittedCounters(t *testing.T) {
+	t.Parallel()
+
+	e := newJobEnv(t)
+	imp, _ := e.push(t, stepsPayload)
+
+	e.hook.set(func(_ context.Context, position int64) error {
+		if position >= 1 {
+			return errors.New("read inbox file: input/output error")
+		}
+
+		return nil
+	})
+
+	for range 5 {
+		e.tick(t.Context(), t)
+		e.clk.Advance(2 * time.Hour)
+	}
+
+	got := e.importOf(t, imp.ID)
+	require.Equal(t, store.ImportFailed, got.Status)
+	require.Equal(t, int64(1), got.Position, "the position of the committed batch stays")
+	require.Equal(t, store.ImportCounters{Received: 1, Inserted: 1}, got.Report.Total, "the counters of the committed batch stay")
+	require.Equal(t, []string{"the import stopped after the last attempt of its job failed"}, got.Report.Errors)
+
+	e.requireImportEvents(t,
+		startedEvent(imp.ID),
+		endedEvent("import.failed", imp.ID, `{"received":1,"inserted":1,"updated":0,"duplicates":0,"blocked":0,
+			"invalid":0,"unsupported":0,"suspicious":0,"warnings":0,"deleted":0,"notFound":0}`),
+	)
+}
+
+// Given a cancellation of the job of a running import, then import.cancelled is recorded when the
+// import ends, with the counters of the batches committed before.
+func TestImportJob_Cancelled_RecordsTheCancellation(t *testing.T) {
+	t.Parallel()
+
+	e := newJobEnv(t)
+	imp, queued := e.push(t, stepsPayload)
+
+	e.hook.set(func(ctx context.Context, position int64) error {
+		if position == 1 {
+			if err := e.store.Jobs().Cancel(ctx, queued.ID); err != nil {
+				return err
+			}
+
+			<-ctx.Done()
+		}
+
+		return nil
+	})
+
+	e.tick(t.Context(), t)
+
+	e.requireImportEvents(t,
+		startedEvent(imp.ID),
+		endedEvent("import.cancelled", imp.ID, `{"received":1,"inserted":1,"updated":0,"duplicates":0,"blocked":0,
+			"invalid":0,"unsupported":0,"suspicious":0,"warnings":0,"deleted":0,"notFound":0}`),
+	)
+}
+
+// Given the job of an import that already ended, when it runs, then it records nothing.
+func TestImportJob_FinishedImport_RecordsNothing(t *testing.T) {
+	t.Parallel()
+
+	e := newJobEnv(t)
+	imp, _ := e.push(t, stepsPayload)
+
+	_, err := e.store.Imports().SetStatus(t.Context(), e.user.ID, imp.ID, store.ImportCancelled)
+	require.NoError(t, err)
+
+	e.tick(t.Context(), t)
+
+	require.Empty(t, e.importEvents(t))
+}
+
+// eventTypes returns the types of events, in order.
+func eventTypes(events []importEvent) []string {
+	types := make([]string, 0, len(events))
+	for _, event := range events {
+		types = append(types, event.Type)
+	}
+
+	return types
 }

@@ -718,6 +718,40 @@ func runJobsActive(t *testing.T, newStore NewStoreFunc) {
 		})
 	}
 
+	// Given jobs of the serial key of every state and a job of another key, then ActiveJobs returns
+	// the jobs of the key that are queued or running, a job waiting for its retry included, oldest
+	// first.
+	t.Run("ActiveJobsReturnsTheQueuedAndRunningJobsOfTheKey", func(t *testing.T) {
+		t.Parallel()
+
+		jobs := newStore(t, clock.NewFake(jobsTime)).Jobs()
+		ctx := t.Context()
+
+		completed := claimed(ctx, t, jobs)
+		require.NoError(t, jobs.Complete(ctx, completed.ID, completed.Claims))
+
+		retrying := claimed(ctx, t, jobs)
+		require.NoError(t, jobs.Retry(ctx, retrying.ID, retrying.Claims, "handler failed", jobsTime.Add(time.Hour)))
+
+		running := claimed(ctx, t, jobs)
+		queued := mustEnqueue(ctx, t, jobs, dueJob(jobsTime, key))
+
+		cancelled := mustEnqueue(ctx, t, jobs, dueJob(jobsTime, key))
+		require.NoError(t, jobs.Cancel(ctx, cancelled.ID))
+
+		mustEnqueue(ctx, t, jobs, dueJob(jobsTime, "schedule:backup.run"))
+
+		got, err := jobs.ActiveJobs(ctx, key)
+		require.NoError(t, err)
+		require.Equal(t, []store.Job{
+			mustGet(ctx, t, jobs, retrying.ID), mustGet(ctx, t, jobs, running.ID), mustGet(ctx, t, jobs, queued.ID),
+		}, got)
+
+		got, err = jobs.ActiveJobs(ctx, "schedule:cleanup.inbox")
+		require.NoError(t, err)
+		require.Empty(t, got)
+	})
+
 	// Given HasActiveJob through the repositories of WithTx, then it sees a job of the transaction.
 	t.Run("HasActiveJobSeesTheJobsOfItsTransaction", func(t *testing.T) {
 		t.Parallel()
