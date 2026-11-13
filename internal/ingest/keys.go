@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"math"
 	"strings"
+	"time"
 
 	"github.com/gauthier-se/verve/internal/store"
 )
@@ -37,16 +38,16 @@ func sampleRule(uuid string, preAggregated bool) store.ConflictRule {
 
 // sampleKey returns the natural key of s: from its uuid, from its type, source, start and end for
 // a pre-aggregated point, and from those, its value and its category value for a raw sample.
-func sampleKey(s store.Sample, uuid string, preAggregated bool) []byte {
+func sampleKey(s store.Sample, preAggregated bool) []byte {
 	var k key
 
 	switch {
-	case uuid != "":
-		k.text(keySampleUUID).text(strings.ToUpper(uuid))
+	case s.UUID != "":
+		k.text(keySampleUUID).text(strings.ToUpper(s.UUID))
 	case preAggregated:
-		k.text(keySamplePoint).int(s.TypeID).int(s.SourceID).time(s.Start.UnixMilli()).time(s.End.UnixMilli())
+		k.text(keySamplePoint).int(s.TypeID).int(s.SourceID).time(s.Start).time(s.End)
 	default:
-		k.text(keySampleRaw).int(s.TypeID).int(s.SourceID).time(s.Start.UnixMilli()).time(s.End.UnixMilli()).
+		k.text(keySampleRaw).int(s.TypeID).int(s.SourceID).time(s.Start).time(s.End).
 			float(s.Value).text(s.Category)
 	}
 
@@ -71,7 +72,7 @@ func workoutKey(w store.Workout) []byte {
 	if w.ExternalID != "" {
 		k.text(keyWorkoutID).text(string(w.Origin)).text(strings.ToUpper(w.ExternalID))
 	} else {
-		k.text(keyWorkoutNoID).text(w.Activity).int(w.SourceID).time(w.Start.UnixMilli()).time(w.End.UnixMilli())
+		k.text(keyWorkoutNoID).text(w.Activity).int(w.SourceID).time(w.Start).time(w.End)
 	}
 
 	return k.sum()
@@ -98,9 +99,9 @@ func (k *key) int(v int64) *key {
 	return k
 }
 
-// time appends a time in Unix milliseconds.
-func (k *key) time(ms int64) *key {
-	return k.int(ms)
+// time appends a time, at the millisecond precision of stored times.
+func (k *key) time(t time.Time) *key {
+	return k.int(t.UnixMilli())
 }
 
 // float appends a value, with its negative zero as zero.

@@ -293,7 +293,7 @@ func (it *item) identify(sourceID int64) BlockCandidate {
 	}
 
 	it.sample.SourceID = sourceID
-	it.sample.NaturalKey = sampleKey(it.sample, it.sample.UUID, it.preAggregated())
+	it.sample.NaturalKey = sampleKey(it.sample, it.preAggregated())
 
 	return BlockCandidate{
 		TypeID:     it.sample.TypeID,
@@ -374,6 +374,10 @@ func (b *batchRun) storeSamples(ctx context.Context, groups *sampleGroups) error
 // dirtyRanges returns the time ranges of samples, all of one type, sorted by start, with the
 // overlapping ones merged.
 func dirtyRanges(samples []store.NewSample) []DirtyRange {
+	if len(samples) == 0 {
+		return nil
+	}
+
 	ranges := make([]DirtyRange, 0, len(samples))
 	for _, s := range samples {
 		ranges = append(ranges, DirtyRange{TypeID: s.TypeID, From: s.Start, To: s.End})
@@ -446,7 +450,14 @@ func (b *batchRun) prepare(ctx context.Context, r Record) (item, error) {
 		return item{}, err
 	}
 
-	if m := r.metadata(); it.reason == "" && !it.unsupported && m != nil && !isJSONObject(m) {
+	if it.reason != "" || it.unsupported {
+		return it, nil
+	}
+
+	switch m := r.metadata(); {
+	case r.source().Name == "":
+		it.reason = "source name is missing"
+	case m != nil && !isJSONObject(m):
 		it.reason = "metadata is not a JSON object"
 	}
 
@@ -566,7 +577,8 @@ func (b *batchRun) prepareWorkout(it *item) error {
 // does not list (FR-4 of Storage and aggregates).
 const otherActivity = "other"
 
-// locationType returns the location type of a workout of the indoor flag indoor, nil when unknown.
+// locationType returns the location type of a workout of the indoor flag indoor, unknown when the
+// flag is nil.
 func locationType(indoor *bool) store.LocationType {
 	switch {
 	case indoor == nil:
@@ -725,15 +737,15 @@ func (b *batchRun) resolveSources(ctx context.Context, items []item) (map[store.
 	return sources, nil
 }
 
-// source returns the source of the record of it.
-func (it item) source() store.SourceInfo {
+// source returns the source of r.
+func (r Record) source() store.SourceInfo {
 	switch {
-	case it.Quantity != nil:
-		return it.Quantity.Source
-	case it.Category != nil:
-		return it.Category.Source
+	case r.Quantity != nil:
+		return r.Quantity.Source
+	case r.Category != nil:
+		return r.Category.Source
 	default:
-		return it.Workout.Source
+		return r.Workout.Source
 	}
 }
 

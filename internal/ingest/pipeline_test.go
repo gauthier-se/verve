@@ -608,13 +608,17 @@ func TestRun_ValidAndInvalidRecordsInOneBatch(t *testing.T) {
 	backwards := workout()
 	backwards.End = "2026-11-10T17:00:00+01:00"
 
+	nameless := quantitySample()
+	nameless.UUID, nameless.Source = "", store.SourceInfo{DeviceModel: "Watch"}
+
 	imp := env.run(t, store.OriginNative,
-		quantity(quantitySample()), quantity(bpm), quantity(untyped), category(nested), quantity(ancient), workoutRecord(backwards))
+		quantity(quantitySample()), quantity(bpm), quantity(untyped), category(nested), quantity(ancient), workoutRecord(backwards),
+		quantity(nameless))
 
 	require.Equal(t, store.ImportReport{
-		Total: store.ImportCounters{Received: 6, Inserted: 2, Invalid: 4, Suspicious: 1},
+		Total: store.ImportCounters{Received: 7, Inserted: 2, Invalid: 5, Suspicious: 1},
 		Types: map[string]store.ImportCounters{
-			"heart_rate":     {Received: 3, Inserted: 2, Invalid: 1, Suspicious: 1},
+			"heart_rate":     {Received: 4, Inserted: 2, Invalid: 2, Suspicious: 1},
 			"sleep_analysis": {Received: 1, Invalid: 1},
 		},
 		Workouts: store.ImportCounters{Received: 1, Invalid: 1},
@@ -624,6 +628,7 @@ func TestRun_ValidAndInvalidRecordsInOneBatch(t *testing.T) {
 			`record 3 (HKCategoryTypeIdentifierSleepAnalysis): metadata is not a JSON object`,
 			`record 4 (HKQuantityTypeIdentifierHeartRate): start is before 2000 or more than one day after the import was created, stored as suspicious`,
 			`record 5 (workout): end is before start`,
+			`record 6 (HKQuantityTypeIdentifierHeartRate): source name is missing`,
 		},
 	}, imp.Report)
 
