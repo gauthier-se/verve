@@ -61,6 +61,10 @@ Two problems make naive sums wrong: the same data arrives several times (re-impo
 
     The kind can be corrected by the user. The detected kind follows the records as the details do, `unknown` counting as a missing kind. A kind corrected by the user is kept.
 - **FR-3**: Users can rename the display name of a source and merge sources (for example the same Apple Watch recorded under an old and a new device name). Merging is an alias: future data from either name lands in the merged source, and aggregates are recomputed.
+  - A merge moves millions of rows for years of watch data, so it runs as a job. The request sets, in one transaction, the merged sources as merged into the target and queues a `sources.merge` job, with the serial key `import:<user id>` so that no import runs meanwhile. From then on, a record whose identity is a merged source lands in the target, as for an alias.
+  - The job moves the samples and workouts of the merged sources to the target in batches, and computes again the natural key of each moved record whose key holds the source (FR-1). Otherwise re-importing an old export would compute keys with the target and store every record a second time. A moved record whose new key is already stored is removed as a duplicate, with the data availability, dirty ranges and source counts that any removal updates.
+  - Once the last batch is committed, each merged source is replaced by an alias of its identity in the transaction that deletes it, and the duplicate workouts of the target are evaluated again (FR-11). Until then, the sources API shows the merge as in progress.
+  - The target keeps its display name and kind. The merged sources leave the priority lists they were in.
 - **FR-4**: Each metric type has an ordered priority list of sources per user, plus an "ignored" section. Default ordering when no user choice exists:
   - activity and energy metrics: `aggregated`, then `watch`, then `ring`, then `phone`, then other apps, then `manual`,
   - body measurements: `scale`, then apps, then `manual`,
@@ -68,13 +72,21 @@ Two problems make naive sums wrong: the same data arrives several times (re-impo
   - other metrics: `aggregated`, then `watch`, then `ring`, then `phone`, then others.
 
   Apps are the sources of kind `app` or `unknown`, since a third-party app known only by its name is `unknown` (FR-2).
+
+  - The display group of a type in the catalog ([Storage and aggregates](data-storage-and-aggregates.md) FR-1) gives its list: `activity` the activity and energy list, `body` the body list, `nutrition` the nutrition list, and every other group, uncurated types included, the other list.
+  - Kinds that a list does not name come after the kinds it names, in the order of the other list. Sources at the same position are ordered by first seen, oldest first, then by id, which gives apps their order of first appearance.
 - **FR-5**: New sources are appended at the end of the default position for their kind, and the user is notified in the UI ("New source detected: ...").
-- **FR-6**: Aggregation selects, for each user, metric and hourly bucket, the highest priority non-ignored source that has data in that bucket. Only that source's samples contribute to the bucket.
-- **FR-7**: For discrete metrics, the user can switch a metric to "combine sources" mode, where all non-ignored sources contribute (useful when two scales are used alternately).
+  - `source_priorities` stores only the order and the ignored sources that the user set, and has no row for a type until they set one. A source missing from the stored order, such as one seen since, takes its place at read time: after the last stored source whose kind comes at or before its own in the default list of the type, and first when there is none. The pipeline never writes priorities.
+  - The notice belongs to the sources screens, which read the first seen time of each source from the sources API.
+- **FR-6**: Aggregation selects, for each user, metric and hourly bucket, the highest priority non-ignored source that has data in that bucket. Only that source's samples contribute to the bucket. An ignored source never contributes, and a bucket that only ignored sources have data in has no aggregate row.
+- **FR-7**: For discrete metrics, the user can switch a metric to "combine sources" mode, where all non-ignored sources contribute (useful when two scales are used alternately). Setting it on a cumulative or category type answers `422` with the stable message `combine_not_discrete`.
 - **FR-8**: Changing priorities, ignoring a source or merging sources triggers recomputation of the affected aggregates.
-- **FR-9**: Raw sample views (metric explorer table, workout detail) always show the source of each sample and whether it is used in aggregates.
+- **FR-9**: Raw sample views (metric explorer table, workout detail) always show the source of each sample and whether it is used in aggregates, as the raw samples API gives it ([Storage and aggregates](data-storage-and-aggregates.md) FR-12).
 - **FR-10**: Sleep: for each night, sleep stages come from the highest priority source with sleep data for that night (see [Sleep page](page-sleep.md)).
 - **FR-11**: Workouts: two workouts from different sources or different origins with the same activity family (the family of their activity type in the activity type catalog, see [Storage and aggregates](data-storage-and-aggregates.md) FR-4) overlapping by more than 80 percent of the shorter one are flagged as duplicates. The lower priority one is hidden from lists and totals but kept, and can be shown or promoted. Between two workouts of the same source, for example received through both an XML import and Health Auto Export, the one with a route is kept, then the one imported first.
+  - Workouts have no metric type, so no priority list of FR-4 applies to them. Workouts of different sources are ranked by the kind of their source in the default activity and energy list, then by first seen of their source, then by id: a Strava copy of an Apple Watch run loses to the watch. The workouts page (M2) lets the user show a hidden workout and promote it.
+  - `workouts.duplicate_of` holds the id of the kept workout of a duplicate, and is empty for a kept one.
+  - The transaction of each batch evaluates again the duplicate groups of the workouts it stored, updated or removed, through the index on `workouts (user_id, start_at)`, so that removing a kept workout makes the next one kept.
 
 ## UX notes
 
@@ -85,6 +97,9 @@ Two problems make naive sums wrong: the same data arrives several times (re-impo
 ## Data and API notes
 
 - Tables: `sources` (unique `(user_id, name, device_model)`, the model being an empty string when unknown), `source_aliases`, `source_priorities` (user, type, ordered list, ignored list, combine flag).
+- `sources.merged_into` holds the target of a merge in progress (FR-3), and is empty otherwise.
+- `source_stats` (user, source, count), primary key `(user_id, source_id)`, holds the sample count of each source, which the sources list reads. It is maintained in the transactions that maintain `sample_stats` ([Storage and aggregates](data-storage-and-aggregates.md), Data and API notes), with the same exception for account deletion: `sample_stats` is kept per type and cannot give it, and counting the samples of a watch over ten years on each request would scan millions of index entries.
+- `POST /api/v1/sources/merge` answers `202` once the merge is set and its job queued (FR-3).
 - Endpoints: `GET/PATCH /api/v1/sources`, `POST /api/v1/sources/merge`, `GET/PUT /api/v1/metrics/{type}/sources`.
 
 ## Edge cases

@@ -23,6 +23,7 @@ An append-only record of security-relevant and data management events: logins, t
 ### Out of scope
 
 - Logging reads of health data.
+- Renaming and merging sources, and changing source priorities: they change how data is shown, not who can reach it or what is kept.
 - Export to external SIEM (future).
 
 ## Functional requirements
