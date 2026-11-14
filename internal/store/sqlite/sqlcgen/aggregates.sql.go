@@ -8,7 +8,6 @@ package sqlcgen
 import (
 	"context"
 	"database/sql"
-	"strings"
 )
 
 const deleteAllUserAggDaily = `-- name: DeleteAllUserAggDaily :exec
@@ -123,34 +122,6 @@ func (q *Queries) DeleteUserAggHourlyRange(ctx context.Context, arg DeleteUserAg
 	return err
 }
 
-const deleteUserAggregateDirtyRanges = `-- name: DeleteUserAggregateDirtyRanges :exec
-DELETE
-FROM aggregate_dirty_ranges
-WHERE user_id = ?1
-  AND id IN (/*SLICE:ids*/?)
-`
-
-type DeleteUserAggregateDirtyRangesParams struct {
-	UserID int64
-	Ids    []int64
-}
-
-func (q *Queries) DeleteUserAggregateDirtyRanges(ctx context.Context, arg DeleteUserAggregateDirtyRangesParams) error {
-	query := deleteUserAggregateDirtyRanges
-	var queryParams []interface{}
-	queryParams = append(queryParams, arg.UserID)
-	if len(arg.Ids) > 0 {
-		for _, v := range arg.Ids {
-			queryParams = append(queryParams, v)
-		}
-		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(arg.Ids))[1:], 1)
-	} else {
-		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
-	}
-	_, err := q.db.ExecContext(ctx, query, queryParams...)
-	return err
-}
-
 const deleteUserAggregateDirtyRangesBatch = `-- name: DeleteUserAggregateDirtyRangesBatch :execrows
 DELETE
 FROM aggregate_dirty_ranges
@@ -171,6 +142,22 @@ func (q *Queries) DeleteUserAggregateDirtyRangesBatch(ctx context.Context, arg D
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const deleteUserAggregateDirtyRangesThrough = `-- name: DeleteUserAggregateDirtyRangesThrough :exec
+DELETE
+FROM aggregate_dirty_ranges
+WHERE user_id = ? AND id <= ?2
+`
+
+type DeleteUserAggregateDirtyRangesThroughParams struct {
+	UserID int64
+	LastID int64
+}
+
+func (q *Queries) DeleteUserAggregateDirtyRangesThrough(ctx context.Context, arg DeleteUserAggregateDirtyRangesThroughParams) error {
+	_, err := q.db.ExecContext(ctx, deleteUserAggregateDirtyRangesThrough, arg.UserID, arg.LastID)
+	return err
 }
 
 const insertAggDaily = `-- name: InsertAggDaily :exec

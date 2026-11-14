@@ -8,11 +8,10 @@ FROM aggregate_dirty_ranges
 WHERE user_id = ?
 ORDER BY type_id, from_at, id;
 
--- name: DeleteUserAggregateDirtyRanges :exec
+-- name: DeleteUserAggregateDirtyRangesThrough :exec
 DELETE
 FROM aggregate_dirty_ranges
-WHERE user_id = sqlc.arg(user_id)
-  AND id IN (sqlc.slice(ids));
+WHERE user_id = ? AND id <= sqlc.arg(last_id);
 
 -- name: DeleteUserAggHourlyRange :exec
 DELETE

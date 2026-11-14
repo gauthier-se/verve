@@ -44,6 +44,17 @@ func (r aggregates) RecordDirty(ctx context.Context, userID int64, ranges []stor
 	return nil
 }
 
+func (r aggregates) RecordAllDirty(ctx context.Context, userID int64) error {
+	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
+		return q.InsertUserAggregateDirtyRangesFromStats(ctx, userID)
+	})
+	if err != nil {
+		return fmt.Errorf("record dirty ranges of every type of user %d: %w", userID, err)
+	}
+
+	return nil
+}
+
 func (r aggregates) ListDirty(ctx context.Context, userID int64) ([]store.DirtyRange, error) {
 	rows, err := r.q.read().ListUserAggregateDirtyRanges(ctx, userID)
 	if err != nil {
@@ -58,13 +69,9 @@ func (r aggregates) ListDirty(ctx context.Context, userID int64) ([]store.DirtyR
 	return ranges, nil
 }
 
-func (r aggregates) DeleteDirty(ctx context.Context, userID int64, ids []int64) error {
-	if len(ids) == 0 {
-		return nil
-	}
-
+func (r aggregates) DeleteDirtyThrough(ctx context.Context, userID, lastID int64) error {
 	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
-		return q.DeleteUserAggregateDirtyRanges(ctx, sqlcgen.DeleteUserAggregateDirtyRangesParams{UserID: userID, Ids: ids})
+		return q.DeleteUserAggregateDirtyRangesThrough(ctx, sqlcgen.DeleteUserAggregateDirtyRangesThroughParams{UserID: userID, LastID: lastID})
 	})
 	if err != nil {
 		return fmt.Errorf("delete dirty ranges of user %d: %w", userID, err)
@@ -301,15 +308,4 @@ func aggregateRowOf(start int64, sum float64, count int64, low, high, last sql.N
 		SourceID:  sourceID.Int64,
 		Hours:     hours,
 	}
-}
-
-func (r aggregates) RecordAllDirty(ctx context.Context, userID int64) error {
-	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
-		return q.InsertUserAggregateDirtyRangesFromStats(ctx, userID)
-	})
-	if err != nil {
-		return fmt.Errorf("record dirty ranges of every type of user %d: %w", userID, err)
-	}
-
-	return nil
 }

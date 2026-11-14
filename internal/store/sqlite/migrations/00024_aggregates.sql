@@ -47,9 +47,10 @@ CREATE TABLE agg_daily (
 ) STRICT, WITHOUT ROWID;
 
 -- The ranges of each user and type whose aggregates wait for their recomputation (Storage and
--- aggregates FR-9), from the first start to the last end of their samples.
+-- aggregates FR-9), from the first start to the last end of their samples. Ids never come back, so
+-- that a job deletes the ranges it read through the largest id, and never one recorded since.
 CREATE TABLE aggregate_dirty_ranges (
-    id      INTEGER PRIMARY KEY,
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     type_id INTEGER NOT NULL REFERENCES metric_types (id),
     from_at INTEGER NOT NULL, -- Unix milliseconds, UTC

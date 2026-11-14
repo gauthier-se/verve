@@ -75,9 +75,10 @@ type AggregatesRepository interface {
 	// ListDirty returns the dirty ranges of userID, sorted by type id, then From, then id, or an
 	// empty list.
 	ListDirty(ctx context.Context, userID int64) ([]DirtyRange, error)
-	// DeleteDirty removes the dirty ranges of userID whose ids are in ids. The ids that userID does
-	// not have are left alone.
-	DeleteDirty(ctx context.Context, userID int64, ids []int64) error
+	// DeleteDirtyThrough removes the dirty ranges of userID whose ids are at most lastID: the ranges
+	// that a ListDirty listed, when lastID is the largest id it returned, since the ranges recorded
+	// later have larger ids. The ranges of other users are left alone.
+	DeleteDirtyThrough(ctx context.Context, userID, lastID int64) error
 	// ReplaceHourly replaces the hourly rows of userID and of the type of typeID that start in
 	// [from, to) with rows, in one transaction. It returns ErrInvalid, and writes nothing, when a row
 	// starts outside [from, to), two rows start at the same time, or a row is not one of an hour:

@@ -1,8 +1,11 @@
 package aggregate
 
 import (
+	"cmp"
 	"context"
 	"fmt"
+	"slices"
+	"time"
 
 	"github.com/gauthier-se/verve/internal/ingest"
 	"github.com/gauthier-se/verve/internal/store"
@@ -39,21 +42,41 @@ func NewRecorder(queue JobQueue) Recorder {
 	return Recorder{queue: queue}
 }
 
-// Record records ranges as dirty ranges of userID through tx, the transaction of their batch, and
-// queues the recompute job of the user unless one is queued and not running yet: that job reads
-// the ranges when it starts, while a running one may have read them already.
+// mergeGap is the largest gap between two ranges of a type of a batch that Record merges: ranges
+// less than an hour apart recompute the same local hours or the next ones, so that a batch of
+// frequent samples, such as heart rates, records a few ranges instead of one per sample.
+const mergeGap = time.Hour
+
+// Record records ranges as dirty ranges of userID through tx, the transaction of their batch, those
+// of a type less than an hour apart merged, and queues the recompute job of the user unless one is
+// queued and not running yet: that job reads the ranges when it starts, while a running one may
+// have read them already.
 func (r Recorder) Record(ctx context.Context, tx store.Repositories, userID int64, ranges []ingest.DirtyRange) error {
 	if len(ranges) == 0 {
 		return nil
 	}
 
-	dirty := make([]store.DirtyRange, 0, len(ranges))
-	for _, rg := range ranges {
+	sorted := slices.Clone(ranges)
+	slices.SortFunc(sorted, func(a, b ingest.DirtyRange) int {
+		return cmp.Or(cmp.Compare(a.TypeID, b.TypeID), a.From.Compare(b.From))
+	})
+
+	var dirty []store.DirtyRange
+
+	for _, rg := range sorted {
+		if n := len(dirty); n > 0 && dirty[n-1].TypeID == rg.TypeID && rg.From.Sub(dirty[n-1].To) < mergeGap {
+			if rg.To.After(dirty[n-1].To) {
+				dirty[n-1].To = rg.To
+			}
+
+			continue
+		}
+
 		dirty = append(dirty, store.DirtyRange{TypeID: rg.TypeID, From: rg.From, To: rg.To})
 	}
 
 	if err := tx.Aggregates().RecordDirty(ctx, userID, dirty); err != nil {
-		return err
+		return fmt.Errorf("record dirty ranges of user %d: %w", userID, err)
 	}
 
 	return r.queueRecompute(ctx, tx, userID)
@@ -65,11 +88,11 @@ func (r Recorder) Record(ctx context.Context, tx store.Repositories, userID int6
 // (FR-10 of Storage and aggregates).
 func (r Recorder) RecomputeAll(ctx context.Context, tx store.Repositories, userID int64) error {
 	if err := tx.Aggregates().DeleteAll(ctx, userID); err != nil {
-		return err
+		return fmt.Errorf("recompute every aggregate of user %d: %w", userID, err)
 	}
 
 	if err := tx.Aggregates().RecordAllDirty(ctx, userID); err != nil {
-		return err
+		return fmt.Errorf("recompute every aggregate of user %d: %w", userID, err)
 	}
 
 	return r.queueRecompute(ctx, tx, userID)

@@ -31,8 +31,8 @@ type updatePreferencesInput struct {
 
 // registerPreferences registers GET and PATCH /api/v1/account/preferences, which read and change the
 // preferences of the user of the session in st. A change of timezone recomputes the aggregates of
-// the user with aggregates.
-func registerPreferences(api huma.API, st store.Store, aggregates preferences.Recomputer) {
+// the user with recomputer.
+func registerPreferences(api huma.API, st store.Store, recomputer preferences.Recomputer) {
 	huma.Register(api, huma.Operation{
 		OperationID: "get-preferences",
 		Method:      http.MethodGet,
@@ -76,7 +76,7 @@ func registerPreferences(api huma.API, st store.Store, aggregates preferences.Re
 		if in.Body.Timezone == nil {
 			prefs, err = st.Preferences().Get(ctx, principal.UserID)
 		} else {
-			prefs, err = preferences.SetTimezone(ctx, st, aggregates, principal.UserID, *in.Body.Timezone)
+			prefs, err = preferences.SetTimezone(ctx, st, recomputer, principal.UserID, *in.Body.Timezone)
 		}
 
 		if err != nil {

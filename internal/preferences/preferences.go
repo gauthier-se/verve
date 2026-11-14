@@ -24,28 +24,34 @@ type Recomputer interface {
 }
 
 // SetTimezone stores the IANA timezone name, such as Europe/Paris, as the timezone of the user of
-// userID in st, and returns their preferences. A change of timezone recomputes the aggregates of
-// the user with aggregates, in the transaction that stores it (FR-10 of Storage and aggregates). It
-// returns ErrTimezoneInvalid when name is not one, and store.ErrNotFound when no user has userID.
-func SetTimezone(ctx context.Context, st store.Store, aggregates Recomputer, userID int64, name string) (store.Preferences, error) {
-	if _, err := loadTimezone(name); err != nil {
+// userID in st, and returns their preferences. A change of the effective timezone, such as from none,
+// which is UTC, to Europe/Paris, recomputes the aggregates of the user with recomputer, in the
+// transaction that stores it (FR-10 of Storage and aggregates). It returns ErrTimezoneInvalid when
+// name is not one, and store.ErrNotFound when no user has userID.
+func SetTimezone(ctx context.Context, st store.Store, recomputer Recomputer, userID int64, name string) (store.Preferences, error) {
+	loc, err := loadTimezone(name)
+	if err != nil {
 		return store.Preferences{}, err
 	}
 
 	var prefs store.Preferences
 
-	err := st.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
+	err = st.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
 		current, err := tx.Preferences().Get(ctx, userID)
 		if err != nil {
 			return err
 		}
 
 		prefs, err = tx.Preferences().SetTimezone(ctx, userID, name)
-		if err != nil || current.Timezone == name {
+		if err != nil {
 			return err
 		}
 
-		return aggregates.RecomputeAll(ctx, tx, userID)
+		if was, err := LocationOf(current); err == nil && was.String() == loc.String() {
+			return nil
+		}
+
+		return recomputer.RecomputeAll(ctx, tx, userID)
 	})
 	if err != nil {
 		return store.Preferences{}, err
@@ -62,16 +68,21 @@ func Location(ctx context.Context, preferences store.PreferencesRepository, user
 		return nil, err
 	}
 
-	if prefs.Timezone == "" {
-		return time.UTC, nil
-	}
-
-	loc, err := loadTimezone(prefs.Timezone)
+	loc, err := LocationOf(prefs)
 	if err != nil {
 		return nil, fmt.Errorf("load timezone of user %d: %w", userID, err)
 	}
 
 	return loc, nil
+}
+
+// LocationOf returns the effective timezone of prefs: the one confirmed, or UTC without one.
+func LocationOf(prefs store.Preferences) (*time.Location, error) {
+	if prefs.Timezone == "" {
+		return time.UTC, nil
+	}
+
+	return loadTimezone(prefs.Timezone)
 }
 
 // loadTimezone returns the location of the IANA timezone name, or ErrTimezoneInvalid. time.LoadLocation

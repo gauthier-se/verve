@@ -44,8 +44,8 @@ func Register(registry *jobs.Registry, st store.Store) jobs.Kind[struct{}] {
 // Recompute recomputes the aggregates of the dirty ranges of userID present when it starts, in
 // their timezone (FR-9 of Storage and aggregates). It merges the overlapping ranges of each type
 // once widened to local hours, recomputes those hours, then the local days that hold them, one
-// local month per transaction, and deletes the ranges it read once they are recomputed. Ranges
-// recorded meanwhile stay, with the job that recording them queued.
+// local month per transaction, and deletes the ranges it read once they are recomputed, through
+// the largest id it read. Ranges recorded meanwhile stay, with the job that recording them queued.
 //
 // A recomputation stops without deleting its ranges when the user changes timezone meanwhile, and
 // when the user no longer exists. Running it again is safe: it computes the same rows.
@@ -68,21 +68,21 @@ func Recompute(ctx context.Context, st store.Store, userID int64) error {
 		return fmt.Errorf("recompute aggregates of user %d: %w", userID, err)
 	}
 
-	loc, err := preferences.Location(ctx, st.Preferences(), userID)
+	loc, err := preferences.LocationOf(prefs)
 	if err != nil {
 		return fmt.Errorf("recompute aggregates of user %d: %w", userID, err)
 	}
 
-	ids := make([]int64, 0, len(ranges))
+	var lastID int64
 
 	for start := 0; start < len(ranges); {
 		end := start
 		for end < len(ranges) && ranges[end].TypeID == ranges[start].TypeID {
-			ids = append(ids, ranges[end].ID)
+			lastID = max(lastID, ranges[end].ID)
 			end++
 		}
 
-		err := recomputeType(ctx, st, userID, prefs.Timezone, loc, ranges[start:end])
+		err := recomputeType(ctx, st, userID, loc, ranges[start:end])
 		if errors.Is(err, errTimezoneChanged) {
 			return nil
 		}
@@ -94,22 +94,20 @@ func Recompute(ctx context.Context, st store.Store, userID int64) error {
 		start = end
 	}
 
-	if err := st.Aggregates().DeleteDirty(ctx, userID, ids); err != nil {
+	if err := st.Aggregates().DeleteDirtyThrough(ctx, userID, lastID); err != nil {
 		return fmt.Errorf("recompute aggregates of user %d: %w", userID, err)
 	}
 
 	return nil
 }
 
-// recomputeType recomputes ranges, the dirty ranges of one type, in loc, the location of timezone,
-// one local month per transaction. It returns errTimezoneChanged when the user no longer has
-// timezone when a transaction starts.
-func recomputeType(ctx context.Context, st store.Store, userID int64, timezone string, loc *time.Location,
-	ranges []store.DirtyRange,
-) error {
+// recomputeType recomputes ranges, the dirty ranges of one type, in loc, one local month per
+// transaction. It returns errTimezoneChanged when the effective timezone of the user is no longer
+// loc when a transaction starts.
+func recomputeType(ctx context.Context, st store.Store, userID int64, loc *time.Location, ranges []store.DirtyRange) error {
 	metricType, err := st.MetricTypes().Get(ctx, ranges[0].TypeID)
 	if err != nil {
-		return err
+		return fmt.Errorf("get type %d: %w", ranges[0].TypeID, err)
 	}
 
 	for _, w := range hourWindows(ranges, loc) {
@@ -125,14 +123,15 @@ func recomputeType(ctx context.Context, st store.Store, userID int64, timezone s
 					return err
 				}
 
-				if prefs.Timezone != timezone {
+				if current, err := preferences.LocationOf(prefs); err != nil || current.String() != loc.String() {
 					return errTimezoneChanged
 				}
 
 				return recomputeHours(ctx, tx, userID, metricType, loc, from, to)
 			})
 			if err != nil {
-				return err
+				return fmt.Errorf("recompute %s from %s to %s: %w", metricType.Key, from.Format(time.RFC3339),
+					to.Format(time.RFC3339), err)
 			}
 
 			from = to
