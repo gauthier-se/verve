@@ -60,6 +60,8 @@ type APIDeps struct {
 	// Inbox stores the bodies of the pushes, of at most MaxIngestBody bytes.
 	Inbox         Inbox
 	MaxIngestBody int64
+	// RawMaxDays is the longest range of a raw samples read, in days (VERVE_RAW_MAX_DAYS).
+	RawMaxDays int
 }
 
 // useProblemErrors makes Huma build its errors as problems. huma.NewError is Huma's documented
@@ -105,6 +107,7 @@ func NewAPI(mux *http.ServeMux, deps APIDeps) huma.API {
 	registerTokens(api, deps)
 	registerMetrics(api, deps)
 	registerSeries(api, deps)
+	registerSamples(api, deps)
 	registerIngest(api, deps)
 	registerImports(api, deps)
 

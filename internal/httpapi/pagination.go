@@ -30,16 +30,22 @@ type PageParams struct {
 // Resolve decodes the cursor, so that Huma reports a malformed one with the other invalid fields.
 // An input that embeds PageParams and has its own Resolve must call this one.
 func (p *PageParams) Resolve(huma.Context) []error {
-	if p.Cursor == "" {
+	return resolveCursor(p.Cursor, &p.after)
+}
+
+// resolveCursor decodes cursor, the query parameter cursor, into after for a Huma resolver, and
+// returns the error of a malformed one. An empty cursor leaves after zero.
+func resolveCursor(cursor string, after *store.Cursor) []error {
+	if cursor == "" {
 		return nil
 	}
 
-	after, err := decodeCursor(p.Cursor)
+	decoded, err := decodeCursor(cursor)
 	if err != nil {
-		return []error{&huma.ErrorDetail{Message: "invalid cursor", Location: "query.cursor", Value: p.Cursor}}
+		return []error{&huma.ErrorDetail{Message: "invalid cursor", Location: "query.cursor", Value: cursor}}
 	}
 
-	p.after = after
+	*after = decoded
 
 	return nil
 }

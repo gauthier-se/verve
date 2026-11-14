@@ -25,6 +25,9 @@ const minSecretKeyLength = 32
 // overflow the cutoff of the purge, which would then remove every event.
 const maxAuditRetentionDays = 36_500
 
+// maxRawMaxDays is the longest accepted range of a raw samples read, a leap year.
+const maxRawMaxDays = 366
+
 // Config is the effective configuration. The yaml tags give the YAML keys, the env tags
 // the environment variables without envPrefix. A setting with `yaml:"-"` and an env tag
 // is set by the environment only.
@@ -40,6 +43,7 @@ type Config struct {
 	MetricsAddr    string       `yaml:"metrics_addr"    env:"METRICS_ADDR"`
 	Audit          AuditConfig  `yaml:"audit"           envPrefix:"AUDIT_"`
 	Backup         BackupConfig `yaml:"backup"          envPrefix:"BACKUP_"`
+	RawMaxDays     int          `yaml:"raw_max_days"    env:"RAW_MAX_DAYS"`
 
 	// Sources tells where each setting comes from, keyed by YAML path. Set by Load.
 	Sources Sources `yaml:"-" env:"-"`
@@ -100,6 +104,7 @@ func Default() Config {
 		MaxIngestBody: 1_000_000_000,
 		Audit:         AuditConfig{RetentionDays: 365},
 		Backup:        BackupConfig{Schedule: "0 3 * * *", Keep: 7},
+		RawMaxDays:    7,
 	}
 }
 
@@ -142,6 +147,7 @@ func (c Config) validate(settings map[string]setting) []error {
 	positive("max_ingest_body", c.MaxIngestBody)
 	between("audit.retention_days", c.Audit.RetentionDays, 1, maxAuditRetentionDays)
 	between("backup.keep", c.Backup.Keep, 1, math.MaxInt)
+	between("raw_max_days", c.RawMaxDays, 1, maxRawMaxDays)
 
 	if c.Backup.Schedule != BackupScheduleOff {
 		if err := jobs.CheckCron(c.Backup.Schedule); err != nil {

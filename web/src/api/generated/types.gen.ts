@@ -665,6 +665,43 @@ export type MetricAvailability = {
     lastAt: string;
 } | null;
 
+export type MetricSample = {
+    /**
+     * The key of the value of a category sample, left out for a quantity.
+     */
+    category?: string;
+    /**
+     * The end of the sample, its start for an instantaneous sample.
+     */
+    end: string;
+    id: number;
+    /**
+     * The maximum of a pre-aggregated point, left out for other samples.
+     */
+    max?: number;
+    /**
+     * The minimum of a pre-aggregated point, left out for other samples.
+     */
+    min?: number;
+    /**
+     * The source of the sample.
+     */
+    source: SampleSource;
+    start: string;
+    /**
+     * True when the sample counts in the aggregates: its source is the one selected for its local hour, or, for a type in combine mode, a source not ignored.
+     */
+    usedInAggregates: boolean;
+    /**
+     * The offset of the local time where the sample was recorded, in seconds east of UTC.
+     */
+    utcOffset: number;
+    /**
+     * The value in the canonical unit of the type, 1 for a category sample.
+     */
+    value: number;
+};
+
 export type MetricsOutputBody = {
     /**
      * The curated types, and the uncurated types the current user has samples of, sorted by id.
@@ -778,6 +815,29 @@ export type ResetPasswordInputBody = {
      * The token of the reset link, from the fragment of its link.
      */
     token: string;
+};
+
+export type SampleSource = {
+    id: number;
+    /**
+     * The name shown to the user.
+     */
+    name: string;
+};
+
+export type SamplesOutputBody = {
+    /**
+     * The samples that start in the range, sorted by start then id.
+     */
+    items: Array<MetricSample>;
+    /**
+     * The cursor of the next page, left out on the last page and when maxPoints is set.
+     */
+    nextCursor?: string;
+    /**
+     * The canonical unit of the values.
+     */
+    unit: string;
 };
 
 export type SeriesOutputBody = {
@@ -2249,6 +2309,73 @@ export type ListMetricsResponses = {
 };
 
 export type ListMetricsResponse = ListMetricsResponses[keyof ListMetricsResponses];
+
+export type ListMetricSamplesData = {
+    body?: never;
+    path: {
+        /**
+         * The key of the metric type.
+         */
+        type: string;
+    };
+    query: {
+        /**
+         * The first instant of the range, in RFC 3339.
+         */
+        from: string;
+        /**
+         * The end of the range, excluded, in RFC 3339. It must be after from, and the range at most VERVE_RAW_MAX_DAYS local days long in the timezone of the current user, 7 by default, or the read answers 422 range_too_long.
+         */
+        to: string;
+        /**
+         * The nextCursor of the previous page, left out for the first page.
+         */
+        cursor?: string;
+        /**
+         * The maximum number of samples of the page.
+         */
+        limit?: number;
+        /**
+         * Returns the whole range downsampled to at most that many samples, by largest triangle three buckets, the first and last kept, without a cursor. For quantity types only: a category type answers 422 max_points_unsupported, and a cursor 422 max_points_with_cursor.
+         */
+        maxPoints?: number;
+    };
+    url: '/api/v1/metrics/{type}/samples';
+};
+
+export type ListMetricSamplesErrors = {
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Forbidden
+     */
+    403: Problem;
+    /**
+     * Not Found
+     */
+    404: Problem;
+    /**
+     * Unprocessable Entity
+     */
+    422: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type ListMetricSamplesError = ListMetricSamplesErrors[keyof ListMetricSamplesErrors];
+
+export type ListMetricSamplesResponses = {
+    /**
+     * OK
+     */
+    200: SamplesOutputBody;
+};
+
+export type ListMetricSamplesResponse = ListMetricSamplesResponses[keyof ListMetricSamplesResponses];
 
 export type GetMetricSeriesData = {
     body?: never;
