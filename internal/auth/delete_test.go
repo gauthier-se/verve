@@ -287,11 +287,12 @@ type userBatch struct {
 
 // recordedBatches are the calls that a countingStore records, one list per method.
 type recordedBatches struct {
-	jobs     []deleteBatch
-	samples  []userBatch
-	workouts []userBatch
-	routes   []userBatch
-	imports  []userBatch
+	jobs       []deleteBatch
+	samples    []userBatch
+	workouts   []userBatch
+	routes     []userBatch
+	imports    []userBatch
+	aggregates []userBatch
 }
 
 // countingStore records the calls of Jobs().DeleteByUser, Samples().DeleteByUser,
@@ -325,6 +326,10 @@ func (s countingStore) Workouts() store.WorkoutsRepository {
 		batches:            &s.recorded.workouts,
 		routeBatches:       &s.recorded.routes,
 	}
+}
+
+func (s countingStore) Aggregates() store.AggregatesRepository {
+	return countingAggregates{AggregatesRepository: s.Store.Aggregates(), users: s.Users(), batches: &s.recorded.aggregates}
 }
 
 func (s countingStore) Imports() store.ImportsRepository {
@@ -740,4 +745,68 @@ func TestDeleteAccount_RefusesAUserWhoIsNotBeingDeleted(t *testing.T) {
 
 	require.ErrorIs(t, DeleteAccount(t.Context(), dt.store, bob.ID), ErrUserNotDeleting)
 	dt.requireStatus(t, bob.ID, store.UserActive)
+}
+
+type countingAggregates struct {
+	store.AggregatesRepository
+
+	users   store.UsersRepository
+	batches *[]userBatch
+}
+
+func (r countingAggregates) DeleteByUser(ctx context.Context, userID int64, limit int) (int64, error) {
+	return recordUserBatch(ctx, r.users, r.batches, r.AggregatesRepository.DeleteByUser, userID, limit)
+}
+
+// mustStoreAggregates stores hours hourly rows, a daily row and a dirty range of user, of heart
+// rate.
+func (dt deletionTest) mustStoreAggregates(t *testing.T, user store.User, hours int) {
+	t.Helper()
+
+	ctx := t.Context()
+
+	heart, err := dt.store.MetricTypes().EnsureUncurated(ctx, "HKQuantityTypeIdentifierHeartRate", catalog.KindQuantity, "count/min")
+	require.NoError(t, err)
+
+	rows := make([]store.AggregateRow, hours)
+	for i := range rows {
+		rows[i] = store.AggregateRow{Start: sessionsTestNow.Add(time.Duration(i) * time.Hour), Sum: 60, Count: 1, Selection: store.SelectedCombined}
+	}
+
+	end := sessionsTestNow.Add(time.Duration(hours) * time.Hour)
+	require.NoError(t, dt.store.Aggregates().ReplaceHourly(ctx, user.ID, heart.ID, sessionsTestNow, end, rows))
+	require.NoError(t, dt.store.Aggregates().ReplaceDaily(ctx, user.ID, heart.ID, sessionsTestNow, end, []store.AggregateRow{
+		{Start: sessionsTestNow, Sum: 60, Count: 1, Selection: store.SelectedCombined, Hours: 1},
+	}))
+	require.NoError(t, dt.store.Aggregates().RecordDirty(ctx, user.ID, []store.DirtyRange{
+		{TypeID: heart.ID, From: sessionsTestNow, To: end},
+	}))
+}
+
+// Given an account deletion, when the account.delete job runs, then it removes the aggregate rows
+// and dirty ranges of the user in transactions of at most the batch size, before the user, and the
+// other user keeps theirs.
+func TestDeleteAccount_RemovesTheAggregatesInBoundedBatchesBeforeTheUser(t *testing.T) {
+	t.Parallel()
+
+	dt := newDeletionTest(t)
+	alice := dt.mustCreateRole(t, "alice", store.RoleMember)
+	bob := dt.mustCreateRole(t, "bob", store.RoleMember)
+	dt.mustStoreAggregates(t, alice, 1)
+	dt.mustStoreAggregates(t, bob, 3)
+
+	dt.mustRequestOwnDeletion(t, bob)
+
+	counting, recorded := newCountingStore(dt.store)
+
+	require.NoError(t, deleteAccount(t.Context(), counting, bob.ID, deleteBatchSizes{rows: 2, routes: 2}))
+	require.Equal(t, []userBatch{
+		{limit: 2, deleted: 2, userExists: true},
+		{limit: 2, deleted: 2, userExists: true},
+		{limit: 2, deleted: 1, userExists: true},
+	}, recorded.aggregates, "three hourly rows, a daily row and a dirty range in batches of at most two, before the user")
+
+	ranges, err := dt.store.Aggregates().ListDirty(t.Context(), alice.ID)
+	require.NoError(t, err)
+	require.Len(t, ranges, 1, "the aggregates of the other user stay")
 }

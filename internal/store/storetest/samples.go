@@ -169,6 +169,7 @@ func RunSamples(t *testing.T, newStore NewStoreFunc) {
 	runSamplesList(t, newStore)
 	runSamplesDelete(t, newStore)
 	runSamplesDeleteByKey(t, newStore)
+	runSamplesListOverlapping(t, newStore)
 }
 
 // runSamplesUpsert runs the cases of the samples stored by an upsert.
@@ -841,5 +842,58 @@ func runSamplesDeleteByKey(t *testing.T, newStore NewStoreFunc) {
 		require.Equal(t, []store.SampleStats{
 			{TypeID: st.heart.ID, FirstAt: samplesUTC, LastAt: samplesUTC.Add(time.Hour), Count: 2},
 		}, st.mustStats(ctx, t, st.other.ID))
+	})
+}
+
+// runSamplesListOverlapping runs the cases of the samples read for the aggregates of a range.
+func runSamplesListOverlapping(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+
+	// Given samples that start in a range, overlap it, start before it by more than any other, touch
+	// it or lie outside it, then ListOverlapping returns those that start in it or overlap it,
+	// sorted by start then id, and never the samples of another type or user.
+	t.Run("ListOverlappingReturnsTheSamplesThatStartInOrOverlapARange", func(t *testing.T) {
+		t.Parallel()
+
+		st := newSamplesTest(t, newStore)
+		ctx := t.Context()
+		from, to := samplesUTC, samplesUTC.Add(time.Hour)
+
+		long := st.heartRate("long", from.Add(-40*24*time.Hour), 1, store.ConflictIgnore)
+		long.End = from.Add(time.Minute)
+
+		touching := st.heartRate("touching", from.Add(-time.Minute), 2, store.ConflictIgnore)
+		instant := st.heartRate("instant", from, 3, store.ConflictIgnore)
+		instant.End = from
+		inside := st.heartRate("inside", from.Add(30*time.Minute), 4, store.ConflictIgnore)
+		sameStart := st.heartRate("same start", from.Add(30*time.Minute), 5, store.ConflictIgnore)
+		ending := st.heartRate("ending", to, 6, store.ConflictIgnore)
+		ending.End = to
+		before := st.heartRate("before", from.Add(-time.Hour), 7, store.ConflictIgnore)
+
+		st.mustUpsert(ctx, t, st.user.ID, inside, long, touching, instant, sameStart, ending, before, st.standHour(from))
+		st.mustUpsert(ctx, t, st.other.ID, st.foreignHeartRate("foreign", from, 8))
+
+		got, err := st.store.Samples().ListOverlapping(ctx, st.user.ID, st.heart.ID, from, to)
+		require.NoError(t, err)
+
+		values := make([]float64, 0, len(got))
+		for _, sample := range got {
+			require.Equal(t, st.user.ID, sample.UserID)
+			values = append(values, sample.Value)
+		}
+
+		require.Equal(t, []float64{1, 3, 4, 5}, values)
+		require.Less(t, got[2].ID, got[3].ID)
+	})
+
+	// Given a range whose end is not after its start, then ListOverlapping returns store.ErrInvalid.
+	t.Run("ListOverlappingRefusesAnEmptyRange", func(t *testing.T) {
+		t.Parallel()
+
+		st := newSamplesTest(t, newStore)
+
+		_, err := st.store.Samples().ListOverlapping(t.Context(), st.user.ID, st.heart.ID, samplesUTC, samplesUTC)
+		require.ErrorIs(t, err, store.ErrInvalid)
 	})
 }

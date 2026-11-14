@@ -121,6 +121,25 @@ var userRowSeeders = map[string]func(ctx context.Context, t *testing.T, s store.
 		_, err := s.Imports().Create(ctx, store.NewImport{UserID: user.ID, Origin: store.OriginNative, TokenID: 7})
 		require.NoError(t, err)
 	},
+	"agg_hourly": func(ctx context.Context, t *testing.T, s store.Store, user store.User) {
+		t.Helper()
+
+		require.NoError(t, s.Aggregates().ReplaceHourly(ctx, user.ID, seedHeartRate(ctx, t, s).ID, deletionTestNow,
+			deletionTestNow.Add(time.Hour), []store.AggregateRow{seedAggregateRow(ctx, t, s, user, 0)}))
+	},
+	"agg_daily": func(ctx context.Context, t *testing.T, s store.Store, user store.User) {
+		t.Helper()
+
+		require.NoError(t, s.Aggregates().ReplaceDaily(ctx, user.ID, seedHeartRate(ctx, t, s).ID, deletionTestNow,
+			deletionTestNow.Add(time.Hour), []store.AggregateRow{seedAggregateRow(ctx, t, s, user, 1)}))
+	},
+	"aggregate_dirty_ranges": func(ctx context.Context, t *testing.T, s store.Store, user store.User) {
+		t.Helper()
+
+		require.NoError(t, s.Aggregates().RecordDirty(ctx, user.ID, []store.DirtyRange{
+			{TypeID: seedHeartRate(ctx, t, s).ID, From: deletionTestNow, To: deletionTestNow},
+		}))
+	},
 	"jobs": func(ctx context.Context, t *testing.T, s store.Store, user store.User) {
 		t.Helper()
 
@@ -201,6 +220,16 @@ func seedSample(ctx context.Context, t *testing.T, s store.Store, user store.Use
 		OnConflict: store.ConflictIgnore,
 	}})
 	require.NoError(t, err)
+}
+
+// seedAggregateRow returns an aggregate row of the watch source of user at deletionTestNow, with hours
+// hours.
+func seedAggregateRow(ctx context.Context, t *testing.T, s store.Store, user store.User, hours int64) store.AggregateRow {
+	t.Helper()
+
+	return store.AggregateRow{
+		Start: deletionTestNow, Sum: 60, Count: 1, Selection: store.SelectedSource, SourceID: seedSource(ctx, t, s, user).ID, Hours: hours,
+	}
 }
 
 // tablesWithUserID returns the tables of the schema of db that have a user_id column.

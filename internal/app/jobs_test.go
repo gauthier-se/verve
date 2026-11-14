@@ -220,3 +220,46 @@ func TestJobs_ImportNativeCompletesAPush(t *testing.T) {
 	require.Equal(t, store.ImportCompleted, got.Status)
 	require.NoFileExists(t, filepath.Join(jt.inboxDir, name))
 }
+
+// Given a native push of a sample, when the jobs of the server run, then the import.native job
+// records its range and queues the aggregate.recompute job, which computes its aggregates.
+func TestJobs_ImportNativeQueuesTheRecomputationOfTheAggregates(t *testing.T) {
+	t.Parallel()
+
+	jt := newJobsTest(t)
+	ctx := t.Context()
+	alice := jt.mustCreateUser(t, "alice", store.UserActive)
+
+	name := "6b1e0c9d4f2a8e7c3b5d1a9f0e8c6b42"
+	require.NoError(t, os.WriteFile(filepath.Join(jt.inboxDir, name), []byte(`{
+		"format": "verve.ingest.v1",
+		"client": {"name": "Verve for iOS", "version": "1.0.0"},
+		"samples": [{"uuid": "2C7B5E1A-9D3F-4B6C-8E0A-1F2D3C4B5A69", "type": "HKQuantityTypeIdentifierStepCount",
+		             "start": "2026-11-10T08:00:00+01:00", "end": "2026-11-10T08:10:00+01:00", "value": 1240, "unit": "count",
+		             "source": {"name": "Apple Watch", "device": {"model": "Watch"}}}]
+	}`), 0o600))
+
+	imp, err := jt.store.Imports().Create(ctx, store.NewImport{UserID: alice.ID, Origin: store.OriginNative, InboxFile: name})
+	require.NoError(t, err)
+
+	job, err := native.Job(alice.ID, imp.ID)
+	require.NoError(t, err)
+
+	_, err = jt.store.Jobs().Enqueue(ctx, job)
+	require.NoError(t, err)
+
+	for range 2 {
+		claimed, err := jt.worker.Tick(ctx)
+		require.NoError(t, err)
+		require.True(t, claimed)
+	}
+
+	steps, err := jt.store.MetricTypes().GetByKey(ctx, "step_count")
+	require.NoError(t, err)
+
+	days, err := jt.store.Aggregates().ListDaily(ctx, alice.ID, steps.ID, time.Unix(0, 0), time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+	require.Len(t, days, 1)
+	require.Equal(t, time.Date(2026, 11, 10, 0, 0, 0, 0, time.UTC), days[0].Start)
+	require.InDelta(t, 1240, days[0].Sum, 0)
+}
