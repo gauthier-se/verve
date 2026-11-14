@@ -75,6 +75,18 @@ var userRowSeeders = map[string]func(ctx context.Context, t *testing.T, s store.
 
 		seedSource(ctx, t, s, user)
 	},
+	// The priorities of the two seeders are the same, of the watch source for heart rate, so that
+	// each table holds one row.
+	"source_priorities": func(ctx context.Context, t *testing.T, s store.Store, user store.User) {
+		t.Helper()
+
+		seedSourcePriorities(ctx, t, s, user)
+	},
+	"source_priority_entries": func(ctx context.Context, t *testing.T, s store.Store, user store.User) {
+		t.Helper()
+
+		seedSourcePriorities(ctx, t, s, user)
+	},
 	// The data availability is that of the sample of the seeder of samples.
 	"sample_stats": func(ctx context.Context, t *testing.T, s store.Store, user store.User) {
 		t.Helper()
@@ -151,14 +163,32 @@ func seedWorkout(ctx context.Context, t *testing.T, s store.Store, user store.Us
 	return upserted.ID
 }
 
-// seedSample stores a heart rate sample of the watch source of user, the same sample on every call.
-func seedSample(ctx context.Context, t *testing.T, s store.Store, user store.User) {
+// seedHeartRate returns the heart rate type, the same type on every call.
+func seedHeartRate(ctx context.Context, t *testing.T, s store.Store) store.MetricType {
 	t.Helper()
 
 	heart, err := s.MetricTypes().EnsureUncurated(ctx, "HKQuantityTypeIdentifierHeartRate", catalog.KindQuantity, "count/min")
 	require.NoError(t, err)
 
-	_, err = s.Samples().Upsert(ctx, user.ID, []store.NewSample{{
+	return heart
+}
+
+// seedSourcePriorities sets the watch source of user first for heart rate, the same priorities on
+// every call.
+func seedSourcePriorities(ctx context.Context, t *testing.T, s store.Store, user store.User) {
+	t.Helper()
+
+	require.NoError(t, s.SourcePriorities().Set(ctx, user.ID, seedHeartRate(ctx, t, s).ID,
+		store.SourcePriorities{Order: []int64{seedSource(ctx, t, s, user).ID}}))
+}
+
+// seedSample stores a heart rate sample of the watch source of user, the same sample on every call.
+func seedSample(ctx context.Context, t *testing.T, s store.Store, user store.User) {
+	t.Helper()
+
+	heart := seedHeartRate(ctx, t, s)
+
+	_, err := s.Samples().Upsert(ctx, user.ID, []store.NewSample{{
 		Sample: store.Sample{
 			TypeID:     heart.ID,
 			SourceID:   seedSource(ctx, t, s, user).ID,

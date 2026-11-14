@@ -293,6 +293,19 @@ func TestStore_SourcesContract(t *testing.T) {
 	})
 }
 
+// Given the contract suite storetest.RunSourcePriorities, then the SQLite implementation passes it.
+func TestStore_SourcePrioritiesContract(t *testing.T) {
+	t.Parallel()
+
+	storetest.RunSourcePriorities(t, func(t *testing.T, clk clock.Clock) store.Store {
+		t.Helper()
+
+		s, _ := newTestStore(t, clk)
+
+		return s
+	})
+}
+
 // Given the contract suite storetest.RunMetricTypes, then the SQLite implementation passes it.
 func TestStore_MetricTypesContract(t *testing.T) {
 	t.Parallel()
