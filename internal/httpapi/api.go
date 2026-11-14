@@ -7,6 +7,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
+	"github.com/gauthier-se/verve/internal/aggregate"
 	"github.com/gauthier-se/verve/internal/auth"
 	"github.com/gauthier-se/verve/internal/backup"
 	"github.com/gauthier-se/verve/internal/catalog"
@@ -91,7 +92,7 @@ func NewAPI(mux *http.ServeMux, deps APIDeps) huma.API {
 	registerMeta(api, deps.Version)
 	registerLoginAndLogout(api, deps)
 	registerCurrentUser(api, deps.Store)
-	registerPreferences(api, deps.Store)
+	registerPreferences(api, deps.Store, aggregate.NewRecorder(deps.Jobs))
 	registerAccount(api, deps)
 	registerSetup(api, deps)
 	registerInvitations(api, deps)

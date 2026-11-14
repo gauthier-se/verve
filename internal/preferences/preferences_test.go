@@ -2,6 +2,7 @@ package preferences
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -51,7 +52,7 @@ func TestLocation_ReturnsTheConfirmedTimezone(t *testing.T) {
 
 	s, user := newTestUser(t)
 
-	_, err := SetTimezone(t.Context(), s.Preferences(), user.ID, "America/New_York")
+	_, err := SetTimezone(t.Context(), s, &fakeRecomputer{}, user.ID, "America/New_York")
 	require.NoError(t, err)
 
 	loc, err := Location(t.Context(), s.Preferences(), user.ID)
@@ -73,7 +74,7 @@ func TestSetTimezone_StoresOnlyValidNames(t *testing.T) {
 	ctx := t.Context()
 
 	for _, name := range []string{"Europe/Paris", "UTC", "Etc/GMT+5", "Asia/Kathmandu"} {
-		got, err := SetTimezone(ctx, s.Preferences(), user.ID, name)
+		got, err := SetTimezone(ctx, s, &fakeRecomputer{}, user.ID, name)
 		require.NoError(t, err, name)
 		require.Equal(t, store.Preferences{Timezone: name}, got)
 	}
@@ -82,11 +83,65 @@ func TestSetTimezone_StoresOnlyValidNames(t *testing.T) {
 		"", "Local", "Mars/Olympus_Mons", "Europe/../Europe/Paris", "/etc/localtime",
 		"posix/Europe/Paris", "right/Europe/Paris",
 	} {
-		_, err := SetTimezone(ctx, s.Preferences(), user.ID, name)
+		_, err := SetTimezone(ctx, s, &fakeRecomputer{}, user.ID, name)
 		require.ErrorIs(t, err, ErrTimezoneInvalid, name)
 	}
 
 	got, err := s.Preferences().Get(ctx, user.ID)
 	require.NoError(t, err)
 	require.Equal(t, store.Preferences{Timezone: "Asia/Kathmandu"}, got)
+}
+
+// fakeRecomputer records the users whose aggregates it recomputes, and returns err.
+type fakeRecomputer struct {
+	users []int64
+	err   error
+}
+
+func (f *fakeRecomputer) RecomputeAll(_ context.Context, _ store.Repositories, userID int64) error {
+	f.users = append(f.users, userID)
+
+	return f.err
+}
+
+// Given a change of timezone, then SetTimezone recomputes the aggregates of the user. Given the
+// timezone the user has, then it recomputes nothing. Given a recomputation that fails, then the
+// timezone is not stored either, since both share a transaction.
+func TestSetTimezone_RecomputesTheAggregatesOnAChange(t *testing.T) {
+	t.Parallel()
+
+	s, user := newTestUser(t)
+	ctx := t.Context()
+	recomputer := &fakeRecomputer{}
+
+	_, err := SetTimezone(ctx, s, recomputer, user.ID, "Europe/Paris")
+	require.NoError(t, err)
+	require.Equal(t, []int64{user.ID}, recomputer.users)
+
+	_, err = SetTimezone(ctx, s, recomputer, user.ID, "Europe/Paris")
+	require.NoError(t, err)
+	require.Equal(t, []int64{user.ID}, recomputer.users)
+
+	failing := &fakeRecomputer{err: errors.New("disk on fire")}
+
+	_, err = SetTimezone(ctx, s, failing, user.ID, "Asia/Kolkata")
+	require.ErrorIs(t, err, failing.err)
+
+	got, err := s.Preferences().Get(ctx, user.ID)
+	require.NoError(t, err)
+	require.Equal(t, store.Preferences{Timezone: "Europe/Paris"}, got)
+}
+
+// Given a user without a timezone, whose aggregates follow UTC, when they confirm UTC, then nothing
+// is recomputed, since their effective timezone does not change.
+func TestSetTimezone_ConfirmingUTCWithoutATimezoneRecomputesNothing(t *testing.T) {
+	t.Parallel()
+
+	s, user := newTestUser(t)
+	recomputer := &fakeRecomputer{}
+
+	got, err := SetTimezone(t.Context(), s, recomputer, user.ID, "UTC")
+	require.NoError(t, err)
+	require.Equal(t, store.Preferences{Timezone: "UTC"}, got)
+	require.Empty(t, recomputer.users)
 }

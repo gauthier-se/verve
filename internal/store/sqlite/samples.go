@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"time"
 
 	"github.com/gauthier-se/verve/internal/clock"
 	"github.com/gauthier-se/verve/internal/store"
@@ -335,17 +336,19 @@ func applyConflictRule(ctx context.Context, q *sqlcgen.Queries, userID int64, sa
 }
 
 // widenStats returns stats, the data availability of the samples of a type inserted by a batch so
-// far, with sample.
+// far, with sample: its start, and its duration for the longest one.
 func widenStats(stats sqlcgen.AddSampleStatsParams, userID int64, sample store.NewSample) sqlcgen.AddSampleStatsParams {
 	start := toMillis(sample.Start)
+	duration := toMillis(sample.End) - start
 
 	if stats.Count == 0 {
-		return sqlcgen.AddSampleStatsParams{UserID: userID, TypeID: sample.TypeID, FirstAt: start, LastAt: start, Count: 1}
+		return sqlcgen.AddSampleStatsParams{UserID: userID, TypeID: sample.TypeID, FirstAt: start, LastAt: start, Count: 1, Longest: duration}
 	}
 
 	stats.FirstAt = min(stats.FirstAt, start)
 	stats.LastAt = max(stats.LastAt, start)
 	stats.Count++
+	stats.Longest = max(stats.Longest, duration)
 
 	return stats
 }
@@ -398,4 +401,27 @@ func sampleOf(row sqlcgen.Sample) store.Sample {
 		NaturalKey: row.NaturalKey,
 		Metadata:   metadata,
 	}
+}
+
+func (r samples) ListOverlapping(ctx context.Context, userID, typeID int64, from, to time.Time) ([]store.Sample, error) {
+	if !to.After(from) {
+		return nil, fmt.Errorf("list samples of user %d overlapping %s to %s: %w", userID, from, to, store.ErrInvalid)
+	}
+
+	rows, err := r.q.read().ListUserSamplesOverlapping(ctx, sqlcgen.ListUserSamplesOverlappingParams{
+		UserID: userID,
+		TypeID: typeID,
+		FromAt: toMillis(from),
+		ToAt:   toMillis(to),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list samples of user %d overlapping %s to %s: %w", userID, from, to, err)
+	}
+
+	list := make([]store.Sample, 0, len(rows))
+	for _, row := range rows {
+		list = append(list, sampleOf(row))
+	}
+
+	return list, nil
 }

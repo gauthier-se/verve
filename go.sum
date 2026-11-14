@@ -651,5 +651,7 @@ mvdan.cc/sh/v3 v3.14.1 h1:bXkhQWNHCs0KZEChF8hYS6FC+T2N9mUZLbQv9blditI=
 mvdan.cc/sh/v3 v3.14.1/go.mod h1:syYCoFET8w9tvevxiXUtY8/ICrU+l26jHmhJDra3Vwo=
 mvdan.cc/sh/x v0.0.0-20260922090537-aebdf2b86f56 h1:deNO1TejgB0Dmp3IjB2vkIiHVG81yvLModUSzLjI98A=
 mvdan.cc/sh/x v0.0.0-20260922090537-aebdf2b86f56/go.mod h1:j4gEzJjKcncRAMCu/GVaXCR8/b63sHi/ty4+pG+FuPU=
+pgregory.net/rapid v1.3.0 h1:vBvO0VSqti75J1jjYqpgPNBLKMd1+gxa9fYo7vk/Exc=
+pgregory.net/rapid v1.3.0/go.mod h1:dPlE4OBBxgXPqkP79flB6sJL1dx5azpI7HQ9MY9Z7uk=
 rsc.io/qr v0.2.0 h1:6vBLea5/NRMVTz8V66gipeLycZMl/+UlFmk8DvqQ6WY=
 rsc.io/qr v0.2.0/go.mod h1:IF+uZjkb9fqyeF/4tlBoynqmQxUoPfWEKh921coOuXs=

@@ -116,6 +116,10 @@ func (r repositories) Imports() store.ImportsRepository {
 	return imports(r)
 }
 
+func (r repositories) Aggregates() store.AggregatesRepository {
+	return aggregates{q: r.q}
+}
+
 func (r repositories) AfterCommit(fn func()) {
 	r.q.afterCommit(fn)
 }

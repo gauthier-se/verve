@@ -6,6 +6,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/gauthier-se/verve/internal/aggregate"
 	"github.com/gauthier-se/verve/internal/audit"
 	"github.com/gauthier-se/verve/internal/auth"
 	"github.com/gauthier-se/verve/internal/backup"
@@ -57,6 +58,8 @@ func registerJobs(registry *jobs.Registry, st store.Store, clk clock.Clock, cfg 
 	backup.Register(registry, newBackups(cfg, clk), st, cfg.Backup.Keep)
 
 	native.Register(registry, native.JobDeps{Store: st, Pipeline: ing.pipeline, Inbox: ing.inbox})
+
+	aggregate.Register(registry, st)
 
 	jobs.Register(registry, kindCleanupInbox, jobs.KindOptions{}, func(ctx context.Context, _ jobs.Job[struct{}]) error {
 		return ing.inbox.Cleanup(ctx, st.Imports())

@@ -48,7 +48,8 @@ type DirtyRanges interface {
 	Record(ctx context.Context, tx store.Repositories, userID int64, ranges []DirtyRange) error
 }
 
-// NoDirtyRanges is the dirty range recorder until the aggregates: it records nothing.
+// NoDirtyRanges records nothing, for a pipeline whose aggregates nobody reads, such as in tests.
+// The server records with aggregate.Recorder.
 type NoDirtyRanges struct{}
 
 // Record does nothing.

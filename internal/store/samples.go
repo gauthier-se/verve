@@ -161,6 +161,11 @@ type SamplesRepository interface {
 	// List returns the samples of userID that query asks for. It returns ErrInvalid when the limit
 	// is below 1 or To is not after From.
 	List(ctx context.Context, userID int64, query SamplesQuery) ([]Sample, error)
+	// ListOverlapping returns the samples of userID and of the type of typeID that start in [from, to)
+	// or overlap it, sorted by start then id, as the aggregates of the range need them. A sample
+	// overlaps [from, to) when it starts before to and ends after from. It returns ErrInvalid when to
+	// is not after from.
+	ListOverlapping(ctx context.Context, userID, typeID int64, from, to time.Time) ([]Sample, error)
 	// DeleteByKey removes the sample of userID whose natural key is key, such as the key of a uuid
 	// deleted at its source (FR-8 of Ingestion pipeline), and returns it, or ErrNotFound. The same
 	// transaction updates the data availability of its type.

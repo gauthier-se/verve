@@ -6,6 +6,7 @@ import (
 
 	"github.com/klauspost/compress/zstd"
 
+	"github.com/gauthier-se/verve/internal/aggregate"
 	"github.com/gauthier-se/verve/internal/catalog"
 	"github.com/gauthier-se/verve/internal/clock"
 	"github.com/gauthier-se/verve/internal/ingest"
@@ -50,6 +51,9 @@ func newIngestion(st store.Store, shipped *catalog.Catalog, inboxDir string, clk
 			Catalog:    shipped,
 			Activities: activities,
 			Codec:      route.NewCodec(enc, dec),
+			// The recompute jobs are written without waking a worker: the pipeline runs before the
+			// worker exists, and the worker of the import claims again as soon as the import ends.
+			DirtyRanges: aggregate.NewRecorder(nil),
 		}),
 		enc: enc,
 		dec: dec,

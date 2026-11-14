@@ -370,3 +370,16 @@ func TestStore_ImportsContract(t *testing.T) {
 		return s
 	})
 }
+
+// Given the contract suite storetest.RunAggregates, then the SQLite implementation passes it.
+func TestStore_AggregatesContract(t *testing.T) {
+	t.Parallel()
+
+	storetest.RunAggregates(t, func(t *testing.T, clk clock.Clock) store.Store {
+		t.Helper()
+
+		s, _ := newTestStore(t, clk)
+
+		return s
+	})
+}

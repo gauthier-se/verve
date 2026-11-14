@@ -12,12 +12,13 @@ import (
 )
 
 const addSampleStats = `-- name: AddSampleStats :exec
-INSERT INTO sample_stats (user_id, type_id, first_at, last_at, count)
-VALUES (?, ?, ?, ?, ?)
+INSERT INTO sample_stats (user_id, type_id, first_at, last_at, count, longest)
+VALUES (?, ?, ?, ?, ?, ?)
 ON CONFLICT (user_id, type_id) DO UPDATE
     SET first_at = min(first_at, excluded.first_at),
         last_at  = max(last_at, excluded.last_at),
-        count    = count + excluded.count
+        count    = count + excluded.count,
+        longest  = max(longest, excluded.longest)
 `
 
 type AddSampleStatsParams struct {
@@ -26,9 +27,11 @@ type AddSampleStatsParams struct {
 	FirstAt int64
 	LastAt  int64
 	Count   int64
+	Longest int64
 }
 
-// Counts inserted samples of a user and type, and widens the first and last start to theirs.
+// Counts inserted samples of a user and type, and widens the first and last start and the longest
+// duration to theirs.
 func (q *Queries) AddSampleStats(ctx context.Context, arg AddSampleStatsParams) error {
 	_, err := q.db.ExecContext(ctx, addSampleStats,
 		arg.UserID,
@@ -36,6 +39,7 @@ func (q *Queries) AddSampleStats(ctx context.Context, arg AddSampleStatsParams) 
 		arg.FirstAt,
 		arg.LastAt,
 		arg.Count,
+		arg.Longest,
 	)
 	return err
 }
@@ -238,7 +242,7 @@ func (q *Queries) InsertSample(ctx context.Context, arg InsertSampleParams) (int
 }
 
 const listUserSampleStats = `-- name: ListUserSampleStats :many
-SELECT user_id, type_id, first_at, last_at, count
+SELECT user_id, type_id, first_at, last_at, count, longest
 FROM sample_stats
 WHERE user_id = ?
 ORDER BY type_id
@@ -259,6 +263,7 @@ func (q *Queries) ListUserSampleStats(ctx context.Context, userID int64) ([]Samp
 			&i.FirstAt,
 			&i.LastAt,
 			&i.Count,
+			&i.Longest,
 		); err != nil {
 			return nil, err
 		}
@@ -308,6 +313,75 @@ func (q *Queries) ListUserSamples(ctx context.Context, arg ListUserSamplesParams
 		arg.AfterAt,
 		arg.AfterID,
 		arg.MaxSamples,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Sample
+	for rows.Next() {
+		var i Sample
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.TypeID,
+			&i.SourceID,
+			&i.StartAt,
+			&i.EndAt,
+			&i.UtcOffset,
+			&i.Value,
+			&i.Min,
+			&i.Max,
+			&i.Category,
+			&i.Origin,
+			&i.ImportID,
+			&i.Uuid,
+			&i.NaturalKey,
+			&i.Metadata,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUserSamplesOverlapping = `-- name: ListUserSamplesOverlapping :many
+SELECT samples.id, samples.user_id, samples.type_id, samples.source_id, samples.start_at, samples.end_at, samples.utc_offset, samples.value, samples.min, samples.max, samples.category, samples.origin, samples.import_id, samples.uuid, samples.natural_key, samples.metadata
+FROM samples
+WHERE samples.user_id = ?1
+  AND samples.type_id = ?2
+  AND samples.start_at >= ?3 - coalesce((SELECT st.longest
+                                                         FROM sample_stats AS st
+                                                         WHERE st.user_id = ?1
+                                                           AND st.type_id = ?2), 0)
+  AND samples.start_at < ?4
+  AND (samples.start_at >= ?3 OR samples.end_at > ?3)
+ORDER BY samples.start_at, samples.id
+`
+
+type ListUserSamplesOverlappingParams struct {
+	UserID int64
+	TypeID int64
+	FromAt int64
+	ToAt   int64
+}
+
+// The samples of a user and type that start in a range or overlap it, oldest first. A sample that
+// overlaps the range starts at most the longest duration of sample_stats before it, which bounds the
+// scan of the index on (user_id, type_id, start_at).
+func (q *Queries) ListUserSamplesOverlapping(ctx context.Context, arg ListUserSamplesOverlappingParams) ([]Sample, error) {
+	rows, err := q.db.QueryContext(ctx, listUserSamplesOverlapping,
+		arg.UserID,
+		arg.TypeID,
+		arg.FromAt,
+		arg.ToAt,
 	)
 	if err != nil {
 		return nil, err
