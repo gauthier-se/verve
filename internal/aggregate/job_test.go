@@ -505,3 +505,88 @@ func (e *jobEnv) typeOfRT(t testingT, identifier string) store.MetricType {
 
 	return mt
 }
+
+// Given the ranges of a batch, then the recorder stores those of a type that are less than an hour
+// apart as one range, so that a batch of frequent samples records a few ranges, not one per sample,
+// and keeps apart the ranges an hour or more apart and those of another type.
+func TestRecorder_MergesTheRangesOfABatchLessThanAnHourApart(t *testing.T) {
+	t.Parallel()
+
+	e := newJobEnv(t)
+	ctx := t.Context()
+	stepsType, heartType := e.typeOf(t, stepCount).ID, e.typeOf(t, heartRate).ID
+
+	at := func(minutes int) time.Time { return jobTime.Add(time.Duration(minutes) * time.Minute) }
+
+	require.NoError(t, e.store.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
+		return e.recorder.Record(ctx, tx, e.user.ID, []ingest.DirtyRange{
+			{TypeID: heartType, From: at(30), To: at(31)},
+			{TypeID: stepsType, From: at(0), To: at(10)},
+			{TypeID: heartType, From: at(0), To: at(1)},
+			{TypeID: heartType, From: at(91), To: at(92)},
+			{TypeID: heartType, From: at(20), To: at(25)},
+		})
+	}))
+
+	require.ElementsMatch(t, []store.DirtyRange{
+		{TypeID: heartType, From: at(0), To: at(31)},
+		{TypeID: heartType, From: at(91), To: at(92)},
+		{TypeID: stepsType, From: at(0), To: at(10)},
+	}, withoutIDs(e.dirty(t)))
+	require.Len(t, e.activeJobs(t), 1)
+}
+
+// Given a user without a timezone, then the hourly buckets are the UTC hours, and the daily ones
+// the UTC days.
+func TestRecompute_UserWithoutTimezoneFollowsUTC(t *testing.T) {
+	t.Parallel()
+
+	e := newJobEnv(t)
+
+	e.importRecords(t.Context(), t, steps("2026-11-10T09:10:00+05:30", "2026-11-10T10:10:00+05:30", 60))
+	e.runJobs(t)
+
+	source := e.sourceOf(t, watch.Name).ID
+	requireRows(t, []store.AggregateRow{
+		{Start: utc(t, "2026-11-10T03:00:00Z"), Sum: 20, Count: 1, Selection: store.SelectedSource, SourceID: source},
+		{Start: utc(t, "2026-11-10T04:00:00Z"), Sum: 40, Count: 1, Selection: store.SelectedSource, SourceID: source},
+	}, e.hourly(t, stepCount))
+	requireRows(t, []store.AggregateRow{
+		{Start: utc(t, "2026-11-10T00:00:00Z"), Sum: 60, Count: 2, Selection: store.SelectedSource, SourceID: source, Hours: 2},
+	}, e.daily(t, stepCount))
+}
+
+// Given a recompute job whose user changes timezone before its first month, then the job stops
+// without writing rows of the old timezone or deleting its ranges, which the job queued by the
+// change recomputes in the new timezone.
+func TestRecompute_StopsWhenTheTimezoneChangesMeanwhile(t *testing.T) {
+	t.Parallel()
+
+	e := newJobEnv(t)
+	ctx := t.Context()
+
+	e.importRecords(ctx, t, steps("2026-11-10T09:10:00Z", "2026-11-10T09:20:00Z", 60))
+
+	once := sync.Once{}
+	e.hook.set(func(ctx context.Context) {
+		once.Do(func() {
+			_, err := preferences.SetTimezone(ctx, e.store, e.recorder, e.user.ID, "Asia/Kolkata")
+			require.NoError(t, err)
+		})
+	})
+
+	claimed, err := e.worker.Tick(ctx)
+	require.NoError(t, err)
+	require.True(t, claimed)
+
+	require.Empty(t, e.hourly(t, stepCount))
+	require.NotEmpty(t, e.dirty(t))
+	require.Len(t, e.activeJobs(t), 1)
+
+	e.hook.set(nil)
+	require.Equal(t, 1, e.runJobs(t))
+	require.Equal(t, []store.AggregateRow{{
+		Start: utc(t, "2026-11-10T08:30:00Z"), Sum: 60, Count: 1, Selection: store.SelectedSource, SourceID: e.sourceOf(t, watch.Name).ID,
+	}}, e.hourly(t, stepCount))
+	require.Empty(t, e.dirty(t))
+}

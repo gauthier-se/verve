@@ -131,3 +131,17 @@ func TestSetTimezone_RecomputesTheAggregatesOnAChange(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, store.Preferences{Timezone: "Europe/Paris"}, got)
 }
+
+// Given a user without a timezone, whose aggregates follow UTC, when they confirm UTC, then nothing
+// is recomputed, since their effective timezone does not change.
+func TestSetTimezone_ConfirmingUTCWithoutATimezoneRecomputesNothing(t *testing.T) {
+	t.Parallel()
+
+	s, user := newTestUser(t)
+	recomputer := &fakeRecomputer{}
+
+	got, err := SetTimezone(t.Context(), s, recomputer, user.ID, "UTC")
+	require.NoError(t, err)
+	require.Equal(t, store.Preferences{Timezone: "UTC"}, got)
+	require.Empty(t, recomputer.users)
+}

@@ -244,9 +244,10 @@ func runAggregatesDirty(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
 
 	// Given dirty ranges of two types and two users, then ListDirty returns those of the user,
-	// sorted by type, then start, then id, with their ids. Given DeleteDirty of some ids, among them
-	// one of another user, then only those of the user are removed.
-	t.Run("RecordDirtyStoresTheRangesUntilDeleteDirty", func(t *testing.T) {
+	// sorted by type, then start, then id, with their ids. Given DeleteDirtyThrough the largest id
+	// listed, then the ranges of the user listed are removed, and the range recorded since and those
+	// of another user, of smaller ids included, stay.
+	t.Run("RecordDirtyStoresTheRangesUntilDeleteDirtyThrough", func(t *testing.T) {
 		t.Parallel()
 
 		at := newAggregatesTest(t, newStore)
@@ -254,14 +255,14 @@ func runAggregatesDirty(t *testing.T, newStore NewStoreFunc) {
 
 		first, second := min(at.heart.ID, at.steps.ID), max(at.heart.ID, at.steps.ID)
 
+		require.NoError(t, at.store.Aggregates().RecordDirty(ctx, at.other.ID, []store.DirtyRange{
+			{TypeID: first, From: hour(0), To: hour(2)},
+		}))
 		require.NoError(t, at.store.Aggregates().RecordDirty(ctx, at.user.ID, []store.DirtyRange{
 			{TypeID: second, From: hour(5), To: hour(6)},
 			{TypeID: first, From: hour(3), To: hour(4)},
 			{TypeID: first, From: hour(1), To: hour(1)},
 			{TypeID: first, From: hour(3), To: hour(9)},
-		}))
-		require.NoError(t, at.store.Aggregates().RecordDirty(ctx, at.other.ID, []store.DirtyRange{
-			{TypeID: first, From: hour(0), To: hour(2)},
 		}))
 
 		ranges := at.mustListDirty(ctx, t, at.user.ID)
@@ -276,9 +277,16 @@ func runAggregatesDirty(t *testing.T, newStore NewStoreFunc) {
 		foreign := at.mustListDirty(ctx, t, at.other.ID)
 		require.Len(t, foreign, 1)
 
-		require.NoError(t, at.store.Aggregates().DeleteDirty(ctx, at.user.ID, []int64{ranges[0].ID, ranges[3].ID, foreign[0].ID}))
+		require.NoError(t, at.store.Aggregates().RecordDirty(ctx, at.user.ID, []store.DirtyRange{
+			{TypeID: first, From: hour(0), To: hour(1)},
+		}))
 
-		require.Equal(t, []store.DirtyRange{ranges[1], ranges[2]}, at.mustListDirty(ctx, t, at.user.ID))
+		last := max(ranges[0].ID, ranges[1].ID, ranges[2].ID, ranges[3].ID)
+		require.NoError(t, at.store.Aggregates().DeleteDirtyThrough(ctx, at.user.ID, last))
+
+		left := at.mustListDirty(ctx, t, at.user.ID)
+		require.Equal(t, []store.DirtyRange{{TypeID: first, From: hour(0), To: hour(1)}}, rangesWithoutIDs(left))
+		require.Greater(t, left[0].ID, last)
 		require.Equal(t, foreign, at.mustListDirty(ctx, t, at.other.ID))
 	})
 
