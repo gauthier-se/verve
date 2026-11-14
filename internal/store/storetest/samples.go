@@ -28,13 +28,16 @@ var samplesUTC = time.Date(2026, 11, 12, 7, 30, 0, 123_000_000, time.UTC)
 // allTime is a range that holds every sample of the suite.
 var allTime = store.SamplesQuery{From: time.Unix(0, 0), To: time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC)}
 
-// samplesTest holds a store with two users, a source of each, and a quantity and a category type.
+// samplesTest holds a store with two users, a source of each and a second source of the user, and a
+// quantity and a category type.
 type samplesTest struct {
-	store    store.Store
-	user     store.User
-	other    store.User
-	source   store.Source
-	foreign  store.Source
+	store   store.Store
+	user    store.User
+	other   store.User
+	source  store.Source
+	foreign store.Source
+	// phone is the second source of the user.
+	phone    store.Source
 	heart    store.MetricType
 	standing store.MetricType
 }
@@ -59,6 +62,7 @@ func newSamplesTest(t *testing.T, newStore NewStoreFunc) samplesTest {
 		other:    other,
 		source:   mustResolve(ctx, t, s.Sources(), user.ID, watchInfo, store.SourceWatch, samplesTime),
 		foreign:  mustResolve(ctx, t, s.Sources(), other.ID, watchInfo, store.SourceWatch, samplesTime),
+		phone:    mustResolve(ctx, t, s.Sources(), user.ID, sourceInfo("iPhone de Camille", "iPhone"), store.SourcePhone, samplesTime),
 		heart:    heart,
 		standing: standing,
 	}
@@ -170,6 +174,7 @@ func RunSamples(t *testing.T, newStore NewStoreFunc) {
 	runSamplesDelete(t, newStore)
 	runSamplesDeleteByKey(t, newStore)
 	runSamplesListOverlapping(t, newStore)
+	runSamplesOfSourcesAndTypes(t, newStore)
 }
 
 // runSamplesUpsert runs the cases of the samples stored by an upsert.
@@ -555,9 +560,10 @@ func runSamplesStats(t *testing.T, newStore NewStoreFunc) {
 		require.Empty(t, got)
 	})
 
-	// Given any sequence of random batches of two users, over a few natural keys, both types and
-	// every rule, each followed or not by the deletion of a key, then after each batch Stats equals
-	// a computation over the samples that List returns.
+	// Given any sequence of random batches of two users, over a few natural keys, both types, two
+	// sources and every rule, each followed or not by the deletion of a key, then after each batch
+	// Stats and the sample counts of the sources equal a computation over the samples that List
+	// returns.
 	for seed := range uint64(8) {
 		t.Run(fmt.Sprintf("StatsMatchTheSamplesAfterRandomBatches/Seed%d", seed), func(t *testing.T) {
 			t.Parallel()
@@ -584,6 +590,8 @@ func runSamplesStats(t *testing.T, newStore NewStoreFunc) {
 
 					if userID == st.other.ID {
 						sample.SourceID = st.foreign.ID
+					} else if rng.IntN(2) == 0 {
+						sample.SourceID = st.phone.ID
 					}
 
 					samples[i] = sample
@@ -600,6 +608,7 @@ func runSamplesStats(t *testing.T, newStore NewStoreFunc) {
 
 				for _, user := range []int64{st.user.ID, st.other.ID} {
 					require.Equal(t, st.statsOfTable(ctx, t, user), st.mustStats(ctx, t, user), "batch %d", batch)
+					require.Equal(t, st.sourceCountsOfTable(ctx, t, user), st.mustSampleCounts(ctx, t, user), "batch %d", batch)
 				}
 			}
 		})
@@ -637,6 +646,31 @@ func (st samplesTest) statsOfTable(ctx context.Context, t *testing.T, userID int
 	slices.SortFunc(stats, func(a, b store.SampleStats) int { return cmp.Compare(a.TypeID, b.TypeID) })
 
 	return stats
+}
+
+// sourceCountsOfTable computes the sample count of each source of userID from the samples that List
+// returns.
+func (st samplesTest) sourceCountsOfTable(ctx context.Context, t *testing.T, userID int64) map[int64]int64 {
+	t.Helper()
+
+	counts := map[int64]int64{}
+
+	for _, typeID := range []int64{st.heart.ID, st.standing.ID} {
+		for _, sample := range st.mustListAll(ctx, t, userID, typeID, 7) {
+			counts[sample.SourceID]++
+		}
+	}
+
+	return counts
+}
+
+func (st samplesTest) mustSampleCounts(ctx context.Context, t *testing.T, userID int64) map[int64]int64 {
+	t.Helper()
+
+	got, err := st.store.Sources().SampleCounts(ctx, userID)
+	require.NoError(t, err)
+
+	return got
 }
 
 // runSamplesList runs the cases of List.
@@ -712,7 +746,7 @@ func runSamplesDelete(t *testing.T, newStore NewStoreFunc) {
 
 	// Given three samples of two types of a user, and a sample of another user, when DeleteByUser
 	// runs with a limit of two, then each call removes at most two rows, the samples first and then
-	// the data availability, and the other user keeps theirs.
+	// the data availability and the sample counts of the sources, and the other user keeps theirs.
 	t.Run("DeleteByUserRemovesTheSamplesThenTheStatsInBatches", func(t *testing.T) {
 		t.Parallel()
 
@@ -745,13 +779,15 @@ func runSamplesDelete(t *testing.T, newStore NewStoreFunc) {
 			}
 		}
 
-		require.Equal(t, []int64{2, 2, 1}, removed, "three samples and two stats rows")
+		require.Equal(t, []int64{2, 2, 2, 0}, removed, "three samples, two stats rows and one source count")
 		require.Empty(t, st.mustListAll(ctx, t, st.user.ID, st.heart.ID, 10))
 		require.Empty(t, st.mustListAll(ctx, t, st.user.ID, st.standing.ID, 10))
 		require.Empty(t, st.mustStats(ctx, t, st.user.ID))
+		require.Empty(t, st.mustSampleCounts(ctx, t, st.user.ID))
 
 		require.Len(t, st.mustListAll(ctx, t, st.other.ID, st.heart.ID, 10), 1)
 		require.Len(t, st.mustStats(ctx, t, st.other.ID), 1)
+		require.Equal(t, map[int64]int64{st.foreign.ID: 1}, st.mustSampleCounts(ctx, t, st.other.ID))
 
 		_, err := st.store.Samples().DeleteByUser(ctx, st.user.ID, 0)
 		require.ErrorIs(t, err, store.ErrInvalid)
@@ -895,5 +931,58 @@ func runSamplesListOverlapping(t *testing.T, newStore NewStoreFunc) {
 
 		_, err := st.store.Samples().ListOverlapping(t.Context(), st.user.ID, st.heart.ID, samplesUTC, samplesUTC)
 		require.ErrorIs(t, err, store.ErrInvalid)
+	})
+}
+
+// runSamplesOfSourcesAndTypes runs the cases of the sources that have samples of a type, and of the
+// types that a source has samples of.
+func runSamplesOfSourcesAndTypes(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+
+	// Given samples of the watch of both types, of the phone of one type, and of another user, then
+	// SourcesOfType returns the sources of the user with samples of a type and TypesOfSource the
+	// types a source has samples of, both sorted by id. A removed last sample leaves them, and a
+	// source of another user or a user without samples gives an empty list.
+	t.Run("SourcesOfTypeAndTypesOfSourceFollowTheSamples", func(t *testing.T) {
+		t.Parallel()
+
+		st := newSamplesTest(t, newStore)
+		ctx := t.Context()
+
+		onPhone := st.heartRate("phone", samplesTime, 60, store.ConflictIgnore)
+		onPhone.SourceID = st.phone.ID
+
+		st.mustUpsert(ctx, t, st.user.ID, st.heartRate("watch", samplesTime, 61, store.ConflictIgnore), onPhone,
+			st.standHour(samplesTime))
+		st.mustUpsert(ctx, t, st.other.ID, st.foreignHeartRate("foreign", samplesTime, 62))
+
+		sources := func(userID, typeID int64) []int64 {
+			got, err := st.store.Samples().SourcesOfType(ctx, userID, typeID)
+			require.NoError(t, err)
+
+			return got
+		}
+
+		types := func(sourceID int64) []int64 {
+			got, err := st.store.Samples().TypesOfSource(ctx, st.user.ID, sourceID)
+			require.NoError(t, err)
+
+			return got
+		}
+
+		require.Equal(t, []int64{st.source.ID, st.phone.ID}, sources(st.user.ID, st.heart.ID))
+		require.Equal(t, []int64{st.source.ID}, sources(st.user.ID, st.standing.ID))
+		require.Equal(t, []int64{st.heart.ID, st.standing.ID}, types(st.source.ID))
+		require.Equal(t, []int64{st.heart.ID}, types(st.phone.ID))
+		require.Empty(t, types(st.foreign.ID), "the source of another user")
+
+		_, err := st.store.Samples().DeleteByKey(ctx, st.user.ID, []byte("phone"))
+		require.NoError(t, err)
+
+		require.Equal(t, []int64{st.source.ID}, sources(st.user.ID, st.heart.ID))
+		require.Empty(t, types(st.phone.ID))
+
+		lonely := mustCreateUser(ctx, t, st.store.Users(), newUser("eden", "eden@example.com"))
+		require.Empty(t, sources(lonely.ID, st.heart.ID))
 	})
 }
