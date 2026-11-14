@@ -476,3 +476,26 @@ func TestReadSeries_RefusesAPeriodThatEndsBeforeItStarts(t *testing.T) {
 		aggregate.StatisticSum)
 	require.ErrorIs(t, err, aggregate.ErrPeriodInvalid)
 }
+
+// Given a timezone whose clocks skip the local midnight that starts a month, such as
+// America/Asuncion on 2017-10-01, when the series is read by month, then the day of that midnight
+// counts in its own month.
+func TestReadSeries_ADaySkippingItsMidnightCountsInItsOwnMonth(t *testing.T) {
+	t.Parallel()
+
+	e := newSeriesEnv(t)
+	asuncion := mustLoadZone(t, "America/Asuncion")
+	steps := e.mustType(t, "step_count")
+
+	e.mustWriteDays(t, steps, asuncion,
+		dayRow{date: "2017-09-30", sum: 3, count: 1},
+		dayRow{date: "2017-10-01", sum: 5, count: 1},
+	)
+
+	series := e.mustRead(t, steps, asuncion, "2017-09-01", "2017-10-31", aggregate.BucketMonth, aggregate.StatisticSum)
+
+	require.Equal(t, []aggregate.Point{
+		{Start: localMidnight(t, "2017-09-01", asuncion), Value: 3},
+		{Start: localMidnight(t, "2017-10-01", asuncion), Value: 5},
+	}, series.Points)
+}
