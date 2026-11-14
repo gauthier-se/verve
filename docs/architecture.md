@@ -194,7 +194,7 @@ Every user-owned row carries a `user_id`. All queries are scoped by user, and th
 | `agg_hourly`, `agg_daily` | Precomputed aggregates after source selection: sum, count, min, max, last value and its time, selected source, and for days the hours with data, keyed by the UTC start of a local hour or day |
 | `aggregate_dirty_ranges` | Time ranges per user and type whose aggregates wait for recomputation |
 | `source_aliases` | Merged sources (old and new device names), matched by the same name and device model as sources |
-| `source_priorities` | Per user, per metric ordered list of sources, ignored sources, combine flag, as set by the user only: defaults are resolved at read time |
+| `source_priorities`, `source_priority_entries` | Per user and metric, as set by the user only: the combine flag, and the position of each ordered or ignored source, removed with its source. Defaults are resolved at read time |
 | `source_stats` | Sample count per user and source, maintained with `sample_stats` |
 | `block_rules` | Sample, source, type or source and type rules, optional time range |
 | `imports` | Import history: origin, token id (referencing no table, so that revoking a token keeps the history), client metadata, the name of its inbox file, status and its times, the position of the next record, and the report (counters in total, per type key and for the workouts, sample error messages) |

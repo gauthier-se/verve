@@ -171,6 +171,20 @@ type SourceAlias struct {
 	SourceID    int64
 }
 
+type SourcePriority struct {
+	UserID  int64
+	TypeID  int64
+	Combine int64
+}
+
+type SourcePriorityEntry struct {
+	UserID   int64
+	TypeID   int64
+	SourceID int64
+	Ignored  int64
+	Position int64
+}
+
 type User struct {
 	ID           int64
 	Username     string

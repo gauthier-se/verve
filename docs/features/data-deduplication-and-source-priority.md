@@ -96,7 +96,7 @@ Two problems make naive sums wrong: the same data arrives several times (re-impo
 
 ## Data and API notes
 
-- Tables: `sources` (unique `(user_id, name, device_model)`, the model being an empty string when unknown), `source_aliases`, `source_priorities` (user, type, ordered list, ignored list, combine flag).
+- Tables: `sources` (unique `(user_id, name, device_model)`, the model being an empty string when unknown), `source_aliases`, `source_priorities` (user, type, combine flag), a row per type whose priorities the user set, and `source_priority_entries` (user, type, source, ignored flag, position), a row per ordered or ignored source. An entry references `sources (user_id, id)` with `ON DELETE CASCADE`, so that a deleted source, as a merge deletes (FR-3), leaves every list. Setting priorities refuses a source of another user, a source that does not exist, and a source listed twice, ordered and ignored included, and stores nothing then.
 - `sources.merged_into` holds the target of a merge in progress (FR-3), and is empty otherwise.
 - `source_stats` (user, source, count), primary key `(user_id, source_id)`, holds the sample count of each source, which the sources list reads. It is maintained in the transactions that maintain `sample_stats` ([Storage and aggregates](data-storage-and-aggregates.md), Data and API notes), with the same exception for account deletion: `sample_stats` is kept per type and cannot give it, and counting the samples of a watch over ten years on each request would scan millions of index entries.
 - `POST /api/v1/sources/merge` answers `202` once the merge is set and its job queued (FR-3).

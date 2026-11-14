@@ -33,6 +33,7 @@ type Repositories interface {
 	APITokens() APITokensRepository
 	MetricTypes() MetricTypesRepository
 	Sources() SourcesRepository
+	SourcePriorities() SourcePrioritiesRepository
 	Samples() SamplesRepository
 	Workouts() WorkoutsRepository
 	Imports() ImportsRepository

@@ -100,6 +100,10 @@ func (r repositories) Sources() store.SourcesRepository {
 	return sources(r)
 }
 
+func (r repositories) SourcePriorities() store.SourcePrioritiesRepository {
+	return sourcePriorities(r)
+}
+
 func (r repositories) Samples() store.SamplesRepository {
 	return samples(r)
 }
