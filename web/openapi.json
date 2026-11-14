@@ -1335,6 +1335,35 @@
           "null"
         ]
       },
+      "MetricPriorities": {
+        "additionalProperties": false,
+        "properties": {
+          "combine": {
+            "description": "True when every source of order contributes, for a discrete type.",
+            "type": "boolean"
+          },
+          "ignored": {
+            "description": "The ignored sources, which never contribute.",
+            "items": {
+              "$ref": "#/components/schemas/MetricSource"
+            },
+            "type": "array"
+          },
+          "order": {
+            "description": "The sources that are not ignored, highest priority first: those the user ordered, and the others at their default place by kind. Each hour uses the first one with data, unless combine is set.",
+            "items": {
+              "$ref": "#/components/schemas/MetricSource"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "order",
+          "ignored",
+          "combine"
+        ],
+        "type": "object"
+      },
       "MetricSample": {
         "additionalProperties": false,
         "properties": {
@@ -1404,6 +1433,46 @@
           "value",
           "source",
           "usedInAggregates"
+        ],
+        "type": "object"
+      },
+      "MetricSource": {
+        "additionalProperties": false,
+        "properties": {
+          "displayName": {
+            "description": "The name of the source shown to the user.",
+            "examples": [
+              "Ma montre"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "description": "The id of the source.",
+            "examples": [
+              3
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "kind": {
+            "description": "The kind of the source.",
+            "enum": [
+              "watch",
+              "phone",
+              "scale",
+              "ring",
+              "app",
+              "manual",
+              "aggregated",
+              "unknown"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "displayName",
+          "kind"
         ],
         "type": "object"
       },
@@ -1797,6 +1866,48 @@
         ],
         "type": "object"
       },
+      "SetMetricSourcesInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "combine": {
+            "description": "Makes every source that is not ignored contribute. Only for a discrete type: any other answers 422 combine_not_discrete.",
+            "type": "boolean"
+          },
+          "ignored": {
+            "description": "The ids of the ignored sources.",
+            "examples": [
+              [
+                2
+              ]
+            ],
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "order": {
+            "description": "The ids of the ordered sources, highest priority first. A source left out of order and ignored takes its default place by kind.",
+            "examples": [
+              [
+                3,
+                1
+              ]
+            ],
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "order",
+          "ignored",
+          "combine"
+        ],
+        "type": "object"
+      },
       "SetUserRoleInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -1870,6 +1981,104 @@
         ],
         "type": "object"
       },
+      "Source": {
+        "additionalProperties": false,
+        "properties": {
+          "deviceModel": {
+            "description": "The model of the device, such as Watch or iPhone, empty when unknown.",
+            "examples": [
+              "Watch"
+            ],
+            "type": "string"
+          },
+          "displayName": {
+            "description": "The name shown to the user: the name until they rename the source.",
+            "examples": [
+              "Ma montre"
+            ],
+            "type": "string"
+          },
+          "firstSeenAt": {
+            "description": "When the source was first seen, from the time of its records. The web app tells new sources from it.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "description": "The id of the source.",
+            "examples": [
+              3
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "kind": {
+            "description": "What produced the data, which places the source in the default priorities. Detected from the data until the user sets it.",
+            "enum": [
+              "watch",
+              "phone",
+              "scale",
+              "ring",
+              "app",
+              "manual",
+              "aggregated",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "kindSetByUser": {
+            "description": "True once the user set the kind, which the data then never changes.",
+            "type": "boolean"
+          },
+          "lastSeenAt": {
+            "description": "When the source was last seen, from the time of its records.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "name": {
+            "description": "The name received with the data of the source. With the device model, it identifies the source.",
+            "examples": [
+              "Apple Watch de Camille"
+            ],
+            "type": "string"
+          },
+          "sampleCount": {
+            "description": "The number of samples of the source, every metric type together.",
+            "examples": [
+              125000
+            ],
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "displayName",
+          "name",
+          "deviceModel",
+          "kind",
+          "kindSetByUser",
+          "firstSeenAt",
+          "lastSeenAt",
+          "sampleCount"
+        ],
+        "type": "object"
+      },
+      "SourcesOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "description": "The sources of the current user, sorted by id.",
+            "items": {
+              "$ref": "#/components/schemas/Source"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
       "TokensOutputBody": {
         "additionalProperties": false,
         "properties": {
@@ -1893,6 +2102,35 @@
             "description": "The IANA name of the timezone of the user. Left out, it is unchanged.",
             "examples": [
               "Europe/Paris"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "UpdateSourceInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "displayName": {
+            "description": "The name shown to the user, of 1 to 64 characters. Left out, it is unchanged.",
+            "examples": [
+              "Ma montre"
+            ],
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "kind": {
+            "description": "The kind of the source, which the data then never changes. Left out, it is unchanged.",
+            "enum": [
+              "watch",
+              "phone",
+              "scale",
+              "ring",
+              "app",
+              "manual",
+              "aggregated",
+              "unknown"
             ],
             "type": "string"
           }
@@ -4980,6 +5218,193 @@
         ]
       }
     },
+    "/api/v1/metrics/{type}/sources": {
+      "get": {
+        "description": "Returns the priorities of the sources of the current user that have data of the metric type or are in its stored priorities: their order, the ignored ones and the combine mode. Without stored priorities, the order is the default one. An uncurated type without samples of the user answers 404. Accepts a session or a token with the `read` scope.",
+        "operationId": "get-metric-sources",
+        "parameters": [
+          {
+            "description": "The key of the metric type.",
+            "in": "path",
+            "name": "type",
+            "required": true,
+            "schema": {
+              "description": "The key of the metric type.",
+              "examples": [
+                "step_count"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricPriorities"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerToken": [
+              "read"
+            ]
+          }
+        ],
+        "summary": "Get the source priorities of a metric",
+        "tags": [
+          "Metrics"
+        ]
+      },
+      "put": {
+        "description": "Stores the order of the sources of the metric type, the ignored ones and the combine mode, and returns the priorities as GET does. The aggregates of the type are recomputed: series show `updating` until then. A source of another user answers 422 `source_unknown`, a source listed twice, ordered and ignored included, 422 `source_listed_twice`, and the combine mode on a type that is not discrete 422 `combine_not_discrete`.",
+        "operationId": "set-metric-sources",
+        "parameters": [
+          {
+            "description": "The key of the metric type.",
+            "in": "path",
+            "name": "type",
+            "required": true,
+            "schema": {
+              "description": "The key of the metric type.",
+              "examples": [
+                "step_count"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetMetricSourcesInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricPriorities"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Set the source priorities of a metric",
+        "tags": [
+          "Metrics"
+        ]
+      }
+    },
     "/api/v1/password-reset": {
       "post": {
         "description": "Replaces the password of the user of the reset link, marks the link used and revokes every session of the user, who then logs in with the new password. The token is in the body so that it never reaches a log. A link used, expired, unknown, replaced by a newer one or of an account being deleted answers 410 `reset_link_invalid`. A password that breaks the rules answers 422 with the code of the rule: `password_too_short`, `password_too_long` or `password_too_common`, and the link stays valid. It needs no authentication.",
@@ -5162,6 +5587,158 @@
         "summary": "Create the first admin",
         "tags": [
           "Setup"
+        ]
+      }
+    },
+    "/api/v1/sources": {
+      "get": {
+        "description": "Returns the devices and apps that produced data of the current user, with their sample count. Accepts a session or a token with the `read` scope.",
+        "operationId": "list-sources",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourcesOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerToken": [
+              "read"
+            ]
+          }
+        ],
+        "summary": "List the sources",
+        "tags": [
+          "Sources"
+        ]
+      }
+    },
+    "/api/v1/sources/{id}": {
+      "patch": {
+        "description": "Renames a source of the current user, or sets its kind, and returns the source. A new display name recomputes nothing. A new kind recomputes the aggregates of the metric types that the source has samples of, since it places the source in their priorities: series show `updating` until then. A source of another user answers 404.",
+        "operationId": "update-source",
+        "parameters": [
+          {
+            "description": "The id of the source.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "The id of the source.",
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSourceInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Source"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Change a source",
+        "tags": [
+          "Sources"
         ]
       }
     }

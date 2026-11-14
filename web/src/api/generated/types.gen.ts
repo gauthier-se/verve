@@ -665,6 +665,21 @@ export type MetricAvailability = {
     lastAt: string;
 } | null;
 
+export type MetricPriorities = {
+    /**
+     * True when every source of order contributes, for a discrete type.
+     */
+    combine: boolean;
+    /**
+     * The ignored sources, which never contribute.
+     */
+    ignored: Array<MetricSource>;
+    /**
+     * The sources that are not ignored, highest priority first: those the user ordered, and the others at their default place by kind. Each hour uses the first one with data, unless combine is set.
+     */
+    order: Array<MetricSource>;
+};
+
 export type MetricSample = {
     /**
      * The key of the value of a category sample, left out for a quantity.
@@ -700,6 +715,21 @@ export type MetricSample = {
      * The value in the canonical unit of the type, 1 for a category sample.
      */
     value: number;
+};
+
+export type MetricSource = {
+    /**
+     * The name of the source shown to the user.
+     */
+    displayName: string;
+    /**
+     * The id of the source.
+     */
+    id: number;
+    /**
+     * The kind of the source.
+     */
+    kind: 'watch' | 'phone' | 'scale' | 'ring' | 'app' | 'manual' | 'aggregated' | 'unknown';
 };
 
 export type MetricsOutputBody = {
@@ -908,6 +938,21 @@ export type SessionsOutputBody = {
     items: Array<Session>;
 };
 
+export type SetMetricSourcesInputBody = {
+    /**
+     * Makes every source that is not ignored contribute. Only for a discrete type: any other answers 422 combine_not_discrete.
+     */
+    combine: boolean;
+    /**
+     * The ids of the ignored sources.
+     */
+    ignored: Array<number>;
+    /**
+     * The ids of the ordered sources, highest priority first. A source left out of order and ignored takes its default place by kind.
+     */
+    order: Array<number>;
+};
+
 export type SetUserRoleInputBody = {
     /**
      * The role to set. A change revokes the sessions of the user.
@@ -944,6 +989,52 @@ export type SetupStatusOutputBody = {
     required: boolean;
 };
 
+export type Source = {
+    /**
+     * The model of the device, such as Watch or iPhone, empty when unknown.
+     */
+    deviceModel: string;
+    /**
+     * The name shown to the user: the name until they rename the source.
+     */
+    displayName: string;
+    /**
+     * When the source was first seen, from the time of its records. The web app tells new sources from it.
+     */
+    firstSeenAt: string;
+    /**
+     * The id of the source.
+     */
+    id: number;
+    /**
+     * What produced the data, which places the source in the default priorities. Detected from the data until the user sets it.
+     */
+    kind: 'watch' | 'phone' | 'scale' | 'ring' | 'app' | 'manual' | 'aggregated' | 'unknown';
+    /**
+     * True once the user set the kind, which the data then never changes.
+     */
+    kindSetByUser: boolean;
+    /**
+     * When the source was last seen, from the time of its records.
+     */
+    lastSeenAt: string;
+    /**
+     * The name received with the data of the source. With the device model, it identifies the source.
+     */
+    name: string;
+    /**
+     * The number of samples of the source, every metric type together.
+     */
+    sampleCount: number;
+};
+
+export type SourcesOutputBody = {
+    /**
+     * The sources of the current user, sorted by id.
+     */
+    items: Array<Source>;
+};
+
 export type TokensOutputBody = {
     /**
      * The tokens, revoked ones included, newest first.
@@ -956,6 +1047,17 @@ export type UpdatePreferencesInputBody = {
      * The IANA name of the timezone of the user. Left out, it is unchanged.
      */
     timezone?: string;
+};
+
+export type UpdateSourceInputBody = {
+    /**
+     * The name shown to the user, of 1 to 64 characters. Left out, it is unchanged.
+     */
+    displayName?: string;
+    /**
+     * The kind of the source, which the data then never changes. Left out, it is unchanged.
+     */
+    kind?: 'watch' | 'phone' | 'scale' | 'ring' | 'app' | 'manual' | 'aggregated' | 'unknown';
 };
 
 export type DeleteAccountData = {
@@ -2440,6 +2542,94 @@ export type GetMetricSeriesResponses = {
 
 export type GetMetricSeriesResponse = GetMetricSeriesResponses[keyof GetMetricSeriesResponses];
 
+export type GetMetricSourcesData = {
+    body?: never;
+    path: {
+        /**
+         * The key of the metric type.
+         */
+        type: string;
+    };
+    query?: never;
+    url: '/api/v1/metrics/{type}/sources';
+};
+
+export type GetMetricSourcesErrors = {
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Forbidden
+     */
+    403: Problem;
+    /**
+     * Not Found
+     */
+    404: Problem;
+    /**
+     * Unprocessable Entity
+     */
+    422: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type GetMetricSourcesError = GetMetricSourcesErrors[keyof GetMetricSourcesErrors];
+
+export type GetMetricSourcesResponses = {
+    /**
+     * OK
+     */
+    200: MetricPriorities;
+};
+
+export type GetMetricSourcesResponse = GetMetricSourcesResponses[keyof GetMetricSourcesResponses];
+
+export type SetMetricSourcesData = {
+    body: SetMetricSourcesInputBody;
+    path: {
+        /**
+         * The key of the metric type.
+         */
+        type: string;
+    };
+    query?: never;
+    url: '/api/v1/metrics/{type}/sources';
+};
+
+export type SetMetricSourcesErrors = {
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Not Found
+     */
+    404: Problem;
+    /**
+     * Unprocessable Entity
+     */
+    422: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type SetMetricSourcesError = SetMetricSourcesErrors[keyof SetMetricSourcesErrors];
+
+export type SetMetricSourcesResponses = {
+    /**
+     * OK
+     */
+    200: MetricPriorities;
+};
+
+export type SetMetricSourcesResponse = SetMetricSourcesResponses[keyof SetMetricSourcesResponses];
+
 export type ResetPasswordData = {
     body: ResetPasswordInputBody;
     path?: never;
@@ -2542,3 +2732,78 @@ export type CreateFirstAdminResponses = {
 };
 
 export type CreateFirstAdminResponse = CreateFirstAdminResponses[keyof CreateFirstAdminResponses];
+
+export type ListSourcesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/sources';
+};
+
+export type ListSourcesErrors = {
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Forbidden
+     */
+    403: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type ListSourcesError = ListSourcesErrors[keyof ListSourcesErrors];
+
+export type ListSourcesResponses = {
+    /**
+     * OK
+     */
+    200: SourcesOutputBody;
+};
+
+export type ListSourcesResponse = ListSourcesResponses[keyof ListSourcesResponses];
+
+export type UpdateSourceData = {
+    body: UpdateSourceInputBody;
+    path: {
+        /**
+         * The id of the source.
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/api/v1/sources/{id}';
+};
+
+export type UpdateSourceErrors = {
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Not Found
+     */
+    404: Problem;
+    /**
+     * Unprocessable Entity
+     */
+    422: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type UpdateSourceError = UpdateSourceErrors[keyof UpdateSourceErrors];
+
+export type UpdateSourceResponses = {
+    /**
+     * OK
+     */
+    200: Source;
+};
+
+export type UpdateSourceResponse = UpdateSourceResponses[keyof UpdateSourceResponses];

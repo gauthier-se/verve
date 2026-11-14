@@ -108,6 +108,8 @@ func NewAPI(mux *http.ServeMux, deps APIDeps) huma.API {
 	registerMetrics(api, deps)
 	registerSeries(api, deps)
 	registerSamples(api, deps)
+	registerMetricSources(api, deps)
+	registerSources(api, deps)
 	registerIngest(api, deps)
 	registerImports(api, deps)
 
