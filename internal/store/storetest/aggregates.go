@@ -344,6 +344,43 @@ func runAggregatesDirty(t *testing.T, newStore NewStoreFunc) {
 		require.Empty(t, at.mustListDirty(ctx, t, at.user.ID))
 		require.NotNil(t, at.mustListDirty(ctx, t, at.user.ID))
 	})
+
+	// Given a dirty range of a user and type, then AnyDirty reports the periods [from, to) that it
+	// overlaps, its end included since it can be the instant of a sample, and no period of another
+	// type or another user.
+	t.Run("AnyDirtyReportsTheRangesOverlappingAPeriod", func(t *testing.T) {
+		t.Parallel()
+
+		at := newAggregatesTest(t, newStore)
+		ctx := t.Context()
+
+		require.NoError(t, at.store.Aggregates().RecordDirty(ctx, at.user.ID, []store.DirtyRange{
+			{TypeID: at.steps.ID, From: hour(2), To: hour(4)},
+		}))
+		require.NoError(t, at.store.Aggregates().RecordDirty(ctx, at.other.ID, []store.DirtyRange{
+			{TypeID: at.heart.ID, From: hour(0), To: hour(10)},
+		}))
+
+		for _, tc := range []struct {
+			name     string
+			userID   int64
+			typeID   int64
+			from, to int
+			want     bool
+		}{
+			{"inside", at.user.ID, at.steps.ID, 3, 4, true},
+			{"around", at.user.ID, at.steps.ID, 0, 10, true},
+			{"at its end", at.user.ID, at.steps.ID, 4, 5, true},
+			{"ending at its start", at.user.ID, at.steps.ID, 0, 2, false},
+			{"after", at.user.ID, at.steps.ID, 5, 6, false},
+			{"of another type", at.user.ID, at.heart.ID, 0, 10, false},
+			{"of another user", at.other.ID, at.steps.ID, 0, 10, false},
+		} {
+			got, err := at.store.Aggregates().AnyDirty(ctx, tc.userID, tc.typeID, hour(tc.from), hour(tc.to))
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got, tc.name)
+		}
+	})
 }
 
 // runAggregatesDelete runs the cases of the removal of the rows of a user.

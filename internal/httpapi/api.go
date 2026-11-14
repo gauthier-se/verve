@@ -104,6 +104,7 @@ func NewAPI(mux *http.ServeMux, deps APIDeps) huma.API {
 	registerAdminBackups(api, deps)
 	registerTokens(api, deps)
 	registerMetrics(api, deps)
+	registerSeries(api, deps)
 	registerIngest(api, deps)
 	registerImports(api, deps)
 

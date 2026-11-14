@@ -85,10 +85,11 @@ All quantity and category samples are stored generically, workouts and routes ha
     | Discrete | `mean`, `min`, `max`, `last` |
     | Category | `sum` (seconds), `count` |
 
-    Any other statistic answers `422`.
-  - `auto` picks the smallest of `hour`, `day`, `week`, `month` and `year` that yields at most 400 points. An explicit bucket that yields more than 5,000 points answers `422` with the stable message `too_many_points`.
+    Any other statistic answers `422` with the stable message `statistic_unsupported`. The mean of a cumulative type is over the days with data of the bucket.
+  - `auto` picks the smallest of `hour`, `day`, `week`, `month` and `year` that yields at most 400 points, and `year` when none does. An explicit bucket that yields more than 5,000 points answers `422` with the stable message `too_many_points`, and so does `auto` when even `year` does. A `to` before `from` answers `422` with the stable message `period_invalid`.
   - Weeks start on Monday until the week start preference of [User preferences and profile](user-preferences-and-profile.md) (M2).
   - The answer holds the bucket used, the canonical unit, the points (start and value, empty buckets omitted) and `updating`, true when a range of `aggregate_dirty_ranges` of that user and type overlaps the period.
+  - The start of a point is a UTC instant: the local hour, or the local midnight that starts its day, week, month or year. A week, month or year that starts before `from` or ends after `to` holds the days of the period only.
   - A curated type without samples of the user answers no points. An uncurated type without samples of the user answers `404`, as it is not listed to them (FR-2).
 - **FR-12**: Raw samples API for short ranges, paginated, with an optional `maxPoints` parameter that downsamples with a shape-preserving algorithm (largest triangle three buckets) for raw line charts.
   - The range is given by `from` and `to`, RFC 3339 instants. Samples are ordered by start, then id, and paginated by an opaque cursor, with `limit` from 1 to 5,000, 500 by default.

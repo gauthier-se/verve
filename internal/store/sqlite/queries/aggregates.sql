@@ -85,3 +85,13 @@ SELECT st.user_id, st.type_id, st.first_at, st.last_at + st.longest
 FROM sample_stats AS st
 WHERE st.user_id = ?
 ORDER BY st.type_id;
+
+-- name: AnyUserAggregateDirtyRange :one
+-- Whether a range of a user and type overlaps [from_at, to_at). The end of a range counts, since it
+-- can be the instant of a sample.
+SELECT EXISTS (SELECT 1
+               FROM aggregate_dirty_ranges
+               WHERE user_id = ?
+                 AND type_id = ?
+                 AND from_at < sqlc.arg(to_at)
+                 AND to_at >= sqlc.arg(from_at));

@@ -96,7 +96,7 @@ func listMetrics(ctx context.Context, repos store.Repositories, c *catalog.Catal
 
 	for _, t := range types {
 		s, hasSamples := byType[t.ID]
-		if !t.Curated && !hasSamples {
+		if !listed(t, hasSamples) {
 			continue
 		}
 
@@ -119,6 +119,13 @@ func listMetrics(ctx context.Context, repos store.Repositories, c *catalog.Catal
 	}
 
 	return metrics, nil
+}
+
+// listed reports whether t is listed to a user, who has samples of it when hasSamples is true: a
+// curated type always, and an uncurated type once they have samples of it (FR-2 of Storage and
+// aggregates), so that the apps of one user never show up in the list of another.
+func listed(t store.MetricType, hasSamples bool) bool {
+	return t.Curated || hasSamples
 }
 
 // valueKeys returns the keys of the values that c lists for t, empty for an uncurated type.

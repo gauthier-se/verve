@@ -780,6 +780,36 @@ export type ResetPasswordInputBody = {
     token: string;
 };
 
+export type SeriesOutputBody = {
+    /**
+     * The bucket used, the one auto picked for auto.
+     */
+    bucket: 'hour' | 'day' | 'week' | 'month' | 'year';
+    /**
+     * The points of the buckets with data in the period, oldest first. Empty buckets are left out.
+     */
+    points: Array<SeriesPoint>;
+    /**
+     * The canonical unit of the values.
+     */
+    unit: string;
+    /**
+     * True while the aggregates of the period are being recomputed, such as after an import: the points may change.
+     */
+    updating: boolean;
+};
+
+export type SeriesPoint = {
+    /**
+     * The start of the bucket: a local hour, or the local midnight that starts a day, a week, a month or a year.
+     */
+    start: string;
+    /**
+     * The statistic of the bucket, in the unit of the series.
+     */
+    value: number;
+};
+
 export type Session = {
     /**
      * The browser that the user agent of the login names, left out when unknown. It is only a hint.
@@ -2219,6 +2249,69 @@ export type ListMetricsResponses = {
 };
 
 export type ListMetricsResponse = ListMetricsResponses[keyof ListMetricsResponses];
+
+export type GetMetricSeriesData = {
+    body?: never;
+    path: {
+        /**
+         * The key of the metric type.
+         */
+        type: string;
+    };
+    query: {
+        /**
+         * The first local day of the period, in the timezone of the current user, UTC without one.
+         */
+        from: string;
+        /**
+         * The last local day of the period, included. It must not be before from.
+         */
+        to: string;
+        /**
+         * The bucket of the points. Weeks start on Monday. auto picks the smallest bucket that yields at most 400 points. A bucket that yields more than 5,000 points over the period answers 422 too_many_points.
+         */
+        bucket: 'auto' | 'hour' | 'day' | 'week' | 'month' | 'year';
+        /**
+         * The value of each point. A cumulative type accepts sum, and mean, min and max over the daily sums of the bucket for week, month and year. A discrete type accepts mean, min, max and last, and a category type sum, in seconds, and count. Any other answers 422 statistic_unsupported.
+         */
+        statistic: 'sum' | 'mean' | 'min' | 'max' | 'last' | 'count';
+    };
+    url: '/api/v1/metrics/{type}/series';
+};
+
+export type GetMetricSeriesErrors = {
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Forbidden
+     */
+    403: Problem;
+    /**
+     * Not Found
+     */
+    404: Problem;
+    /**
+     * Unprocessable Entity
+     */
+    422: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type GetMetricSeriesError = GetMetricSeriesErrors[keyof GetMetricSeriesErrors];
+
+export type GetMetricSeriesResponses = {
+    /**
+     * OK
+     */
+    200: SeriesOutputBody;
+};
+
+export type GetMetricSeriesResponse = GetMetricSeriesResponses[keyof GetMetricSeriesResponses];
 
 export type ResetPasswordData = {
     body: ResetPasswordInputBody;
