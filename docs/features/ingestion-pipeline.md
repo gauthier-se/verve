@@ -40,7 +40,7 @@ Every way of getting data into Verve goes through one pipeline that works on nor
   5. **Block rules**: drop records matching an active rule and count them as blocked. Until [Deletion and block rules](data-deletion-and-block-rules.md) comes with M1-E11, the stage hands each record to a rule set that blocks nothing.
   6. **Deduplication**: compute the natural key and upsert according to the record origin.
   7. **Batched writes**: write in transactions of bounded size (for example 5,000 records) to keep the single SQLite writer available for API requests.
-  8. **Dirty ranges**: record affected `(type, time range)` per user and enqueue aggregate recomputation once the batch is committed. Until the tables of dirty ranges come with the aggregates of M1-E8, the stage collects the ranges and hands them to an interface that does nothing, as block rules do until M1-E11.
+  8. **Dirty ranges**: record affected `(type, time range)` per user and queue aggregate recomputation, in the transaction of the batch ([Storage and aggregates](data-storage-and-aggregates.md) FR-9). Until the tables of dirty ranges come with the aggregates of M1-E8, the stage collects the ranges and hands them to an interface that does nothing, as block rules do until M1-E11.
   9. **Report**: update counters on the import record.
 - **FR-3**: Import report counters, each kept per type key as well as in total, with up to 100 sample error messages kept for diagnosis. A sample error message names the position and the type of its record and the reason, never a value.
 
