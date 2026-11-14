@@ -35,18 +35,7 @@ type samplesInput struct {
 
 // Resolve decodes the cursor, so that Huma reports a malformed one with the other invalid fields.
 func (in *samplesInput) Resolve(huma.Context) []error {
-	if in.Cursor == "" {
-		return nil
-	}
-
-	after, err := decodeCursor(in.Cursor)
-	if err != nil {
-		return []error{&huma.ErrorDetail{Message: "invalid cursor", Location: "query.cursor", Value: in.Cursor}}
-	}
-
-	in.after = after
-
-	return nil
+	return resolveCursor(in.Cursor, &in.after)
 }
 
 // MetricSample is a raw sample of a metric type.

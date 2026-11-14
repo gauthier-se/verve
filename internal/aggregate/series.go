@@ -55,7 +55,8 @@ var (
 	ErrStatisticUnsupported = errors.New("statistic_unsupported")
 	// ErrTooManyPoints is a bucket that yields more than 5,000 points over the period.
 	ErrTooManyPoints = errors.New("too_many_points")
-	// ErrPeriodInvalid is a period that ends before it starts.
+	// ErrPeriodInvalid is a period that ends before it starts, or for a raw read, a range that does
+	// not end after it starts.
 	ErrPeriodInvalid = errors.New("period_invalid")
 )
 
