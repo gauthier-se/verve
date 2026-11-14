@@ -21,7 +21,8 @@ var (
 	ErrMaxPointsUnsupported = errors.New("max_points_unsupported")
 )
 
-// rawBatch is the number of samples that a downsampled read lists at once.
+// rawBatch is the number of samples that a downsampled read lists at once, the largest page of a
+// raw read.
 const rawBatch = 5000
 
 // RawQuery is what a raw read reads (FR-12 of Storage and aggregates).
@@ -56,8 +57,9 @@ type RawPage struct {
 
 // ReadRaw returns the samples of metricType of userID that q asks for, read through repos, with
 // whether each counts in the aggregates of loc, the timezone of the user: when its source is the
-// one that the hourly row of its local hour selected, or, for a type in combine mode, when its
-// source is not ignored. A sample of an hour without a row counts in none.
+// one that the hourly row of one of its local hours selected, the hour of its start for a discrete
+// type and every hour it overlaps otherwise, or, for a type in combine mode, when its source is not
+// ignored. A sample of hours without rows counts in none.
 //
 // It returns ErrPeriodInvalid when q.To is not after q.From, ErrRangeTooLong when the range is longer
 // than q.MaxDays days, ErrMaxPointsWithCursor when q downsamples after a position, and
@@ -82,9 +84,9 @@ func ReadRaw(ctx context.Context, repos store.Repositories, userID int64, metric
 	)
 
 	if q.MaxPoints > 0 {
-		page, err = downsampledPage(ctx, repos, userID, metricType, q)
+		page, err = readDownsampled(ctx, repos, userID, metricType, q)
 	} else {
-		page, err = pageOf(ctx, repos, userID, metricType, q)
+		page, err = readPage(ctx, repos, userID, metricType, q)
 	}
 
 	if err != nil {
@@ -98,8 +100,10 @@ func ReadRaw(ctx context.Context, repos store.Repositories, userID int64, metric
 	return page, nil
 }
 
-// pageOf returns the page of the samples that q asks for.
-func pageOf(ctx context.Context, repos store.Repositories, userID int64, metricType store.MetricType, q RawQuery) (RawPage, error) {
+// readPage returns the page of the samples that q asks for.
+func readPage(ctx context.Context, repos store.Repositories, userID int64, metricType store.MetricType,
+	q RawQuery,
+) (RawPage, error) {
 	// One sample more than the limit tells whether more remain.
 	samples, err := repos.Samples().List(ctx, userID, store.SamplesQuery{
 		TypeID: metricType.ID, From: q.From, To: q.To, After: q.After, Limit: q.Limit + 1,
@@ -116,8 +120,10 @@ func pageOf(ctx context.Context, repos store.Repositories, userID int64, metricT
 	return RawPage{Samples: rawSamples(samples), More: more}, nil
 }
 
-// downsampledPage returns every sample of the range of q, downsampled to at most q.MaxPoints.
-func downsampledPage(ctx context.Context, repos store.Repositories, userID int64, metricType store.MetricType, q RawQuery) (RawPage, error) {
+// readDownsampled returns every sample of the range of q, downsampled to at most q.MaxPoints.
+func readDownsampled(ctx context.Context, repos store.Repositories, userID int64, metricType store.MetricType,
+	q RawQuery,
+) (RawPage, error) {
 	var (
 		all   []store.Sample
 		after store.Cursor
@@ -181,10 +187,25 @@ func markUsed(ctx context.Context, repos store.Repositories, userID int64, metri
 		return nil
 	}
 
-	from := hourStart(samples[0].Start, loc)
-	to := hourEnd(hourStart(samples[len(samples)-1].Start, loc), loc)
+	// The hours that each sample counts in, as hourRow counts it: the hour of its start for a
+	// discrete type, and the hours it overlaps otherwise, since it is prorated into each.
+	s := styleOf(metricType)
+	hours := make([][]time.Time, len(samples))
+	to := samples[0].Start
 
-	rows, err := repos.Aggregates().ListHourly(ctx, userID, metricType.ID, from, to)
+	for i, sample := range samples {
+		if s == discrete {
+			hours[i] = []time.Time{hourStart(sample.Start, loc)}
+		} else {
+			hours[i] = localHours(sample.Start, sample.End, loc)
+		}
+
+		if end := hourEnd(hours[i][len(hours[i])-1], loc); end.After(to) {
+			to = end
+		}
+	}
+
+	rows, err := repos.Aggregates().ListHourly(ctx, userID, metricType.ID, hours[0][0], to)
 	if err != nil {
 		return fmt.Errorf("list hourly rows: %w", err)
 	}
@@ -199,8 +220,11 @@ func markUsed(ctx context.Context, repos store.Repositories, userID int64, metri
 	}
 
 	for i := range samples {
-		source, ok := selected[hourStart(samples[i].Start, loc).UnixMilli()]
-		samples[i].UsedInAggregates = ok && source == samples[i].SourceID
+		samples[i].UsedInAggregates = slices.ContainsFunc(hours[i], func(hour time.Time) bool {
+			source, ok := selected[hour.UnixMilli()]
+
+			return ok && source == samples[i].SourceID
+		})
 	}
 
 	return nil

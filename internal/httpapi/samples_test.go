@@ -431,6 +431,42 @@ func TestSamples_UsedInAggregatesTellsTheSourceSelectedForTheLocalHour(t *testin
 	require.Equal(t, []bool{true, false, false, false, true, false}, used)
 }
 
+// Given a cumulative sample that spans several local hours, then usedInAggregates is true when its
+// source is the one selected for one of the hours it overlaps, as it is prorated into each. Given an
+// instantaneous sample, then the hour of its instant tells.
+func TestSamples_UsedInAggregatesOfACumulativeSampleTellsEveryHourItOverlaps(t *testing.T) {
+	t.Parallel()
+
+	m := newMetricsTest(t)
+	steps := m.mustTypeByKey(t, "step_count")
+	phone := m.mustResolveNamedSource(t, m.alice, "iPhone", store.SourcePhone)
+
+	at := func(hour, minute int) time.Time { return time.Date(2026, 11, 10, hour, minute, 0, 0, time.UTC) }
+	m.mustSelectHours(t, m.alice, steps, map[time.Time]store.Source{
+		at(10, 0): phone,
+		at(11, 0): m.aliceSource,
+	})
+
+	m.mustStoreRawSamples(t, m.alice, steps,
+		rawSample{source: m.aliceSource, start: at(10, 10), duration: 40 * time.Minute, value: 1},
+		rawSample{source: m.aliceSource, start: at(10, 30), duration: 30 * time.Minute, value: 2},
+		rawSample{source: m.aliceSource, start: at(10, 30), duration: time.Hour, value: 3},
+		rawSample{source: phone, start: at(10, 40), duration: time.Hour, value: 4},
+		rawSample{source: m.aliceSource, start: at(11, 0), value: 5},
+		rawSample{source: phone, start: at(11, 10), duration: 2 * time.Hour, value: 6},
+	)
+
+	body := mustReadSamples(t, getWith(t, m.handler, samplesPath("step_count", rangeQuery(at(10, 0), at(12, 0))), m.aliceCookie))
+	require.Equal(t, []float64{1, 2, 3, 4, 5, 6}, body.values())
+
+	used := make([]bool, 0, len(body.Items))
+	for _, item := range body.Items {
+		used = append(used, item.UsedInAggregates)
+	}
+
+	require.Equal(t, []bool{false, false, true, true, true, false}, used)
+}
+
 // Given a type in combine mode, then usedInAggregates is true for every source that is not ignored,
 // whatever the hourly rows.
 func TestSamples_UsedInAggregatesInCombineModeTellsTheSourcesNotIgnored(t *testing.T) {
