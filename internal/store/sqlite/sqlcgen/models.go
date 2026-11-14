@@ -8,6 +8,43 @@ import (
 	"database/sql"
 )
 
+type AggDaily struct {
+	UserID      int64
+	TypeID      int64
+	BucketStart int64
+	Sum         float64
+	Count       int64
+	Min         sql.NullFloat64
+	Max         sql.NullFloat64
+	Last        sql.NullFloat64
+	LastAt      sql.NullInt64
+	Selection   string
+	SourceID    sql.NullInt64
+	Hours       int64
+}
+
+type AggHourly struct {
+	UserID      int64
+	TypeID      int64
+	BucketStart int64
+	Sum         float64
+	Count       int64
+	Min         sql.NullFloat64
+	Max         sql.NullFloat64
+	Last        sql.NullFloat64
+	LastAt      sql.NullInt64
+	Selection   string
+	SourceID    sql.NullInt64
+}
+
+type AggregateDirtyRange struct {
+	ID     int64
+	UserID int64
+	TypeID int64
+	FromAt int64
+	ToAt   int64
+}
+
 type ApiToken struct {
 	ID         int64
 	UserID     int64
@@ -133,6 +170,7 @@ type SampleStat struct {
 	FirstAt int64
 	LastAt  int64
 	Count   int64
+	Longest int64
 }
 
 type Session struct {

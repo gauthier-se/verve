@@ -16,16 +16,42 @@ import (
 // code that the API answers with.
 var ErrTimezoneInvalid = errors.New("timezone_invalid")
 
+// Recomputer recomputes the aggregates of a user whose timezone changed.
+type Recomputer interface {
+	// RecomputeAll deletes the aggregates of the user of userID and records the ranges of all their
+	// types, through tx, the transaction that stores their new timezone.
+	RecomputeAll(ctx context.Context, tx store.Repositories, userID int64) error
+}
+
 // SetTimezone stores the IANA timezone name, such as Europe/Paris, as the timezone of the user of
-// userID in preferences, and returns their preferences. It returns ErrTimezoneInvalid when name is
-// not one, and store.ErrNotFound when no user has userID.
-func SetTimezone(ctx context.Context, preferences store.PreferencesRepository, userID int64, name string) (store.Preferences, error) {
+// userID in st, and returns their preferences. A change of timezone recomputes the aggregates of
+// the user with aggregates, in the transaction that stores it (FR-10 of Storage and aggregates). It
+// returns ErrTimezoneInvalid when name is not one, and store.ErrNotFound when no user has userID.
+func SetTimezone(ctx context.Context, st store.Store, aggregates Recomputer, userID int64, name string) (store.Preferences, error) {
 	if _, err := loadTimezone(name); err != nil {
 		return store.Preferences{}, err
 	}
 
-	// The aggregates of M1-E8 will be recomputed in the new timezone from here.
-	return preferences.SetTimezone(ctx, userID, name)
+	var prefs store.Preferences
+
+	err := st.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
+		current, err := tx.Preferences().Get(ctx, userID)
+		if err != nil {
+			return err
+		}
+
+		prefs, err = tx.Preferences().SetTimezone(ctx, userID, name)
+		if err != nil || current.Timezone == name {
+			return err
+		}
+
+		return aggregates.RecomputeAll(ctx, tx, userID)
+	})
+	if err != nil {
+		return store.Preferences{}, err
+	}
+
+	return prefs, nil
 }
 
 // Location returns the effective timezone of the user of userID, read in preferences: the one they

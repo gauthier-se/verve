@@ -27,13 +27,15 @@ SET value = ?,
 WHERE user_id = ? AND natural_key = ?;
 
 -- name: AddSampleStats :exec
--- Counts inserted samples of a user and type, and widens the first and last start to theirs.
-INSERT INTO sample_stats (user_id, type_id, first_at, last_at, count)
-VALUES (?, ?, ?, ?, ?)
+-- Counts inserted samples of a user and type, and widens the first and last start and the longest
+-- duration to theirs.
+INSERT INTO sample_stats (user_id, type_id, first_at, last_at, count, longest)
+VALUES (?, ?, ?, ?, ?, ?)
 ON CONFLICT (user_id, type_id) DO UPDATE
     SET first_at = min(first_at, excluded.first_at),
         last_at  = max(last_at, excluded.last_at),
-        count    = count + excluded.count;
+        count    = count + excluded.count,
+        longest  = max(longest, excluded.longest);
 
 -- name: ListUserSampleStats :many
 SELECT *
@@ -101,3 +103,19 @@ SET count    = count - 1,
     last_at  = (SELECT max(s.start_at) FROM samples AS s WHERE s.user_id = sample_stats.user_id AND s.type_id = sample_stats.type_id)
 WHERE sample_stats.user_id = sqlc.arg(user_id)
   AND sample_stats.type_id = sqlc.arg(type_id);
+
+-- name: ListUserSamplesOverlapping :many
+-- The samples of a user and type that start in a range or overlap it, oldest first. A sample that
+-- overlaps the range starts at most the longest duration of sample_stats before it, which bounds the
+-- scan of the index on (user_id, type_id, start_at).
+SELECT samples.*
+FROM samples
+WHERE samples.user_id = sqlc.arg(user_id)
+  AND samples.type_id = sqlc.arg(type_id)
+  AND samples.start_at >= sqlc.arg(from_at) - coalesce((SELECT st.longest
+                                                         FROM sample_stats AS st
+                                                         WHERE st.user_id = sqlc.arg(user_id)
+                                                           AND st.type_id = sqlc.arg(type_id)), 0)
+  AND samples.start_at < sqlc.arg(to_at)
+  AND (samples.start_at >= sqlc.arg(from_at) OR samples.end_at > sqlc.arg(from_at))
+ORDER BY samples.start_at, samples.id;
