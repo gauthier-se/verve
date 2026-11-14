@@ -51,10 +51,8 @@ type setMetricSourcesInput struct {
 
 // registerMetricSources registers GET and PUT /api/v1/metrics/{type}/sources, which read and set the
 // source priorities of a metric type of the user of the request in deps.Store. Setting them
-// recomputes the aggregates of the type through the jobs of deps.Jobs.
-func registerMetricSources(api huma.API, deps APIDeps) {
-	recorder := aggregate.NewRecorder(deps.Jobs)
-
+// recomputes the aggregates of the type through recorder.
+func registerMetricSources(api huma.API, deps APIDeps, recorder aggregate.Recorder) {
 	huma.Register(api, huma.Operation{
 		OperationID: "get-metric-sources",
 		Method:      http.MethodGet,
@@ -124,16 +122,6 @@ func registerMetricSources(api huma.API, deps APIDeps) {
 
 		return &metricSourcesOutput{Body: metricPrioritiesOf(priorities)}, nil
 	})
-}
-
-// metricTypeOf returns the metric type of key listed to userID, or a 404 problem.
-func metricTypeOf(ctx context.Context, repos store.Repositories, userID int64, key string) (store.MetricType, error) {
-	metricType, err := listedType(ctx, repos, userID, key)
-	if errors.Is(err, store.ErrNotFound) {
-		return store.MetricType{}, huma.NewError(http.StatusNotFound, "")
-	}
-
-	return metricType, err
 }
 
 // metricPrioritiesOf returns priorities as the API describes them.

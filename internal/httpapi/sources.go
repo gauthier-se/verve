@@ -49,10 +49,8 @@ type updateSourceInput struct {
 
 // registerSources registers GET /api/v1/sources and PATCH /api/v1/sources/{id}, which list and
 // change the sources of the user of the request in deps.Store. A change of kind recomputes the
-// aggregates through the jobs of deps.Jobs.
-func registerSources(api huma.API, deps APIDeps) {
-	recorder := aggregate.NewRecorder(deps.Jobs)
-
+// aggregates through recorder.
+func registerSources(api huma.API, deps APIDeps, recorder aggregate.Recorder) {
 	huma.Register(api, huma.Operation{
 		OperationID: "list-sources",
 		Method:      http.MethodGet,

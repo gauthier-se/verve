@@ -67,11 +67,7 @@ func registerSeries(api huma.API, deps APIDeps) {
 			return nil, err
 		}
 
-		metricType, err := listedType(ctx, deps.Store, principal.UserID, in.Type)
-		if errors.Is(err, store.ErrNotFound) {
-			return nil, huma.NewError(http.StatusNotFound, "")
-		}
-
+		metricType, err := metricTypeOf(ctx, deps.Store, principal.UserID, in.Type)
 		if err != nil {
 			return nil, err
 		}
@@ -106,6 +102,16 @@ func registerSeries(api huma.API, deps APIDeps) {
 
 		return out, nil
 	})
+}
+
+// metricTypeOf returns the metric type of key listed to userID, or a 404 problem.
+func metricTypeOf(ctx context.Context, repos store.Repositories, userID int64, key string) (store.MetricType, error) {
+	metricType, err := listedType(ctx, repos, userID, key)
+	if errors.Is(err, store.ErrNotFound) {
+		return store.MetricType{}, huma.NewError(http.StatusNotFound, "")
+	}
+
+	return metricType, err
 }
 
 // listedType returns the metric type of key if it is listed to userID: a curated type, or an
