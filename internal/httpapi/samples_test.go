@@ -314,6 +314,40 @@ func TestSamples_RefusesARangeLongerThanRawMaxDays(t *testing.T) {
 	}
 }
 
+// Given a user in Europe/Paris and a range of 7 local days across the end of summer time, 169
+// hours, then its samples. Given 7 local days across its start, 167 hours, then one hour more is
+// 422 range_too_long: the days are those of the timezone of the user.
+func TestSamples_CountsTheDaysOfTheRangeInTheTimezoneOfTheUser(t *testing.T) {
+	t.Parallel()
+
+	m := newMetricsTest(t)
+	m.mustSetTimezone(t, m.alice, "Europe/Paris")
+
+	for _, tc := range []struct {
+		from, to string
+		ok       bool
+	}{
+		// From local midnight 2026-10-24, summer time ends on 2026-10-25.
+		{"2026-10-23T22:00:00Z", "2026-10-30T23:00:00Z", true},
+		{"2026-10-23T22:00:00Z", "2026-10-30T23:00:00.001Z", false},
+		// From local midnight 2026-03-28, summer time starts on 2026-03-29.
+		{"2026-03-27T23:00:00Z", "2026-04-03T22:00:00Z", true},
+		{"2026-03-27T23:00:00Z", "2026-04-03T23:00:00Z", false},
+	} {
+		rec := getWith(t, m.handler, samplesPath("heart_rate", "from="+tc.from+"&to="+tc.to), m.aliceCookie)
+
+		if tc.ok {
+			require.Equal(t, http.StatusOK, rec.Code, tc.from+" "+tc.to)
+
+			continue
+		}
+
+		status, code := problemCode(t, rec)
+		require.Equal(t, http.StatusUnprocessableEntity, status, tc.from+" "+tc.to)
+		require.Equal(t, "range_too_long", code, tc.from+" "+tc.to)
+	}
+}
+
 // Given maxPoints on a quantity type, then the whole range is returned downsampled to at most that
 // many points, the first and last kept, without a cursor, even beyond the default limit. Given
 // maxPoints of at least the number of samples, then every sample.

@@ -29,7 +29,7 @@ const rawBatch = 5000
 type RawQuery struct {
 	// From and To bound the starts of the samples, [From, To).
 	From, To time.Time
-	// MaxDays is the longest range, in days of 24 hours (VERVE_RAW_MAX_DAYS).
+	// MaxDays is the longest range, in local days of the timezone of the user (VERVE_RAW_MAX_DAYS).
 	MaxDays int
 	// After is the position of the last sample of the previous page, or zero for the first page.
 	After store.Cursor
@@ -62,7 +62,7 @@ type RawPage struct {
 // ignored. A sample of hours without rows counts in none.
 //
 // It returns ErrPeriodInvalid when q.To is not after q.From, ErrRangeTooLong when the range is longer
-// than q.MaxDays days, ErrMaxPointsWithCursor when q downsamples after a position, and
+// than q.MaxDays local days of loc, ErrMaxPointsWithCursor when q downsamples after a position, and
 // ErrMaxPointsUnsupported when it downsamples a category type.
 func ReadRaw(ctx context.Context, repos store.Repositories, userID int64, metricType store.MetricType,
 	loc *time.Location, q RawQuery,
@@ -70,7 +70,9 @@ func ReadRaw(ctx context.Context, repos store.Repositories, userID int64, metric
 	switch {
 	case !q.To.After(q.From):
 		return RawPage{}, ErrPeriodInvalid
-	case q.To.Sub(q.From) > time.Duration(q.MaxDays)*24*time.Hour:
+	// The same time of day, MaxDays local days later, so that a day across a change of offset counts
+	// as one.
+	case q.To.After(q.From.In(loc).AddDate(0, 0, q.MaxDays)):
 		return RawPage{}, ErrRangeTooLong
 	case q.MaxPoints > 0 && q.After != (store.Cursor{}):
 		return RawPage{}, ErrMaxPointsWithCursor

@@ -102,7 +102,7 @@ All quantity and category samples are stored generically, workouts and routes ha
   |---|---|---|---|
   | `VERVE_RAW_MAX_DAYS` | `raw_max_days` | `7` | Longest range of a raw samples read, in days, a whole number from 1 to 366 |
 
-  A range longer than that many days of 24 hours answers `422` with the stable message `range_too_long`.
+  A range longer than that many local days of the timezone of the user answers `422` with the stable message `range_too_long`: `to` may be at most the same local time that many days after `from`, so that a day across a change of offset counts as one.
 
 ## UX notes
 

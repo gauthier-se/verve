@@ -24,7 +24,7 @@ var rawRejections = []error{
 type samplesInput struct {
 	Type      string    `path:"type" example:"heart_rate" doc:"The key of the metric type."`
 	From      time.Time `query:"from" required:"true" example:"2026-11-10T00:00:00Z" doc:"The first instant of the range, in RFC 3339."`
-	To        time.Time `query:"to" required:"true" example:"2026-11-11T00:00:00Z" doc:"The end of the range, excluded, in RFC 3339. It must be after from, and the range at most VERVE_RAW_MAX_DAYS days long, 7 by default, or the read answers 422 range_too_long."`
+	To        time.Time `query:"to" required:"true" example:"2026-11-11T00:00:00Z" doc:"The end of the range, excluded, in RFC 3339. It must be after from, and the range at most VERVE_RAW_MAX_DAYS local days long in the timezone of the current user, 7 by default, or the read answers 422 range_too_long."`
 	Cursor    string    `query:"cursor" doc:"The nextCursor of the previous page, left out for the first page."`
 	Limit     int       `query:"limit" default:"500" minimum:"1" maximum:"5000" doc:"The maximum number of samples of the page."`
 	MaxPoints int       `query:"maxPoints" minimum:"2" maximum:"5000" doc:"Returns the whole range downsampled to at most that many samples, by largest triangle three buckets, the first and last kept, without a cursor. For quantity types only: a category type answers 422 max_points_unsupported, and a cursor 422 max_points_with_cursor."`

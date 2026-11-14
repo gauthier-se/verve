@@ -2324,7 +2324,7 @@ export type ListMetricSamplesData = {
          */
         from: string;
         /**
-         * The end of the range, excluded, in RFC 3339. It must be after from, and the range at most VERVE_RAW_MAX_DAYS days long, 7 by default, or the read answers 422 range_too_long.
+         * The end of the range, excluded, in RFC 3339. It must be after from, and the range at most VERVE_RAW_MAX_DAYS local days long in the timezone of the current user, 7 by default, or the read answers 422 range_too_long.
          */
         to: string;
         /**
