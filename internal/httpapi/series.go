@@ -15,6 +15,10 @@ import (
 	"github.com/gauthier-se/verve/internal/store"
 )
 
+// seriesRejections are the errors of aggregate.ReadSeries for a query it refuses, whose messages are
+// the codes of their 422 problems.
+var seriesRejections = []error{aggregate.ErrPeriodInvalid, aggregate.ErrTooManyPoints, aggregate.ErrStatisticUnsupported}
+
 // seriesInput is the input of GET /api/v1/metrics/{type}/series.
 type seriesInput struct {
 	Type      string              `path:"type" example:"step_count" doc:"The key of the metric type."`
@@ -80,9 +84,10 @@ func registerSeries(api huma.API, deps APIDeps) {
 		series, err := aggregate.ReadSeries(ctx, deps.Store, principal.UserID, metricType, loc, aggregate.SeriesQuery{
 			From: in.From, To: in.To, Bucket: in.Bucket, Statistic: in.Statistic,
 		})
-		if errors.Is(err, aggregate.ErrPeriodInvalid) || errors.Is(err, aggregate.ErrTooManyPoints) ||
-			errors.Is(err, aggregate.ErrStatisticUnsupported) {
-			return nil, codedProblem(http.StatusUnprocessableEntity, err)
+		for _, rejected := range seriesRejections {
+			if errors.Is(err, rejected) {
+				return nil, codedProblem(http.StatusUnprocessableEntity, rejected)
+			}
 		}
 
 		if err != nil {
@@ -112,16 +117,19 @@ func listedType(ctx context.Context, repos store.Repositories, userID int64, key
 		return store.MetricType{}, fmt.Errorf("get metric type: %w", err)
 	}
 
-	if metricType.Curated {
-		return metricType, nil
+	hasSamples := false
+
+	// A curated type is listed without samples: the stats are only read for an uncurated one.
+	if !metricType.Curated {
+		stats, err := repos.Samples().Stats(ctx, userID)
+		if err != nil {
+			return store.MetricType{}, fmt.Errorf("list sample stats: %w", err)
+		}
+
+		hasSamples = slices.ContainsFunc(stats, func(s store.SampleStats) bool { return s.TypeID == metricType.ID })
 	}
 
-	stats, err := repos.Samples().Stats(ctx, userID)
-	if err != nil {
-		return store.MetricType{}, fmt.Errorf("list sample stats: %w", err)
-	}
-
-	if !slices.ContainsFunc(stats, func(s store.SampleStats) bool { return s.TypeID == metricType.ID }) {
+	if !listed(metricType, hasSamples) {
 		return store.MetricType{}, store.ErrNotFound
 	}
 
