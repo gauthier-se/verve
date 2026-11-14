@@ -24,8 +24,8 @@ const (
 	BucketYear  Bucket = "year"
 )
 
-// buckets are the buckets that BucketAuto picks from, from the smallest.
-var buckets = []Bucket{BucketHour, BucketDay, BucketWeek, BucketMonth, BucketYear}
+// autoBuckets are the buckets that BucketAuto picks from, from the smallest.
+var autoBuckets = []Bucket{BucketHour, BucketDay, BucketWeek, BucketMonth, BucketYear}
 
 // Statistic is the value of each point of a series.
 type Statistic string
@@ -102,6 +102,7 @@ func ReadSeries(ctx context.Context, repos store.Repositories, userID int64, met
 	}
 
 	from := localDate(q.From, 0, loc)
+	// The period ends where the day after To starts.
 	to := localDate(q.To, 1, loc)
 
 	bucket, err := resolveBucket(q.Bucket, from, to, loc)
@@ -141,14 +142,14 @@ func localDate(date time.Time, days int, loc *time.Location) time.Time {
 	return time.Date(year, month, day+days, 0, 0, 0, 0, loc).UTC()
 }
 
-// resolveBucket returns bucket, or for BucketAuto the smallest of buckets that yields at most
+// resolveBucket returns bucket, or for BucketAuto the smallest of autoBuckets that yields at most
 // autoPoints points over [from, to), and year when none does. It returns ErrTooManyPoints when the
 // bucket yields more than maxPoints points.
 func resolveBucket(bucket Bucket, from, to time.Time, loc *time.Location) (Bucket, error) {
 	if bucket == BucketAuto {
 		bucket = BucketYear
 
-		for _, b := range buckets {
+		for _, b := range autoBuckets {
 			if countBuckets(b, from, to, loc, autoPoints) <= autoPoints {
 				bucket = b
 
@@ -176,7 +177,7 @@ func countBuckets(bucket Bucket, from, to time.Time, loc *time.Location, limit i
 		return count
 	}
 
-	first, last := from.In(loc), to.In(loc).AddDate(0, 0, -1)
+	first, last := localDay(from, loc), localDay(to, loc).AddDate(0, 0, -1)
 
 	var count int
 
@@ -211,14 +212,22 @@ func sinceMonday(local time.Time) int {
 	return (int(local.Weekday()) + 6) % 7
 }
 
+// localDay returns the middle of the local day of loc that starts at start, whose date is the date
+// of the day. Its start may not be: time.Date moves a local midnight that a clock change skips,
+// such as America/Asuncion on 2017-10-01, to the evening before.
+func localDay(start time.Time, loc *time.Location) time.Time {
+	return start.Add(12 * time.Hour).In(loc)
+}
+
 // bucketStart returns the start of the bucket of loc that holds the local day starting at day, as
 // a UTC instant.
 func bucketStart(bucket Bucket, day time.Time, loc *time.Location) time.Time {
-	year, month, date := day.In(loc).Date()
+	local := localDay(day, loc)
+	year, month, date := local.Date()
 
 	switch bucket {
 	case BucketWeek:
-		return time.Date(year, month, date-sinceMonday(day.In(loc)), 0, 0, 0, 0, loc).UTC()
+		return time.Date(year, month, date-sinceMonday(local), 0, 0, 0, 0, loc).UTC()
 	case BucketMonth:
 		return time.Date(year, month, 1, 0, 0, 0, 0, loc).UTC()
 	case BucketYear:
@@ -288,17 +297,17 @@ func combine(rows []store.AggregateRow, s style, statistic Statistic) (float64, 
 		sum += row.Sum
 		count += float64(row.Count)
 
-		lowOf, highOf := row.Min, row.Max
+		rowMin, rowMax := row.Min, row.Max
 		if s == cumulative {
-			lowOf, highOf = &row.Sum, &row.Sum
+			rowMin, rowMax = &row.Sum, &row.Sum
 		}
 
-		if lowOf != nil {
-			low = math.Min(low, *lowOf)
+		if rowMin != nil {
+			low = math.Min(low, *rowMin)
 		}
 
-		if highOf != nil {
-			high = math.Max(high, *highOf)
+		if rowMax != nil {
+			high = math.Max(high, *rowMax)
 		}
 
 		if row.Last != nil {
