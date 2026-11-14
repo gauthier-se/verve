@@ -121,4 +121,8 @@ type SourcesRepository interface {
 	// the source. It returns ErrNotFound when no source of userID has id, and ErrInvalid when kind
 	// is not Known.
 	SetKind(ctx context.Context, userID, id int64, kind SourceKind) (Source, error)
+	// SampleCounts returns the number of samples of each source of userID, every type together, by
+	// source id. The sources without samples are left out. SamplesRepository keeps the counts in the
+	// transactions of its writes, so that reading them never counts the samples.
+	SampleCounts(ctx context.Context, userID int64) (map[int64]int64, error)
 }

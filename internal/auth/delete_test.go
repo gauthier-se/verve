@@ -491,8 +491,8 @@ func (dt deletionTest) mustUpsertHeartRates(t *testing.T, user store.User, count
 }
 
 // Given samples of two users, when the account.delete job of one of them runs, then it removes
-// their samples and data availability in transactions of at most the batch size, all before the
-// user, and the other user keeps theirs.
+// their samples, data availability and source counts in transactions of at most the batch size, all
+// before the user, and the other user keeps theirs.
 func TestDeleteAccount_RemovesTheSamplesInBoundedBatchesBeforeTheUser(t *testing.T) {
 	t.Parallel()
 
@@ -511,8 +511,8 @@ func TestDeleteAccount_RemovesTheSamplesInBoundedBatchesBeforeTheUser(t *testing
 		{limit: 2, deleted: 2, userExists: true},
 		{limit: 2, deleted: 2, userExists: true},
 		{limit: 2, deleted: 2, userExists: true},
-		{limit: 2, deleted: 0, userExists: true},
-	}, recorded.samples, "five samples and one stats row in batches of at most two, before the user")
+		{limit: 2, deleted: 1, userExists: true},
+	}, recorded.samples, "five samples, one stats row and one source count in batches of at most two, before the user")
 
 	_, err := dt.store.Users().Get(t.Context(), bob.ID)
 	require.ErrorIs(t, err, store.ErrNotFound)

@@ -194,6 +194,36 @@ func (q *Queries) ListUserSourceAliasesByName(ctx context.Context, arg ListUserS
 	return items, nil
 }
 
+const listUserSourceStats = `-- name: ListUserSourceStats :many
+SELECT user_id, source_id, count
+FROM source_stats
+WHERE user_id = ?
+ORDER BY source_id
+`
+
+func (q *Queries) ListUserSourceStats(ctx context.Context, userID int64) ([]SourceStat, error) {
+	rows, err := q.db.QueryContext(ctx, listUserSourceStats, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SourceStat
+	for rows.Next() {
+		var i SourceStat
+		if err := rows.Scan(&i.UserID, &i.SourceID, &i.Count); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUserSources = `-- name: ListUserSources :many
 SELECT id, user_id, name, device_model, display_name, bundle_id, device_name, manufacturer, hardware_version, software_version, kind, kind_set_by_user, first_seen_at, last_seen_at
 FROM sources

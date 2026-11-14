@@ -24,7 +24,8 @@ type samples struct {
 
 // Upsert checks the whole batch, its types and sources included, before its first write, so that
 // a refused batch writes nothing even in a WithTx whose caller commits anyway. Updates never move
-// the start of a sample, so only inserts change the data availability, written once per type.
+// the start or the source of a sample, so only inserts change the data availability and the source
+// counts, written once per type and once per source.
 func (r samples) Upsert(ctx context.Context, userID int64, batch []store.NewSample) (store.UpsertResult, error) {
 	for i, sample := range batch {
 		if err := checkSample(sample); err != nil {
@@ -40,6 +41,7 @@ func (r samples) Upsert(ctx context.Context, userID int64, batch []store.NewSamp
 		}
 
 		inserted := make(map[int64]sqlcgen.AddSampleStatsParams)
+		bySource := make(map[int64]int64)
 
 		for _, sample := range batch {
 			outcome, err := upsertSample(ctx, q, userID, sample)
@@ -52,6 +54,7 @@ func (r samples) Upsert(ctx context.Context, userID int64, batch []store.NewSamp
 				result.Inserted++
 
 				inserted[sample.TypeID] = widenStats(inserted[sample.TypeID], userID, sample)
+				bySource[sample.SourceID]++
 			case sampleUpdated:
 				result.Updated++
 			case sampleDuplicate:
@@ -61,6 +64,13 @@ func (r samples) Upsert(ctx context.Context, userID int64, batch []store.NewSamp
 
 		for _, typeID := range slices.Sorted(maps.Keys(inserted)) {
 			if err := q.AddSampleStats(ctx, inserted[typeID]); err != nil {
+				return err
+			}
+		}
+
+		for _, sourceID := range slices.Sorted(maps.Keys(bySource)) {
+			err := q.AddSourceStats(ctx, sqlcgen.AddSourceStatsParams{UserID: userID, SourceID: sourceID, Count: bySource[sourceID]})
+			if err != nil {
 				return err
 			}
 		}
@@ -159,6 +169,16 @@ func (r samples) DeleteByUser(ctx context.Context, userID int64, limit int) (int
 		})
 		deleted += statsDeleted
 
+		if err != nil || deleted == int64(limit) {
+			return err
+		}
+
+		countsDeleted, err := q.DeleteUserSourceStats(ctx, sqlcgen.DeleteUserSourceStatsParams{
+			UserID:    userID,
+			BatchSize: int64(limit) - deleted,
+		})
+		deleted += countsDeleted
+
 		return err
 	})
 	if err != nil {
@@ -169,7 +189,8 @@ func (r samples) DeleteByUser(ctx context.Context, userID int64, limit int) (int
 }
 
 // DeleteByKey removes the data availability of the type of the sample with its last sample, and
-// otherwise counts one sample less and narrows it to the samples left.
+// otherwise counts one sample less and narrows it to the samples left. The count of its source
+// follows the same way.
 func (r samples) DeleteByKey(ctx context.Context, userID int64, key []byte) (store.Sample, error) {
 	var removed store.Sample
 
@@ -184,6 +205,10 @@ func (r samples) DeleteByKey(ctx context.Context, userID int64, key []byte) (sto
 		}
 
 		removed = sampleOf(row)
+
+		if err := removeSourceStats(ctx, q, userID, row.SourceID); err != nil {
+			return err
+		}
 
 		gone, err := q.DeleteLastSampleStats(ctx, sqlcgen.DeleteLastSampleStatsParams{UserID: userID, TypeID: row.TypeID})
 		if err != nil || gone > 0 {
@@ -424,4 +449,33 @@ func (r samples) ListOverlapping(ctx context.Context, userID, typeID int64, from
 	}
 
 	return list, nil
+}
+
+func (r samples) SourcesOfType(ctx context.Context, userID, typeID int64) ([]int64, error) {
+	ids, err := r.q.read().ListUserSourcesOfType(ctx, sqlcgen.ListUserSourcesOfTypeParams{UserID: userID, TypeID: typeID})
+	if err != nil {
+		return nil, fmt.Errorf("list sources of user %d with samples of type %d: %w", userID, typeID, err)
+	}
+
+	return ids, nil
+}
+
+func (r samples) TypesOfSource(ctx context.Context, userID, sourceID int64) ([]int64, error) {
+	ids, err := r.q.read().ListUserTypesOfSource(ctx, sqlcgen.ListUserTypesOfSourceParams{UserID: userID, SourceID: sourceID})
+	if err != nil {
+		return nil, fmt.Errorf("list types of source %d of user %d: %w", sourceID, userID, err)
+	}
+
+	return ids, nil
+}
+
+// removeSourceStats counts one removed sample of the source of sourceID of the user of userID, and
+// removes its count with its last sample.
+func removeSourceStats(ctx context.Context, q *sqlcgen.Queries, userID, sourceID int64) error {
+	gone, err := q.DeleteLastSourceStats(ctx, sqlcgen.DeleteLastSourceStatsParams{UserID: userID, SourceID: sourceID})
+	if err != nil || gone > 0 {
+		return err
+	}
+
+	return q.RemoveSourceStats(ctx, sqlcgen.RemoveSourceStatsParams{UserID: userID, SourceID: sourceID})
 }

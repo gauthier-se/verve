@@ -119,3 +119,58 @@ WHERE samples.user_id = sqlc.arg(user_id)
   AND samples.start_at < sqlc.arg(to_at)
   AND (samples.start_at >= sqlc.arg(from_at) OR samples.end_at > sqlc.arg(from_at))
 ORDER BY samples.start_at, samples.id;
+
+-- name: AddSourceStats :exec
+-- Counts inserted samples of a source of a user.
+INSERT INTO source_stats (user_id, source_id, count)
+VALUES (?, ?, ?)
+ON CONFLICT (user_id, source_id) DO UPDATE
+    SET count = count + excluded.count;
+
+-- name: DeleteLastSourceStats :execrows
+-- Removes the sample count of a source of a user whose last sample was removed.
+DELETE
+FROM source_stats
+WHERE user_id = ? AND source_id = ? AND count <= 1;
+
+-- name: RemoveSourceStats :exec
+-- Counts one removed sample of a source of a user.
+UPDATE source_stats
+SET count = count - 1
+WHERE user_id = ? AND source_id = ?;
+
+-- name: DeleteUserSourceStats :execrows
+DELETE
+FROM source_stats
+WHERE source_stats.user_id = sqlc.arg(user_id)
+  AND source_stats.source_id IN (SELECT old.source_id
+                                 FROM source_stats AS old
+                                 WHERE old.user_id = sqlc.arg(user_id)
+                                 LIMIT sqlc.arg(batch_size));
+
+-- name: ListUserSourcesOfType :many
+-- The sources of a user with samples of a type, each found through the index on samples (user_id,
+-- source_id, type_id).
+SELECT sources.id
+FROM sources
+WHERE sources.user_id = sqlc.arg(user_id)
+  AND EXISTS (SELECT 1
+              FROM samples AS s
+              WHERE s.user_id = sources.user_id
+                AND s.source_id = sources.id
+                AND s.type_id = sqlc.arg(type_id))
+ORDER BY sources.id;
+
+-- name: ListUserTypesOfSource :many
+-- The types a source of a user has samples of: each type of the user, from sample_stats, found
+-- through the index on samples (user_id, source_id, type_id), which a scan of the samples of the
+-- source would read in full.
+SELECT st.type_id
+FROM sample_stats AS st
+WHERE st.user_id = sqlc.arg(user_id)
+  AND EXISTS (SELECT 1
+              FROM samples AS s
+              WHERE s.user_id = st.user_id
+                AND s.source_id = sqlc.arg(source_id)
+                AND s.type_id = st.type_id)
+ORDER BY st.type_id;

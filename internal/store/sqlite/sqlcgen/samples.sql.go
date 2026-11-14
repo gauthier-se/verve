@@ -44,6 +44,25 @@ func (q *Queries) AddSampleStats(ctx context.Context, arg AddSampleStatsParams) 
 	return err
 }
 
+const addSourceStats = `-- name: AddSourceStats :exec
+INSERT INTO source_stats (user_id, source_id, count)
+VALUES (?, ?, ?)
+ON CONFLICT (user_id, source_id) DO UPDATE
+    SET count = count + excluded.count
+`
+
+type AddSourceStatsParams struct {
+	UserID   int64
+	SourceID int64
+	Count    int64
+}
+
+// Counts inserted samples of a source of a user.
+func (q *Queries) AddSourceStats(ctx context.Context, arg AddSourceStatsParams) error {
+	_, err := q.db.ExecContext(ctx, addSourceStats, arg.UserID, arg.SourceID, arg.Count)
+	return err
+}
+
 const countUsersSamples = `-- name: CountUsersSamples :many
 SELECT user_id, CAST(sum(count) AS INTEGER) AS samples
 FROM sample_stats
@@ -104,6 +123,26 @@ type DeleteLastSampleStatsParams struct {
 // Removes the data availability of a user and type whose last sample was removed.
 func (q *Queries) DeleteLastSampleStats(ctx context.Context, arg DeleteLastSampleStatsParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, deleteLastSampleStats, arg.UserID, arg.TypeID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const deleteLastSourceStats = `-- name: DeleteLastSourceStats :execrows
+DELETE
+FROM source_stats
+WHERE user_id = ? AND source_id = ? AND count <= 1
+`
+
+type DeleteLastSourceStatsParams struct {
+	UserID   int64
+	SourceID int64
+}
+
+// Removes the sample count of a source of a user whose last sample was removed.
+func (q *Queries) DeleteLastSourceStats(ctx context.Context, arg DeleteLastSourceStatsParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteLastSourceStats, arg.UserID, arg.SourceID)
 	if err != nil {
 		return 0, err
 	}
@@ -185,6 +224,29 @@ type DeleteUserSamplesParams struct {
 
 func (q *Queries) DeleteUserSamples(ctx context.Context, arg DeleteUserSamplesParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, deleteUserSamples, arg.UserID, arg.BatchSize)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const deleteUserSourceStats = `-- name: DeleteUserSourceStats :execrows
+DELETE
+FROM source_stats
+WHERE source_stats.user_id = ?1
+  AND source_stats.source_id IN (SELECT old.source_id
+                                 FROM source_stats AS old
+                                 WHERE old.user_id = ?1
+                                 LIMIT ?2)
+`
+
+type DeleteUserSourceStatsParams struct {
+	UserID    int64
+	BatchSize int64
+}
+
+func (q *Queries) DeleteUserSourceStats(ctx context.Context, arg DeleteUserSourceStatsParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteUserSourceStats, arg.UserID, arg.BatchSize)
 	if err != nil {
 		return 0, err
 	}
@@ -421,6 +483,91 @@ func (q *Queries) ListUserSamplesOverlapping(ctx context.Context, arg ListUserSa
 	return items, nil
 }
 
+const listUserSourcesOfType = `-- name: ListUserSourcesOfType :many
+SELECT sources.id
+FROM sources
+WHERE sources.user_id = ?1
+  AND EXISTS (SELECT 1
+              FROM samples AS s
+              WHERE s.user_id = sources.user_id
+                AND s.source_id = sources.id
+                AND s.type_id = ?2)
+ORDER BY sources.id
+`
+
+type ListUserSourcesOfTypeParams struct {
+	UserID int64
+	TypeID int64
+}
+
+// The sources of a user with samples of a type, each found through the index on samples (user_id,
+// source_id, type_id).
+func (q *Queries) ListUserSourcesOfType(ctx context.Context, arg ListUserSourcesOfTypeParams) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, listUserSourcesOfType, arg.UserID, arg.TypeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUserTypesOfSource = `-- name: ListUserTypesOfSource :many
+SELECT st.type_id
+FROM sample_stats AS st
+WHERE st.user_id = ?1
+  AND EXISTS (SELECT 1
+              FROM samples AS s
+              WHERE s.user_id = st.user_id
+                AND s.source_id = ?2
+                AND s.type_id = st.type_id)
+ORDER BY st.type_id
+`
+
+type ListUserTypesOfSourceParams struct {
+	UserID   int64
+	SourceID int64
+}
+
+// The types a source of a user has samples of: each type of the user, from sample_stats, found
+// through the index on samples (user_id, source_id, type_id), which a scan of the samples of the
+// source would read in full.
+func (q *Queries) ListUserTypesOfSource(ctx context.Context, arg ListUserTypesOfSourceParams) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, listUserTypesOfSource, arg.UserID, arg.SourceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var type_id int64
+		if err := rows.Scan(&type_id); err != nil {
+			return nil, err
+		}
+		items = append(items, type_id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const removeSampleStats = `-- name: RemoveSampleStats :exec
 UPDATE sample_stats
 SET count    = count - 1,
@@ -439,6 +586,23 @@ type RemoveSampleStatsParams struct {
 // the samples left, which the index on (user_id, type_id, start_at) gives.
 func (q *Queries) RemoveSampleStats(ctx context.Context, arg RemoveSampleStatsParams) error {
 	_, err := q.db.ExecContext(ctx, removeSampleStats, arg.UserID, arg.TypeID)
+	return err
+}
+
+const removeSourceStats = `-- name: RemoveSourceStats :exec
+UPDATE source_stats
+SET count = count - 1
+WHERE user_id = ? AND source_id = ?
+`
+
+type RemoveSourceStatsParams struct {
+	UserID   int64
+	SourceID int64
+}
+
+// Counts one removed sample of a source of a user.
+func (q *Queries) RemoveSourceStats(ctx context.Context, arg RemoveSourceStatsParams) error {
+	_, err := q.db.ExecContext(ctx, removeSourceStats, arg.UserID, arg.SourceID)
 	return err
 }
 
