@@ -30,8 +30,16 @@ type metricsTest struct {
 	aliceSource, bobSource store.Source
 }
 
-// newMetricsTest returns a metricsTest on a fresh store, at authTestNow.
+// newMetricsTest returns a metricsTest on a fresh store, at authTestNow, whose raw samples reads span
+// at most 7 days, the default of VERVE_RAW_MAX_DAYS.
 func newMetricsTest(t *testing.T) metricsTest {
+	t.Helper()
+
+	return newMetricsTestWith(t, func(*Deps) {})
+}
+
+// newMetricsTestWith is newMetricsTest, with the deps of its handler changed by change.
+func newMetricsTestWith(t *testing.T, change func(*Deps)) metricsTest {
 	t.Helper()
 
 	shipped, err := catalog.Shipped()
@@ -48,6 +56,8 @@ func newMetricsTest(t *testing.T) metricsTest {
 
 	deps := m.deps(t, "")
 	deps.Catalog = shipped
+	deps.RawMaxDays = 7
+	change(&deps)
 	m.handler = NewHandler(deps)
 
 	return m

@@ -538,6 +538,59 @@ func TestRun_ReadsPushedStepsAsADailySeries(t *testing.T) {
 	require.InDelta(t, 500, series.Points[1].Value, 1e-9)
 }
 
+// Given VERVE_RAW_MAX_DAYS set to 1, then a raw samples read of a day answers 200, and one of two
+// days 422 range_too_long.
+func TestRun_LimitsRawSamplesReadsToRawMaxDays(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	cfg := testConfig(t.TempDir())
+	cfg.RawMaxDays = 1
+
+	_, err := Migrate(ctx, cfg, discardLogger())
+	require.NoError(t, err)
+
+	token, err := withSharedDB(ctx, cfg, func(s store.Store) (string, error) {
+		user, err := s.Users().Create(ctx, store.NewUser{Username: "alice", Role: store.RoleMember})
+		if err != nil {
+			return "", err
+		}
+
+		token, _, err := auth.NewTokens(clock.Real()).Create(ctx, s, auth.NewAPIToken{
+			UserID: user.ID, Name: "iPhone", Scopes: []store.TokenScope{store.ScopeRead},
+		})
+
+		return token, err
+	})
+	require.NoError(t, err)
+
+	addr, _, stop := startRun(t, cfg)
+	defer stop()
+
+	for to, want := range map[string]int{
+		"2026-11-11T00:00:00Z": http.StatusOK,
+		"2026-11-12T00:00:00Z": http.StatusUnprocessableEntity,
+	} {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+			"http://"+addr+"/api/v1/metrics/heart_rate/samples?from=2026-11-10T00:00:00Z&to="+to, nil)
+		require.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer "+token)
+
+		res, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+
+		raw, err := io.ReadAll(res.Body)
+		require.NoError(t, err)
+		require.NoError(t, res.Body.Close())
+
+		require.Equal(t, want, res.StatusCode, string(raw))
+
+		if want != http.StatusOK {
+			require.Contains(t, string(raw), `"code":"range_too_long"`)
+		}
+	}
+}
+
 // Given shutdown and a handler that takes time to stop, then the database closes after it returned,
 // so that its result is still written.
 func TestRun_ShutdownWaitsForARunningJobBeforeClosingTheDatabase(t *testing.T) {

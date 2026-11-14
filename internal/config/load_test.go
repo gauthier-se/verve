@@ -51,6 +51,7 @@ func TestLoad_Defaults(t *testing.T) {
 	require.Equal(t, 365, cfg.Audit.RetentionDays)
 	require.Equal(t, "0 3 * * *", cfg.Backup.Schedule)
 	require.Equal(t, 7, cfg.Backup.Keep)
+	require.Equal(t, 7, cfg.RawMaxDays)
 
 	def := Default()
 	def.Sources = cfg.Sources
@@ -78,6 +79,7 @@ func TestLoad_DefaultSources(t *testing.T) {
 		"audit.retention_days": SourceDefault,
 		"backup.schedule":      SourceDefault,
 		"backup.keep":          SourceDefault,
+		"raw_max_days":         SourceDefault,
 	}, cfg.Sources)
 }
 
@@ -425,6 +427,101 @@ func TestLoad_AuditRetentionDaysMustBeAWholeNumber(t *testing.T) {
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "audit.retention_days (VERVE_AUDIT_RETENTION_DAYS)")
+}
+
+// Given the default configuration, then a raw samples read spans at most 7 days. Given
+// VERVE_RAW_MAX_DAYS or the YAML key raw_max_days, then that value applies, and the environment wins
+// over the file.
+func TestLoad_RawMaxDays(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		file    string
+		environ map[string]string
+		want    int
+		source  Source
+	}{
+		{name: "default", want: 7, source: SourceDefault},
+		{name: "environment", environ: map[string]string{"VERVE_RAW_MAX_DAYS": "31"}, want: 31, source: SourceEnv},
+		{name: "file", file: "raw_max_days: 14\n", want: 14, source: SourceFile},
+		{name: "one day", environ: map[string]string{"VERVE_RAW_MAX_DAYS": "1"}, want: 1, source: SourceEnv},
+		{name: "a leap year", file: "raw_max_days: 366\n", want: 366, source: SourceFile},
+		{
+			name:    "environment over file",
+			file:    "raw_max_days: 14\n",
+			environ: map[string]string{"VERVE_RAW_MAX_DAYS": "31"},
+			want:    31,
+			source:  SourceEnv,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			opts := LoadOptions{Env: tt.environ}
+			if tt.file != "" {
+				opts.File = writeFile(t, tt.file)
+			}
+
+			cfg, err := Load(opts)
+
+			require.NoError(t, err)
+			require.Equal(t, tt.want, cfg.RawMaxDays)
+			require.Equal(t, tt.source, cfg.Sources["raw_max_days"])
+		})
+	}
+}
+
+// Given a raw samples range below 1 day or over 366, in the environment or the file, then
+// configuration validation fails, naming the setting and the value.
+func TestLoad_RawMaxDaysOutOfRangeIsInvalid(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		file    string
+		environ map[string]string
+		reason  string
+		value   string
+	}{
+		{name: "zero in the environment", environ: map[string]string{"VERVE_RAW_MAX_DAYS": "0"}, value: "0", reason: "must be at least 1"},
+		{name: "negative in the file", file: "raw_max_days: -3\n", value: "-3", reason: "must be at least 1"},
+		{name: "over a year in the environment", environ: map[string]string{"VERVE_RAW_MAX_DAYS": "367"}, value: "367", reason: "must be at most 366"},
+		{name: "huge in the file", file: "raw_max_days: 1000000000000000\n", value: "1000000000000000", reason: "must be at most 366"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			opts := LoadOptions{Env: tt.environ}
+			if tt.file != "" {
+				opts.File = writeFile(t, tt.file)
+			}
+
+			_, err := Load(opts)
+
+			require.EqualError(t, err, `raw_max_days (VERVE_RAW_MAX_DAYS): invalid value "`+tt.value+`": `+tt.reason)
+		})
+	}
+}
+
+// Given a raw samples range that is not a whole number, then loading fails, naming the setting.
+func TestLoad_RawMaxDaysMustBeAWholeNumber(t *testing.T) {
+	t.Parallel()
+
+	for _, opts := range []LoadOptions{
+		{Env: map[string]string{"VERVE_RAW_MAX_DAYS": "a week"}},
+		{Env: map[string]string{"VERVE_RAW_MAX_DAYS": "7.5"}},
+		{File: writeFile(t, "raw_max_days: 7.5\n")},
+	} {
+		_, err := Load(opts)
+
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "raw_max_days (VERVE_RAW_MAX_DAYS)")
+	}
 }
 
 // Given the defaults, then backups run daily at 03:00. Given VERVE_BACKUP_SCHEDULE or the YAML key
