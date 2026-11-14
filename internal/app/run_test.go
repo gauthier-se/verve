@@ -10,10 +10,12 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/gauthier-se/verve/internal/auth"
@@ -449,6 +451,91 @@ func TestRun_ListsTheMetricTypesOfTheShippedCatalog(t *testing.T) {
 
 	require.Contains(t, values, "heart_rate")
 	require.Contains(t, values["sleep_analysis"], "asleep_core")
+}
+
+// Given step samples pushed to POST /api/v1/ingest and the jobs run by the worker of the server,
+// then the series of step_count by day returns their daily sums.
+func TestRun_ReadsPushedStepsAsADailySeries(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	cfg := testConfig(t.TempDir())
+
+	_, err := Migrate(ctx, cfg, discardLogger())
+	require.NoError(t, err)
+
+	token, err := withSharedDB(ctx, cfg, func(s store.Store) (string, error) {
+		user, err := s.Users().Create(ctx, store.NewUser{Username: "alice", Role: store.RoleMember})
+		if err != nil {
+			return "", err
+		}
+
+		token, _, err := auth.NewTokens(clock.Real()).Create(ctx, s, auth.NewAPIToken{
+			UserID: user.ID, Name: "iPhone", Scopes: []store.TokenScope{store.ScopeIngest, store.ScopeRead},
+		})
+
+		return token, err
+	})
+	require.NoError(t, err)
+
+	addr, _, stop := startRun(t, cfg)
+	defer stop()
+
+	// send fails through c, which may be the collector of EventuallyWithT.
+	send := func(c require.TestingT, method, path, body string) (int, []byte) {
+		req, err := http.NewRequestWithContext(ctx, method, "http://"+addr+path, strings.NewReader(body))
+		require.NoError(c, err)
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", "application/json")
+
+		res, err := http.DefaultClient.Do(req)
+		require.NoError(c, err)
+
+		raw, err := io.ReadAll(res.Body)
+		require.NoError(c, err)
+		require.NoError(c, res.Body.Close())
+
+		return res.StatusCode, raw
+	}
+
+	sample := func(uuid, start, end string, value int) string {
+		return `{"uuid": "` + uuid + `", "type": "HKQuantityTypeIdentifierStepCount", "start": "` + start +
+			`", "end": "` + end + `", "value": ` + strconv.Itoa(value) + `, "unit": "count", ` +
+			`"source": {"name": "Apple Watch", "device": {"model": "Watch"}}}`
+	}
+
+	status, raw := send(t, http.MethodPost, "/api/v1/ingest", `{
+		"format": "verve.ingest.v1",
+		"client": {"name": "Verve for iOS", "version": "1.0.0"},
+		"samples": [`+strings.Join([]string{
+		sample("2C7B5E1A-9D3F-4B6C-8E0A-1F2D3C4B5A69", "2026-11-10T08:00:00Z", "2026-11-10T08:10:00Z", 1240),
+		sample("5F0D2B7C-1A3E-4C9B-8D6F-2E4A6C8B0D13", "2026-11-10T18:00:00Z", "2026-11-10T18:30:00Z", 760),
+		sample("9A4C6E8B-3D5F-4A1C-9B7E-0F2D4B6A8C35", "2026-11-11T09:00:00Z", "2026-11-11T09:10:00Z", 500),
+	}, ",")+`]
+	}`)
+	require.Equal(t, http.StatusAccepted, status, string(raw))
+
+	var series struct {
+		Updating bool `json:"updating"`
+		Points   []struct {
+			Start string  `json:"start"`
+			Value float64 `json:"value"`
+		} `json:"points"`
+	}
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		status, raw := send(c, http.MethodGet,
+			"/api/v1/metrics/step_count/series?from=2026-11-01&to=2026-11-30&bucket=day&statistic=sum", "")
+		require.Equal(c, http.StatusOK, status, string(raw))
+		require.NoError(c, json.Unmarshal(raw, &series))
+		require.False(c, series.Updating)
+		require.Len(c, series.Points, 2)
+	}, 10*time.Second, 20*time.Millisecond, "the jobs must compute the daily sums")
+
+	require.Equal(t, "2026-11-10T00:00:00Z", series.Points[0].Start)
+	require.InDelta(t, 2000, series.Points[0].Value, 1e-9)
+	require.Equal(t, "2026-11-11T00:00:00Z", series.Points[1].Start)
+	require.InDelta(t, 500, series.Points[1].Value, 1e-9)
 }
 
 // Given shutdown and a handler that takes time to stop, then the database closes after it returned,
