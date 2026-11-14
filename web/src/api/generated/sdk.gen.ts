@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AcceptInvitationData, AcceptInvitationErrors, AcceptInvitationResponses, CancelImportData, CancelImportErrors, CancelImportResponses, ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, CreateAdminBackupData, CreateAdminBackupErrors, CreateAdminBackupResponses, CreateFirstAdminData, CreateFirstAdminErrors, CreateFirstAdminResponses, CreateInvitationData, CreateInvitationErrors, CreateInvitationResponses, CreatePasswordResetLinkData, CreatePasswordResetLinkErrors, CreatePasswordResetLinkResponses, CreateTokenData, CreateTokenErrors, CreateTokenResponses, DeleteAccountData, DeleteAccountErrors, DeleteAccountResponses, DeleteUserData, DeleteUserErrors, DeleteUserResponses, DownloadAdminBackupData, DownloadAdminBackupErrors, DownloadAdminBackupResponses, GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetImportData, GetImportErrors, GetImportResponses, GetMetaData, GetMetaErrors, GetMetaResponses, GetMetricSeriesData, GetMetricSeriesErrors, GetMetricSeriesResponses, GetPreferencesData, GetPreferencesErrors, GetPreferencesResponses, GetSetupStatusData, GetSetupStatusErrors, GetSetupStatusResponses, InspectInvitationData, InspectInvitationErrors, InspectInvitationResponses, ListAccountAuditEventsData, ListAccountAuditEventsErrors, ListAccountAuditEventsResponses, ListAdminAuditEventsData, ListAdminAuditEventsErrors, ListAdminAuditEventsResponses, ListAdminBackupsData, ListAdminBackupsErrors, ListAdminBackupsResponses, ListAdminJobsData, ListAdminJobsErrors, ListAdminJobsResponses, ListAdminUsersData, ListAdminUsersErrors, ListAdminUsersResponses, ListImportsData, ListImportsErrors, ListImportsResponses, ListMetricSamplesData, ListMetricSamplesErrors, ListMetricSamplesResponses, ListMetricsData, ListMetricsErrors, ListMetricsResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, ListTokensData, ListTokensErrors, ListTokensResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutErrors, LogoutResponses, PushNativeData, PushNativeErrors, PushNativeResponses, ResetPasswordData, ResetPasswordErrors, ResetPasswordResponses, RevokeOtherSessionsData, RevokeOtherSessionsErrors, RevokeOtherSessionsResponses, RevokeSessionData, RevokeSessionErrors, RevokeSessionResponses, RevokeTokenData, RevokeTokenErrors, RevokeTokenResponses, SetUserRoleData, SetUserRoleErrors, SetUserRoleResponses, SetUserStatusData, SetUserStatusErrors, SetUserStatusResponses, UpdatePreferencesData, UpdatePreferencesErrors, UpdatePreferencesResponses } from './types.gen';
+import type { AcceptInvitationData, AcceptInvitationErrors, AcceptInvitationResponses, CancelImportData, CancelImportErrors, CancelImportResponses, ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, CreateAdminBackupData, CreateAdminBackupErrors, CreateAdminBackupResponses, CreateFirstAdminData, CreateFirstAdminErrors, CreateFirstAdminResponses, CreateInvitationData, CreateInvitationErrors, CreateInvitationResponses, CreatePasswordResetLinkData, CreatePasswordResetLinkErrors, CreatePasswordResetLinkResponses, CreateTokenData, CreateTokenErrors, CreateTokenResponses, DeleteAccountData, DeleteAccountErrors, DeleteAccountResponses, DeleteUserData, DeleteUserErrors, DeleteUserResponses, DownloadAdminBackupData, DownloadAdminBackupErrors, DownloadAdminBackupResponses, GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetImportData, GetImportErrors, GetImportResponses, GetMetaData, GetMetaErrors, GetMetaResponses, GetMetricSeriesData, GetMetricSeriesErrors, GetMetricSeriesResponses, GetMetricSourcesData, GetMetricSourcesErrors, GetMetricSourcesResponses, GetPreferencesData, GetPreferencesErrors, GetPreferencesResponses, GetSetupStatusData, GetSetupStatusErrors, GetSetupStatusResponses, InspectInvitationData, InspectInvitationErrors, InspectInvitationResponses, ListAccountAuditEventsData, ListAccountAuditEventsErrors, ListAccountAuditEventsResponses, ListAdminAuditEventsData, ListAdminAuditEventsErrors, ListAdminAuditEventsResponses, ListAdminBackupsData, ListAdminBackupsErrors, ListAdminBackupsResponses, ListAdminJobsData, ListAdminJobsErrors, ListAdminJobsResponses, ListAdminUsersData, ListAdminUsersErrors, ListAdminUsersResponses, ListImportsData, ListImportsErrors, ListImportsResponses, ListMetricSamplesData, ListMetricSamplesErrors, ListMetricSamplesResponses, ListMetricsData, ListMetricsErrors, ListMetricsResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, ListSourcesData, ListSourcesErrors, ListSourcesResponses, ListTokensData, ListTokensErrors, ListTokensResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutErrors, LogoutResponses, PushNativeData, PushNativeErrors, PushNativeResponses, ResetPasswordData, ResetPasswordErrors, ResetPasswordResponses, RevokeOtherSessionsData, RevokeOtherSessionsErrors, RevokeOtherSessionsResponses, RevokeSessionData, RevokeSessionErrors, RevokeSessionResponses, RevokeTokenData, RevokeTokenErrors, RevokeTokenResponses, SetMetricSourcesData, SetMetricSourcesErrors, SetMetricSourcesResponses, SetUserRoleData, SetUserRoleErrors, SetUserRoleResponses, SetUserStatusData, SetUserStatusErrors, SetUserStatusResponses, UpdatePreferencesData, UpdatePreferencesErrors, UpdatePreferencesResponses, UpdateSourceData, UpdateSourceErrors, UpdateSourceResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -561,6 +561,40 @@ export const getMetricSeries = <ThrowOnError extends boolean = false>(options: O
 });
 
 /**
+ * Get the source priorities of a metric
+ *
+ * Returns the priorities of the sources of the current user that have data of the metric type or are in its stored priorities: their order, the ignored ones and the combine mode. Without stored priorities, the order is the default one. An uncurated type without samples of the user answers 404. Accepts a session or a token with the `read` scope.
+ */
+export const getMetricSources = <ThrowOnError extends boolean = false>(options: Options<GetMetricSourcesData, ThrowOnError>): RequestResult<GetMetricSourcesResponses, GetMetricSourcesErrors, ThrowOnError> => (options.client ?? client).get<GetMetricSourcesResponses, GetMetricSourcesErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'verve_session',
+            type: 'apiKey'
+        }, { scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/metrics/{type}/sources',
+    ...options
+});
+
+/**
+ * Set the source priorities of a metric
+ *
+ * Stores the order of the sources of the metric type, the ignored ones and the combine mode, and returns the priorities as GET does. The aggregates of the type are recomputed: series show `updating` until then. A source of another user answers 422 `source_unknown`, a source listed twice, ordered and ignored included, 422 `source_listed_twice`, and the combine mode on a type that is not discrete 422 `combine_not_discrete`.
+ */
+export const setMetricSources = <ThrowOnError extends boolean = false>(options: Options<SetMetricSourcesData, ThrowOnError>): RequestResult<SetMetricSourcesResponses, SetMetricSourcesErrors, ThrowOnError> => (options.client ?? client).put<SetMetricSourcesResponses, SetMetricSourcesErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'verve_session',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/metrics/{type}/sources',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
  * Reset a password
  *
  * Replaces the password of the user of the reset link, marks the link used and revokes every session of the user, who then logs in with the new password. The token is in the body so that it never reaches a log. A link used, expired, unknown, replaced by a newer one or of an account being deleted answers 410 `reset_link_invalid`. A password that breaks the rules answers 422 with the code of the rule: `password_too_short`, `password_too_long` or `password_too_common`, and the link stays valid. It needs no authentication.
@@ -588,6 +622,40 @@ export const getSetupStatus = <ThrowOnError extends boolean = false>(options?: O
  */
 export const createFirstAdmin = <ThrowOnError extends boolean = false>(options: Options<CreateFirstAdminData, ThrowOnError>): RequestResult<CreateFirstAdminResponses, CreateFirstAdminErrors, ThrowOnError> => (options.client ?? client).post<CreateFirstAdminResponses, CreateFirstAdminErrors, ThrowOnError>({
     url: '/api/v1/setup',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * List the sources
+ *
+ * Returns the devices and apps that produced data of the current user, with their sample count. Accepts a session or a token with the `read` scope.
+ */
+export const listSources = <ThrowOnError extends boolean = false>(options?: Options<ListSourcesData, ThrowOnError>): RequestResult<ListSourcesResponses, ListSourcesErrors, ThrowOnError> => (options?.client ?? client).get<ListSourcesResponses, ListSourcesErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'verve_session',
+            type: 'apiKey'
+        }, { scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/sources',
+    ...options
+});
+
+/**
+ * Change a source
+ *
+ * Renames a source of the current user, or sets its kind, and returns the source. A new display name recomputes nothing. A new kind recomputes the aggregates of the metric types that the source has samples of, since it places the source in their priorities: series show `updating` until then. A source of another user answers 404.
+ */
+export const updateSource = <ThrowOnError extends boolean = false>(options: Options<UpdateSourceData, ThrowOnError>): RequestResult<UpdateSourceResponses, UpdateSourceErrors, ThrowOnError> => (options.client ?? client).patch<UpdateSourceResponses, UpdateSourceErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'verve_session',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/sources/{id}',
     ...options,
     headers: {
         'Content-Type': 'application/json',

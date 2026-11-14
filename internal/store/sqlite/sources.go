@@ -206,6 +206,20 @@ func (r sources) SetKind(ctx context.Context, userID, id int64, kind store.Sourc
 	return sourceOf(row), nil
 }
 
+func (r sources) SampleCounts(ctx context.Context, userID int64) (map[int64]int64, error) {
+	rows, err := r.q.read().ListUserSourceStats(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("count samples of the sources of user %d: %w", userID, err)
+	}
+
+	counts := make(map[int64]int64, len(rows))
+	for _, row := range rows {
+		counts[row.SourceID] = row.Count
+	}
+
+	return counts, nil
+}
+
 // candidate is an identity of a source or of an alias, of the name of a record, that a record may
 // match.
 type candidate struct {

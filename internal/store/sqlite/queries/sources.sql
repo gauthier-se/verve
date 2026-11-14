@@ -65,3 +65,9 @@ SET kind             = ?,
     kind_set_by_user = 1
 WHERE user_id = ? AND id = ?
 RETURNING *;
+
+-- name: ListUserSourceStats :many
+SELECT *
+FROM source_stats
+WHERE user_id = ?
+ORDER BY source_id;

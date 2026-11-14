@@ -98,6 +98,12 @@ var userRowSeeders = map[string]func(ctx context.Context, t *testing.T, s store.
 
 		seedSample(ctx, t, s, user)
 	},
+	// The sample count is that of the source of the sample of the seeder of samples.
+	"source_stats": func(ctx context.Context, t *testing.T, s store.Store, user store.User) {
+		t.Helper()
+
+		seedSample(ctx, t, s, user)
+	},
 	"workouts": func(ctx context.Context, t *testing.T, s store.Store, user store.User) {
 		t.Helper()
 

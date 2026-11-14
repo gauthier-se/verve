@@ -301,6 +301,25 @@ func (q *Queries) InsertUserAggregateDirtyRangesFromStats(ctx context.Context, u
 	return err
 }
 
+const insertUserTypeAggregateDirtyRangeFromStats = `-- name: InsertUserTypeAggregateDirtyRangeFromStats :exec
+INSERT INTO aggregate_dirty_ranges (user_id, type_id, from_at, to_at)
+SELECT st.user_id, st.type_id, st.first_at, st.last_at + st.longest
+FROM sample_stats AS st
+WHERE st.user_id = ? AND st.type_id = ?
+`
+
+type InsertUserTypeAggregateDirtyRangeFromStatsParams struct {
+	UserID int64
+	TypeID int64
+}
+
+// The range of a type of a user, as InsertUserAggregateDirtyRangesFromStats records it, or none
+// when the user has no samples of the type.
+func (q *Queries) InsertUserTypeAggregateDirtyRangeFromStats(ctx context.Context, arg InsertUserTypeAggregateDirtyRangeFromStatsParams) error {
+	_, err := q.db.ExecContext(ctx, insertUserTypeAggregateDirtyRangeFromStats, arg.UserID, arg.TypeID)
+	return err
+}
+
 const listUserAggDaily = `-- name: ListUserAggDaily :many
 SELECT user_id, type_id, bucket_start, sum, count, min, max, "last", last_at, selection, source_id, hours
 FROM agg_daily

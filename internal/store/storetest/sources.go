@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/gauthier-se/verve/internal/catalog"
 	"github.com/gauthier-se/verve/internal/clock"
 	"github.com/gauthier-se/verve/internal/store"
 )
@@ -109,6 +110,7 @@ func RunSources(t *testing.T, newStore NewStoreFunc) {
 	runSourcesAliases(t, newStore)
 	runSourcesCorrections(t, newStore)
 	runSourcesOfUsers(t, newStore)
+	runSourcesSampleCounts(t, newStore)
 }
 
 // runSourcesOfUsers runs the cases of the isolation of the sources of each user.
@@ -626,4 +628,76 @@ func runSourcesIdentity(t *testing.T, newStore NewStoreFunc) {
 			require.Equal(t, tc.identities, identities)
 		})
 	}
+}
+
+// runSourcesSampleCounts runs the cases of the sample count of each source.
+func runSourcesSampleCounts(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+
+	// Given samples of two sources of a user, among them duplicates and updates, a removed sample, a
+	// source without samples and a sample of another user, then SampleCounts returns the number of
+	// samples of each source of the user that has some, every type together.
+	t.Run("SampleCountsCountTheSamplesOfEachSource", func(t *testing.T) {
+		t.Parallel()
+
+		s := newStore(t, clock.NewFake(sourcesTime))
+		ctx := t.Context()
+		user := mustCreateUser(ctx, t, s.Users(), newUser("camille", "camille@example.com"))
+		other := mustCreateUser(ctx, t, s.Users(), newUser("dominique", "dominique@example.com"))
+		watch := mustResolve(ctx, t, s.Sources(), user.ID, watchInfo, store.SourceWatch, sourcesTime)
+		phone := mustResolve(ctx, t, s.Sources(), user.ID, sourceInfo("iPhone de Camille", "iPhone"), store.SourcePhone, sourcesTime)
+		mustResolve(ctx, t, s.Sources(), user.ID, summarizedInfo, store.SourceAggregated, sourcesTime)
+		foreign := mustResolve(ctx, t, s.Sources(), other.ID, watchInfo, store.SourceWatch, sourcesTime)
+
+		heart, err := s.MetricTypes().EnsureUncurated(ctx, "HKQuantityTypeIdentifierHeartRate", catalog.KindQuantity, "count/min")
+		require.NoError(t, err)
+
+		steps, err := s.MetricTypes().EnsureUncurated(ctx, "HKQuantityTypeIdentifierStepCount", catalog.KindQuantity, "count")
+		require.NoError(t, err)
+
+		sample := func(key string, typeID, sourceID int64, rule store.ConflictRule) store.NewSample {
+			return store.NewSample{
+				Sample: store.Sample{
+					TypeID: typeID, SourceID: sourceID, Start: sourcesTime, End: sourcesTime, Value: float64(len(key)),
+					Origin: store.OriginXML, NaturalKey: []byte(key),
+				},
+				OnConflict: rule,
+			}
+		}
+
+		upsert := func(userID int64, samples ...store.NewSample) {
+			_, err := s.Samples().Upsert(ctx, userID, samples)
+			require.NoError(t, err)
+		}
+
+		upsert(user.ID,
+			sample("a", heart.ID, watch.ID, store.ConflictIgnore),
+			sample("b", steps.ID, watch.ID, store.ConflictIgnore),
+			sample("c", steps.ID, watch.ID, store.ConflictIgnore),
+			sample("d", heart.ID, phone.ID, store.ConflictIgnore),
+			sample("a", heart.ID, watch.ID, store.ConflictIgnore),
+		)
+		upsert(user.ID, sample("d", heart.ID, phone.ID, store.ConflictReplace), sample("e", steps.ID, phone.ID, store.ConflictIgnore))
+		upsert(other.ID, sample("a", heart.ID, foreign.ID, store.ConflictIgnore))
+
+		_, err = s.Samples().DeleteByKey(ctx, user.ID, []byte("c"))
+		require.NoError(t, err)
+
+		got, err := s.Sources().SampleCounts(ctx, user.ID)
+		require.NoError(t, err)
+		require.Equal(t, map[int64]int64{watch.ID: 2, phone.ID: 2}, got)
+
+		got, err = s.Sources().SampleCounts(ctx, other.ID)
+		require.NoError(t, err)
+		require.Equal(t, map[int64]int64{foreign.ID: 1}, got)
+
+		for _, key := range []string{"d", "e"} {
+			_, err = s.Samples().DeleteByKey(ctx, user.ID, []byte(key))
+			require.NoError(t, err)
+		}
+
+		got, err = s.Sources().SampleCounts(ctx, user.ID)
+		require.NoError(t, err)
+		require.Equal(t, map[int64]int64{watch.ID: 2}, got, "a source without samples left is left out")
+	})
 }

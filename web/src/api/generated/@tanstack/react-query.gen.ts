@@ -3,8 +3,8 @@
 import { type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { acceptInvitation, cancelImport, changePassword, createAdminBackup, createFirstAdmin, createInvitation, createPasswordResetLink, createToken, deleteAccount, deleteUser, downloadAdminBackup, getCurrentUser, getImport, getMeta, getMetricSeries, getPreferences, getSetupStatus, inspectInvitation, listAccountAuditEvents, listAdminAuditEvents, listAdminBackups, listAdminJobs, listAdminUsers, listImports, listMetrics, listMetricSamples, listSessions, listTokens, login, logout, type Options, pushNative, resetPassword, revokeOtherSessions, revokeSession, revokeToken, setUserRole, setUserStatus, updatePreferences } from '../sdk.gen';
-import type { AcceptInvitationData, AcceptInvitationError, AcceptInvitationResponse, CancelImportData, CancelImportError, CancelImportResponse, ChangePasswordData, ChangePasswordError, ChangePasswordResponse, CreateAdminBackupData, CreateAdminBackupError, CreateAdminBackupResponse, CreateFirstAdminData, CreateFirstAdminError, CreateFirstAdminResponse, CreateInvitationData, CreateInvitationError, CreateInvitationResponse, CreatePasswordResetLinkData, CreatePasswordResetLinkError, CreatePasswordResetLinkResponse, CreateTokenData, CreateTokenError, CreateTokenResponse, DeleteAccountData, DeleteAccountError, DeleteUserData, DeleteUserError, DeleteUserResponse, DownloadAdminBackupData, DownloadAdminBackupError, DownloadAdminBackupResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetImportData, GetImportError, GetImportResponse, GetMetaData, GetMetaError, GetMetaResponse, GetMetricSeriesData, GetMetricSeriesError, GetMetricSeriesResponse, GetPreferencesData, GetPreferencesError, GetPreferencesResponse, GetSetupStatusData, GetSetupStatusError, GetSetupStatusResponse, InspectInvitationData, InspectInvitationError, InspectInvitationResponse, ListAccountAuditEventsData, ListAccountAuditEventsError, ListAccountAuditEventsResponse, ListAdminAuditEventsData, ListAdminAuditEventsError, ListAdminAuditEventsResponse, ListAdminBackupsData, ListAdminBackupsError, ListAdminBackupsResponse, ListAdminJobsData, ListAdminJobsError, ListAdminJobsResponse, ListAdminUsersData, ListAdminUsersError, ListAdminUsersResponse, ListImportsData, ListImportsError, ListImportsResponse, ListMetricSamplesData, ListMetricSamplesError, ListMetricSamplesResponse, ListMetricsData, ListMetricsError, ListMetricsResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, ListTokensData, ListTokensError, ListTokensResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutError, LogoutResponse, PushNativeData, PushNativeError, PushNativeResponse, ResetPasswordData, ResetPasswordError, ResetPasswordResponse, RevokeOtherSessionsData, RevokeOtherSessionsError, RevokeOtherSessionsResponse, RevokeSessionData, RevokeSessionError, RevokeSessionResponse, RevokeTokenData, RevokeTokenError, RevokeTokenResponse, SetUserRoleData, SetUserRoleError, SetUserRoleResponse, SetUserStatusData, SetUserStatusError, SetUserStatusResponse, UpdatePreferencesData, UpdatePreferencesError, UpdatePreferencesResponse } from '../types.gen';
+import { acceptInvitation, cancelImport, changePassword, createAdminBackup, createFirstAdmin, createInvitation, createPasswordResetLink, createToken, deleteAccount, deleteUser, downloadAdminBackup, getCurrentUser, getImport, getMeta, getMetricSeries, getMetricSources, getPreferences, getSetupStatus, inspectInvitation, listAccountAuditEvents, listAdminAuditEvents, listAdminBackups, listAdminJobs, listAdminUsers, listImports, listMetrics, listMetricSamples, listSessions, listSources, listTokens, login, logout, type Options, pushNative, resetPassword, revokeOtherSessions, revokeSession, revokeToken, setMetricSources, setUserRole, setUserStatus, updatePreferences, updateSource } from '../sdk.gen';
+import type { AcceptInvitationData, AcceptInvitationError, AcceptInvitationResponse, CancelImportData, CancelImportError, CancelImportResponse, ChangePasswordData, ChangePasswordError, ChangePasswordResponse, CreateAdminBackupData, CreateAdminBackupError, CreateAdminBackupResponse, CreateFirstAdminData, CreateFirstAdminError, CreateFirstAdminResponse, CreateInvitationData, CreateInvitationError, CreateInvitationResponse, CreatePasswordResetLinkData, CreatePasswordResetLinkError, CreatePasswordResetLinkResponse, CreateTokenData, CreateTokenError, CreateTokenResponse, DeleteAccountData, DeleteAccountError, DeleteUserData, DeleteUserError, DeleteUserResponse, DownloadAdminBackupData, DownloadAdminBackupError, DownloadAdminBackupResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetImportData, GetImportError, GetImportResponse, GetMetaData, GetMetaError, GetMetaResponse, GetMetricSeriesData, GetMetricSeriesError, GetMetricSeriesResponse, GetMetricSourcesData, GetMetricSourcesError, GetMetricSourcesResponse, GetPreferencesData, GetPreferencesError, GetPreferencesResponse, GetSetupStatusData, GetSetupStatusError, GetSetupStatusResponse, InspectInvitationData, InspectInvitationError, InspectInvitationResponse, ListAccountAuditEventsData, ListAccountAuditEventsError, ListAccountAuditEventsResponse, ListAdminAuditEventsData, ListAdminAuditEventsError, ListAdminAuditEventsResponse, ListAdminBackupsData, ListAdminBackupsError, ListAdminBackupsResponse, ListAdminJobsData, ListAdminJobsError, ListAdminJobsResponse, ListAdminUsersData, ListAdminUsersError, ListAdminUsersResponse, ListImportsData, ListImportsError, ListImportsResponse, ListMetricSamplesData, ListMetricSamplesError, ListMetricSamplesResponse, ListMetricsData, ListMetricsError, ListMetricsResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, ListSourcesData, ListSourcesError, ListSourcesResponse, ListTokensData, ListTokensError, ListTokensResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutError, LogoutResponse, PushNativeData, PushNativeError, PushNativeResponse, ResetPasswordData, ResetPasswordError, ResetPasswordResponse, RevokeOtherSessionsData, RevokeOtherSessionsError, RevokeOtherSessionsResponse, RevokeSessionData, RevokeSessionError, RevokeSessionResponse, RevokeTokenData, RevokeTokenError, RevokeTokenResponse, SetMetricSourcesData, SetMetricSourcesError, SetMetricSourcesResponse, SetUserRoleData, SetUserRoleError, SetUserRoleResponse, SetUserStatusData, SetUserStatusError, SetUserStatusResponse, UpdatePreferencesData, UpdatePreferencesError, UpdatePreferencesResponse, UpdateSourceData, UpdateSourceError, UpdateSourceResponse } from '../types.gen';
 
 /**
  * Delete the account of the current user
@@ -941,6 +941,45 @@ export const getMetricSeriesOptions = (options: Options<GetMetricSeriesData>) =>
     queryKey: getMetricSeriesQueryKey(options)
 });
 
+export const getMetricSourcesQueryKey = (options: Options<GetMetricSourcesData>) => createQueryKey('getMetricSources', options);
+
+/**
+ * Get the source priorities of a metric
+ *
+ * Returns the priorities of the sources of the current user that have data of the metric type or are in its stored priorities: their order, the ignored ones and the combine mode. Without stored priorities, the order is the default one. An uncurated type without samples of the user answers 404. Accepts a session or a token with the `read` scope.
+ */
+export const getMetricSourcesOptions = (options: Options<GetMetricSourcesData>) => queryOptions<GetMetricSourcesResponse, GetMetricSourcesError, GetMetricSourcesResponse, ReturnType<typeof getMetricSourcesQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getMetricSources({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getMetricSourcesQueryKey(options)
+});
+
+/**
+ * Set the source priorities of a metric
+ *
+ * Stores the order of the sources of the metric type, the ignored ones and the combine mode, and returns the priorities as GET does. The aggregates of the type are recomputed: series show `updating` until then. A source of another user answers 422 `source_unknown`, a source listed twice, ordered and ignored included, 422 `source_listed_twice`, and the combine mode on a type that is not discrete 422 `combine_not_discrete`.
+ */
+export const setMetricSourcesMutation = (options?: Partial<Options<SetMetricSourcesData>>): UseMutationOptions<SetMetricSourcesResponse, SetMetricSourcesError, Options<SetMetricSourcesData>> => {
+    const mutationOptions: UseMutationOptions<SetMetricSourcesResponse, SetMetricSourcesError, Options<SetMetricSourcesData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await setMetricSources({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
 /**
  * Reset a password
  *
@@ -989,6 +1028,45 @@ export const createFirstAdminMutation = (options?: Partial<Options<CreateFirstAd
     const mutationOptions: UseMutationOptions<CreateFirstAdminResponse, CreateFirstAdminError, Options<CreateFirstAdminData>> = {
         mutationFn: async (fnOptions) => {
             const { data } = await createFirstAdmin({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const listSourcesQueryKey = (options?: Options<ListSourcesData>) => createQueryKey('listSources', options);
+
+/**
+ * List the sources
+ *
+ * Returns the devices and apps that produced data of the current user, with their sample count. Accepts a session or a token with the `read` scope.
+ */
+export const listSourcesOptions = (options?: Options<ListSourcesData>) => queryOptions<ListSourcesResponse, ListSourcesError, ListSourcesResponse, ReturnType<typeof listSourcesQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listSources({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listSourcesQueryKey(options)
+});
+
+/**
+ * Change a source
+ *
+ * Renames a source of the current user, or sets its kind, and returns the source. A new display name recomputes nothing. A new kind recomputes the aggregates of the metric types that the source has samples of, since it places the source in their priorities: series show `updating` until then. A source of another user answers 404.
+ */
+export const updateSourceMutation = (options?: Partial<Options<UpdateSourceData>>): UseMutationOptions<UpdateSourceResponse, UpdateSourceError, Options<UpdateSourceData>> => {
+    const mutationOptions: UseMutationOptions<UpdateSourceResponse, UpdateSourceError, Options<UpdateSourceData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await updateSource({
                 ...options,
                 ...fnOptions,
                 throwOnError: true

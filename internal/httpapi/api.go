@@ -90,11 +90,13 @@ func NewAPI(mux *http.ServeMux, deps APIDeps) huma.API {
 	}
 
 	api := humago.New(mux, config)
+	// recorder queues the recomputations of the operations that change what the aggregates read.
+	recorder := aggregate.NewRecorder(deps.Jobs)
 
 	registerMeta(api, deps.Version)
 	registerLoginAndLogout(api, deps)
 	registerCurrentUser(api, deps.Store)
-	registerPreferences(api, deps.Store, aggregate.NewRecorder(deps.Jobs))
+	registerPreferences(api, deps.Store, recorder)
 	registerAccount(api, deps)
 	registerSetup(api, deps)
 	registerInvitations(api, deps)
@@ -108,6 +110,8 @@ func NewAPI(mux *http.ServeMux, deps APIDeps) huma.API {
 	registerMetrics(api, deps)
 	registerSeries(api, deps)
 	registerSamples(api, deps)
+	registerMetricSources(api, deps, recorder)
+	registerSources(api, deps, recorder)
 	registerIngest(api, deps)
 	registerImports(api, deps)
 

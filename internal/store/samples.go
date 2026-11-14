@@ -139,8 +139,9 @@ func EstimatedStorage(samples, routeBytes int64) int64 {
 	return samples*SampleRowBytes + routeBytes
 }
 
-// SamplesRepository stores the samples of each user and their data availability. A sample of
-// another user is never returned.
+// SamplesRepository stores the samples of each user, their data availability and the sample count of
+// each source, which SourcesRepository.SampleCounts reads. Each write that adds or removes samples
+// updates both in its transaction. A sample of another user is never returned.
 type SamplesRepository interface {
 	// Upsert stores samples for userID in one transaction, in order, and counts them. A sample
 	// whose natural key userID has not stored yet is inserted, and otherwise handled by its
@@ -168,11 +169,17 @@ type SamplesRepository interface {
 	ListOverlapping(ctx context.Context, userID, typeID int64, from, to time.Time) ([]Sample, error)
 	// DeleteByKey removes the sample of userID whose natural key is key, such as the key of a uuid
 	// deleted at its source (FR-8 of Ingestion pipeline), and returns it, or ErrNotFound. The same
-	// transaction updates the data availability of its type.
+	// transaction updates the data availability of its type and the sample count of its source.
 	DeleteByKey(ctx context.Context, userID int64, key []byte) (Sample, error)
-	// DeleteByUser removes at most limit rows of the samples and data availability of userID, the
-	// samples first, and returns how many it removed. The data availability is removed once no
-	// sample is left, so it may count samples already removed meanwhile. It returns ErrInvalid when
-	// limit is below 1.
+	// DeleteByUser removes at most limit rows of the samples, data availability and source sample
+	// counts of userID, in that order, and returns how many it removed. The data availability and
+	// the counts are removed once no sample is left, so they may count samples already removed
+	// meanwhile. It returns ErrInvalid when limit is below 1.
 	DeleteByUser(ctx context.Context, userID int64, limit int) (int64, error)
+	// SourcesOfType returns the ids of the sources of userID that have samples of the type of typeID,
+	// sorted, or an empty list.
+	SourcesOfType(ctx context.Context, userID, typeID int64) ([]int64, error)
+	// TypesOfSource returns the ids of the types that the source of userID whose id is sourceID has
+	// samples of, sorted, or an empty list, also for a source that userID does not have.
+	TypesOfSource(ctx context.Context, userID, sourceID int64) ([]int64, error)
 }

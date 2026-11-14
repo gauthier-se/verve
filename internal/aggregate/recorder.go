@@ -98,6 +98,24 @@ func (r Recorder) RecomputeAll(ctx context.Context, tx store.Repositories, userI
 	return r.queueRecompute(ctx, tx, userID)
 }
 
+// RecomputeTypes records, through tx, a range of each type of typeIDs that holds every sample of
+// userID of it, and queues the recompute job, for the types whose source selection changed, such as
+// after a change of source priority (FR-10 of Storage and aggregates). The rows of the types stay
+// until the job replaces them. It does nothing without types.
+func (r Recorder) RecomputeTypes(ctx context.Context, tx store.Repositories, userID int64, typeIDs ...int64) error {
+	if len(typeIDs) == 0 {
+		return nil
+	}
+
+	for _, typeID := range typeIDs {
+		if err := tx.Aggregates().RecordTypeDirty(ctx, userID, typeID); err != nil {
+			return fmt.Errorf("recompute aggregates of type %d of user %d: %w", typeID, userID, err)
+		}
+	}
+
+	return r.queueRecompute(ctx, tx, userID)
+}
+
 // queueRecompute queues the recompute job of userID through tx, unless one is queued.
 func (r Recorder) queueRecompute(ctx context.Context, tx store.Repositories, userID int64) error {
 	active, err := tx.Jobs().ActiveJobs(ctx, SerialKey(userID))

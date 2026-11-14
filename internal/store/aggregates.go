@@ -72,6 +72,10 @@ type AggregatesRepository interface {
 	// start of their samples to the last start widened by their longest duration, which holds every
 	// sample of the type, for a full recomputation (FR-10 of Storage and aggregates).
 	RecordAllDirty(ctx context.Context, userID int64) error
+	// RecordTypeDirty records the range of RecordAllDirty for the type of typeID only, and nothing
+	// when userID has no samples of it, such as for a change of source priority (FR-10 of Storage
+	// and aggregates).
+	RecordTypeDirty(ctx context.Context, userID, typeID int64) error
 	// ListDirty returns the dirty ranges of userID, sorted by type id, then From, then id, or an
 	// empty list.
 	ListDirty(ctx context.Context, userID int64) ([]DirtyRange, error)

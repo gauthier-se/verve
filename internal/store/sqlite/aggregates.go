@@ -55,6 +55,19 @@ func (r aggregates) RecordAllDirty(ctx context.Context, userID int64) error {
 	return nil
 }
 
+func (r aggregates) RecordTypeDirty(ctx context.Context, userID, typeID int64) error {
+	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
+		return q.InsertUserTypeAggregateDirtyRangeFromStats(ctx, sqlcgen.InsertUserTypeAggregateDirtyRangeFromStatsParams{
+			UserID: userID, TypeID: typeID,
+		})
+	})
+	if err != nil {
+		return fmt.Errorf("record dirty range of type %d of user %d: %w", typeID, userID, err)
+	}
+
+	return nil
+}
+
 func (r aggregates) ListDirty(ctx context.Context, userID int64) ([]store.DirtyRange, error) {
 	rows, err := r.q.read().ListUserAggregateDirtyRanges(ctx, userID)
 	if err != nil {

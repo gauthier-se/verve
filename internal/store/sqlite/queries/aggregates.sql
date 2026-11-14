@@ -95,3 +95,11 @@ SELECT EXISTS (SELECT 1
                  AND type_id = ?
                  AND from_at < sqlc.arg(to_at)
                  AND to_at >= sqlc.arg(from_at));
+
+-- name: InsertUserTypeAggregateDirtyRangeFromStats :exec
+-- The range of a type of a user, as InsertUserAggregateDirtyRangesFromStats records it, or none
+-- when the user has no samples of the type.
+INSERT INTO aggregate_dirty_ranges (user_id, type_id, from_at, to_at)
+SELECT st.user_id, st.type_id, st.first_at, st.last_at + st.longest
+FROM sample_stats AS st
+WHERE st.user_id = ? AND st.type_id = ?;

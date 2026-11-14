@@ -223,6 +223,12 @@ type SourcePriorityEntry struct {
 	Position int64
 }
 
+type SourceStat struct {
+	UserID   int64
+	SourceID int64
+	Count    int64
+}
+
 type User struct {
 	ID           int64
 	Username     string

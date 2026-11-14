@@ -92,11 +92,7 @@ func registerSamples(api huma.API, deps APIDeps) {
 			return nil, err
 		}
 
-		metricType, err := listedType(ctx, deps.Store, principal.UserID, in.Type)
-		if errors.Is(err, store.ErrNotFound) {
-			return nil, huma.NewError(http.StatusNotFound, "")
-		}
-
+		metricType, err := metricTypeOf(ctx, deps.Store, principal.UserID, in.Type)
 		if err != nil {
 			return nil, err
 		}

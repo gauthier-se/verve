@@ -328,6 +328,43 @@ func runAggregatesDirty(t *testing.T, newStore NewStoreFunc) {
 		require.Empty(t, at.mustListDirty(ctx, t, at.other.ID))
 	})
 
+	// Given samples of two types, among them a long one that does not start last, then RecordTypeDirty
+	// of one type records its range only, from the first start of its samples to the last start
+	// widened by the longest duration, and nothing for a type without samples of the user.
+	t.Run("RecordTypeDirtyRecordsTheRangeThatHoldsTheSamplesOfTheType", func(t *testing.T) {
+		t.Parallel()
+
+		at := newAggregatesTest(t, newStore)
+		ctx := t.Context()
+
+		sample := func(key string, typeID, sourceID int64, start, end time.Time) store.NewSample {
+			return store.NewSample{
+				Sample: store.Sample{
+					TypeID: typeID, SourceID: sourceID, Start: start, End: end, Value: 1, Origin: store.OriginXML,
+					NaturalKey: []byte(key),
+				},
+				OnConflict: store.ConflictIgnore,
+			}
+		}
+
+		_, err := at.store.Samples().Upsert(ctx, at.user.ID, []store.NewSample{
+			sample("long", at.steps.ID, at.source.ID, hour(0), hour(5)),
+			sample("short", at.steps.ID, at.source.ID, hour(2), hour(3)),
+		})
+		require.NoError(t, err)
+
+		_, err = at.store.Samples().Upsert(ctx, at.other.ID, []store.NewSample{sample("foreign", at.heart.ID, at.foreign.ID, hour(0), hour(1))})
+		require.NoError(t, err)
+
+		require.NoError(t, at.store.Aggregates().RecordTypeDirty(ctx, at.user.ID, at.heart.ID))
+		require.Empty(t, at.mustListDirty(ctx, t, at.user.ID), "the user has no samples of the type")
+
+		require.NoError(t, at.store.Aggregates().RecordTypeDirty(ctx, at.user.ID, at.steps.ID))
+		require.Equal(t, []store.DirtyRange{{TypeID: at.steps.ID, From: hour(0), To: hour(7)}},
+			rangesWithoutIDs(at.mustListDirty(ctx, t, at.user.ID)))
+		require.Empty(t, at.mustListDirty(ctx, t, at.other.ID))
+	})
+
 	// Given a range that ends before it starts, then RecordDirty returns store.ErrInvalid and stores
 	// none of the ranges.
 	t.Run("RecordDirtyRefusesARangeEndingBeforeItStarts", func(t *testing.T) {
