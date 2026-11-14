@@ -116,6 +116,7 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger, stderr io.
 		Catalog:        shipped,
 		Inbox:          ing.inbox,
 		MaxIngestBody:  int64(cfg.MaxIngestBody),
+		RawMaxDays:     cfg.RawMaxDays,
 	})
 	srv := NewServer(ServerConfig{Addr: cfg.ListenAddr}, handler, logger)
 

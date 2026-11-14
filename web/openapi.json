@@ -1335,6 +1335,78 @@
           "null"
         ]
       },
+      "MetricSample": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "description": "The key of the value of a category sample, left out for a quantity.",
+            "examples": [
+              "asleep_core"
+            ],
+            "type": "string"
+          },
+          "end": {
+            "description": "The end of the sample, its start for an instantaneous sample.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "examples": [
+              1042
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "max": {
+            "description": "The maximum of a pre-aggregated point, left out for other samples.",
+            "format": "double",
+            "type": "number"
+          },
+          "min": {
+            "description": "The minimum of a pre-aggregated point, left out for other samples.",
+            "format": "double",
+            "type": "number"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SampleSource",
+            "description": "The source of the sample."
+          },
+          "start": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "usedInAggregates": {
+            "description": "True when the sample counts in the aggregates: its source is the one selected for its local hour, or, for a type in combine mode, a source not ignored.",
+            "type": "boolean"
+          },
+          "utcOffset": {
+            "description": "The offset of the local time where the sample was recorded, in seconds east of UTC.",
+            "examples": [
+              3600
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "value": {
+            "description": "The value in the canonical unit of the type, 1 for a category sample.",
+            "examples": [
+              62
+            ],
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "start",
+          "end",
+          "utcOffset",
+          "value",
+          "source",
+          "usedInAggregates"
+        ],
+        "type": "object"
+      },
       "MetricsOutputBody": {
         "additionalProperties": false,
         "properties": {
@@ -1537,6 +1609,58 @@
         "required": [
           "token",
           "password"
+        ],
+        "type": "object"
+      },
+      "SampleSource": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "examples": [
+              3
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "description": "The name shown to the user.",
+            "examples": [
+              "Apple Watch"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "type": "object"
+      },
+      "SamplesOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "description": "The samples that start in the range, sorted by start then id.",
+            "items": {
+              "$ref": "#/components/schemas/MetricSample"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "description": "The cursor of the next page, left out on the last page and when maxPoints is set.",
+            "type": "string"
+          },
+          "unit": {
+            "description": "The canonical unit of the values.",
+            "examples": [
+              "count/min"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "unit",
+          "items"
         ],
         "type": "object"
       },
@@ -4516,6 +4640,170 @@
           }
         ],
         "summary": "List the metric types",
+        "tags": [
+          "Metrics"
+        ]
+      }
+    },
+    "/api/v1/metrics/{type}/samples": {
+      "get": {
+        "description": "Returns the samples of a metric type of the current user that start in a short range, with their source and whether they count in the aggregates, paginated, or downsampled with maxPoints. An uncurated type without samples of the user answers 404, as it is not listed to them. Accepts a session or a token with the `read` scope.",
+        "operationId": "list-metric-samples",
+        "parameters": [
+          {
+            "description": "The key of the metric type.",
+            "in": "path",
+            "name": "type",
+            "required": true,
+            "schema": {
+              "description": "The key of the metric type.",
+              "examples": [
+                "heart_rate"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "The first instant of the range, in RFC 3339.",
+            "explode": false,
+            "in": "query",
+            "name": "from",
+            "required": true,
+            "schema": {
+              "description": "The first instant of the range, in RFC 3339.",
+              "examples": [
+                "2026-11-10T00:00:00Z"
+              ],
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The end of the range, excluded, in RFC 3339. It must be after from, and the range at most VERVE_RAW_MAX_DAYS days long, 7 by default, or the read answers 422 range_too_long.",
+            "explode": false,
+            "in": "query",
+            "name": "to",
+            "required": true,
+            "schema": {
+              "description": "The end of the range, excluded, in RFC 3339. It must be after from, and the range at most VERVE_RAW_MAX_DAYS days long, 7 by default, or the read answers 422 range_too_long.",
+              "examples": [
+                "2026-11-11T00:00:00Z"
+              ],
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The nextCursor of the previous page, left out for the first page.",
+            "explode": false,
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "description": "The nextCursor of the previous page, left out for the first page.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The maximum number of samples of the page.",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 500,
+              "description": "The maximum number of samples of the page.",
+              "format": "int64",
+              "maximum": 5000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Returns the whole range downsampled to at most that many samples, by largest triangle three buckets, the first and last kept, without a cursor. For quantity types only: a category type answers 422 max_points_unsupported, and a cursor 422 max_points_with_cursor.",
+            "explode": false,
+            "in": "query",
+            "name": "maxPoints",
+            "schema": {
+              "description": "Returns the whole range downsampled to at most that many samples, by largest triangle three buckets, the first and last kept, without a cursor. For quantity types only: a category type answers 422 max_points_unsupported, and a cursor 422 max_points_with_cursor.",
+              "format": "int64",
+              "maximum": 5000,
+              "minimum": 2,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SamplesOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerToken": [
+              "read"
+            ]
+          }
+        ],
+        "summary": "List the raw samples of a metric",
         "tags": [
           "Metrics"
         ]

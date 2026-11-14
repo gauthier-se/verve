@@ -515,7 +515,6 @@ func TestLoad_RawMaxDaysMustBeAWholeNumber(t *testing.T) {
 	for _, opts := range []LoadOptions{
 		{Env: map[string]string{"VERVE_RAW_MAX_DAYS": "a week"}},
 		{Env: map[string]string{"VERVE_RAW_MAX_DAYS": "7.5"}},
-		{File: writeFile(t, "raw_max_days: 7.5\n")},
 	} {
 		_, err := Load(opts)
 

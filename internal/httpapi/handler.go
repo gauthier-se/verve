@@ -58,6 +58,8 @@ type Deps struct {
 	// Inbox stores the bodies of the pushes, of at most MaxIngestBody bytes (VERVE_MAX_INGEST_BODY).
 	Inbox         Inbox
 	MaxIngestBody int64
+	// RawMaxDays is the longest range of a raw samples read, in days (VERVE_RAW_MAX_DAYS).
+	RawMaxDays int
 }
 
 // NewHandler returns the root handler of the server: the health probes, the API, a JSON 404
@@ -99,6 +101,7 @@ func NewHandler(d Deps) http.Handler {
 		Catalog:        d.Catalog,
 		Inbox:          d.Inbox,
 		MaxIngestBody:  d.MaxIngestBody,
+		RawMaxDays:     d.RawMaxDays,
 	})
 
 	if d.SPA != nil {

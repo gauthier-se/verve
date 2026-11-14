@@ -92,16 +92,17 @@ All quantity and category samples are stored generically, workouts and routes ha
   - The start of a point is a UTC instant: the local hour, or the local midnight that starts its day, week, month or year. A week, month or year that starts before `from` or ends after `to` holds the days of the period only.
   - A curated type without samples of the user answers no points. An uncurated type without samples of the user answers `404`, as it is not listed to them (FR-2).
 - **FR-12**: Raw samples API for short ranges, paginated, with an optional `maxPoints` parameter that downsamples with a shape-preserving algorithm (largest triangle three buckets) for raw line charts.
-  - The range is given by `from` and `to`, RFC 3339 instants. Samples are ordered by start, then id, and paginated by an opaque cursor, with `limit` from 1 to 5,000, 500 by default.
-  - `maxPoints` returns the whole range downsampled, without pagination, for quantity types only. With a cursor, or for a category type, it answers `422`.
-  - Each sample has its source and `usedInAggregates` ([Deduplication and source priority](data-deduplication-and-source-priority.md) FR-9): true when its source is the one `agg_hourly` holds for its local hour, or when its type is in combine mode and its source is not ignored.
+  - The range is given by `from` and `to`, RFC 3339 instants, `to` excluded. It holds the samples that start in it. A `to` that is not after `from` answers `422` with the stable message `period_invalid`. Samples are ordered by start, then id, and paginated by an opaque cursor, with `limit` from 1 to 5,000, 500 by default.
+  - `maxPoints`, from 2 to 5,000, returns the whole range downsampled to at most that many samples, the first and last kept, without pagination, for quantity types only. The x of a sample is its start, and its y its value. With a cursor it answers `422` with the stable message `max_points_with_cursor`, and for a category type `max_points_unsupported`.
+  - Each sample has its start, end, original UTC offset, value, the min and max of a pre-aggregated point, the category value of a category sample, its source (id and name shown to the user) and `usedInAggregates` ([Deduplication and source priority](data-deduplication-and-source-priority.md) FR-9): true when its source is the one `agg_hourly` holds for its local hour, the local hour of its start in the timezone of the user, or when its type is in combine mode and its source is not ignored. A sample of an hour without a row, such as one waiting for its recomputation, is false. The hourly rows of a page are read in one query.
+  - A curated type without samples of the user answers no samples. An uncurated type without samples of the user answers `404`, as for the series (FR-11).
 - **FR-13**: Charts and widgets read aggregates by default. Raw reads are limited to a configurable maximum range (for example 7 days).
 
   | Variable | YAML key | Default | Purpose |
   |---|---|---|---|
   | `VERVE_RAW_MAX_DAYS` | `raw_max_days` | `7` | Longest range of a raw samples read, in days, a whole number from 1 to 366 |
 
-  A longer range answers `422`.
+  A range longer than that many days of 24 hours answers `422` with the stable message `range_too_long`.
 
 ## UX notes
 
