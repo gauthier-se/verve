@@ -10,6 +10,36 @@ import (
 	"database/sql"
 )
 
+const anyUserAggregateDirtyRange = `-- name: AnyUserAggregateDirtyRange :one
+SELECT EXISTS (SELECT 1
+               FROM aggregate_dirty_ranges
+               WHERE user_id = ?
+                 AND type_id = ?
+                 AND from_at < ?3
+                 AND to_at >= ?4)
+`
+
+type AnyUserAggregateDirtyRangeParams struct {
+	UserID int64
+	TypeID int64
+	ToAt   int64
+	FromAt int64
+}
+
+// Whether a range of a user and type overlaps [from_at, to_at). The end of a range counts, since it
+// can be the instant of a sample.
+func (q *Queries) AnyUserAggregateDirtyRange(ctx context.Context, arg AnyUserAggregateDirtyRangeParams) (bool, error) {
+	row := q.db.QueryRowContext(ctx, anyUserAggregateDirtyRange,
+		arg.UserID,
+		arg.TypeID,
+		arg.ToAt,
+		arg.FromAt,
+	)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const deleteAllUserAggDaily = `-- name: DeleteAllUserAggDaily :exec
 DELETE
 FROM agg_daily

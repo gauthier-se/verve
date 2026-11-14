@@ -79,6 +79,10 @@ type AggregatesRepository interface {
 	// that a ListDirty listed, when lastID is the largest id it returned, since the ranges recorded
 	// later have larger ids. The ranges of other users are left alone.
 	DeleteDirtyThrough(ctx context.Context, userID, lastID int64) error
+	// AnyDirty reports whether a dirty range of userID and of the type of typeID overlaps [from, to),
+	// the end of a range included since it can be the instant of a sample, so that a read of the
+	// period knows that its aggregates are being recomputed.
+	AnyDirty(ctx context.Context, userID, typeID int64, from, to time.Time) (bool, error)
 	// ReplaceHourly replaces the hourly rows of userID and of the type of typeID that start in
 	// [from, to) with rows, in one transaction. It returns ErrInvalid, and writes nothing, when a row
 	// starts outside [from, to), two rows start at the same time, or a row is not one of an hour:

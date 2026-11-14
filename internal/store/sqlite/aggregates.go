@@ -80,6 +80,17 @@ func (r aggregates) DeleteDirtyThrough(ctx context.Context, userID, lastID int64
 	return nil
 }
 
+func (r aggregates) AnyDirty(ctx context.Context, userID, typeID int64, from, to time.Time) (bool, error) {
+	dirty, err := r.q.read().AnyUserAggregateDirtyRange(ctx, sqlcgen.AnyUserAggregateDirtyRangeParams{
+		UserID: userID, TypeID: typeID, FromAt: toMillis(from), ToAt: toMillis(to),
+	})
+	if err != nil {
+		return false, fmt.Errorf("check dirty ranges of user %d: %w", userID, err)
+	}
+
+	return dirty, nil
+}
+
 func (r aggregates) ReplaceHourly(ctx context.Context, userID, typeID int64, from, to time.Time, rows []store.AggregateRow) error {
 	if err := checkAggregateRows(from, to, rows, false); err != nil {
 		return fmt.Errorf("replace hourly aggregates of user %d: %w", userID, err)

@@ -3,8 +3,8 @@
 import { type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { acceptInvitation, cancelImport, changePassword, createAdminBackup, createFirstAdmin, createInvitation, createPasswordResetLink, createToken, deleteAccount, deleteUser, downloadAdminBackup, getCurrentUser, getImport, getMeta, getPreferences, getSetupStatus, inspectInvitation, listAccountAuditEvents, listAdminAuditEvents, listAdminBackups, listAdminJobs, listAdminUsers, listImports, listMetrics, listSessions, listTokens, login, logout, type Options, pushNative, resetPassword, revokeOtherSessions, revokeSession, revokeToken, setUserRole, setUserStatus, updatePreferences } from '../sdk.gen';
-import type { AcceptInvitationData, AcceptInvitationError, AcceptInvitationResponse, CancelImportData, CancelImportError, CancelImportResponse, ChangePasswordData, ChangePasswordError, ChangePasswordResponse, CreateAdminBackupData, CreateAdminBackupError, CreateAdminBackupResponse, CreateFirstAdminData, CreateFirstAdminError, CreateFirstAdminResponse, CreateInvitationData, CreateInvitationError, CreateInvitationResponse, CreatePasswordResetLinkData, CreatePasswordResetLinkError, CreatePasswordResetLinkResponse, CreateTokenData, CreateTokenError, CreateTokenResponse, DeleteAccountData, DeleteAccountError, DeleteUserData, DeleteUserError, DeleteUserResponse, DownloadAdminBackupData, DownloadAdminBackupError, DownloadAdminBackupResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetImportData, GetImportError, GetImportResponse, GetMetaData, GetMetaError, GetMetaResponse, GetPreferencesData, GetPreferencesError, GetPreferencesResponse, GetSetupStatusData, GetSetupStatusError, GetSetupStatusResponse, InspectInvitationData, InspectInvitationError, InspectInvitationResponse, ListAccountAuditEventsData, ListAccountAuditEventsError, ListAccountAuditEventsResponse, ListAdminAuditEventsData, ListAdminAuditEventsError, ListAdminAuditEventsResponse, ListAdminBackupsData, ListAdminBackupsError, ListAdminBackupsResponse, ListAdminJobsData, ListAdminJobsError, ListAdminJobsResponse, ListAdminUsersData, ListAdminUsersError, ListAdminUsersResponse, ListImportsData, ListImportsError, ListImportsResponse, ListMetricsData, ListMetricsError, ListMetricsResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, ListTokensData, ListTokensError, ListTokensResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutError, LogoutResponse, PushNativeData, PushNativeError, PushNativeResponse, ResetPasswordData, ResetPasswordError, ResetPasswordResponse, RevokeOtherSessionsData, RevokeOtherSessionsError, RevokeOtherSessionsResponse, RevokeSessionData, RevokeSessionError, RevokeSessionResponse, RevokeTokenData, RevokeTokenError, RevokeTokenResponse, SetUserRoleData, SetUserRoleError, SetUserRoleResponse, SetUserStatusData, SetUserStatusError, SetUserStatusResponse, UpdatePreferencesData, UpdatePreferencesError, UpdatePreferencesResponse } from '../types.gen';
+import { acceptInvitation, cancelImport, changePassword, createAdminBackup, createFirstAdmin, createInvitation, createPasswordResetLink, createToken, deleteAccount, deleteUser, downloadAdminBackup, getCurrentUser, getImport, getMeta, getMetricSeries, getPreferences, getSetupStatus, inspectInvitation, listAccountAuditEvents, listAdminAuditEvents, listAdminBackups, listAdminJobs, listAdminUsers, listImports, listMetrics, listSessions, listTokens, login, logout, type Options, pushNative, resetPassword, revokeOtherSessions, revokeSession, revokeToken, setUserRole, setUserStatus, updatePreferences } from '../sdk.gen';
+import type { AcceptInvitationData, AcceptInvitationError, AcceptInvitationResponse, CancelImportData, CancelImportError, CancelImportResponse, ChangePasswordData, ChangePasswordError, ChangePasswordResponse, CreateAdminBackupData, CreateAdminBackupError, CreateAdminBackupResponse, CreateFirstAdminData, CreateFirstAdminError, CreateFirstAdminResponse, CreateInvitationData, CreateInvitationError, CreateInvitationResponse, CreatePasswordResetLinkData, CreatePasswordResetLinkError, CreatePasswordResetLinkResponse, CreateTokenData, CreateTokenError, CreateTokenResponse, DeleteAccountData, DeleteAccountError, DeleteUserData, DeleteUserError, DeleteUserResponse, DownloadAdminBackupData, DownloadAdminBackupError, DownloadAdminBackupResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetImportData, GetImportError, GetImportResponse, GetMetaData, GetMetaError, GetMetaResponse, GetMetricSeriesData, GetMetricSeriesError, GetMetricSeriesResponse, GetPreferencesData, GetPreferencesError, GetPreferencesResponse, GetSetupStatusData, GetSetupStatusError, GetSetupStatusResponse, InspectInvitationData, InspectInvitationError, InspectInvitationResponse, ListAccountAuditEventsData, ListAccountAuditEventsError, ListAccountAuditEventsResponse, ListAdminAuditEventsData, ListAdminAuditEventsError, ListAdminAuditEventsResponse, ListAdminBackupsData, ListAdminBackupsError, ListAdminBackupsResponse, ListAdminJobsData, ListAdminJobsError, ListAdminJobsResponse, ListAdminUsersData, ListAdminUsersError, ListAdminUsersResponse, ListImportsData, ListImportsError, ListImportsResponse, ListMetricsData, ListMetricsError, ListMetricsResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, ListTokensData, ListTokensError, ListTokensResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutError, LogoutResponse, PushNativeData, PushNativeError, PushNativeResponse, ResetPasswordData, ResetPasswordError, ResetPasswordResponse, RevokeOtherSessionsData, RevokeOtherSessionsError, RevokeOtherSessionsResponse, RevokeSessionData, RevokeSessionError, RevokeSessionResponse, RevokeTokenData, RevokeTokenError, RevokeTokenResponse, SetUserRoleData, SetUserRoleError, SetUserRoleResponse, SetUserStatusData, SetUserStatusError, SetUserStatusResponse, UpdatePreferencesData, UpdatePreferencesError, UpdatePreferencesResponse } from '../types.gen';
 
 /**
  * Delete the account of the current user
@@ -867,6 +867,26 @@ export const listMetricsOptions = (options?: Options<ListMetricsData>) => queryO
         return data;
     },
     queryKey: listMetricsQueryKey(options)
+});
+
+export const getMetricSeriesQueryKey = (options: Options<GetMetricSeriesData>) => createQueryKey('getMetricSeries', options);
+
+/**
+ * Read a metric as a series
+ *
+ * Returns the points of a metric type over a period of local days, from the hourly and daily aggregates of the current user. A curated type without samples answers no points, and an uncurated type without samples of the user answers 404, as it is not listed to them. Accepts a session or a token with the `read` scope.
+ */
+export const getMetricSeriesOptions = (options: Options<GetMetricSeriesData>) => queryOptions<GetMetricSeriesResponse, GetMetricSeriesError, GetMetricSeriesResponse, ReturnType<typeof getMetricSeriesQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getMetricSeries({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getMetricSeriesQueryKey(options)
 });
 
 /**
