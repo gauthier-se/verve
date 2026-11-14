@@ -73,31 +73,41 @@ func (r sourcePriorities) Set(ctx context.Context, userID, typeID int64, priorit
 			return err
 		}
 
-		for ignored, ids := range [][]int64{priorities.Order, priorities.Ignored} {
-			for position, id := range ids {
-				err := q.CreateSourcePriorityEntry(ctx, sqlcgen.CreateSourcePriorityEntryParams{
-					UserID:   userID,
-					TypeID:   typeID,
-					SourceID: id,
-					Ignored:  int64(ignored),
-					Position: int64(position),
-				})
-
-				// The priorities exist, so the failed foreign key is the source.
-				if isForeignKeyError(err) {
-					return store.ErrInvalid
-				}
-
-				if err != nil {
-					return err
-				}
-			}
+		if err := createSourcePriorityEntries(ctx, q, userID, typeID, priorities.Order, false); err != nil {
+			return err
 		}
 
-		return nil
+		return createSourcePriorityEntries(ctx, q, userID, typeID, priorities.Ignored, true)
 	})
 	if err != nil {
 		return fmt.Errorf("set source priorities of user %d for type %d: %w", userID, typeID, err)
+	}
+
+	return nil
+}
+
+// createSourcePriorityEntries stores the entries of ids, ordered or ignored, at their positions in
+// ids. The priorities of the type must exist.
+func createSourcePriorityEntries(ctx context.Context, q *sqlcgen.Queries, userID, typeID int64, ids []int64,
+	ignored bool,
+) error {
+	for position, id := range ids {
+		err := q.CreateSourcePriorityEntry(ctx, sqlcgen.CreateSourcePriorityEntryParams{
+			UserID:   userID,
+			TypeID:   typeID,
+			SourceID: id,
+			Ignored:  sqliteBool(ignored),
+			Position: int64(position),
+		})
+
+		// The priorities exist, so the failed foreign key is the source.
+		if isForeignKeyError(err) {
+			return fmt.Errorf("source %d: %w", id, store.ErrInvalid)
+		}
+
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
