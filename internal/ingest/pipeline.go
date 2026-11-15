@@ -662,6 +662,8 @@ func (b *batchRun) prepareRecord(ctx context.Context, r Record) (item, error) {
 		if err := b.prepareInvalid(ctx, &it); err != nil {
 			return item{}, err
 		}
+	case r.Unsupported != nil:
+		it.counter, it.unsupported = counter{key: r.Unsupported.Identifier}, true
 	default:
 		return item{}, fmt.Errorf("record at position %d holds no sample or workout", r.Position)
 	}
