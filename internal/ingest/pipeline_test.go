@@ -1118,3 +1118,36 @@ func TestRun_EvaluatesTheDuplicateGroupsOfTheWorkoutsOfEachBatch(t *testing.T) {
 	require.Equal(t, map[string]string{phoneRun.UUID: "", appRun.UUID: phoneRun.UUID}, env.duplicatesOf(t),
 		"removing the kept run makes the next one kept")
 }
+
+// Given records that their adapter found unsupported, such as the ActivitySummary elements of an
+// XML export, when the pipeline runs, then each counts as received and unsupported under its
+// identifier, among the records stored, and creates no type.
+func TestRun_UnsupportedRecordsCountUnderTheirIdentifier(t *testing.T) {
+	t.Parallel()
+
+	env := newPipelineEnv(t)
+
+	unsupported := func(identifier string) ingest.Record {
+		return ingest.Record{Unsupported: &ingest.Unsupported{Identifier: identifier}}
+	}
+
+	imp := env.run(t, store.OriginXML,
+		unsupported("ActivitySummary"),
+		quantity(quantitySample()),
+		unsupported("ActivitySummary"),
+		unsupported("Audiogram"),
+	)
+
+	require.Equal(t, store.ImportReport{
+		Total: store.ImportCounters{Received: 4, Inserted: 1, Unsupported: 3},
+		Types: map[string]store.ImportCounters{
+			"heart_rate":      {Received: 1, Inserted: 1},
+			"ActivitySummary": {Received: 2, Unsupported: 2},
+			"Audiogram":       {Received: 1, Unsupported: 1},
+		},
+	}, imp.Report)
+	require.Len(t, env.samples(t, "HKQuantityTypeIdentifierHeartRate"), 1)
+
+	_, err := env.store.MetricTypes().GetByIdentifier(t.Context(), "ActivitySummary")
+	require.ErrorIs(t, err, store.ErrNotFound, "an unsupported record creates no type")
+}
