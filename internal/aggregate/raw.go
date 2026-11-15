@@ -122,35 +122,46 @@ func readPage(ctx context.Context, repos store.Repositories, userID int64, metri
 	return RawPage{Samples: rawSamples(samples), More: more}, nil
 }
 
-// readDownsampled returns every sample of the range of q, downsampled to at most q.MaxPoints.
+// readDownsampled returns every sample of the range of q, downsampled to at most q.MaxPoints. It
+// holds a batch and the samples it keeps, whatever the number of samples of the range, which it
+// lists once or twice.
 func readDownsampled(ctx context.Context, repos store.Repositories, userID int64, metricType store.MetricType,
 	q RawQuery,
 ) (RawPage, error) {
-	var (
-		all   []store.Sample
-		after store.Cursor
-	)
-
-	for {
-		batch, err := repos.Samples().List(ctx, userID, store.SamplesQuery{
-			TypeID: metricType.ID, From: q.From, To: q.To, After: after, Limit: rawBatch,
-		})
-		if err != nil {
-			return RawPage{}, fmt.Errorf("list samples: %w", err)
-		}
-
-		all = append(all, batch...)
-
-		if len(batch) < rawBatch {
-			break
-		}
-
-		after = batch[len(batch)-1].Cursor()
+	count, err := repos.Samples().Count(ctx, userID, metricType.ID, q.From, q.To)
+	if err != nil {
+		return RawPage{}, fmt.Errorf("count samples: %w", err)
 	}
 
-	kept := Downsample(all, q.MaxPoints, func(s store.Sample) (float64, float64) {
+	scan := func(visit func(store.Sample)) error {
+		var after store.Cursor
+
+		for {
+			batch, err := repos.Samples().List(ctx, userID, store.SamplesQuery{
+				TypeID: metricType.ID, From: q.From, To: q.To, After: after, Limit: rawBatch,
+			})
+			if err != nil {
+				return fmt.Errorf("list samples: %w", err)
+			}
+
+			for _, sample := range batch {
+				visit(sample)
+			}
+
+			if len(batch) < rawBatch {
+				return nil
+			}
+
+			after = batch[len(batch)-1].Cursor()
+		}
+	}
+
+	kept, err := downsampleScan(int(count), q.MaxPoints, scan, func(s store.Sample) (float64, float64) {
 		return float64(s.Start.UnixMilli()), s.Value
 	})
+	if err != nil {
+		return RawPage{}, err
+	}
 
 	return RawPage{Samples: rawSamples(kept)}, nil
 }
