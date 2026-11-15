@@ -11,6 +11,7 @@ import (
 	"github.com/gauthier-se/verve/internal/clock"
 	"github.com/gauthier-se/verve/internal/ingest"
 	"github.com/gauthier-se/verve/internal/store"
+	"github.com/gauthier-se/verve/internal/workouts"
 	"github.com/gauthier-se/verve/internal/workouts/route"
 )
 
@@ -54,6 +55,7 @@ func newIngestion(st store.Store, shipped *catalog.Catalog, inboxDir string, clk
 			// The recompute jobs are written without waking a worker: the pipeline runs before the
 			// worker exists, and the worker of the import claims again as soon as the import ends.
 			DirtyRanges: aggregate.NewRecorder(nil),
+			Duplicates:  workouts.NewDetector(activities),
 		}),
 		enc: enc,
 		dec: dec,

@@ -60,13 +60,7 @@ func ResolvePriorities(metricType store.MetricType, sources []store.Source, stor
 		missing = append(missing, source)
 	}
 
-	slices.SortFunc(missing, func(a, b store.Source) int {
-		return cmp.Or(
-			cmp.Compare(ranks[a.Kind], ranks[b.Kind]),
-			a.FirstSeenAt.Compare(b.FirstSeenAt),
-			cmp.Compare(a.ID, b.ID),
-		)
-	})
+	slices.SortFunc(missing, compareSources(ranks))
 
 	// after[i] holds the missing sources that come after the first i sources of ordered.
 	after := make([][]store.Source, len(ordered)+1)
@@ -144,4 +138,23 @@ func defaultRanks(group catalog.Group) map[store.SourceKind]int {
 	}
 
 	return ranks
+}
+
+// CompareSources orders the sources of a type of the display group as its default list does (FR-4):
+// by the position of their kind, then by first seen, oldest first, then by id. Duplicate workouts
+// are ranked by the order of the activity group (FR-11).
+func CompareSources(group catalog.Group) func(a, b store.Source) int {
+	return compareSources(defaultRanks(group))
+}
+
+// compareSources orders sources by the position of their kind in ranks, then by first seen, oldest
+// first, then by id.
+func compareSources(ranks map[store.SourceKind]int) func(a, b store.Source) int {
+	return func(a, b store.Source) int {
+		return cmp.Or(
+			cmp.Compare(ranks[a.Kind], ranks[b.Kind]),
+			a.FirstSeenAt.Compare(b.FirstSeenAt),
+			cmp.Compare(a.ID, b.ID),
+		)
+	}
 }

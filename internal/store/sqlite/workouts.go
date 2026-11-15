@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"time"
 
 	"github.com/gauthier-se/verve/internal/clock"
 	"github.com/gauthier-se/verve/internal/store"
@@ -80,12 +81,13 @@ func (r workouts) List(ctx context.Context, userID int64, query store.WorkoutsQu
 
 	// The position before every workout, so that the query always has one.
 	params := sqlcgen.ListUserWorkoutsParams{
-		UserID:      userID,
-		FromAt:      toMillis(query.From),
-		ToAt:        toMillis(query.To),
-		AfterAt:     math.MaxInt64,
-		AfterID:     math.MaxInt64,
-		MaxWorkouts: int64(query.Limit),
+		UserID:         userID,
+		FromAt:         toMillis(query.From),
+		ToAt:           toMillis(query.To),
+		AfterAt:        math.MaxInt64,
+		AfterID:        math.MaxInt64,
+		MaxWorkouts:    int64(query.Limit),
+		WithDuplicates: sqliteBool(query.WithDuplicates),
 	}
 
 	if query.After != (store.Cursor{}) {
@@ -98,14 +100,9 @@ func (r workouts) List(ctx context.Context, userID int64, query store.WorkoutsQu
 		return nil, fmt.Errorf("list workouts of user %d: %w", userID, err)
 	}
 
-	list := make([]store.Workout, 0, len(rows))
-	for _, row := range rows {
-		workout, err := workoutOf(row)
-		if err != nil {
-			return nil, fmt.Errorf("list workouts of user %d: %w", userID, err)
-		}
-
-		list = append(list, workout)
+	list, err := workoutsOf(rows)
+	if err != nil {
+		return nil, fmt.Errorf("list workouts of user %d: %w", userID, err)
 	}
 
 	return list, nil
@@ -375,5 +372,104 @@ func workoutOf(row sqlcgen.Workout) (store.Workout, error) {
 		Metadata:      metadata,
 		ImportID:      row.ImportID,
 		NaturalKey:    row.NaturalKey,
+		DuplicateOf:   row.DuplicateOf.Int64,
 	}, nil
+}
+
+func (r workouts) ListStarting(ctx context.Context, userID int64, from, to time.Time) ([]store.Workout, error) {
+	rows, err := r.q.read().ListUserWorkoutsStarting(ctx, sqlcgen.ListUserWorkoutsStartingParams{
+		UserID: userID,
+		FromAt: toMillis(from),
+		ToAt:   toMillis(to),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list workouts of user %d starting from %s to %s: %w", userID, from, to, err)
+	}
+
+	list, err := workoutsOf(rows)
+	if err != nil {
+		return nil, fmt.Errorf("list workouts of user %d starting from %s to %s: %w", userID, from, to, err)
+	}
+
+	return list, nil
+}
+
+func (r workouts) ListDuplicatesOf(ctx context.Context, userID int64, keptIDs []int64) ([]store.Workout, error) {
+	if len(keptIDs) == 0 {
+		return nil, nil
+	}
+
+	ids := make([]sql.NullInt64, 0, len(keptIDs))
+	for _, id := range keptIDs {
+		ids = append(ids, sql.NullInt64{Int64: id, Valid: true})
+	}
+
+	rows, err := r.q.read().ListUserWorkoutDuplicatesOf(ctx, sqlcgen.ListUserWorkoutDuplicatesOfParams{UserID: userID, KeptIds: ids})
+	if err != nil {
+		return nil, fmt.Errorf("list duplicate workouts of user %d: %w", userID, err)
+	}
+
+	list, err := workoutsOf(rows)
+	if err != nil {
+		return nil, fmt.Errorf("list duplicate workouts of user %d: %w", userID, err)
+	}
+
+	return list, nil
+}
+
+// SetDuplicateOf checks the kept workout before the update, so that a refused one writes nothing
+// even in a WithTx whose caller commits anyway.
+func (r workouts) SetDuplicateOf(ctx context.Context, userID, id, keptID int64) error {
+	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
+		if keptID != 0 {
+			if keptID == id {
+				return fmt.Errorf("kept workout is the workout: %w", store.ErrInvalid)
+			}
+
+			_, err := q.GetUserWorkout(ctx, sqlcgen.GetUserWorkoutParams{UserID: userID, ID: keptID})
+			if errors.Is(err, sql.ErrNoRows) {
+				return fmt.Errorf("kept workout %d: %w", keptID, store.ErrInvalid)
+			}
+
+			if err != nil {
+				return err
+			}
+		}
+
+		updated, err := q.SetUserWorkoutDuplicateOf(ctx, sqlcgen.SetUserWorkoutDuplicateOfParams{
+			DuplicateOf: sql.NullInt64{Int64: keptID, Valid: keptID != 0},
+			UserID:      userID,
+			ID:          id,
+		})
+		if err != nil {
+			return err
+		}
+
+		if updated == 0 {
+			return store.ErrNotFound
+		}
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("set duplicate of workout %d of user %d: %w", id, userID, err)
+	}
+
+	return nil
+}
+
+// workoutsOf returns the workouts of rows, in their order.
+func workoutsOf(rows []sqlcgen.Workout) ([]store.Workout, error) {
+	list := make([]store.Workout, 0, len(rows))
+
+	for _, row := range rows {
+		workout, err := workoutOf(row)
+		if err != nil {
+			return nil, err
+		}
+
+		list = append(list, workout)
+	}
+
+	return list, nil
 }

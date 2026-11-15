@@ -8,13 +8,14 @@ package sqlcgen
 import (
 	"context"
 	"database/sql"
+	"strings"
 )
 
 const deleteUserWorkoutByNaturalKey = `-- name: DeleteUserWorkoutByNaturalKey :one
 DELETE
 FROM workouts
 WHERE user_id = ? AND natural_key = ?
-RETURNING id, user_id, source_id, origin, external_id, activity, start_at, end_at, utc_offset, duration, distance, active_energy, total_energy, elevation_gain, elevation_loss, avg_heart_rate, max_heart_rate, indoor, location_type, events, metadata, import_id, natural_key
+RETURNING id, user_id, source_id, origin, external_id, activity, start_at, end_at, utc_offset, duration, distance, active_energy, total_energy, elevation_gain, elevation_loss, avg_heart_rate, max_heart_rate, indoor, location_type, events, metadata, import_id, natural_key, duplicate_of
 `
 
 type DeleteUserWorkoutByNaturalKeyParams struct {
@@ -50,6 +51,7 @@ func (q *Queries) DeleteUserWorkoutByNaturalKey(ctx context.Context, arg DeleteU
 		&i.Metadata,
 		&i.ImportID,
 		&i.NaturalKey,
+		&i.DuplicateOf,
 	)
 	return i, err
 }
@@ -77,7 +79,7 @@ func (q *Queries) DeleteUserWorkouts(ctx context.Context, arg DeleteUserWorkouts
 }
 
 const getUserWorkout = `-- name: GetUserWorkout :one
-SELECT id, user_id, source_id, origin, external_id, activity, start_at, end_at, utc_offset, duration, distance, active_energy, total_energy, elevation_gain, elevation_loss, avg_heart_rate, max_heart_rate, indoor, location_type, events, metadata, import_id, natural_key
+SELECT id, user_id, source_id, origin, external_id, activity, start_at, end_at, utc_offset, duration, distance, active_energy, total_energy, elevation_gain, elevation_loss, avg_heart_rate, max_heart_rate, indoor, location_type, events, metadata, import_id, natural_key, duplicate_of
 FROM workouts
 WHERE user_id = ? AND id = ?
 `
@@ -114,6 +116,7 @@ func (q *Queries) GetUserWorkout(ctx context.Context, arg GetUserWorkoutParams) 
 		&i.Metadata,
 		&i.ImportID,
 		&i.NaturalKey,
+		&i.DuplicateOf,
 	)
 	return i, err
 }
@@ -201,31 +204,108 @@ func (q *Queries) InsertWorkout(ctx context.Context, arg InsertWorkoutParams) (i
 	return id, err
 }
 
+const listUserWorkoutDuplicatesOf = `-- name: ListUserWorkoutDuplicatesOf :many
+SELECT id, user_id, source_id, origin, external_id, activity, start_at, end_at, utc_offset, duration, distance, active_energy, total_energy, elevation_gain, elevation_loss, avg_heart_rate, max_heart_rate, indoor, location_type, events, metadata, import_id, natural_key, duplicate_of
+FROM workouts
+WHERE user_id = ?1
+  AND duplicate_of IS NOT NULL
+  AND duplicate_of IN (/*SLICE:kept_ids*/?)
+ORDER BY id
+`
+
+type ListUserWorkoutDuplicatesOfParams struct {
+	UserID  int64
+	KeptIds []sql.NullInt64
+}
+
+// The duplicates of kept workouts of a user. The condition on NULL lets the partial index on
+// (user_id, duplicate_of) answer.
+func (q *Queries) ListUserWorkoutDuplicatesOf(ctx context.Context, arg ListUserWorkoutDuplicatesOfParams) ([]Workout, error) {
+	query := listUserWorkoutDuplicatesOf
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.UserID)
+	if len(arg.KeptIds) > 0 {
+		for _, v := range arg.KeptIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:kept_ids*/?", strings.Repeat(",?", len(arg.KeptIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:kept_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Workout
+	for rows.Next() {
+		var i Workout
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.SourceID,
+			&i.Origin,
+			&i.ExternalID,
+			&i.Activity,
+			&i.StartAt,
+			&i.EndAt,
+			&i.UtcOffset,
+			&i.Duration,
+			&i.Distance,
+			&i.ActiveEnergy,
+			&i.TotalEnergy,
+			&i.ElevationGain,
+			&i.ElevationLoss,
+			&i.AvgHeartRate,
+			&i.MaxHeartRate,
+			&i.Indoor,
+			&i.LocationType,
+			&i.Events,
+			&i.Metadata,
+			&i.ImportID,
+			&i.NaturalKey,
+			&i.DuplicateOf,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUserWorkouts = `-- name: ListUserWorkouts :many
-SELECT id, user_id, source_id, origin, external_id, activity, start_at, end_at, utc_offset, duration, distance, active_energy, total_energy, elevation_gain, elevation_loss, avg_heart_rate, max_heart_rate, indoor, location_type, events, metadata, import_id, natural_key
+SELECT id, user_id, source_id, origin, external_id, activity, start_at, end_at, utc_offset, duration, distance, active_energy, total_energy, elevation_gain, elevation_loss, avg_heart_rate, max_heart_rate, indoor, location_type, events, metadata, import_id, natural_key, duplicate_of
 FROM workouts
 WHERE user_id = ?1
   AND start_at >= ?2
   AND start_at < ?3
   AND start_at <= ?4
   AND (start_at < ?4 OR id < ?5)
+  AND (CAST(?6 AS INTEGER) OR duplicate_of IS NULL)
 ORDER BY start_at DESC, id DESC
-LIMIT ?6
+LIMIT ?7
 `
 
 type ListUserWorkoutsParams struct {
-	UserID      int64
-	FromAt      int64
-	ToAt        int64
-	AfterAt     int64
-	AfterID     int64
-	MaxWorkouts int64
+	UserID         int64
+	FromAt         int64
+	ToAt           int64
+	AfterAt        int64
+	AfterID        int64
+	WithDuplicates int64
+	MaxWorkouts    int64
 }
 
 // The workouts of a user whose start is in a range, most recent first, after a position: those that
 // start before it, or at the same time with a smaller id. The position is always set, the first
-// page starting after the largest time and id. The index on (user_id, start_at), which holds the
-// id, gives them in order.
+// page starting after the largest time and id. The duplicates are left out unless asked for. The
+// index on (user_id, start_at), which holds the id, gives them in order.
 func (q *Queries) ListUserWorkouts(ctx context.Context, arg ListUserWorkoutsParams) ([]Workout, error) {
 	rows, err := q.db.QueryContext(ctx, listUserWorkouts,
 		arg.UserID,
@@ -233,6 +313,7 @@ func (q *Queries) ListUserWorkouts(ctx context.Context, arg ListUserWorkoutsPara
 		arg.ToAt,
 		arg.AfterAt,
 		arg.AfterID,
+		arg.WithDuplicates,
 		arg.MaxWorkouts,
 	)
 	if err != nil {
@@ -266,6 +347,7 @@ func (q *Queries) ListUserWorkouts(ctx context.Context, arg ListUserWorkoutsPara
 			&i.Metadata,
 			&i.ImportID,
 			&i.NaturalKey,
+			&i.DuplicateOf,
 		); err != nil {
 			return nil, err
 		}
@@ -278,6 +360,92 @@ func (q *Queries) ListUserWorkouts(ctx context.Context, arg ListUserWorkoutsPara
 		return nil, err
 	}
 	return items, nil
+}
+
+const listUserWorkoutsStarting = `-- name: ListUserWorkoutsStarting :many
+SELECT id, user_id, source_id, origin, external_id, activity, start_at, end_at, utc_offset, duration, distance, active_energy, total_energy, elevation_gain, elevation_loss, avg_heart_rate, max_heart_rate, indoor, location_type, events, metadata, import_id, natural_key, duplicate_of
+FROM workouts
+WHERE user_id = ?1
+  AND start_at >= ?2
+  AND start_at < ?3
+ORDER BY start_at, id
+`
+
+type ListUserWorkoutsStartingParams struct {
+	UserID int64
+	FromAt int64
+	ToAt   int64
+}
+
+// Every workout of a user whose start is in a range, duplicates included, from the index on
+// (user_id, start_at).
+func (q *Queries) ListUserWorkoutsStarting(ctx context.Context, arg ListUserWorkoutsStartingParams) ([]Workout, error) {
+	rows, err := q.db.QueryContext(ctx, listUserWorkoutsStarting, arg.UserID, arg.FromAt, arg.ToAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Workout
+	for rows.Next() {
+		var i Workout
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.SourceID,
+			&i.Origin,
+			&i.ExternalID,
+			&i.Activity,
+			&i.StartAt,
+			&i.EndAt,
+			&i.UtcOffset,
+			&i.Duration,
+			&i.Distance,
+			&i.ActiveEnergy,
+			&i.TotalEnergy,
+			&i.ElevationGain,
+			&i.ElevationLoss,
+			&i.AvgHeartRate,
+			&i.MaxHeartRate,
+			&i.Indoor,
+			&i.LocationType,
+			&i.Events,
+			&i.Metadata,
+			&i.ImportID,
+			&i.NaturalKey,
+			&i.DuplicateOf,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const setUserWorkoutDuplicateOf = `-- name: SetUserWorkoutDuplicateOf :execrows
+UPDATE workouts
+SET duplicate_of = ?1
+WHERE user_id = ?2
+  AND id = ?3
+`
+
+type SetUserWorkoutDuplicateOfParams struct {
+	DuplicateOf sql.NullInt64
+	UserID      int64
+	ID          int64
+}
+
+func (q *Queries) SetUserWorkoutDuplicateOf(ctx context.Context, arg SetUserWorkoutDuplicateOfParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setUserWorkoutDuplicateOf, arg.DuplicateOf, arg.UserID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const updateWorkout = `-- name: UpdateWorkout :one

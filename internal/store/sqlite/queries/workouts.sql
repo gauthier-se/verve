@@ -67,8 +67,8 @@ WHERE user_id = ? AND id = ?;
 -- name: ListUserWorkouts :many
 -- The workouts of a user whose start is in a range, most recent first, after a position: those that
 -- start before it, or at the same time with a smaller id. The position is always set, the first
--- page starting after the largest time and id. The index on (user_id, start_at), which holds the
--- id, gives them in order.
+-- page starting after the largest time and id. The duplicates are left out unless asked for. The
+-- index on (user_id, start_at), which holds the id, gives them in order.
 SELECT *
 FROM workouts
 WHERE user_id = sqlc.arg(user_id)
@@ -76,6 +76,7 @@ WHERE user_id = sqlc.arg(user_id)
   AND start_at < sqlc.arg(to_at)
   AND start_at <= sqlc.arg(after_at)
   AND (start_at < sqlc.arg(after_at) OR id < sqlc.arg(after_id))
+  AND (CAST(sqlc.arg(with_duplicates) AS INTEGER) OR duplicate_of IS NULL)
 ORDER BY start_at DESC, id DESC
 LIMIT sqlc.arg(max_workouts);
 
@@ -93,3 +94,29 @@ DELETE
 FROM workouts
 WHERE user_id = ? AND natural_key = ?
 RETURNING *;
+
+-- name: ListUserWorkoutsStarting :many
+-- Every workout of a user whose start is in a range, duplicates included, from the index on
+-- (user_id, start_at).
+SELECT *
+FROM workouts
+WHERE user_id = sqlc.arg(user_id)
+  AND start_at >= sqlc.arg(from_at)
+  AND start_at < sqlc.arg(to_at)
+ORDER BY start_at, id;
+
+-- name: ListUserWorkoutDuplicatesOf :many
+-- The duplicates of kept workouts of a user. The condition on NULL lets the partial index on
+-- (user_id, duplicate_of) answer.
+SELECT *
+FROM workouts
+WHERE user_id = sqlc.arg(user_id)
+  AND duplicate_of IS NOT NULL
+  AND duplicate_of IN (sqlc.slice(kept_ids))
+ORDER BY id;
+
+-- name: SetUserWorkoutDuplicateOf :execrows
+UPDATE workouts
+SET duplicate_of = sqlc.narg(duplicate_of)
+WHERE user_id = sqlc.arg(user_id)
+  AND id = sqlc.arg(id);
