@@ -30,7 +30,7 @@ type Priorities struct {
 // Without stored priorities, the order is thus the default list. A stored id that sources do not
 // hold, such as a source deleted between the two reads, is left out.
 func ResolvePriorities(metricType store.MetricType, sources []store.Source, stored store.SourcePriorities) Priorities {
-	ranks := defaultRanks(metricType.Group)
+	ranks := DefaultRanks(metricType.Group)
 
 	byID := make(map[int64]store.Source, len(sources))
 	for _, source := range sources {
@@ -94,11 +94,12 @@ func ResolvePriorities(metricType store.MetricType, sources []store.Source, stor
 	return resolved
 }
 
-// defaultRanks returns the position of each kind in the default list of the display group: the
+// DefaultRanks returns the position of each kind in the default list of the display group: the
 // activity and energy list for activity, the body list for body, the nutrition list for nutrition,
 // and the other list otherwise. Kinds of the same rank share a position. The kinds that a list does
-// not name come after those it names, in the order of the other list.
-func defaultRanks(group catalog.Group) map[store.SourceKind]int {
+// not name come after those it names, in the order of the other list. Duplicate workouts are ranked
+// by the activity and energy list (FR-11).
+func DefaultRanks(group catalog.Group) map[store.SourceKind]int {
 	// The apps are the sources of kind app or unknown, since a third-party app known only by its
 	// name is unknown (FR-2).
 	apps := []store.SourceKind{store.SourceApp, store.SourceUnknown}

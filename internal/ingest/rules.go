@@ -56,3 +56,26 @@ type NoDirtyRanges struct{}
 func (NoDirtyRanges) Record(context.Context, store.Repositories, int64, []DirtyRange) error {
 	return nil
 }
+
+// WorkoutChange is a workout that a batch stored, updated or removed.
+type WorkoutChange struct {
+	ID int64
+	// Start and End are the times of the workout as stored, or as it was for a removed one.
+	Start, End time.Time
+}
+
+// WorkoutDuplicates flags the duplicate workouts (FR-11 of Deduplication and source priority).
+type WorkoutDuplicates interface {
+	// Evaluate evaluates again, through tx, the transaction of their batch, the duplicate groups
+	// that changes, the workouts of userID that the batch stored, updated or removed, overlap.
+	Evaluate(ctx context.Context, tx store.Repositories, userID int64, changes []WorkoutChange) error
+}
+
+// NoWorkoutDuplicates flags nothing, for a pipeline whose workouts lists nobody reads, such as in
+// tests. The server flags with workouts.Detector.
+type NoWorkoutDuplicates struct{}
+
+// Evaluate does nothing.
+func (NoWorkoutDuplicates) Evaluate(context.Context, store.Repositories, int64, []WorkoutChange) error {
+	return nil
+}

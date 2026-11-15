@@ -35,6 +35,8 @@ type Config struct {
 	BlockRules BlockRules
 	// DirtyRanges records the ranges whose aggregates a batch changed, NoDirtyRanges when nil.
 	DirtyRanges DirtyRanges
+	// Duplicates flags the duplicate workouts of each batch, NoWorkoutDuplicates when nil.
+	Duplicates WorkoutDuplicates
 	// BatchSize is the most records of a transaction, DefaultBatchSize when 0.
 	BatchSize int
 }
@@ -57,6 +59,10 @@ func NewPipeline(cfg Config) *Pipeline {
 
 	if cfg.DirtyRanges == nil {
 		cfg.DirtyRanges = NoDirtyRanges{}
+	}
+
+	if cfg.Duplicates == nil {
+		cfg.Duplicates = NoWorkoutDuplicates{}
 	}
 
 	return &Pipeline{cfg: cfg}
@@ -150,6 +156,9 @@ type batchRun struct {
 	types map[string]mappedType
 	// typeKeys are the keys of the types of the samples that the batch removed, by type id.
 	typeKeys map[int64]string
+	// changes are the workouts that the batch stored, updated or removed, whose duplicate groups it
+	// evaluates again.
+	changes []WorkoutChange
 }
 
 // mappedType is what type mapping found for an identifier.
@@ -186,8 +195,8 @@ type item struct {
 // suspiciousReason is the sample error message of a suspicious record.
 const suspiciousReason = "start is before 2000 or more than one day after the import was created, stored as suspicious"
 
-// run maps and normalizes the records of batch, resolves their sources, stores them, and then
-// applies its deletions.
+// run maps and normalizes the records of batch, resolves their sources, stores them, applies its
+// deletions, and then evaluates again the duplicate groups of the workouts that it changed.
 func (b *batchRun) run(ctx context.Context, batch []Record) error {
 	b.types = make(map[string]mappedType)
 	b.typeKeys = make(map[int64]string)
@@ -248,7 +257,19 @@ func (b *batchRun) run(ctx context.Context, batch []Record) error {
 		}
 	}
 
-	return b.applyDeletions(ctx, deletions)
+	if err := b.applyDeletions(ctx, deletions); err != nil {
+		return err
+	}
+
+	if len(b.changes) == 0 {
+		return nil
+	}
+
+	if err := b.p.cfg.Duplicates.Evaluate(ctx, b.tx, b.imp.UserID, b.changes); err != nil {
+		return fmt.Errorf("evaluate duplicate workouts: %w", err)
+	}
+
+	return nil
 }
 
 // storable reports whether the record of it is a sample or workout that the stages after type
@@ -302,11 +323,12 @@ func (b *batchRun) applyDeletions(ctx context.Context, uuids []string) error {
 			return fmt.Errorf("delete sample: %w", err)
 		}
 
-		_, err = b.tx.Workouts().DeleteByKey(ctx, b.imp.UserID, workoutIDKey(store.OriginNative, uuid))
+		workout, err := b.tx.Workouts().DeleteByKey(ctx, b.imp.UserID, workoutIDKey(store.OriginNative, uuid))
 
 		switch {
 		case err == nil:
 			found = true
+			b.changes = append(b.changes, WorkoutChange{ID: workout.ID, Start: workout.Start, End: workout.End})
 			counter{workout: true}.add(&b.report, func(c *store.ImportCounters) { c.Deleted++ })
 		case !errors.Is(err, store.ErrNotFound):
 			return fmt.Errorf("delete workout: %w", err)
@@ -508,7 +530,9 @@ func dirtyRanges(samples []store.NewSample) []DirtyRange {
 }
 
 // storeWorkout upserts the workout of it, counts it, and stores its route: always for a workout
-// inserted or updated, and for a duplicate only when the stored workout has no route yet.
+// inserted or updated, and for a duplicate only when the stored workout has no route yet. A workout
+// that it writes is a change of the batch, a route included, since a route ranks the workouts of a
+// source.
 func (b *batchRun) storeWorkout(ctx context.Context, it *item) error {
 	upsert, err := b.tx.Workouts().Upsert(ctx, b.imp.UserID, store.NewWorkout{Workout: it.workout, OnConflict: workoutRule(it.workout)})
 	if err != nil {
@@ -526,6 +550,11 @@ func (b *batchRun) storeWorkout(ctx context.Context, it *item) error {
 		}
 	})
 
+	change := WorkoutChange{ID: upsert.ID, Start: it.workout.Start, End: it.workout.End}
+	if upsert.Outcome != store.OutcomeDuplicate {
+		b.changes = append(b.changes, change)
+	}
+
 	if it.route == nil {
 		return nil
 	}
@@ -539,6 +568,8 @@ func (b *batchRun) storeWorkout(ctx context.Context, it *item) error {
 		case !errors.Is(err, store.ErrNotFound):
 			return fmt.Errorf("get route of workout %d: %w", upsert.ID, err)
 		}
+
+		b.changes = append(b.changes, change)
 	}
 
 	if err := b.tx.Workouts().SetRoute(ctx, b.imp.UserID, upsert.ID, *it.route); err != nil {
