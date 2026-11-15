@@ -361,3 +361,160 @@ func TestRecords_ReadErrorIsNotMalformed(t *testing.T) {
 	require.NotErrorIs(t, err, applexml.ErrMalformed)
 	require.Len(t, records, 1)
 }
+
+// withDevice returns a heart rate record of the source Watch whose device attribute is device.
+func withDevice(device string) string {
+	return `<Record type="HKQuantityTypeIdentifierHeartRate" sourceName="Watch" sourceVersion="26.0" device="` + device +
+		`" unit="count/min" creationDate="2025-12-30 07:01:00 +0100" startDate="2025-12-30 07:00:00 +0100" endDate="2025-12-30 07:00:00 +0100" value="62"/>`
+}
+
+// Given the five shapes of the device string of the format, escaped or not, then the source has the
+// name of sourceName and the device fields that the string holds, the others left empty.
+// sourceVersion and creationDate are not kept, and a source has no bundle id.
+func TestRecords_SourceFromTheDeviceString(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		device string
+		want   store.SourceInfo
+	}{
+		{
+			name: "watch",
+			device: "&lt;&lt;HKDevice: 0x141b957d8&gt;, name:Apple Watch, manufacturer:Apple Inc., model:Watch, " +
+				"hardware:Watch7,3, software:26.0, creation date:2025-12-29 23:00:00 +0000&gt;",
+			want: store.SourceInfo{
+				Name: "Watch", DeviceName: "Apple Watch", Manufacturer: "Apple Inc.", DeviceModel: "Watch",
+				HardwareVersion: "Watch7,3", SoftwareVersion: "26.0",
+			},
+		},
+		{
+			name: "watch not escaped",
+			device: "&lt;&lt;HKDevice: 0x141b957d8>, name:Apple Watch, manufacturer:Apple Inc., model:Watch, " +
+				"hardware:Watch7,3, software:26.0, creation date:2025-12-29 23:00:00 +0000>",
+			want: store.SourceInfo{
+				Name: "Watch", DeviceName: "Apple Watch", Manufacturer: "Apple Inc.", DeviceModel: "Watch",
+				HardwareVersion: "Watch7,3", SoftwareVersion: "26.0",
+			},
+		},
+		{
+			name: "earbuds with firmware",
+			device: "&lt;&lt;HKDevice: 0x102f82494&gt;, name:Alex’s AirPods Pro, " +
+				"bluetoothIdentifier:5D8C0E9A-1B2F-4C3D-8E7F-0A1B2C3D4E5F, manufacturer:Apple Inc., model:AirPods Pro, " +
+				"hardware:AirPods2,2, firmware:7A100, creation date:2025-12-29 23:00:00 +0000&gt;",
+			want: store.SourceInfo{
+				Name: "Watch", DeviceName: "Alex’s AirPods Pro", Manufacturer: "Apple Inc.", DeviceModel: "AirPods Pro",
+				HardwareVersion: "AirPods2,2",
+			},
+		},
+		{
+			name: "earbuds with a local identifier",
+			device: "&lt;&lt;HKDevice: 0x10a&gt;, name:AirPods, manufacturer:Apple Inc., model:0x7777, " +
+				"localIdentifier:02:00:5E:10:00:01-tacl, creation date:2025-12-29 23:00:00 +0000&gt;",
+			want: store.SourceInfo{Name: "Watch", DeviceName: "AirPods", Manufacturer: "Apple Inc.", DeviceModel: "0x7777"},
+		},
+		{
+			name: "headset with a name only",
+			device: "&lt;&lt;HKDevice: 0x10b&gt;, name:Headset, localIdentifier:02:00:5E:10:00:02-tacl, " +
+				"creation date:2025-12-29 23:00:00 +0000&gt;",
+			want: store.SourceInfo{Name: "Watch", DeviceName: "Headset"},
+		},
+		{
+			name: "speaker with a manufacturer",
+			device: "&lt;&lt;HKDevice: 0x10c&gt;, name:Speaker, manufacturer:Acme, localIdentifier:02:00:5E:10:00:03-tacl, " +
+				"creation date:2025-12-29 23:00:00 +0000&gt;",
+			want: store.SourceInfo{Name: "Watch", DeviceName: "Speaker", Manufacturer: "Acme"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			records := readAll(t, document(withDevice(tt.device)))
+			require.Len(t, records, 1)
+			require.NotNil(t, records[0].Quantity)
+			require.Equal(t, tt.want, records[0].Quantity.Source)
+		})
+	}
+
+	t.Run("without device", func(t *testing.T) {
+		t.Parallel()
+
+		records := readAll(t, document(sleep))
+		require.Len(t, records, 1)
+		require.Equal(t, store.SourceInfo{Name: "Apple Watch de Alex"}, records[0].Category.Source)
+	})
+}
+
+// Given MetadataEntry children, then the metadata is an object of each key to its value as a
+// string, as received, units and non-ASCII characters included. A record without entries has no
+// metadata.
+func TestRecords_MetadataEntries(t *testing.T) {
+	t.Parallel()
+
+	doc := document(
+		`<Record type="HKQuantityTypeIdentifierDietaryEnergyConsumed" sourceName="Nutrio" unit="kcal" startDate="2025-12-30 08:00:00 +0100" endDate="2025-12-30 08:00:00 +0100" value="350">`,
+		` <MetadataEntry key="HKTimeZone" value="Europe/Paris"/>`,
+		` <MetadataEntry key="HKMetadataKeyBarometricPressure" value="101.325 kPa"/>`,
+		` <MetadataEntry key="Repas" value="Petit-déjeuner &amp; café &lt;maison&gt;"/>`,
+		` <MetadataEntry key="HKWasUserEntered" value="1"/>`,
+		`</Record>`,
+		`<Record type="HKCategoryTypeIdentifierSleepAnalysis" sourceName="Watch" startDate="2025-12-30 01:00:00 +0100" endDate="2025-12-30 01:30:00 +0100" value="HKCategoryValueSleepAnalysisAsleepCore">`,
+		` <MetadataEntry key="HKTimeZone" value="Europe/Paris"/>`,
+		`</Record>`,
+		heartRate,
+	)
+
+	records := readAll(t, doc)
+	require.Len(t, records, 3)
+
+	require.Equal(t, offset(t, doc, "<Record", 0), records[0].Position)
+	require.JSONEq(t, `{
+		"HKTimeZone": "Europe/Paris",
+		"HKMetadataKeyBarometricPressure": "101.325 kPa",
+		"Repas": "Petit-déjeuner & café <maison>",
+		"HKWasUserEntered": "1"
+	}`, string(records[0].Quantity.Metadata))
+	require.Contains(t, string(records[0].Quantity.Metadata), "Petit-déjeuner", "non-ASCII characters are kept as UTF-8")
+
+	require.JSONEq(t, `{"HKTimeZone": "Europe/Paris"}`, string(records[1].Category.Metadata))
+
+	require.Nil(t, records[2].Quantity.Metadata, "a record without entries has no metadata")
+}
+
+// Given a record with a HeartRateVariabilityMetadataList, then its metadata holds, under the key
+// HeartRateVariabilityMetadataList, the array of its beats as {"bpm": "...", "time": "..."}, in
+// document order, as received.
+func TestRecords_HeartRateVariabilityBeats(t *testing.T) {
+	t.Parallel()
+
+	records := readAll(t, document(
+		`<Record type="HKQuantityTypeIdentifierHeartRateVariabilitySDNN" sourceName="Watch" unit="ms" startDate="2025-12-30 14:05:00 +0100" endDate="2025-12-30 14:06:00 +0100" value="48.5">`,
+		` <MetadataEntry key="HKAlgorithmVersion" value="2"/>`,
+		` <HeartRateVariabilityMetadataList>`,
+		`  <InstantaneousBeatsPerMinute bpm="64" time="14:05:12,52"/>`,
+		`  <InstantaneousBeatsPerMinute bpm="61" time="14:05:13,46"/>`,
+		`  <InstantaneousBeatsPerMinute bpm="63" time="14:05:14,41"/>`,
+		` </HeartRateVariabilityMetadataList>`,
+		`</Record>`,
+		`<Record type="HKQuantityTypeIdentifierHeartRateVariabilitySDNN" sourceName="Watch" unit="ms" startDate="2025-12-30 15:05:00 +0100" endDate="2025-12-30 15:06:00 +0100" value="51">`,
+		` <HeartRateVariabilityMetadataList>`,
+		`  <InstantaneousBeatsPerMinute bpm="58" time="15:05:01,02"/>`,
+		` </HeartRateVariabilityMetadataList>`,
+		`</Record>`,
+	))
+	require.Len(t, records, 2)
+
+	require.JSONEq(t, `{
+		"HKAlgorithmVersion": "2",
+		"HeartRateVariabilityMetadataList": [
+			{"bpm": "64", "time": "14:05:12,52"},
+			{"bpm": "61", "time": "14:05:13,46"},
+			{"bpm": "63", "time": "14:05:14,41"}
+		]
+	}`, string(records[0].Quantity.Metadata))
+
+	require.JSONEq(t, `{"HeartRateVariabilityMetadataList": [{"bpm": "58", "time": "15:05:01,02"}]}`,
+		string(records[1].Quantity.Metadata))
+}
