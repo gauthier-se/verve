@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -1035,27 +1036,82 @@ func yamlSetting(path, value string) string {
 	return b.String()
 }
 
-// Given a fraction in the YAML file for any integer setting, then loading fails, naming the
-// setting and the value. Given a whole number written as a float, such as 7.0, then loading
-// fails too, as VERVE_RAW_MAX_DAYS=7.0 does in the environment.
-func TestLoad_FractionForAnIntegerSettingInTheFileIsInvalid(t *testing.T) {
-	t.Parallel()
+// integerSource loads one integer setting, given by its YAML path, from the YAML file or from the
+// environment. The prefix is what an error of that source starts with, before the setting name.
+type integerSource struct {
+	name   string
+	source Source
+	load   func(t *testing.T, path, value string) (cfg Config, prefix string, err error)
+}
+
+// integerSources are the two sources an integer setting is read from, which must accept the same
+// values and report the same mistakes.
+var integerSources = []integerSource{
+	{
+		name:   "file",
+		source: SourceFile,
+		load: func(t *testing.T, path, value string) (Config, string, error) {
+			t.Helper()
+
+			file := writeFile(t, yamlSetting(path, value))
+			cfg, err := Load(LoadOptions{File: file})
+
+			return cfg, fmt.Sprintf("%s:%d: ", file, strings.Count(path, ".")+1), err
+		},
+	},
+	{
+		name:   "env",
+		source: SourceEnv,
+		load: func(t *testing.T, path, value string) (Config, string, error) {
+			t.Helper()
+
+			defaults := Default()
+			cfg, err := Load(LoadOptions{Env: map[string]string{defaults.settings()[path].env: value}})
+
+			return cfg, "", err
+		},
+	},
+}
+
+// requireIntegerError loads value for every integer setting from every source and requires the
+// error `invalid value "value": reason`, naming the setting.
+func requireIntegerError(t *testing.T, value, reason string) {
+	t.Helper()
 
 	for _, path := range integerSettings(t) {
-		for _, value := range []string{"7.5", "7.0", "1e2", ".inf"} {
-			t.Run(path+"="+value, func(t *testing.T) {
+		for _, src := range integerSources {
+			t.Run(src.name+"/"+path+"="+value, func(t *testing.T) {
 				t.Parallel()
 
 				defaults := Default()
 				s := defaults.settings()[path]
-				line := strings.Count(path, ".") + 1
-				file := writeFile(t, yamlSetting(path, value))
 
-				_, err := Load(LoadOptions{File: file})
+				_, prefix, err := src.load(t, path, value)
 
-				require.EqualError(t, err, fmt.Sprintf(`%s:%d: %s: invalid value %q: must be a whole number`, file, line, s.name(), value))
+				require.EqualError(t, err, fmt.Sprintf(`%s%s: invalid value %q: %s`, prefix, s.name(), value, reason))
 			})
 		}
+	}
+}
+
+// Given a fraction for any integer setting, in the YAML file or in the environment, then loading
+// fails, naming the setting and the value. Given a whole number written as a float, such as 7.0,
+// or a text that is not a number, then loading fails the same way.
+func TestLoad_NotAWholeNumberForAnIntegerSettingIsInvalid(t *testing.T) {
+	t.Parallel()
+
+	for _, value := range []string{"7.5", "7.0", "1e2", ".inf", "a week"} {
+		requireIntegerError(t, value, "must be a whole number")
+	}
+}
+
+// Given a hexadecimal, octal, binary or underscore-separated integer for any integer setting, in
+// the YAML file or in the environment, then loading fails in both, asking for decimal digits.
+func TestLoad_NonDecimalIntegerForAnIntegerSettingIsInvalid(t *testing.T) {
+	t.Parallel()
+
+	for _, value := range []string{"0x10", "0o17", "0b101", "1_0"} {
+		requireIntegerError(t, value, "must be written in decimal digits")
 	}
 }
 
@@ -1072,41 +1128,39 @@ func TestLoad_FractionThroughAnAliasNamesTheValue(t *testing.T) {
 	require.Contains(t, err.Error(), file+`:3: raw_max_days (VERVE_RAW_MAX_DAYS): invalid value "7.5": must be a whole number`)
 }
 
-// Given a whole number too large for an integer, which YAML reads as a float, in the file for any
-// integer setting, then loading fails, saying the value is too large rather than a fraction.
-func TestLoad_HugeWholeNumberForAnIntegerSettingInTheFileIsTooLarge(t *testing.T) {
+// Given a whole number too large or too small for an integer, which YAML reads as a float, for any
+// integer setting, in the YAML file or in the environment, then loading fails, saying so rather
+// than reporting a fraction.
+func TestLoad_HugeWholeNumberForAnIntegerSettingIsOutOfRange(t *testing.T) {
 	t.Parallel()
 
-	for _, path := range integerSettings(t) {
-		t.Run(path, func(t *testing.T) {
-			t.Parallel()
-
-			defaults := Default()
-			s := defaults.settings()[path]
-			line := strings.Count(path, ".") + 1
-			file := writeFile(t, yamlSetting(path, "99999999999999999999"))
-
-			_, err := Load(LoadOptions{File: file})
-
-			require.EqualError(t, err, fmt.Sprintf(`%s:%d: %s: invalid value "99999999999999999999": too large`, file, line, s.name()))
-		})
-	}
+	requireIntegerError(t, "99999999999999999999", "too large")
+	requireIntegerError(t, "-99999999999999999999", "too small")
 }
 
-// Given a whole number in the YAML file for any integer setting, then it loads from the file.
-func TestLoad_WholeNumberForAnIntegerSettingInTheFile(t *testing.T) {
+// Given a whole number in decimal digits for any integer setting, in the YAML file or in the
+// environment, with an optional sign or leading zeros, then it loads from that source. A leading
+// zero does not make the number octal.
+func TestLoad_WholeNumberForAnIntegerSetting(t *testing.T) {
 	t.Parallel()
 
 	for _, path := range integerSettings(t) {
-		t.Run(path, func(t *testing.T) {
-			t.Parallel()
+		for _, src := range integerSources {
+			for _, value := range []string{"8", "+8", "08", "010"} {
+				t.Run(src.name+"/"+path+"="+value, func(t *testing.T) {
+					t.Parallel()
 
-			cfg, err := Load(LoadOptions{File: writeFile(t, yamlSetting(path, "8"))})
+					want, err := strconv.Atoi(value)
+					require.NoError(t, err)
 
-			require.NoError(t, err)
-			require.EqualValues(t, 8, cfg.settings()[path].value.Interface())
-			require.Equal(t, SourceFile, cfg.Sources[path])
-		})
+					cfg, _, err := src.load(t, path, value)
+
+					require.NoError(t, err)
+					require.EqualValues(t, want, cfg.settings()[path].value.Interface())
+					require.Equal(t, src.source, cfg.Sources[path])
+				})
+			}
+		}
 	}
 }
 
