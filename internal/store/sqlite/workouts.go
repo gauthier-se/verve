@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"slices"
 	"math"
+	"slices"
 	"time"
 
 	"github.com/gauthier-se/verve/internal/clock"

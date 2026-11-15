@@ -184,7 +184,6 @@ func registerSources(api huma.API, deps APIDeps, recorder aggregate.Recorder) {
 	})
 }
 
-
 // sourceOf returns source, of samples samples, as the API describes it.
 func sourceOf(source store.Source, samples int64) Source {
 	out := Source{
