@@ -2,10 +2,12 @@ package config
 
 import (
 	"bytes"
+	"fmt"
 	"net/netip"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -993,6 +995,119 @@ func TestLoad_NullValueInFileIsIgnored(t *testing.T) {
 	require.Equal(t, SourceDefault, cfg.Sources["max_upload_size"])
 	require.Equal(t, SourceDefault, cfg.Sources["listen_addr"])
 	require.Equal(t, SourceDefault, cfg.Sources["log.level"])
+}
+
+// integerSettings lists the YAML paths of the integer settings of the file, found by reflection so
+// that a new integer setting is covered without changing the tests.
+func integerSettings(t *testing.T) []string {
+	t.Helper()
+
+	cfg := Default()
+
+	var paths []string
+	for path, s := range cfg.settings() {
+		if isInteger(s.value) && !s.envOnly {
+			paths = append(paths, path)
+		}
+	}
+
+	slices.Sort(paths)
+	require.Subset(t, paths, []string{"audit.retention_days", "backup.keep", "raw_max_days"})
+
+	return paths
+}
+
+// yamlSetting writes a setting given by its YAML path, for example "audit.retention_days", as a
+// YAML document with one mapping per group.
+func yamlSetting(path, value string) string {
+	var b strings.Builder
+
+	keys := strings.Split(path, ".")
+	for i, key := range keys {
+		b.WriteString(strings.Repeat("  ", i) + key + ":")
+		if i < len(keys)-1 {
+			b.WriteString("\n")
+		}
+	}
+
+	b.WriteString(" " + value + "\n")
+
+	return b.String()
+}
+
+// Given a fraction in the YAML file for any integer setting, then loading fails, naming the
+// setting and the value. Given a whole number written as a float, such as 7.0, then loading
+// fails too, as VERVE_RAW_MAX_DAYS=7.0 does in the environment.
+func TestLoad_FractionForAnIntegerSettingInTheFileIsInvalid(t *testing.T) {
+	t.Parallel()
+
+	for _, path := range integerSettings(t) {
+		for _, value := range []string{"7.5", "7.0", "1e2", ".inf"} {
+			t.Run(path+"="+value, func(t *testing.T) {
+				t.Parallel()
+
+				defaults := Default()
+				s := defaults.settings()[path]
+				line := strings.Count(path, ".") + 1
+				file := writeFile(t, yamlSetting(path, value))
+
+				_, err := Load(LoadOptions{File: file})
+
+				require.EqualError(t, err, fmt.Sprintf(`%s:%d: %s: invalid value %q: must be a whole number`, file, line, s.name(), value))
+			})
+		}
+	}
+}
+
+// Given a fraction reached through a YAML alias for an integer setting, then the error names the
+// value of the anchor, not the name of the alias.
+func TestLoad_FractionThroughAnAliasNamesTheValue(t *testing.T) {
+	t.Parallel()
+
+	file := writeFile(t, "audit:\n  retention_days: &days 7.5\nraw_max_days: *days\n")
+
+	_, err := Load(LoadOptions{File: file})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), file+`:3: raw_max_days (VERVE_RAW_MAX_DAYS): invalid value "7.5": must be a whole number`)
+}
+
+// Given a whole number too large for an integer, which YAML reads as a float, in the file for any
+// integer setting, then loading fails, saying the value is too large rather than a fraction.
+func TestLoad_HugeWholeNumberForAnIntegerSettingInTheFileIsTooLarge(t *testing.T) {
+	t.Parallel()
+
+	for _, path := range integerSettings(t) {
+		t.Run(path, func(t *testing.T) {
+			t.Parallel()
+
+			defaults := Default()
+			s := defaults.settings()[path]
+			line := strings.Count(path, ".") + 1
+			file := writeFile(t, yamlSetting(path, "99999999999999999999"))
+
+			_, err := Load(LoadOptions{File: file})
+
+			require.EqualError(t, err, fmt.Sprintf(`%s:%d: %s: invalid value "99999999999999999999": too large`, file, line, s.name()))
+		})
+	}
+}
+
+// Given a whole number in the YAML file for any integer setting, then it loads from the file.
+func TestLoad_WholeNumberForAnIntegerSettingInTheFile(t *testing.T) {
+	t.Parallel()
+
+	for _, path := range integerSettings(t) {
+		t.Run(path, func(t *testing.T) {
+			t.Parallel()
+
+			cfg, err := Load(LoadOptions{File: writeFile(t, yamlSetting(path, "8"))})
+
+			require.NoError(t, err)
+			require.EqualValues(t, 8, cfg.settings()[path].value.Interface())
+			require.Equal(t, SourceFile, cfg.Sources[path])
+		})
+	}
 }
 
 // sameFieldNames has two settings with the same Go field name and type in different groups,
