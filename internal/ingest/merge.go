@@ -99,6 +99,15 @@ type Recomputer interface {
 	RecomputeTypes(ctx context.Context, tx store.Repositories, userID int64, typeIDs ...int64) error
 }
 
+// NoRecompute recomputes nothing, for a merger whose aggregates nobody reads, such as in tests. The
+// server recomputes with aggregate.Recorder.
+type NoRecompute struct{}
+
+// RecomputeTypes does nothing.
+func (NoRecompute) RecomputeTypes(context.Context, store.Repositories, int64, ...int64) error {
+	return nil
+}
+
 // MergeConfig configures a Merger.
 type MergeConfig struct {
 	Store store.Store
@@ -107,7 +116,8 @@ type MergeConfig struct {
 	DirtyRanges DirtyRanges
 	// Duplicates flags the duplicate workouts of each batch, NoWorkoutDuplicates when nil.
 	Duplicates WorkoutDuplicates
-	// Recompute recomputes the aggregates of the types of the target once a merge ends.
+	// Recompute recomputes the aggregates of the types of the target once a merge ends, NoRecompute
+	// when nil.
 	Recompute Recomputer
 	// BatchSize is the most records that a transaction moves, DefaultBatchSize when 0.
 	BatchSize int
@@ -131,6 +141,10 @@ func NewMerger(cfg MergeConfig) *Merger {
 
 	if cfg.Duplicates == nil {
 		cfg.Duplicates = NoWorkoutDuplicates{}
+	}
+
+	if cfg.Recompute == nil {
+		cfg.Recompute = NoRecompute{}
 	}
 
 	return &Merger{cfg: cfg}

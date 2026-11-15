@@ -108,11 +108,10 @@ type SourcesRepository interface {
 	// An alias matched returns its source, and a source merged into another, or the source of an
 	// alias that is, returns the target of the merge, as if the identity were an alias of it. The
 	// model that a matched identity without model takes stays on that identity. The returned
-	// source keeps its FirstSeenAt, and its
-	// LastSeenAt never moves back. When seenAt is not before LastSeenAt, the details of info that
-	// are not empty, and kind unless it is SourceUnknown, replace those of the source. Otherwise
-	// they only fill the empty ones, and kind only replaces SourceUnknown. A kind set by the user
-	// is always kept.
+	// source keeps its FirstSeenAt, and its LastSeenAt never moves back. When seenAt is not before
+	// LastSeenAt, the details of info that are not empty, and kind unless it is SourceUnknown,
+	// replace those of the source. Otherwise they only fill the empty ones, and kind only replaces
+	// SourceUnknown. A kind set by the user is always kept.
 	//
 	// It returns ErrInvalid when the name of info is empty or kind not Known, and ErrNotFound when
 	// no user has userID.
