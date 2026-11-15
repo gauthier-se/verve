@@ -1,9 +1,11 @@
 package config
 
 import (
+	"encoding"
 	"errors"
 	"fmt"
 	"os"
+	"reflect"
 	"slices"
 	"strings"
 
@@ -127,6 +129,13 @@ func (l *fileLoader) mapping(node *yaml.Node, prefix string) {
 				continue
 			}
 
+			// The YAML decoder silently drops the fraction of a float decoded into an integer.
+			if isInteger(s.value) && value.ShortTag() == "!!float" {
+				l.errs = append(l.errs, fmt.Errorf("%s:%d: %s: %w", l.path, value.Line, s.name(), invalidValue(value.Value, "must be a whole number")))
+
+				continue
+			}
+
 			if err := value.Decode(s.value.Addr().Interface()); err != nil {
 				l.errs = append(l.errs, fmt.Errorf("%s:%d: %s: %w", l.path, value.Line, s.name(), err))
 
@@ -152,6 +161,16 @@ func (l *fileLoader) mapping(node *yaml.Node, prefix string) {
 
 		l.errs = append(l.errs, fmt.Errorf("%s:%d: unknown key %q", l.path, key.Line, path))
 	}
+}
+
+// isInteger reports whether a setting is held in a plain integer field. Types that parse their own
+// text, such as ByteSize, reject a fraction themselves.
+func isInteger(v reflect.Value) bool {
+	if _, ok := v.Addr().Interface().(encoding.TextUnmarshaler); ok {
+		return false
+	}
+
+	return v.CanInt() || v.CanUint()
 }
 
 // loadEnv applies the VERVE_* environment variables to target, a pointer to the configuration
