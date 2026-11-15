@@ -19,10 +19,12 @@ import (
 // of varints of at most 10 bytes, with their bitmaps, fit in it.
 const routeDecoderMaxMemory = 128 << 20
 
-// ingestion holds what the imports need: the inbox of the pushes and the pipeline.
+// ingestion holds what the imports and the merges of sources need: the inbox of the pushes, the
+// pipeline and the merger.
 type ingestion struct {
 	inbox    *ingest.Inbox
 	pipeline *ingest.Pipeline
+	merger   *ingest.Merger
 	enc      *zstd.Encoder
 	dec      *zstd.Decoder
 }
@@ -45,17 +47,26 @@ func newIngestion(st store.Store, shipped *catalog.Catalog, inboxDir string, clk
 		return nil, errors.Join(fmt.Errorf("create route decoder: %w", err), enc.Close())
 	}
 
+	// The recompute jobs are written without waking a worker: the pipeline runs before the worker
+	// exists, and the worker of the import or of the merge claims again as soon as it ends.
+	recorder := aggregate.NewRecorder(nil)
+	detector := workouts.NewDetector(activities)
+
 	return &ingestion{
 		inbox: ingest.NewInbox(inboxDir, clk),
 		pipeline: ingest.NewPipeline(ingest.Config{
-			Store:      st,
-			Catalog:    shipped,
-			Activities: activities,
-			Codec:      route.NewCodec(enc, dec),
-			// The recompute jobs are written without waking a worker: the pipeline runs before the
-			// worker exists, and the worker of the import claims again as soon as the import ends.
-			DirtyRanges: aggregate.NewRecorder(nil),
-			Duplicates:  workouts.NewDetector(activities),
+			Store:       st,
+			Catalog:     shipped,
+			Activities:  activities,
+			Codec:       route.NewCodec(enc, dec),
+			DirtyRanges: recorder,
+			Duplicates:  detector,
+		}),
+		merger: ingest.NewMerger(ingest.MergeConfig{
+			Store:       st,
+			DirtyRanges: recorder,
+			Duplicates:  detector,
+			Recompute:   recorder,
 		}),
 		enc: enc,
 		dec: dec,

@@ -16,6 +16,7 @@ import (
 	"github.com/gauthier-se/verve/internal/catalog"
 	"github.com/gauthier-se/verve/internal/clock"
 	"github.com/gauthier-se/verve/internal/config"
+	"github.com/gauthier-se/verve/internal/ingest"
 	"github.com/gauthier-se/verve/internal/ingest/native"
 	"github.com/gauthier-se/verve/internal/jobs"
 	"github.com/gauthier-se/verve/internal/store"
@@ -262,4 +263,49 @@ func TestJobs_ImportNativeQueuesTheRecomputationOfTheAggregates(t *testing.T) {
 	require.Len(t, days, 1)
 	require.Equal(t, time.Date(2026, 11, 10, 0, 0, 0, 0, time.UTC), days[0].Start)
 	require.InDelta(t, 1240, days[0].Sum, 0)
+}
+
+// Given a sample of a source merged into another, when the jobs of the server run, then the
+// sources.merge job moves the sample to the target and replaces the merged source by an alias.
+func TestJobs_MergeSourcesMovesTheRecordsToTheTarget(t *testing.T) {
+	t.Parallel()
+
+	jt := newJobsTest(t)
+	ctx := t.Context()
+	alice := jt.mustCreateUser(t, "alice", store.UserActive)
+
+	at := time.Date(2026, 11, 10, 8, 0, 0, 0, time.UTC)
+
+	old, err := jt.store.Sources().Resolve(ctx, alice.ID, store.SourceInfo{Name: "Ancienne montre", DeviceModel: "Watch"}, store.SourceWatch, at)
+	require.NoError(t, err)
+
+	target, err := jt.store.Sources().Resolve(ctx, alice.ID, store.SourceInfo{Name: "Montre", DeviceModel: "Watch"}, store.SourceWatch, at)
+	require.NoError(t, err)
+
+	steps, err := jt.store.MetricTypes().GetByKey(ctx, "step_count")
+	require.NoError(t, err)
+
+	_, err = jt.store.Samples().Upsert(ctx, alice.ID, []store.NewSample{{
+		Sample: store.Sample{
+			TypeID: steps.ID, SourceID: old.ID, Start: at, End: at.Add(10 * time.Minute), Value: 1240,
+			Origin: store.OriginXML, UUID: "2C7B5E1A-9D3F-4B6C-8E0A-1F2D3C4B5A69", NaturalKey: []byte("steps"),
+		},
+		OnConflict: store.ConflictUpdateIfChanged,
+	}})
+	require.NoError(t, err)
+
+	require.NoError(t, ingest.StartMerge(ctx, jt.store, nil, alice.ID, target.ID, []int64{old.ID}))
+
+	claimed, err := jt.worker.Tick(ctx)
+	require.NoError(t, err)
+	require.True(t, claimed)
+
+	sources, err := jt.store.Sources().List(ctx, alice.ID)
+	require.NoError(t, err)
+	require.Len(t, sources, 1)
+	require.Equal(t, target.ID, sources[0].ID)
+
+	counts, err := jt.store.Sources().SampleCounts(ctx, alice.ID)
+	require.NoError(t, err)
+	require.Equal(t, map[int64]int64{target.ID: 1}, counts)
 }
