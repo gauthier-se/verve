@@ -175,6 +175,12 @@ func TestRecords_InvalidValues(t *testing.T) {
 			reason: "value is not a number",
 		},
 		{
+			name:   "quantity with a hexadecimal value",
+			record: `<Record type="HKQuantityTypeIdentifierHeartRate" sourceName="Watch" unit="count/min" startDate="2025-12-30 07:00:00 +0100" endDate="2025-12-30 07:00:00 +0100" value="0x1p4"/>`,
+			typ:    "HKQuantityTypeIdentifierHeartRate",
+			reason: "value is not a number",
+		},
+		{
 			name:   "quantity without value",
 			record: `<Record type="HKQuantityTypeIdentifierHeartRate" sourceName="Watch" unit="count/min" startDate="2025-12-30 07:00:00 +0100" endDate="2025-12-30 07:00:00 +0100"/>`,
 			typ:    "HKQuantityTypeIdentifierHeartRate",
@@ -264,6 +270,7 @@ func TestRecords_OtherDatesMakeTheRecordInvalid(t *testing.T) {
 		{name: "empty start", start: "", end: valid, reason: "startDate is not a date"},
 		{name: "end without seconds", start: valid, end: "2025-12-30 07:00 +0100", reason: "endDate is not a date"},
 		{name: "end out of range", start: valid, end: "2025-13-30 07:00:00 +0100", reason: "endDate is not a date"},
+		{name: "end with a decimal comma", start: valid, end: "2025-12-30 07:00:00,25 +0100", reason: "endDate is not a date"},
 	}
 
 	for _, tt := range tests {
