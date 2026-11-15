@@ -192,6 +192,7 @@ func RunWorkouts(t *testing.T, newStore NewStoreFunc) {
 	runWorkoutsGet(t, newStore)
 	runWorkoutsDelete(t, newStore)
 	runWorkoutsDeleteByKey(t, newStore)
+	runWorkoutsDuplicates(t, newStore)
 }
 
 // runWorkoutsUpsert runs the cases of the workouts stored by an upsert.
@@ -669,4 +670,141 @@ func runWorkoutsDeleteByKey(t *testing.T, newStore NewStoreFunc) {
 		require.Len(t, st.mustListAll(ctx, t, st.other.ID), 2)
 		require.Equal(t, parisRoute(), st.mustGetRoute(ctx, t, st.other.ID, foreign.ID))
 	})
+}
+
+// runWorkoutsDuplicates runs the cases of the duplicate workouts (FR-11 of Deduplication and source
+// priority).
+func runWorkoutsDuplicates(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+
+	// Given a phone run set as a duplicate of a watch run, when List reads the workouts, then it
+	// leaves the duplicate out unless asked for the duplicates, and each workout says which one it
+	// duplicates. Given the duplicate set as kept again, then List returns it.
+	t.Run("ListLeavesOutDuplicatesUnlessAskedForThem", func(t *testing.T) {
+		t.Parallel()
+
+		st := newWorkoutsTest(t, newStore)
+		ctx := t.Context()
+
+		watch := st.mustUpsert(ctx, t, st.user.ID, st.run("watch", workoutsTime))
+
+		copied := st.run("phone", workoutsTime.Add(time.Minute))
+		copied.SourceID = st.phone.ID
+		phone := st.mustUpsert(ctx, t, st.user.ID, copied)
+
+		require.NoError(t, st.store.Workouts().SetDuplicateOf(ctx, st.user.ID, phone.ID, watch.ID))
+
+		require.Equal(t, []int64{watch.ID}, workoutIDs(st.mustListAll(ctx, t, st.user.ID)))
+
+		query := allWorkouts
+		query.Limit, query.Duplicates = 10, true
+
+		all, err := st.store.Workouts().List(ctx, st.user.ID, query)
+		require.NoError(t, err)
+		require.Equal(t, []int64{phone.ID, watch.ID}, workoutIDs(all))
+		require.Equal(t, watch.ID, all[0].DuplicateOf)
+		require.Zero(t, all[1].DuplicateOf)
+		require.Equal(t, watch.ID, st.mustGet(ctx, t, st.user.ID, phone.ID).DuplicateOf)
+
+		require.NoError(t, st.store.Workouts().SetDuplicateOf(ctx, st.user.ID, phone.ID, 0))
+		require.Equal(t, []int64{phone.ID, watch.ID}, workoutIDs(st.mustListAll(ctx, t, st.user.ID)))
+		require.Zero(t, st.mustGet(ctx, t, st.user.ID, phone.ID).DuplicateOf)
+	})
+
+	// Given an id that the user has no workout of, then SetDuplicateOf answers ErrNotFound. Given a
+	// kept workout that is the workout itself or that the user does not have, then it answers
+	// ErrInvalid. It changes nothing then.
+	t.Run("SetDuplicateOfRefusesAnUnknownWorkoutOrKeptWorkout", func(t *testing.T) {
+		t.Parallel()
+
+		st := newWorkoutsTest(t, newStore)
+		ctx := t.Context()
+
+		workout := st.mustUpsert(ctx, t, st.user.ID, st.run("watch", workoutsTime))
+		foreign := st.mustUpsert(ctx, t, st.other.ID, st.foreignRun("foreign", workoutsTime))
+
+		err := st.store.Workouts().SetDuplicateOf(ctx, st.user.ID, foreign.ID, workout.ID)
+		require.ErrorIs(t, err, store.ErrNotFound)
+
+		err = st.store.Workouts().SetDuplicateOf(ctx, st.user.ID, workout.ID+foreign.ID, workout.ID)
+		require.ErrorIs(t, err, store.ErrNotFound)
+
+		for _, kept := range []int64{workout.ID, foreign.ID, workout.ID + foreign.ID} {
+			err := st.store.Workouts().SetDuplicateOf(ctx, st.user.ID, workout.ID, kept)
+			require.ErrorIs(t, err, store.ErrInvalid)
+		}
+
+		require.Zero(t, st.mustGet(ctx, t, st.user.ID, workout.ID).DuplicateOf)
+		require.Zero(t, st.mustGet(ctx, t, st.other.ID, foreign.ID).DuplicateOf)
+	})
+
+	// Given workouts of a user around a range, a duplicate among them, and a workout of another user,
+	// when ListStarting reads the range, then it returns every workout of that user whose start is
+	// in the range, the duplicate included, by start then id.
+	t.Run("ListStartingReturnsEveryWorkoutStartingInTheRange", func(t *testing.T) {
+		t.Parallel()
+
+		st := newWorkoutsTest(t, newStore)
+		ctx := t.Context()
+
+		from, to := workoutsUTC, workoutsUTC.Add(2*time.Hour)
+
+		st.mustUpsert(ctx, t, st.user.ID, st.run("before", from.Add(-time.Millisecond)))
+		late := st.mustUpsert(ctx, t, st.user.ID, st.run("late", to.Add(-time.Millisecond)))
+		first := st.mustUpsert(ctx, t, st.user.ID, st.run("first", from))
+		second := st.mustUpsert(ctx, t, st.user.ID, st.run("second", from))
+		st.mustUpsert(ctx, t, st.user.ID, st.run("to", to))
+		st.mustUpsert(ctx, t, st.other.ID, st.foreignRun("foreign", from))
+
+		require.NoError(t, st.store.Workouts().SetDuplicateOf(ctx, st.user.ID, second.ID, first.ID))
+
+		got, err := st.store.Workouts().ListStarting(ctx, st.user.ID, from, to)
+		require.NoError(t, err)
+		require.Equal(t, []int64{first.ID, second.ID, late.ID}, workoutIDs(got))
+		require.Equal(t, first.ID, got[1].DuplicateOf)
+	})
+
+	// Given duplicates of three kept workouts, and a duplicate of another user, when
+	// ListDuplicatesOf reads the duplicates of two of them, then it returns those of that user, by
+	// id.
+	t.Run("ListDuplicatesOfReturnsTheDuplicatesOfTheKeptWorkouts", func(t *testing.T) {
+		t.Parallel()
+
+		st := newWorkoutsTest(t, newStore)
+		ctx := t.Context()
+
+		var ids []int64
+
+		for _, key := range []string{"kept-a", "kept-b", "of-a", "of-b", "other-of-a", "kept-c", "of-c"} {
+			ids = append(ids, st.mustUpsert(ctx, t, st.user.ID, st.run(key, workoutsTime)).ID)
+		}
+
+		keptA, keptB, ofA, ofB, otherOfA, keptC, ofC := ids[0], ids[1], ids[2], ids[3], ids[4], ids[5], ids[6]
+
+		for duplicate, kept := range map[int64]int64{ofA: keptA, ofB: keptB, otherOfA: keptA, ofC: keptC} {
+			require.NoError(t, st.store.Workouts().SetDuplicateOf(ctx, st.user.ID, duplicate, kept))
+		}
+
+		foreignKept := st.mustUpsert(ctx, t, st.other.ID, st.foreignRun("foreign-kept", workoutsTime))
+		foreignOf := st.mustUpsert(ctx, t, st.other.ID, st.foreignRun("foreign-of", workoutsTime))
+		require.NoError(t, st.store.Workouts().SetDuplicateOf(ctx, st.other.ID, foreignOf.ID, foreignKept.ID))
+
+		got, err := st.store.Workouts().ListDuplicatesOf(ctx, st.user.ID, []int64{keptB, keptA, foreignKept.ID})
+		require.NoError(t, err)
+		require.Equal(t, []int64{ofA, ofB, otherOfA}, workoutIDs(got))
+
+		got, err = st.store.Workouts().ListDuplicatesOf(ctx, st.user.ID, nil)
+		require.NoError(t, err)
+		require.Empty(t, got)
+	})
+}
+
+// workoutIDs returns the ids of workouts, in their order.
+func workoutIDs(workouts []store.Workout) []int64 {
+	ids := make([]int64, 0, len(workouts))
+	for _, workout := range workouts {
+		ids = append(ids, workout.ID)
+	}
+
+	return ids
 }

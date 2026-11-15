@@ -19,6 +19,7 @@ import (
 	"github.com/gauthier-se/verve/internal/ingest"
 	"github.com/gauthier-se/verve/internal/store"
 	"github.com/gauthier-se/verve/internal/store/sqlite"
+	"github.com/gauthier-se/verve/internal/workouts"
 	"github.com/gauthier-se/verve/internal/workouts/route"
 )
 
@@ -1036,4 +1037,84 @@ func TestRun_RecordsThatTheAdapterFoundInvalid(t *testing.T) {
 
 	_, err := env.store.MetricTypes().GetByIdentifier(t.Context(), "HKQuantityTypeIdentifierSomethingNew")
 	require.ErrorIs(t, err, store.ErrNotFound, "an invalid record creates no type")
+}
+
+// duplicatesOf returns the uuid of the kept workout that each stored workout of the user
+// duplicates, by uuid, empty for a kept workout.
+func (e *pipelineEnv) duplicatesOf(t *testing.T) map[string]string {
+	t.Helper()
+
+	all, err := e.store.Workouts().List(t.Context(), e.user.ID, store.WorkoutsQuery{
+		From:       time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC),
+		To:         time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC),
+		Limit:      1000,
+		Duplicates: true,
+	})
+	require.NoError(t, err)
+
+	uuids := make(map[int64]string, len(all))
+	for _, w := range all {
+		uuids[w.ID] = w.ExternalID
+	}
+
+	duplicates := make(map[string]string, len(all))
+	for _, w := range all {
+		duplicates[w.ExternalID] = uuids[w.DuplicateOf]
+	}
+
+	return duplicates
+}
+
+// Given native runs of a watch, a phone and an app that overlap one another, when batches store,
+// update and remove them, then the transaction of each batch evaluates again the duplicate groups
+// that its workouts overlap, before and after an update: the run of the source of the highest
+// rank is kept and the others point to it, and when the kept run is moved away or removed, the
+// next one becomes kept. The workouts list leaves the duplicates out.
+func TestRun_EvaluatesTheDuplicateGroupsOfTheWorkoutsOfEachBatch(t *testing.T) {
+	t.Parallel()
+
+	env := newPipelineEnv(t)
+	pipeline := env.pipeline(func(cfg *ingest.Config) { cfg.Duplicates = workouts.NewDetector(env.activities) })
+
+	runNative := func(records ...ingest.Record) {
+		t.Helper()
+
+		imp := env.running(t, store.OriginNative)
+		require.NoError(t, pipeline.Run(t.Context(), env.user.ID, imp.ID, recordsOf(records...)))
+	}
+
+	watchRun := workout()
+
+	phoneRun := workout()
+	phoneRun.UUID = "2B4D6F8A-0C1E-4A3B-9D5F-7E9A1B3C5D7F"
+	phoneRun.Source = store.SourceInfo{Name: "iPhone de Camille", DeviceModel: "iPhone"}
+	phoneRun.Start, phoneRun.End, phoneRun.Route = "2026-11-10T18:02:00+01:00", "2026-11-10T18:33:00+01:00", nil
+
+	appRun := workout()
+	appRun.UUID = "5E7A9C1B-3D2F-4B6A-8C0E-1F3A5B7D9E2C"
+	appRun.Source = store.SourceInfo{Name: "Strava", BundleID: "com.strava.stravaride"}
+	appRun.Start, appRun.End, appRun.Route = "2026-11-10T18:01:00+01:00", "2026-11-10T18:32:00+01:00", nil
+
+	runNative(workoutRecord(appRun), workoutRecord(phoneRun))
+	require.Equal(t, map[string]string{phoneRun.UUID: "", appRun.UUID: phoneRun.UUID}, env.duplicatesOf(t))
+
+	runNative(workoutRecord(watchRun))
+	require.Equal(t, map[string]string{watchRun.UUID: "", phoneRun.UUID: watchRun.UUID, appRun.UUID: watchRun.UUID}, env.duplicatesOf(t))
+
+	listed := env.workouts(t)
+	require.Len(t, listed, 1, "the workouts list leaves the duplicates out")
+	require.Equal(t, watchRun.UUID, listed[0].ExternalID)
+
+	moved := watchRun
+	moved.Start, moved.End, moved.Route, moved.Events = "2026-11-10T20:00:00+01:00", "2026-11-10T20:31:00+01:00", nil, nil
+	runNative(workoutRecord(moved))
+	require.Equal(t, map[string]string{watchRun.UUID: "", phoneRun.UUID: "", appRun.UUID: phoneRun.UUID}, env.duplicatesOf(t),
+		"the duplicates of a kept run moved away are evaluated again")
+
+	runNative(workoutRecord(watchRun))
+	require.Equal(t, map[string]string{watchRun.UUID: "", phoneRun.UUID: watchRun.UUID, appRun.UUID: watchRun.UUID}, env.duplicatesOf(t))
+
+	runNative(deletion(watchRun.UUID))
+	require.Equal(t, map[string]string{phoneRun.UUID: "", appRun.UUID: phoneRun.UUID}, env.duplicatesOf(t),
+		"removing the kept run makes the next one kept")
 }
