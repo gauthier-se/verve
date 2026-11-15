@@ -37,7 +37,7 @@ func Records(ctx context.Context, r io.Reader) iter.Seq2[ingest.Record, error] {
 	return func(yield func(ingest.Record, error) bool) {
 		t, err := newTokenizer(r)
 		if err == nil {
-			err = t.records(func(r ingest.Record) bool { return yield(r, nil) })
+			err = t.records(ctx, func(r ingest.Record) bool { return yield(r, nil) })
 		}
 
 		if err != nil {
@@ -51,9 +51,9 @@ func Records(ctx context.Context, r io.Reader) iter.Seq2[ingest.Record, error] {
 var unsupportedElements = []string{"ActivitySummary", "ClinicalRecord", "Audiogram", "VisionPrescription"}
 
 // records reads the elements under the root element and yields their records, until the document
-// ends or yield returns false. Elements of no record, such as ExportDate, Me and, until workouts
-// are read, Workout, are skipped with their children.
-func (t *tokenizer) records(yield func(ingest.Record) bool) error {
+// ends, yield returns false or ctx is done, which it checks at each of them. Elements of no record,
+// such as ExportDate, Me and, until workouts are read, Workout, are skipped with their children.
+func (t *tokenizer) records(ctx context.Context, yield func(ingest.Record) bool) error {
 	for {
 		tok, err := t.next()
 		if errors.Is(err, io.EOF) {
@@ -67,6 +67,10 @@ func (t *tokenizer) records(yield func(ingest.Record) bool) error {
 		start, ok := tok.(xml.StartElement)
 		if !ok || t.depth() != topLevel {
 			continue
+		}
+
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("read export.xml at byte %d: %w", t.start, err)
 		}
 
 		more := true

@@ -40,7 +40,7 @@ type line struct {
 func TestRecords_Fixture_MatchesTheGoldenFile(t *testing.T) {
 	t.Parallel()
 
-	f, err := os.Open(fixture)
+	f, err := os.Open(fixture) //nolint:gosec // G304: the fixture of testdata
 	require.NoError(t, err)
 
 	t.Cleanup(func() { require.NoError(t, f.Close()) })
