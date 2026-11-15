@@ -51,7 +51,7 @@ Import the full Apple Health export (the `export.zip` produced by the Health app
 - **FR-5**: The job reads the payload from disk, so the zip is never extracted: the entries of a zip are read through its central directory. `export.xml` is parsed with a streaming XML tokenizer.
   - The inline DTD at the top of the file is skipped by the reader itself, from `<!DOCTYPE` to the first `]>`, before the tokenizer reads these bytes, since some iOS versions produce a malformed DTD that breaks strict parsers. Positions count the skipped bytes.
   - The position of a record ([Ingestion pipeline](ingestion-pipeline.md) FR-5) is the byte offset, in the uncompressed `export.xml`, of the start tag of the record, and for a workout the offset of its end tag, since its inner records come before it. A resumed run reads the document again from its start and skips the records before the stored position.
-  - A truncated XML document, a corrupted zip entry or malformed XML fails the import without retry, with a fixed message that names the cause and never a value: `export.xml is truncated`, `the zip file is corrupted` or `export.xml is not well-formed XML`. The batches committed before stay. A read error of the disk is retried as any job error ([Job worker](platform-jobs.md) FR-5).
+  - A truncated XML document, a corrupted zip entry or malformed XML fails the import without retry, with a fixed message that names the cause and never a value: `export.xml is truncated`, `the zip file is corrupted` or `export.xml is not well-formed XML`. The batches committed before stay. A read error of the disk is retried as any job error ([Job worker](platform-jobs.md) FR-5), except in the CLI, whose failed attempt fails the job at once ([Job worker](platform-jobs.md) FR-7).
 - **FR-6**: Element handling:
 
   | Element | Handling |
@@ -69,7 +69,7 @@ Import the full Apple Health export (the `export.zip` produced by the Health app
   | `ActivitySummary`, `ClinicalRecord`, `Audiogram`, `VisionPrescription` | Each counts as `received` and `unsupported` under its element name as the type key |
 
   Records:
-  - As for every adapter, the pipeline refuses a quantity sample of a curated category type, and a category sample of a curated quantity type ([Ingestion pipeline](ingestion-pipeline.md) FR-7).
+  - A quantity sample of a curated category type, or a category sample of a curated quantity type, is invalid, as in the native format ([Ingestion pipeline](ingestion-pipeline.md) FR-7).
   - `sourceName` is the name of the source. The `device` string, such as `<<HKDevice: 0x141b957d8>, name:Apple Watch, manufacturer:Apple Inc., model:Watch, hardware:Watch7,3, software:26.0>`, gives the device fields of the source: `name`, `manufacturer`, `model`, `hardware` as the hardware version and `software` as the software version, a field that the string lacks being left out, and its other fields ignored. `sourceVersion` and `creationDate` are not stored, and a record has no bundle id.
   - The beats of a `HeartRateVariabilityMetadataList` keep their `time` as received: a time of day whose format follows the locale of the export, for example `14:05:12,52`. Interpreting it belongs to the [Heart page](page-heart.md) of M4, the first reader of beats.
 
@@ -85,7 +85,9 @@ Import the full Apple Health export (the `export.zip` produced by the Health app
   - The GPX points are read in time order. The adapter drops the points outside the time range of the workout, and the workout counts under `warnings` with a sample error message, instead of being refused by the pipeline.
   - A workout whose GPX entry is missing, or whose export is a bare `export.xml`, is stored without route and counts under `warnings` with a sample error message. A bare `export.xml` also adds the sample error message `routes are not available in a bare export.xml`, once.
 
-  Electrocardiograms: each `electrocardiograms/*.csv` entry of a zip counts once as `received` and `unsupported` under `HKDataTypeIdentifierElectrocardiogram`, at positions after those of `export.xml`.
+  Other entries of a zip:
+  - Each `electrocardiograms/*.csv` entry counts once as `received` and `unsupported` under `HKDataTypeIdentifierElectrocardiogram`, at positions after those of `export.xml`.
+  - `export_cda.xml` is not read and counts nowhere, since it repeats documents, not records.
 
 - **FR-7**: Progress is the position over the uncompressed size of `export.xml`, read from the central directory for a zip, since data descriptors leave the local headers without size, and from the file size for a bare `export.xml`. The job stores the size once it opens the export, and the import exposes `progress` ([Ingestion pipeline](ingestion-pipeline.md), Data and API notes). The import banner and the CLI show it as a percentage.
 - **FR-8**: Dates in the export have the format `yyyy-MM-dd HH:mm:ss Z`, such as `2025-12-30 07:00:00 +0100`. The parser also tolerates an offset written `+01:00`, an offset `Z`, fractional seconds and a one-digit hour. Any other date makes its record invalid, with a sample error message that names the attribute. A variant that a real export shows later gets its own issue (#92).

@@ -9,7 +9,7 @@ An Apple Health export weighs up to several gigabytes, and is often uploaded fro
 
 ## Decision
 
-- `/api/v1/uploads/` is a plain `net/http` handler written in Verve, as [ADR 0004](0004-huma-code-first-openapi.md) allows for endpoints that stream large bodies, and documented manually in the OpenAPI spec.
+- `/api/v1/uploads/` is a plain `net/http` handler written in Verve, as [ADR 0004](0004-huma-code-first-openapi.md) allows for tus uploads, and documented manually in the OpenAPI spec.
 - It serves tus 1.0.0 with the `creation`, `termination` and `expiration` extensions only: the three that `tus-js-client` needs to create, resume and expire an upload. `Upload-Defer-Length`, concatenation and checksums are not offered.
 - Incomplete uploads live in the table `uploads`, next to the imports, and their files in `/data/uploads`. The handler runs behind the session and CSRF middleware of every request.
 - A completed upload is renamed into the inbox, and its import and job are created in one transaction, so that from then on it has the lifecycle of every inbox file: retry after a failure, cleanup, cancellation.

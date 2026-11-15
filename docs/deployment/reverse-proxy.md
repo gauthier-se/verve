@@ -14,7 +14,7 @@ Verve serves plain HTTP on port 8080 and has no built-in TLS. To reach it over H
 | Trusted proxies | Verve ignores forwarded headers unless the immediate peer is listed, so that clients cannot forge them | `VERVE_TRUSTED_PROXIES` |
 | Public URL | Secure cookies, OIDC, CSRF origin checks, absolute links and HSTS depend on it | `VERVE_PUBLIC_URL` |
 | Large request bodies | The web app uploads an XML export in requests of 8 MiB, so the proxy must accept bodies of at least that size. Pushes go up to `VERVE_MAX_INGEST_BODY` (1 GB by default) in one request | Proxy |
-| Long timeouts | Large uploads and imports take minutes. Allow at least 300 seconds | Proxy |
+| Long timeouts | A large push, or an upload chunk over a slow link, takes minutes. Allow at least 300 seconds | Proxy |
 
 The [configuration reference](../features/platform-configuration-and-deployment.md#functional-requirements) (FR-3) describes these variables, and the exact rules for forwarded headers.
 
