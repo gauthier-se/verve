@@ -4,10 +4,10 @@ import (
 	"encoding"
 	"errors"
 	"fmt"
-	"math/big"
 	"os"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/caarlos0/env/v11"
@@ -164,27 +164,73 @@ func decodeSetting(value *yaml.Node, s setting) error {
 		scalar = scalar.Alias
 	}
 
-	// The YAML decoder silently drops the fraction of a float decoded into an integer, and reads a
-	// whole number too large for 64 bits as a float.
-	if isInteger(s.value) && scalar.ShortTag() == "!!float" {
-		if _, ok := new(big.Int).SetString(scalar.Value, 10); ok {
-			return invalidValue(scalar.Value, "too large")
-		}
-
-		return invalidValue(scalar.Value, "must be a whole number")
+	// The YAML decoder silently drops the fraction of a float decoded into an integer and reads
+	// 0x10, 0o17, 017 and 1_0 as YAML 1.1 integers, which the environment refuses. Both sources
+	// parse the text of the value the same way instead, whatever its YAML tag.
+	if isInteger(s.value) && scalar.Kind == yaml.ScalarNode {
+		return setInteger(s.value, scalar.Value)
 	}
 
 	return value.Decode(s.value.Addr().Interface())
 }
 
 // isInteger reports whether a setting is held in a plain integer field. Types that parse their own
-// text, such as ByteSize, reject a fraction themselves.
+// text, such as ByteSize, reject a fraction themselves. The configuration holds no unsigned integer.
 func isInteger(v reflect.Value) bool {
 	if _, ok := v.Addr().Interface().(encoding.TextUnmarshaler); ok {
 		return false
 	}
 
-	return v.CanInt() || v.CanUint()
+	return v.CanInt()
+}
+
+// setInteger sets v, a plain integer field, from text in decimal digits with an optional sign. A
+// leading zero does not make the number octal. The YAML file and the environment both parse
+// integer settings with it, so they accept the same values and report the same mistakes.
+func setInteger(v reflect.Value, text string) error {
+	n, err := strconv.ParseInt(text, 10, v.Type().Bits())
+	if err == nil {
+		v.SetInt(n)
+
+		return nil
+	}
+
+	switch {
+	case errors.Is(err, strconv.ErrRange) && strings.HasPrefix(text, "-"):
+		return invalidValue(text, "too small")
+	case errors.Is(err, strconv.ErrRange):
+		return invalidValue(text, "too large")
+	}
+
+	// Base 0 reads the prefixes 0x, 0o and 0b and underscores between digits.
+	if _, err := strconv.ParseInt(text, 0, v.Type().Bits()); err == nil || errors.Is(err, strconv.ErrRange) {
+		return invalidValue(text, "must be written in decimal digits")
+	}
+
+	return invalidValue(text, "must be a whole number")
+}
+
+// integerParsers parses every integer type of the settings with setInteger, for the environment.
+func integerParsers(settings map[string]setting) map[reflect.Type]env.ParserFunc {
+	parsers := map[reflect.Type]env.ParserFunc{}
+
+	for _, s := range settings {
+		if !isInteger(s.value) {
+			continue
+		}
+
+		t := s.value.Type()
+		parsers[t] = func(text string) (any, error) {
+			v := reflect.New(t).Elem()
+			if err := setInteger(v, text); err != nil {
+				return nil, err
+			}
+
+			return v.Interface(), nil
+		}
+	}
+
+	return parsers
 }
 
 // loadEnv applies the VERVE_* environment variables to target, a pointer to the configuration
@@ -196,7 +242,11 @@ func loadEnv(target any, environ map[string]string, settings map[string]setting,
 		}
 	}
 
-	err := env.ParseWithOptions(target, env.Options{Prefix: envPrefix, Environment: environ})
+	err := env.ParseWithOptions(target, env.Options{
+		Prefix:      envPrefix,
+		Environment: environ,
+		FuncMap:     integerParsers(settings),
+	})
 	if err == nil {
 		return nil
 	}
