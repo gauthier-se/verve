@@ -18,3 +18,4 @@ Short records of structural decisions: context, decision, consequences and rejec
 | [0012](0012-local-hour-aggregates.md) | Hourly aggregates aligned to local hours | Accepted |
 | [0013](0013-case-folded-logins.md) | Case-insensitive logins through folded columns | Accepted |
 | [0014](0014-route-encoding.md) | Columnar, delta encoded routes compressed with zstd | Accepted |
+| [0015](0015-handwritten-tus-server.md) | A handwritten tus server for XML uploads | Accepted |
