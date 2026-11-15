@@ -271,6 +271,7 @@ type Workout struct {
 	Metadata      sql.NullString
 	ImportID      int64
 	NaturalKey    []byte
+	DuplicateOf   sql.NullInt64
 }
 
 type WorkoutRoute struct {

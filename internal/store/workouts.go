@@ -103,6 +103,9 @@ type Workout struct {
 	ImportID int64
 	// NaturalKey is the hash that identifies the workout among those of its user.
 	NaturalKey []byte
+	// DuplicateOf is the id of the kept workout that the workout duplicates, 0 for a kept workout
+	// (FR-11 of Deduplication and source priority). Upsert leaves it as it is.
+	DuplicateOf int64
 }
 
 // Cursor returns the position of the workout in the lists of WorkoutsRepository.List.
@@ -144,6 +147,8 @@ type WorkoutsQuery struct {
 	After Cursor
 	// Limit is the maximum number of workouts, at least 1.
 	Limit int
+	// Duplicates includes the workouts that duplicate another, left out otherwise.
+	Duplicates bool
 }
 
 // WorkoutsRepository stores the workouts of each user. A workout of another user is never returned.
@@ -186,4 +191,15 @@ type WorkoutsRepository interface {
 	// DeleteRoutesByUser removes at most limit routes of userID, leaving their workouts, and returns
 	// how many it removed. It returns ErrInvalid when limit is below 1.
 	DeleteRoutesByUser(ctx context.Context, userID int64, limit int) (int64, error)
+
+	// ListStarting returns every workout of userID whose start is in [from, to), duplicates
+	// included, by start then id.
+	ListStarting(ctx context.Context, userID int64, from, to time.Time) ([]Workout, error)
+	// ListDuplicatesOf returns the workouts of userID that duplicate a workout of keptIDs, by id.
+	ListDuplicatesOf(ctx context.Context, userID int64, keptIDs []int64) ([]Workout, error)
+	// SetDuplicateOf sets keptID as the kept workout that the workout of id of userID duplicates,
+	// or makes it kept when keptID is 0. It returns ErrNotFound when userID has no workout of id,
+	// and ErrInvalid, writing nothing, when keptID is id or not a workout of userID. Removing a
+	// workout leaves its duplicates as they are: the caller evaluates them again.
+	SetDuplicateOf(ctx context.Context, userID, id, keptID int64) error
 }
