@@ -997,8 +997,8 @@ func TestLoad_NullValueInFileIsIgnored(t *testing.T) {
 	require.Equal(t, SourceDefault, cfg.Sources["log.level"])
 }
 
-// integerSettings lists the YAML paths of the settings held in a plain integer field, found by
-// reflection so that a new integer setting is covered without changing the tests.
+// integerSettings lists the YAML paths of the integer settings of the file, found by reflection so
+// that a new integer setting is covered without changing the tests.
 func integerSettings(t *testing.T) []string {
 	t.Helper()
 
@@ -1006,7 +1006,7 @@ func integerSettings(t *testing.T) []string {
 
 	var paths []string
 	for path, s := range cfg.settings() {
-		if s.value.Kind() == reflect.Int && !s.envOnly {
+		if isInteger(s.value) && !s.envOnly {
 			paths = append(paths, path)
 		}
 	}
@@ -1046,16 +1046,50 @@ func TestLoad_FractionForAnIntegerSettingInTheFileIsInvalid(t *testing.T) {
 			t.Run(path+"="+value, func(t *testing.T) {
 				t.Parallel()
 
+				defaults := Default()
+				s := defaults.settings()[path]
+				line := strings.Count(path, ".") + 1
 				file := writeFile(t, yamlSetting(path, value))
 
 				_, err := Load(LoadOptions{File: file})
 
-				defaults := Default()
-				s := defaults.settings()[path]
-				line := strings.Count(path, ".") + 1
 				require.EqualError(t, err, fmt.Sprintf(`%s:%d: %s: invalid value %q: must be a whole number`, file, line, s.name(), value))
 			})
 		}
+	}
+}
+
+// Given a fraction reached through a YAML alias for an integer setting, then the error names the
+// value of the anchor, not the name of the alias.
+func TestLoad_FractionThroughAnAliasNamesTheValue(t *testing.T) {
+	t.Parallel()
+
+	file := writeFile(t, "audit:\n  retention_days: &days 7.5\nraw_max_days: *days\n")
+
+	_, err := Load(LoadOptions{File: file})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), file+`:3: raw_max_days (VERVE_RAW_MAX_DAYS): invalid value "7.5": must be a whole number`)
+}
+
+// Given a whole number too large for an integer, which YAML reads as a float, in the file for any
+// integer setting, then loading fails, saying the value is too large rather than a fraction.
+func TestLoad_HugeWholeNumberForAnIntegerSettingInTheFileIsTooLarge(t *testing.T) {
+	t.Parallel()
+
+	for _, path := range integerSettings(t) {
+		t.Run(path, func(t *testing.T) {
+			t.Parallel()
+
+			defaults := Default()
+			s := defaults.settings()[path]
+			line := strings.Count(path, ".") + 1
+			file := writeFile(t, yamlSetting(path, "99999999999999999999"))
+
+			_, err := Load(LoadOptions{File: file})
+
+			require.EqualError(t, err, fmt.Sprintf(`%s:%d: %s: invalid value "99999999999999999999": too large`, file, line, s.name()))
+		})
 	}
 }
 
@@ -1070,7 +1104,7 @@ func TestLoad_WholeNumberForAnIntegerSettingInTheFile(t *testing.T) {
 			cfg, err := Load(LoadOptions{File: writeFile(t, yamlSetting(path, "8"))})
 
 			require.NoError(t, err)
-			require.Equal(t, int64(8), cfg.settings()[path].value.Int())
+			require.EqualValues(t, 8, cfg.settings()[path].value.Interface())
 			require.Equal(t, SourceFile, cfg.Sources[path])
 		})
 	}
