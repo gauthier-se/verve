@@ -139,17 +139,26 @@ type Invalid struct {
 	Reason string
 }
 
+// Unsupported is a record of data that Verve does not store, which the payload names by an
+// identifier of its own, such as an ActivitySummary element of the XML export. It counts as
+// received and unsupported under its identifier, as a sample of an unsupported type does (FR-3 of
+// Ingestion pipeline).
+type Unsupported struct {
+	Identifier string
+}
+
 // Record is a normalized record of a payload at its position: exactly one of Quantity, Category,
-// Workout, Deletion and Invalid is set.
+// Workout, Deletion, Invalid and Unsupported is set.
 type Record struct {
 	// Position is where the record is in its payload, defined by the adapter, such as its index or
 	// its byte offset. The positions of a payload increase strictly, and are the same on every run
 	// of it, so that a resumed run skips the records before the position it stored (FR-5 of
 	// Ingestion pipeline).
-	Position int64
-	Quantity *QuantitySample
-	Category *CategorySample
-	Workout  *Workout
-	Deletion *Deletion
-	Invalid  *Invalid
+	Position    int64
+	Quantity    *QuantitySample
+	Category    *CategorySample
+	Workout     *Workout
+	Deletion    *Deletion
+	Invalid     *Invalid
+	Unsupported *Unsupported
 }

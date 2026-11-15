@@ -32,7 +32,8 @@
       "Category": null,
       "Workout": null,
       "Deletion": null,
-      "Invalid": null
+      "Invalid": null,
+      "Unsupported": null
     },
     {
       "Position": 1,
@@ -44,7 +45,8 @@
         "Of": "sample",
         "Type": "",
         "Reason": "sample is not an object"
-      }
+      },
+      "Unsupported": null
     },
     {
       "Position": 2,
@@ -56,7 +58,8 @@
         "Of": "sample",
         "Type": "",
         "Reason": "type is missing"
-      }
+      },
+      "Unsupported": null
     },
     {
       "Position": 3,
@@ -68,7 +71,8 @@
         "Of": "sample",
         "Type": "",
         "Reason": "type is not a string"
-      }
+      },
+      "Unsupported": null
     },
     {
       "Position": 4,
@@ -80,7 +84,8 @@
         "Of": "sample",
         "Type": "HKCategoryTypeIdentifierSleepAnalysis",
         "Reason": "sample has both a value and a category value"
-      }
+      },
+      "Unsupported": null
     },
     {
       "Position": 5,
@@ -92,7 +97,8 @@
         "Of": "sample",
         "Type": "HKCategoryTypeIdentifierSleepAnalysis",
         "Reason": "sample has neither a value nor a category value"
-      }
+      },
+      "Unsupported": null
     },
     {
       "Position": 6,
@@ -104,7 +110,8 @@
         "Of": "sample",
         "Type": "HKQuantityTypeIdentifierStepCount",
         "Reason": "value is not a number"
-      }
+      },
+      "Unsupported": null
     },
     {
       "Position": 7,
@@ -116,7 +123,8 @@
         "Of": "sample",
         "Type": "HKQuantityTypeIdentifierStepCount",
         "Reason": "unit is missing"
-      }
+      },
+      "Unsupported": null
     },
     {
       "Position": 8,
@@ -128,7 +136,8 @@
         "Of": "sample",
         "Type": "HKQuantityTypeIdentifierStepCount",
         "Reason": "start is missing"
-      }
+      },
+      "Unsupported": null
     },
     {
       "Position": 9,
@@ -140,7 +149,8 @@
         "Of": "sample",
         "Type": "HKQuantityTypeIdentifierStepCount",
         "Reason": "source is missing"
-      }
+      },
+      "Unsupported": null
     },
     {
       "Position": 10,
@@ -152,7 +162,8 @@
         "Of": "sample",
         "Type": "HKQuantityTypeIdentifierStepCount",
         "Reason": "source: name is missing"
-      }
+      },
+      "Unsupported": null
     },
     {
       "Position": 11,
@@ -164,7 +175,8 @@
         "Of": "sample",
         "Type": "HKQuantityTypeIdentifierStepCount",
         "Reason": "metadata has a value that is not a string, a number or a boolean"
-      }
+      },
+      "Unsupported": null
     },
     {
       "Position": 12,
@@ -176,7 +188,8 @@
         "Of": "sample",
         "Type": "HKQuantityTypeIdentifierStepCount",
         "Reason": "uuid is not a uuid"
-      }
+      },
+      "Unsupported": null
     },
     {
       "Position": 13,
@@ -188,7 +201,8 @@
         "Of": "sample",
         "Type": "HKQuantityTypeIdentifierStepCount",
         "Reason": "value is not a finite number"
-      }
+      },
+      "Unsupported": null
     },
     {
       "Position": 14,
@@ -200,7 +214,8 @@
         "Of": "sample",
         "Type": "HKQuantityTypeIdentifierStepCount",
         "Reason": "start is not a string"
-      }
+      },
+      "Unsupported": null
     },
     {
       "Position": 15,
@@ -239,7 +254,8 @@
         "Route": null
       },
       "Deletion": null,
-      "Invalid": null
+      "Invalid": null,
+      "Unsupported": null
     },
     {
       "Position": 16,
@@ -251,7 +267,8 @@
         "Of": "workout",
         "Type": "",
         "Reason": "uuid is missing"
-      }
+      },
+      "Unsupported": null
     },
     {
       "Position": 17,
@@ -263,7 +280,8 @@
         "Of": "workout",
         "Type": "",
         "Reason": "duration is not a number"
-      }
+      },
+      "Unsupported": null
     },
     {
       "Position": 18,
@@ -275,7 +293,8 @@
         "Of": "workout",
         "Type": "",
         "Reason": "route point 1: latitude is missing"
-      }
+      },
+      "Unsupported": null
     },
     {
       "Position": 19,
@@ -287,7 +306,8 @@
         "Of": "workout",
         "Type": "",
         "Reason": "events is not an array"
-      }
+      },
+      "Unsupported": null
     },
     {
       "Position": 20,
@@ -299,7 +319,8 @@
         "Of": "workout",
         "Type": "",
         "Reason": "totals: distance: unit is missing"
-      }
+      },
+      "Unsupported": null
     },
     {
       "Position": 21,
@@ -311,7 +332,8 @@
         "Of": "workout",
         "Type": "",
         "Reason": "indoor is not a boolean"
-      }
+      },
+      "Unsupported": null
     },
     {
       "Position": 22,
@@ -323,7 +345,8 @@
         "Of": "workout",
         "Type": "",
         "Reason": "event 0: end is missing"
-      }
+      },
+      "Unsupported": null
     },
     {
       "Position": 23,
@@ -365,7 +388,8 @@
         "Route": null
       },
       "Deletion": null,
-      "Invalid": null
+      "Invalid": null,
+      "Unsupported": null
     },
     {
       "Position": 24,
@@ -377,7 +401,8 @@
         "Of": "workout",
         "Type": "",
         "Reason": "workout is not an object"
-      }
+      },
+      "Unsupported": null
     },
     {
       "Position": 25,
@@ -387,7 +412,8 @@
       "Deletion": {
         "UUID": "5A4B3C2D-1E0F-4A9B-8C7D-6E5F4A3B2C1D"
       },
-      "Invalid": null
+      "Invalid": null,
+      "Unsupported": null
     },
     {
       "Position": 26,
@@ -399,7 +425,8 @@
         "Of": "deletion",
         "Type": "",
         "Reason": "deletion is not a string"
-      }
+      },
+      "Unsupported": null
     },
     {
       "Position": 27,
@@ -411,7 +438,8 @@
         "Of": "deletion",
         "Type": "",
         "Reason": "deletion is not a uuid"
-      }
+      },
+      "Unsupported": null
     },
     {
       "Position": 28,
@@ -423,7 +451,8 @@
         "Of": "deletion",
         "Type": "",
         "Reason": "deletion is not a string"
-      }
+      },
+      "Unsupported": null
     }
   ]
 }
