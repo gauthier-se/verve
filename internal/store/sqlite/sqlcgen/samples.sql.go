@@ -63,6 +63,36 @@ func (q *Queries) AddSourceStats(ctx context.Context, arg AddSourceStatsParams) 
 	return err
 }
 
+const countUserSamples = `-- name: CountUserSamples :one
+SELECT count(*)
+FROM samples
+WHERE user_id = ?1
+  AND type_id = ?2
+  AND start_at >= ?3
+  AND start_at < ?4
+`
+
+type CountUserSamplesParams struct {
+	UserID int64
+	TypeID int64
+	FromAt int64
+	ToAt   int64
+}
+
+// The samples of a user and type whose start is in a range, counted on the index on (user_id,
+// type_id, start_at) alone.
+func (q *Queries) CountUserSamples(ctx context.Context, arg CountUserSamplesParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countUserSamples,
+		arg.UserID,
+		arg.TypeID,
+		arg.FromAt,
+		arg.ToAt,
+	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countUsersSamples = `-- name: CountUsersSamples :many
 SELECT user_id, CAST(sum(count) AS INTEGER) AS samples
 FROM sample_stats

@@ -148,6 +148,21 @@ func (r samples) List(ctx context.Context, userID int64, query store.SamplesQuer
 	return list, nil
 }
 
+func (r samples) Count(ctx context.Context, userID, typeID int64, from, to time.Time) (int64, error) {
+	if !to.After(from) {
+		return 0, fmt.Errorf("count samples of user %d: from %s to %s: %w", userID, from, to, store.ErrInvalid)
+	}
+
+	count, err := r.q.read().CountUserSamples(ctx, sqlcgen.CountUserSamplesParams{
+		UserID: userID, TypeID: typeID, FromAt: toMillis(from), ToAt: toMillis(to),
+	})
+	if err != nil {
+		return 0, fmt.Errorf("count samples of user %d: %w", userID, err)
+	}
+
+	return count, nil
+}
+
 func (r samples) DeleteByUser(ctx context.Context, userID int64, limit int) (int64, error) {
 	if limit < 1 {
 		return 0, fmt.Errorf("delete samples of user %d: limit %d below 1: %w", userID, limit, store.ErrInvalid)

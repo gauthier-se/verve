@@ -162,6 +162,10 @@ type SamplesRepository interface {
 	// List returns the samples of userID that query asks for. It returns ErrInvalid when the limit
 	// is below 1 or To is not after From.
 	List(ctx context.Context, userID int64, query SamplesQuery) ([]Sample, error)
+	// Count returns the number of samples of userID and of the type of typeID that start in
+	// [from, to), those that List lists for the range. It returns ErrInvalid when to is not after
+	// from.
+	Count(ctx context.Context, userID, typeID int64, from, to time.Time) (int64, error)
 	// ListOverlapping returns the samples of userID and of the type of typeID that start in [from, to)
 	// or overlap it, sorted by start then id, as the aggregates of the range need them. A sample
 	// overlaps [from, to) when it starts before to and ends after from. It returns ErrInvalid when to
