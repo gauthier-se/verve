@@ -391,7 +391,7 @@ func (t *tokenizer) record(start xml.StartElement) (ingest.Record, error) {
 			key, _ := a.get("key")
 			value, _ := a.get("value")
 			m.entry(key, value)
-		case "HeartRateVariabilityMetadataList":
+		case metadataBeats:
 			beats, err := t.beats()
 			if err != nil {
 				return ingest.Record{}, err
@@ -537,7 +537,7 @@ func newRecord(attrs []xml.Attr) ingest.Record {
 
 	typ, _ := a.get("type")
 	if typ == "" {
-		return invalid("", "type is missing")
+		return invalidRecord("", "type is missing")
 	}
 
 	unit, quantity := a.get("unit")
@@ -547,11 +547,11 @@ func newRecord(attrs []xml.Attr) ingest.Record {
 
 	switch {
 	case quantity && !hasValue, !quantity && value == "":
-		return invalid(typ, "value is missing")
+		return invalidRecord(typ, "value is missing")
 	case quantity:
-		n, err := strconv.ParseFloat(value, 64)
-		if err != nil || math.IsInf(n, 0) || math.IsNaN(n) {
-			return invalid(typ, "value is not a number")
+		n, ok := parseNumber(value)
+		if !ok {
+			return invalidRecord(typ, "value is not a number")
 		}
 
 		number = n
@@ -559,12 +559,12 @@ func newRecord(attrs []xml.Attr) ingest.Record {
 
 	start, reason := date(a, "startDate")
 	if reason != "" {
-		return invalid(typ, reason)
+		return invalidRecord(typ, reason)
 	}
 
 	end, reason := date(a, "endDate")
 	if reason != "" {
-		return invalid(typ, reason)
+		return invalidRecord(typ, reason)
 	}
 
 	sourceName, _ := a.get("sourceName")
@@ -656,14 +656,30 @@ func isKey(s string) bool {
 	return false
 }
 
-// invalid returns an invalid sample of the type typ, with reason.
-func invalid(typ, reason string) ingest.Record {
+// invalidRecord returns an invalid sample of the type typ, with reason.
+func invalidRecord(typ, reason string) ingest.Record {
 	return ingest.Record{Invalid: &ingest.Invalid{Of: ingest.SampleRecord, Type: typ, Reason: reason}}
+}
+
+// parseNumber returns the decimal number s, in plain or scientific notation, and false for anything
+// else, such as a hexadecimal number or one that is not finite, which strconv.ParseFloat accepts.
+func parseNumber(s string) (float64, bool) {
+	if strings.ContainsFunc(s, func(c rune) bool { return !strings.ContainsRune("0123456789+-.eE", c) }) {
+		return 0, false
+	}
+
+	n, err := strconv.ParseFloat(s, 64)
+	if err != nil || math.IsInf(n, 0) || math.IsNaN(n) {
+		return 0, false
+	}
+
+	return n, true
 }
 
 // dateLayouts are the layouts of the dates of an export (FR-8 of XML import): its format,
 // yyyy-MM-dd HH:mm:ss Z, and its tolerated variants. An offset Z is read by both, and a one-digit
-// hour and fractional seconds by time.Parse whatever the layout.
+// hour and fractional seconds by time.Parse whatever the layout, which also takes a comma for the
+// decimal point of the seconds, a variant that the format does not tolerate.
 var dateLayouts = []string{"2006-01-02 15:04:05 Z0700", "2006-01-02 15:04:05 Z07:00"}
 
 // date returns the date attribute name of a as RFC 3339, with its instant and offset, or the reason
@@ -672,6 +688,10 @@ func date(a attributes, name string) (string, string) {
 	value, ok := a.get(name)
 	if !ok {
 		return "", name + " is missing"
+	}
+
+	if strings.Contains(value, ",") {
+		return "", name + " is not a date"
 	}
 
 	for _, layout := range dateLayouts {
