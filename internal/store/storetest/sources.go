@@ -111,6 +111,197 @@ func RunSources(t *testing.T, newStore NewStoreFunc) {
 	runSourcesCorrections(t, newStore)
 	runSourcesOfUsers(t, newStore)
 	runSourcesSampleCounts(t, newStore)
+	runSourcesMerges(t, newStore)
+}
+
+// mustGetSource returns the source of id of userID.
+func mustGetSource(ctx context.Context, t *testing.T, sources store.SourcesRepository, userID, id int64) store.Source {
+	t.Helper()
+
+	got, err := sources.Get(ctx, userID, id)
+	require.NoError(t, err)
+
+	return got
+}
+
+// runSourcesMerges runs the cases of the merges of sources.
+func runSourcesMerges(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+
+	// Given a target and two other sources of a user, one of them with an alias, when StartMerge
+	// merges both into the target, then they keep their identity with the target as MergedInto, the
+	// target has none, and a record of the identity of a merged source or of its alias resolves to
+	// the target, seen then. A merged source without model takes the model of such a record.
+	t.Run("StartMergeSetsTheMergeAndResolveReturnsTheTarget", func(t *testing.T) {
+		t.Parallel()
+
+		s := newStore(t, clock.NewFake(sourcesTime))
+		ctx := t.Context()
+		user := mustCreateUser(ctx, t, s.Users(), newUser("camille", "camille@example.com"))
+		target := mustResolve(ctx, t, s.Sources(), user.ID, watchInfo, store.SourceWatch, sourcesTime)
+		old := mustResolve(ctx, t, s.Sources(), user.ID, sourceInfo("Ancienne montre", "Watch"), store.SourceWatch, sourcesTime)
+		bare := mustResolve(ctx, t, s.Sources(), user.ID, sourceInfo("Montre", ""), store.SourceUnknown, sourcesTime)
+		require.NoError(t, s.Sources().AddAlias(ctx, user.ID, sourceIdentity("Très ancienne montre", "Watch"), old.ID))
+
+		require.NoError(t, s.Sources().StartMerge(ctx, user.ID, target.ID, []int64{old.ID, bare.ID}))
+
+		wantOld, wantBare := old, bare
+		wantOld.MergedInto, wantBare.MergedInto = target.ID, target.ID
+		require.Equal(t, []store.Source{target, wantOld, wantBare}, mustListSources(ctx, t, s.Sources(), user.ID))
+		require.Equal(t, wantOld, mustGetSource(ctx, t, s.Sources(), user.ID, old.ID))
+
+		later := sourcesTime.Add(time.Hour)
+		for _, info := range []store.SourceInfo{
+			sourceInfo("Ancienne montre", "Watch"),
+			sourceInfo("Très ancienne montre", "Watch"),
+			sourceInfo("Montre", "Watch"),
+		} {
+			got := mustResolve(ctx, t, s.Sources(), user.ID, info, store.SourceWatch, later)
+			require.Equal(t, target.ID, got.ID, info.Name)
+			require.Equal(t, sourcesUTC.Add(time.Hour), got.LastSeenAt, info.Name)
+		}
+
+		require.Equal(t, "Watch", mustGetSource(ctx, t, s.Sources(), user.ID, bare.ID).DeviceModel,
+			"a merged source without model takes the model of a record")
+		require.Len(t, mustListSources(ctx, t, s.Sources(), user.ID), 3, "no source is created")
+	})
+
+	// Given a target and a source of a user, then StartMerge refuses an empty list, a target among
+	// the merged sources and a source listed twice as invalid, a source of another user or that does
+	// not exist as not found, and, once a merge is in progress, any merge of one of its sources, as
+	// target or merged, as a conflict, and changes nothing then.
+	t.Run("StartMergeRefusesInvalidMergesAndSourcesInAMerge", func(t *testing.T) {
+		t.Parallel()
+
+		s := newStore(t, clock.NewFake(sourcesTime))
+		ctx := t.Context()
+		user := mustCreateUser(ctx, t, s.Users(), newUser("camille", "camille@example.com"))
+		other := mustCreateUser(ctx, t, s.Users(), newUser("dominique", "dominique@example.com"))
+		target := mustResolve(ctx, t, s.Sources(), user.ID, watchInfo, store.SourceWatch, sourcesTime)
+		old := mustResolve(ctx, t, s.Sources(), user.ID, sourceInfo("Ancienne montre", "Watch"), store.SourceWatch, sourcesTime)
+		phone := mustResolve(ctx, t, s.Sources(), user.ID, sourceInfo("iPhone de Camille", "iPhone"), store.SourcePhone, sourcesTime)
+		app := mustResolve(ctx, t, s.Sources(), user.ID, sourceInfo("Strava", ""), store.SourceApp, sourcesTime)
+		foreign := mustResolve(ctx, t, s.Sources(), other.ID, watchInfo, store.SourceWatch, sourcesTime)
+
+		before := mustListSources(ctx, t, s.Sources(), user.ID)
+
+		for _, tc := range []struct {
+			name   string
+			target int64
+			merged []int64
+			want   error
+		}{
+			{"NoSource", target.ID, nil, store.ErrInvalid},
+			{"TargetAmongMerged", target.ID, []int64{old.ID, target.ID}, store.ErrInvalid},
+			{"SourceListedTwice", target.ID, []int64{old.ID, old.ID}, store.ErrInvalid},
+			{"MergedOfAnotherUser", target.ID, []int64{foreign.ID}, store.ErrNotFound},
+			{"TargetOfAnotherUser", foreign.ID, []int64{old.ID}, store.ErrNotFound},
+			{"UnknownSource", target.ID, []int64{foreign.ID + 1000}, store.ErrNotFound},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				require.ErrorIs(t, s.Sources().StartMerge(ctx, user.ID, tc.target, tc.merged), tc.want)
+			})
+		}
+
+		require.Equal(t, before, mustListSources(ctx, t, s.Sources(), user.ID))
+
+		require.NoError(t, s.Sources().StartMerge(ctx, user.ID, target.ID, []int64{old.ID}))
+		during := mustListSources(ctx, t, s.Sources(), user.ID)
+
+		for _, tc := range []struct {
+			name   string
+			target int64
+			merged []int64
+		}{
+			{"MergedAsTarget", old.ID, []int64{phone.ID}},
+			{"MergedAsMerged", phone.ID, []int64{old.ID}},
+			{"TargetAsTarget", target.ID, []int64{phone.ID}},
+			{"TargetAsMerged", phone.ID, []int64{app.ID, target.ID}},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				require.ErrorIs(t, s.Sources().StartMerge(ctx, user.ID, tc.target, tc.merged), store.ErrConflict)
+			})
+		}
+
+		require.Equal(t, during, mustListSources(ctx, t, s.Sources(), user.ID))
+		require.NoError(t, s.Sources().StartMerge(ctx, user.ID, phone.ID, []int64{app.ID}), "other sources can merge")
+	})
+
+	// Given a source merged into a target, with an alias, stored in the priorities of a type, when
+	// FinishMerge runs, then the source is deleted and has left the priorities, and its identity and
+	// its alias are aliases of the target: their records resolve to it, and no source is created.
+	t.Run("FinishMergeReplacesTheSourceByAnAliasOfItsIdentity", func(t *testing.T) {
+		t.Parallel()
+
+		s := newStore(t, clock.NewFake(sourcesTime))
+		ctx := t.Context()
+		user := mustCreateUser(ctx, t, s.Users(), newUser("camille", "camille@example.com"))
+		target := mustResolve(ctx, t, s.Sources(), user.ID, watchInfo, store.SourceWatch, sourcesTime)
+		old := mustResolve(ctx, t, s.Sources(), user.ID, sourceInfo("Ancienne montre", "Watch"), store.SourceWatch, sourcesTime)
+		require.NoError(t, s.Sources().AddAlias(ctx, user.ID, sourceIdentity("Très ancienne montre", ""), old.ID))
+
+		heart, err := s.MetricTypes().EnsureUncurated(ctx, "HKQuantityTypeIdentifierHeartRate", catalog.KindQuantity, "count/min")
+		require.NoError(t, err)
+		require.NoError(t, s.SourcePriorities().Set(ctx, user.ID, heart.ID, store.SourcePriorities{Order: []int64{old.ID, target.ID}}))
+
+		require.NoError(t, s.Sources().StartMerge(ctx, user.ID, target.ID, []int64{old.ID}))
+		require.NoError(t, s.Sources().FinishMerge(ctx, user.ID, old.ID))
+
+		_, err = s.Sources().Get(ctx, user.ID, old.ID)
+		require.ErrorIs(t, err, store.ErrNotFound)
+		require.Equal(t, []store.Source{target}, mustListSources(ctx, t, s.Sources(), user.ID))
+
+		priorities, err := s.SourcePriorities().Get(ctx, user.ID, heart.ID)
+		require.NoError(t, err)
+		require.Equal(t, []int64{target.ID}, priorities.Order)
+
+		for _, info := range []store.SourceInfo{
+			sourceInfo("Ancienne montre", "Watch"),
+			sourceInfo("Ancienne montre", ""),
+			sourceInfo("Très ancienne montre", "Watch"),
+		} {
+			got := mustResolve(ctx, t, s.Sources(), user.ID, info, store.SourceWatch, sourcesTime)
+			require.Equal(t, target.ID, got.ID, info.Name)
+		}
+
+		require.Equal(t, []store.Source{mustGetSource(ctx, t, s.Sources(), user.ID, target.ID)},
+			mustListSources(ctx, t, s.Sources(), user.ID))
+	})
+
+	// Given a source that is not merged, a source that does not exist or of another user, or a merged
+	// source that still has samples, then FinishMerge refuses it and changes nothing.
+	t.Run("FinishMergeRefusesASourceNotMergedOrWithData", func(t *testing.T) {
+		t.Parallel()
+
+		s := newStore(t, clock.NewFake(sourcesTime))
+		ctx := t.Context()
+		user := mustCreateUser(ctx, t, s.Users(), newUser("camille", "camille@example.com"))
+		other := mustCreateUser(ctx, t, s.Users(), newUser("dominique", "dominique@example.com"))
+		target := mustResolve(ctx, t, s.Sources(), user.ID, watchInfo, store.SourceWatch, sourcesTime)
+		old := mustResolve(ctx, t, s.Sources(), user.ID, sourceInfo("Ancienne montre", "Watch"), store.SourceWatch, sourcesTime)
+		foreign := mustResolve(ctx, t, s.Sources(), other.ID, watchInfo, store.SourceWatch, sourcesTime)
+
+		heart, err := s.MetricTypes().EnsureUncurated(ctx, "HKQuantityTypeIdentifierHeartRate", catalog.KindQuantity, "count/min")
+		require.NoError(t, err)
+
+		_, err = s.Samples().Upsert(ctx, user.ID, []store.NewSample{{
+			Sample: store.Sample{
+				TypeID: heart.ID, SourceID: old.ID, Start: sourcesTime, End: sourcesTime, Value: 60,
+				Origin: store.OriginXML, NaturalKey: []byte("a"),
+			},
+			OnConflict: store.ConflictIgnore,
+		}})
+		require.NoError(t, err)
+
+		require.ErrorIs(t, s.Sources().FinishMerge(ctx, user.ID, old.ID), store.ErrInvalid, "not merged")
+		require.ErrorIs(t, s.Sources().FinishMerge(ctx, user.ID, foreign.ID), store.ErrNotFound)
+		require.ErrorIs(t, s.Sources().FinishMerge(ctx, user.ID, foreign.ID+1000), store.ErrNotFound)
+
+		require.NoError(t, s.Sources().StartMerge(ctx, user.ID, target.ID, []int64{old.ID}))
+		require.ErrorIs(t, s.Sources().FinishMerge(ctx, user.ID, old.ID), store.ErrConflict, "samples left")
+
+		require.Len(t, mustListSources(ctx, t, s.Sources(), user.ID), 2)
+	})
 }
 
 // runSourcesOfUsers runs the cases of the isolation of the sources of each user.

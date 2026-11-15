@@ -175,6 +175,7 @@ func RunSamples(t *testing.T, newStore NewStoreFunc) {
 	runSamplesDeleteByKey(t, newStore)
 	runSamplesListOverlapping(t, newStore)
 	runSamplesOfSourcesAndTypes(t, newStore)
+	runSamplesMoveSource(t, newStore)
 }
 
 // runSamplesUpsert runs the cases of the samples stored by an upsert.
@@ -985,4 +986,152 @@ func runSamplesOfSourcesAndTypes(t *testing.T, newStore NewStoreFunc) {
 		lonely := mustCreateUser(ctx, t, st.store.Users(), newUser("eden", "eden@example.com"))
 		require.Empty(t, sources(lonely.ID, st.heart.ID))
 	})
+}
+
+// runSamplesMoveSource runs the cases of the samples that a merge of sources moves.
+func runSamplesMoveSource(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+
+	// Given samples of the watch and of the phone of a user, and of another user, then ListOfSource
+	// returns at most limit samples of a source of the user, by id, none for the source of another
+	// user, and refuses a limit below 1.
+	t.Run("ListOfSourceReturnsTheSamplesOfASourceByID", func(t *testing.T) {
+		t.Parallel()
+
+		st := newSamplesTest(t, newStore)
+		ctx := t.Context()
+
+		onPhone := st.heartRate("phone", samplesTime, 60, store.ConflictIgnore)
+		onPhone.SourceID = st.phone.ID
+
+		st.mustUpsert(ctx, t, st.user.ID,
+			st.heartRate("late", samplesTime.Add(time.Hour), 61, store.ConflictIgnore),
+			onPhone,
+			st.heartRate("early", samplesTime.Add(-time.Hour), 62, store.ConflictIgnore),
+			st.standHour(samplesTime),
+		)
+		st.mustUpsert(ctx, t, st.other.ID, st.foreignHeartRate("foreign", samplesTime, 63))
+
+		list := func(userID, sourceID int64, limit int) []store.Sample {
+			got, err := st.store.Samples().ListOfSource(ctx, userID, sourceID, limit)
+			require.NoError(t, err)
+
+			return got
+		}
+
+		all := list(st.user.ID, st.source.ID, 10)
+		require.Equal(t, []string{"late", "early", "stood"}, sampleKeys(all))
+		require.True(t, slices.IsSortedFunc(all, func(a, b store.Sample) int { return cmp.Compare(a.ID, b.ID) }))
+		require.Equal(t, all[:2], list(st.user.ID, st.source.ID, 2))
+		require.Equal(t, []string{"phone"}, sampleKeys(list(st.user.ID, st.phone.ID, 10)))
+		require.Empty(t, list(st.user.ID, st.foreign.ID, 10), "the source of another user")
+
+		_, err := st.store.Samples().ListOfSource(ctx, st.user.ID, st.source.ID, 0)
+		require.ErrorIs(t, err, store.ErrInvalid)
+	})
+
+	// Given samples of the phone and a sample of the watch, when MoveSource moves the samples of the
+	// phone to the watch, then a sample whose new key is free moves with it, and a sample whose new
+	// key the user has stored, the sample of the watch or a sample moved before in the same call, is
+	// removed and returned as it was. The data availability narrows to the samples left, and the
+	// sample counts follow the samples.
+	t.Run("MoveSourceMovesTheSamplesAndRemovesThoseWhoseKeyIsStored", func(t *testing.T) {
+		t.Parallel()
+
+		st := newSamplesTest(t, newStore)
+		ctx := t.Context()
+
+		onPhone := func(key string, start time.Time) store.NewSample {
+			sample := st.heartRate(key, start, 60, store.ConflictIgnore)
+			sample.SourceID = st.phone.ID
+
+			return sample
+		}
+
+		st.mustUpsert(ctx, t, st.user.ID,
+			st.heartRate("watch", samplesTime, 61, store.ConflictIgnore),
+			onPhone("first", samplesTime.Add(-time.Hour)),
+			onPhone("second", samplesTime.Add(2*time.Hour)),
+			onPhone("third", samplesTime.Add(time.Hour)),
+		)
+
+		phone, err := st.store.Samples().ListOfSource(ctx, st.user.ID, st.phone.ID, 10)
+		require.NoError(t, err)
+		require.Len(t, phone, 3)
+
+		removed, err := st.store.Samples().MoveSource(ctx, st.user.ID, st.phone.ID, st.source.ID, []store.Move{
+			{ID: phone[0].ID, NaturalKey: []byte("first moved")},
+			{ID: phone[1].ID, NaturalKey: []byte("watch")},
+			{ID: phone[2].ID, NaturalKey: []byte("first moved")},
+		})
+		require.NoError(t, err)
+		require.Equal(t, []store.Sample{phone[1], phone[2]}, removed)
+
+		listed := st.mustListAll(ctx, t, st.user.ID, st.heart.ID, 10)
+		require.Equal(t, []string{"first moved", "watch"}, sampleKeys(listed))
+
+		moved := phone[0]
+		moved.SourceID, moved.NaturalKey = st.source.ID, []byte("first moved")
+		require.Equal(t, moved, listed[0])
+
+		require.Equal(t, []store.SampleStats{
+			{TypeID: st.heart.ID, FirstAt: samplesUTC.Add(-time.Hour), LastAt: samplesUTC, Count: 2},
+		}, st.mustStats(ctx, t, st.user.ID))
+		require.Equal(t, st.statsOfTable(ctx, t, st.user.ID), st.mustStats(ctx, t, st.user.ID))
+		require.Equal(t, map[int64]int64{st.source.ID: 2}, st.mustSampleCounts(ctx, t, st.user.ID))
+		require.Equal(t, st.sourceCountsOfTable(ctx, t, st.user.ID), st.mustSampleCounts(ctx, t, st.user.ID))
+	})
+
+	// Given a target that the user does not have, an empty key, or a sample that is not of the
+	// source moved from, of the user or of another user, then MoveSource refuses the call and writes
+	// nothing of it.
+	t.Run("MoveSourceRefusesUnknownTargetsAndSamples", func(t *testing.T) {
+		t.Parallel()
+
+		st := newSamplesTest(t, newStore)
+		ctx := t.Context()
+
+		onPhone := st.heartRate("phone", samplesTime, 60, store.ConflictIgnore)
+		onPhone.SourceID = st.phone.ID
+
+		st.mustUpsert(ctx, t, st.user.ID, onPhone, st.heartRate("watch", samplesTime, 61, store.ConflictIgnore))
+		st.mustUpsert(ctx, t, st.other.ID, st.foreignHeartRate("foreign", samplesTime, 62))
+
+		before := st.mustListAll(ctx, t, st.user.ID, st.heart.ID, 10)
+		phone, watch := before[0], before[1]
+		foreign := st.mustListAll(ctx, t, st.other.ID, st.heart.ID, 10)[0]
+
+		valid := store.Move{ID: phone.ID, NaturalKey: []byte("moved")}
+
+		for _, tc := range []struct {
+			name   string
+			target int64
+			moves  []store.Move
+			want   error
+		}{
+			{"TargetOfAnotherUser", st.foreign.ID, []store.Move{valid}, store.ErrInvalid},
+			{"UnknownTarget", st.foreign.ID + 1000, []store.Move{valid}, store.ErrInvalid},
+			{"EmptyKey", st.source.ID, []store.Move{valid, {ID: phone.ID}}, store.ErrInvalid},
+			{"SampleOfAnotherSource", st.source.ID, []store.Move{valid, {ID: watch.ID, NaturalKey: []byte("w")}}, store.ErrNotFound},
+			{"SampleOfAnotherUser", st.source.ID, []store.Move{valid, {ID: foreign.ID, NaturalKey: []byte("f")}}, store.ErrNotFound},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				_, err := st.store.Samples().MoveSource(ctx, st.user.ID, st.phone.ID, tc.target, tc.moves)
+				require.ErrorIs(t, err, tc.want)
+			})
+		}
+
+		require.Equal(t, before, st.mustListAll(ctx, t, st.user.ID, st.heart.ID, 10))
+		require.Equal(t, map[int64]int64{st.source.ID: 1, st.phone.ID: 1}, st.mustSampleCounts(ctx, t, st.user.ID))
+	})
+}
+
+// sampleKeys returns the natural keys of samples, as strings.
+func sampleKeys(samples []store.Sample) []string {
+	keys := make([]string, 0, len(samples))
+	for _, sample := range samples {
+		keys = append(keys, string(sample.NaturalKey))
+	}
+
+	return keys
 }
