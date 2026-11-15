@@ -3,6 +3,7 @@
 package applexml
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -34,48 +35,95 @@ var ErrMalformed = errors.New("malformed XML")
 // for a document that is truncated or is not well-formed XML, and the error of r when r fails.
 func Records(ctx context.Context, r io.Reader) iter.Seq2[ingest.Record, error] {
 	return func(yield func(ingest.Record, error) bool) {
-		t := newTokenizer(r)
+		t, err := newTokenizer(r)
+		if err == nil {
+			err = t.records(func(r ingest.Record) bool { return yield(r, nil) })
+		}
 
-		for {
-			tok, err := t.next()
-			if errors.Is(err, io.EOF) {
-				return
+		if err != nil {
+			yield(ingest.Record{}, err)
+		}
+	}
+}
+
+// unsupportedElements are the elements under the root that count as unsupported under their name
+// (FR-6 of XML import).
+var unsupportedElements = []string{"ActivitySummary", "ClinicalRecord", "Audiogram", "VisionPrescription"}
+
+// records reads the elements under the root element and yields their records, until the document
+// ends or yield returns false. Elements of no record, such as ExportDate, Me and, until workouts
+// are read, Workout, are skipped with their children.
+func (t *tokenizer) records(yield func(ingest.Record) bool) error {
+	for {
+		tok, err := t.next()
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+
+		if err != nil {
+			return err
+		}
+
+		start, ok := tok.(xml.StartElement)
+		if !ok || t.depth() != topLevel {
+			continue
+		}
+
+		more := true
+
+		switch name := start.Name.Local; {
+		case name == "Record":
+			var record ingest.Record
+
+			if record, err = t.record(start); err == nil {
+				more = yield(record)
 			}
-
-			if err != nil {
-				yield(ingest.Record{}, err)
-
-				return
-			}
-
-			start, ok := tok.(xml.StartElement)
-			if !ok || t.depth() != topLevel {
-				continue
-			}
-
+		case name == "Correlation":
+			more, err = t.correlation(yield)
+		case slices.Contains(unsupportedElements, name):
 			position := t.start
 
-			switch start.Name.Local {
-			case "Record":
-				record, err := t.record(start)
-				if err != nil {
-					yield(ingest.Record{}, err)
-
-					return
-				}
-
-				record.Position = position
-
-				if !yield(record, nil) {
-					return
-				}
-			default:
-				if err := t.skip(); err != nil {
-					yield(ingest.Record{}, err)
-
-					return
-				}
+			if err = t.skip(); err == nil {
+				more = yield(ingest.Record{Position: position, Unsupported: &ingest.Unsupported{Identifier: name}})
 			}
+		default:
+			err = t.skip()
+		}
+
+		if err != nil || !more {
+			return err
+		}
+	}
+}
+
+// correlation reads the children of a Correlation element, whose start tag was read last, and
+// yields its inner records as top-level records. The correlation itself, its attributes and its
+// metadata yield nothing (FR-6 of XML import). It returns false once yield does.
+func (t *tokenizer) correlation(yield func(ingest.Record) bool) (bool, error) {
+	depth := t.depth()
+
+	for {
+		tok, err := t.next()
+		if err != nil {
+			return false, err
+		}
+
+		if t.depth() < depth {
+			return true, nil
+		}
+
+		start, ok := tok.(xml.StartElement)
+		if !ok || t.depth() != depth+1 || start.Name.Local != "Record" {
+			continue
+		}
+
+		record, err := t.record(start)
+		if err != nil {
+			return false, err
+		}
+
+		if !yield(record) {
+			return false, nil
 		}
 	}
 }
@@ -89,19 +137,117 @@ const topLevel = 2
 type tokenizer struct {
 	dec *xml.Decoder
 	src *sourceReader
+	// dtd is where the DTD was in the document, which the decoder never reads.
+	dtd gap
 	// open are the names of the elements that are open.
 	open []xml.Name
 	// closed is true once the root element is closed.
 	closed bool
-	// start is the byte offset of the last token read.
+	// start is the byte offset in the document of the last token read.
 	start int64
 }
 
-// newTokenizer returns a tokenizer of the document of r.
-func newTokenizer(r io.Reader) *tokenizer {
+// gap is a range of bytes of the document that the decoder does not read: size bytes at the offset
+// at of what it reads.
+type gap struct {
+	at, size int64
+}
+
+// newTokenizer returns a tokenizer of the document of r, and the error of r when it fails while
+// the inline DTD is skipped.
+func newTokenizer(r io.Reader) (*tokenizer, error) {
 	src := &sourceReader{r: r}
 
-	return &tokenizer{dec: xml.NewDecoder(src), src: src}
+	rest, dtd, err := skipDTD(src)
+	if err != nil {
+		return nil, fmt.Errorf("read export.xml: %w", err)
+	}
+
+	return &tokenizer{dec: xml.NewDecoder(rest), src: src, dtd: dtd}, nil
+}
+
+// maxProlog is how far from the start of the document the inline DTD is looked for.
+const maxProlog = 64 << 10
+
+// doctype starts the inline DTD, after the less-than sign.
+const doctype = "!DOCTYPE"
+
+// skipDTD returns the document of r without its inline DTD, from <!DOCTYPE to the first ]>, so that
+// the decoder never parses it, since some iOS versions produce a malformed DTD (FR-5 of XML
+// import). The DTD is looked for in the prolog only: before the first less-than sign that starts
+// neither a declaration, a comment nor a processing instruction. It returns where the DTD was, and
+// the error of r when it fails.
+func skipDTD(r io.Reader) (io.Reader, gap, error) {
+	br := bufio.NewReader(r)
+
+	var head []byte
+
+	for len(head) < maxProlog {
+		chunk, err := br.ReadSlice('<')
+		head = append(head, chunk...)
+
+		switch {
+		case errors.Is(err, bufio.ErrBufferFull):
+			continue
+		case errors.Is(err, io.EOF):
+			return bytes.NewReader(head), gap{}, nil
+		case err != nil:
+			return nil, gap{}, err
+		}
+
+		next, err := br.Peek(len(doctype))
+		if err != nil && !errors.Is(err, io.EOF) {
+			return nil, gap{}, err
+		}
+
+		if string(next) == doctype {
+			size, err := discardDTD(br)
+			if err != nil {
+				return nil, gap{}, err
+			}
+
+			head = head[:len(head)-1]
+
+			return io.MultiReader(bytes.NewReader(head), br), gap{at: int64(len(head)), size: 1 + size}, nil
+		}
+
+		if len(next) == 0 || (next[0] != '?' && next[0] != '!') {
+			break
+		}
+	}
+
+	return io.MultiReader(bytes.NewReader(head), br), gap{}, nil
+}
+
+// discardDTD discards the bytes of br up to the first ]> included, or to the end of the document,
+// and returns how many it discarded.
+func discardDTD(br *bufio.Reader) (int64, error) {
+	var size int64
+
+	for {
+		chunk, err := br.ReadSlice(']')
+		size += int64(len(chunk))
+
+		switch {
+		case errors.Is(err, bufio.ErrBufferFull):
+			continue
+		case errors.Is(err, io.EOF):
+			return size, nil
+		case err != nil:
+			return 0, err
+		}
+
+		next, err := br.Peek(1)
+		if err != nil && !errors.Is(err, io.EOF) {
+			return 0, err
+		}
+
+		if string(next) == ">" {
+			_, _ = br.Discard(1)
+
+			return size + 1, nil
+		}
+	}
 }
 
 // depth returns the number of open elements.
@@ -112,6 +258,9 @@ func (t *tokenizer) depth() int {
 // next returns the next token, and io.EOF once the document ends after its root element.
 func (t *tokenizer) next() (xml.Token, error) {
 	t.start = t.dec.InputOffset()
+	if t.start >= t.dtd.at {
+		t.start += t.dtd.size
+	}
 
 	tok, err := t.dec.RawToken()
 
@@ -211,11 +360,11 @@ func (a attributes) get(name string) (string, bool) {
 }
 
 // record reads the children of the Record element of start, whose start tag was read last, and
-// returns its record.
+// returns its record, at the position of its start tag.
 func (t *tokenizer) record(start xml.StartElement) (ingest.Record, error) {
 	var m metadata
 
-	depth := t.depth()
+	position, depth := t.start, t.depth()
 
 	for {
 		tok, err := t.next()
@@ -249,6 +398,7 @@ func (t *tokenizer) record(start xml.StartElement) (ingest.Record, error) {
 	}
 
 	record := newRecord(start.Attr)
+	record.Position = position
 
 	switch {
 	case record.Quantity != nil:
