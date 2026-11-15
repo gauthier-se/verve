@@ -9,10 +9,6 @@ import "math"
 // It returns points when they are at most maxPoints, and the first and last when maxPoints is below
 // 3.
 func Downsample[T any](points []T, maxPoints int, coordinates func(T) (float64, float64)) []T {
-	if len(points) <= maxPoints {
-		return points
-	}
-
 	kept, _ := downsampleScan(len(points), maxPoints, func(visit func(T)) error {
 		for _, p := range points {
 			visit(p)
@@ -29,10 +25,9 @@ func Downsample[T any](points []T, maxPoints int, coordinates func(T) (float64, 
 // bucket, and once more to keep the point of the largest triangle of each, or once when n is at most
 // maxPoints or maxPoints is below 3. It returns the first error of scan.
 //
-// The points of a scan are positioned by the order of their visit: those beyond n are left out, and
-// a scan of fewer points than n keeps the point chosen in the last bucket it reached, so that points
-// added or removed between two scans change the points kept, but they stay sorted and at most
-// maxPoints.
+// The points of a scan are positioned by the order of their visit, and the first and last points of
+// the last scan are always kept: points added or removed between two scans change the points kept
+// between them, never the first and last, the order or the bound of maxPoints.
 func downsampleScan[T any](n, maxPoints int, scan func(visit func(T)) error,
 	coordinates func(T) (float64, float64),
 ) ([]T, error) {
@@ -42,116 +37,155 @@ func downsampleScan[T any](n, maxPoints int, scan func(visit func(T)) error,
 		err := scan(func(p T) {
 			if len(kept) < maxPoints {
 				kept = append(kept, p)
+			} else {
+				kept[len(kept)-1] = p
 			}
 		})
 
 		return kept, err
 	case maxPoints < 3:
-		kept, j := make([]T, 0, 2), 0
+		kept := make([]T, 0, 2)
 		err := scan(func(p T) {
-			if j == 0 || j == n-1 {
+			if len(kept) < 2 {
 				kept = append(kept, p)
+			} else {
+				kept[1] = p
 			}
-
-			j++
 		})
 
 		return kept, err
 	}
 
-	// The points between the first and the last fill maxPoints - 2 buckets of (n - 2) / (maxPoints -
-	// 2) points each, at least one, bounded in integers so that the last bucket ends at the last point.
 	buckets := maxPoints - 2
-	bucketStart := func(i int) int { return i*(n-2)/buckets + 1 }
 
-	// The mean of each bucket, then the last point, at index buckets, so that the next bucket of
+	// The mean of each bucket, then of the last point, at index buckets, so that the next bucket of
 	// bucket i is at i + 1. The order of the sums is that of the points.
 	meanX, meanY, counts := make([]float64, buckets+1), make([]float64, buckets+1), make([]int, buckets+1)
 
-	j, i := 0, 0
+	sums := newPositions(n, buckets)
 	err := scan(func(p T) {
-		defer func() { j++ }()
-
-		if j == 0 || j >= n {
-			return
+		if point, bucket := sums.next(); point > 0 && point < n {
+			x, y := coordinates(p)
+			meanX[bucket] += x
+			meanY[bucket] += y
+			counts[bucket]++
 		}
-
-		for i < buckets && j >= bucketStart(i+1) {
-			i++
-		}
-
-		x, y := coordinates(p)
-		meanX[i] += x
-		meanY[i] += y
-		counts[i]++
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	for k := range meanX {
-		meanX[k] /= float64(counts[k])
-		meanY[k] /= float64(counts[k])
+	for i := range meanX {
+		meanX[i] /= float64(counts[i])
+		meanY[i] /= float64(counts[i])
 	}
 
 	var (
-		kept    = make([]T, 0, maxPoints)
-		ax, ay  float64
-		chosen  T
-		largest float64
-		// open is true when bucket i has a chosen point not kept yet.
-		open bool
+		kept   = make([]T, 0, maxPoints)
+		ax, ay float64
+		// candidate is the point of the largest triangle of the bucket of the points visited last, at
+		// position candidateAt, and pending is true until it is kept.
+		candidate   T
+		candidateAt int
+		largest     float64
+		pending     bool
+		// last is the point visited last, at position lastAt.
+		last          T
+		lastAt        int
+		currentBucket int
 	)
 
-	j, i = 0, 0
+	triangles := newPositions(n, buckets)
 	err = scan(func(p T) {
-		defer func() { j++ }()
+		point, bucket := triangles.next()
+		last, lastAt = p, point
 
 		switch {
-		case j >= n:
-			return
-		case j == 0:
+		case point == 0:
 			kept = append(kept, p)
 			ax, ay = coordinates(p)
 
 			return
+		case point >= n:
+			return
 		}
 
-		for i < buckets && j >= bucketStart(i+1) {
-			if open {
-				kept = append(kept, chosen)
-				ax, ay = coordinates(chosen)
-				open = false
+		if bucket != currentBucket {
+			if pending {
+				kept = append(kept, candidate)
+				ax, ay = coordinates(candidate)
+				pending = false
 			}
 
-			i++
+			currentBucket = bucket
 		}
 
-		if i == buckets {
+		if bucket == buckets {
 			kept = append(kept, p)
 
 			return
 		}
 
-		if !open {
-			chosen, largest, open = p, -1, true
+		if !pending {
+			candidate, candidateAt, largest, pending = p, point, -1, true
 		}
 
 		x, y := coordinates(p)
 
 		// Twice the area: the comparison does not need the half.
-		area := math.Abs((ax-meanX[i+1])*(y-ay) - (ax-x)*(meanY[i+1]-ay))
+		area := math.Abs((ax-meanX[bucket+1])*(y-ay) - (ax-x)*(meanY[bucket+1]-ay))
 		if area > largest {
-			chosen, largest = p, area
+			candidate, candidateAt, largest = p, point, area
 		}
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	if open {
-		kept = append(kept, chosen)
+	switch {
+	// The last point, at n - 1, is kept already, and a point visited after it replaces it.
+	case lastAt >= n-1:
+		kept[len(kept)-1] = last
+	// Fewer points than n: the bucket of the last point ends with it.
+	case lastAt > 0:
+		if pending && candidateAt != lastAt {
+			kept = append(kept, candidate)
+		}
+
+		kept = append(kept, last)
 	}
 
 	return kept, nil
+}
+
+// positions gives the position of each point of a scan of n points, in the order of their visit,
+// and its bucket among the buckets of the points between the first and the last: (n - 2) / buckets
+// points each, at least one, bounded in integers so that the last bucket ends at the last point. The
+// last point is in bucket buckets.
+type positions struct {
+	n, buckets int
+	// point is the position of the next point, and bucket the bucket of the point before it.
+	point, bucket int
+}
+
+func newPositions(n, buckets int) *positions {
+	return &positions{n: n, buckets: buckets}
+}
+
+// next returns the position and the bucket of the next point of the scan. Its bucket is meaningless
+// for the first point and those at n or beyond.
+func (p *positions) next() (point, bucket int) {
+	point = p.point
+	p.point++
+
+	for p.bucket < p.buckets && point >= p.start(p.bucket+1) {
+		p.bucket++
+	}
+
+	return point, p.bucket
+}
+
+// start returns the position of the first point of bucket i, and of the last point for i = buckets.
+func (p *positions) start(i int) int {
+	return i*(p.n-2)/p.buckets + 1
 }

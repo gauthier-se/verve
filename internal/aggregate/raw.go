@@ -160,7 +160,7 @@ func readDownsampled(ctx context.Context, repos store.Repositories, userID int64
 		return float64(s.Start.UnixMilli()), s.Value
 	})
 	if err != nil {
-		return RawPage{}, err
+		return RawPage{}, fmt.Errorf("downsample: %w", err)
 	}
 
 	return RawPage{Samples: rawSamples(kept)}, nil

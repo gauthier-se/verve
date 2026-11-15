@@ -93,6 +93,50 @@ func TestReadRaw_DownsampledReadHoldsBoundedMemory(t *testing.T) {
 	require.Less(t, held, uint64(16<<20), "a downsampled read held %d MiB", held>>20)
 }
 
+// Given samples added at the end of the range or removed from it after ReadRaw counted them, when it
+// downsamples the range, then it keeps the first and last samples it lists, sorted and at most
+// maxPoints.
+func TestReadRaw_DownsampledReadKeepsTheFirstAndLastSamplesOfARangeThatChanges(t *testing.T) {
+	t.Parallel()
+
+	e := newSeriesEnv(t)
+	heartRate := e.mustType(t, "heart_rate")
+
+	for _, tc := range []struct {
+		count, drift, maxPoints int
+	}{
+		{count: 12_000, drift: 7, maxPoints: 300},
+		{count: 12_000, drift: -7, maxPoints: 300},
+		{count: 12_000, drift: -11_000, maxPoints: 300},
+		{count: 12_000, drift: -11_999, maxPoints: 300},
+		{count: 12_000, drift: 7, maxPoints: 3},
+		{count: 12_000, drift: -7, maxPoints: 3},
+		{count: 12_000, drift: 7, maxPoints: 2},
+		{count: 12_000, drift: -7, maxPoints: 2},
+		{count: 250, drift: 100, maxPoints: 300},
+	} {
+		t.Run(fmt.Sprintf("count=%d,drift=%d,maxPoints=%d", tc.count, tc.drift, tc.maxPoints), func(t *testing.T) {
+			t.Parallel()
+
+			samples := &generatedSamples{typeID: heartRate.ID, count: tc.count, drift: tc.drift}
+
+			page, err := aggregate.ReadRaw(t.Context(), &generatedStore{Store: e.store, samples: samples}, 1, heartRate,
+				time.UTC, aggregate.RawQuery{From: rawFrom, To: rawFrom.AddDate(0, 0, 366), MaxDays: 366, MaxPoints: tc.maxPoints})
+			require.NoError(t, err)
+
+			got := page.Samples
+			require.LessOrEqual(t, len(got), tc.maxPoints)
+			require.GreaterOrEqual(t, len(got), min(2, tc.count+tc.drift))
+			require.Equal(t, rawFrom, got[0].Start)
+			require.Equal(t, samples.start(tc.count+tc.drift-1), got[len(got)-1].Start)
+
+			for i := 1; i < len(got); i++ {
+				require.True(t, got[i].Start.After(got[i-1].Start), "sample %d is not after the one before", i)
+			}
+		})
+	}
+}
+
 // BenchmarkReadRaw_Downsampled measures a downsampled read of ranges of millions of samples, and
 // reports the most memory it held, which stays the same whatever the number of samples.
 func BenchmarkReadRaw_Downsampled(b *testing.B) {
@@ -161,7 +205,10 @@ type generatedSamples struct {
 
 	typeID int64
 	count  int
-	peak   uint64
+	// drift is the number of samples that List lists beyond those that Count counts, as samples added
+	// at the end of the range after the count, or below 0 removed from it.
+	drift int
+	peak  uint64
 }
 
 // start returns the start of the sample i.
@@ -200,7 +247,7 @@ func (g *generatedSamples) List(_ context.Context, userID int64, query store.Sam
 		first = max(first, int(query.After.ID))
 	}
 
-	last := min(g.index(query.To), g.count, first+query.Limit)
+	last := min(g.index(query.To), g.count+g.drift, first+query.Limit)
 
 	batch := make([]store.Sample, 0, max(last-first, 0))
 	for i := first; i < last; i++ {
