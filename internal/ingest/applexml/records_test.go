@@ -303,7 +303,7 @@ func TestRecords_TruncatedOrMalformedDocument(t *testing.T) {
 		doc  string
 	}{
 		{name: "truncated in a record", doc: whole[:inSecond]},
-		{name: "truncated before the end of the root", doc: strings.TrimSuffix(whole, "</HealthData>\n")},
+		{name: "truncated before the end of the root", doc: strings.TrimSuffix(document(heartRate), "</HealthData>\n")},
 		{name: "mismatched end tag", doc: document(heartRate, `<Record type="X" sourceName="Watch" startDate="" endDate="" value="1"></Correlation>`)},
 		{name: "attribute without quotes", doc: document(heartRate, `<Record type=X/>`)},
 		{name: "unknown entity", doc: document(heartRate, `<Record type="&nope;"/>`)},
