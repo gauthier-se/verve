@@ -1128,6 +1128,32 @@ func TestLoad_FractionThroughAnAliasNamesTheValue(t *testing.T) {
 	require.Contains(t, err.Error(), file+`:3: raw_max_days (VERVE_RAW_MAX_DAYS): invalid value "7.5": must be a whole number`)
 }
 
+// Given a quoted whole number in the YAML file for any integer setting, then it loads as the same
+// text does from the environment. Given a quoted fraction, then loading fails the same way.
+func TestLoad_QuotedValueForAnIntegerSettingInTheFile(t *testing.T) {
+	t.Parallel()
+
+	for _, path := range integerSettings(t) {
+		t.Run(path, func(t *testing.T) {
+			t.Parallel()
+
+			cfg, err := Load(LoadOptions{File: writeFile(t, yamlSetting(path, `"8"`))})
+
+			require.NoError(t, err)
+			require.EqualValues(t, 8, cfg.settings()[path].value.Interface())
+			require.Equal(t, SourceFile, cfg.Sources[path])
+
+			defaults := Default()
+			file := writeFile(t, yamlSetting(path, `"7.5"`))
+
+			_, err = Load(LoadOptions{File: file})
+
+			require.EqualError(t, err, fmt.Sprintf(`%s:%d: %s: invalid value "7.5": must be a whole number`,
+				file, strings.Count(path, ".")+1, defaults.settings()[path].name()))
+		})
+	}
+}
+
 // Given a whole number too large or too small for an integer, which YAML reads as a float, for any
 // integer setting, in the YAML file or in the environment, then loading fails, saying so rather
 // than reporting a fraction.
