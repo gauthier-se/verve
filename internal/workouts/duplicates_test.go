@@ -22,27 +22,25 @@ var firstSeen = time.Date(2026, 1, 5, 8, 0, 0, 0, time.UTC)
 // of kind, received through Health Auto Export, without route.
 func run(id, sourceID int64, kind store.SourceKind, shift time.Duration) workouts.Candidate {
 	return workouts.Candidate{
-		ID:              id,
-		SourceID:        sourceID,
-		SourceKind:      kind,
-		SourceFirstSeen: firstSeen,
-		Origin:          store.OriginHAE,
-		Family:          catalog.FamilyRunning,
-		Start:           runStart.Add(shift),
-		End:             runStart.Add(shift + 30*time.Minute),
+		ID:     id,
+		Source: store.Source{ID: sourceID, Kind: kind, FirstSeenAt: firstSeen},
+		Origin: store.OriginHAE,
+		Family: catalog.FamilyRunning,
+		Start:  runStart.Add(shift),
+		End:    runStart.Add(shift + 30*time.Minute),
 	}
 }
 
 // Given workouts of different sources of the same family, overlapping by more than 80 percent of
-// the shorter one, when Duplicates runs, then the one whose source kind comes later in the default
+// the shorter one, when KeptWorkouts runs, then the one whose source kind comes later in the default
 // activity and energy list, then whose source was first seen later, then whose source has the
 // higher id, duplicates the other. Given an overlap of 80 percent or less, or different families,
 // then neither is a duplicate.
-func TestDuplicates_DifferentSources_LowerRankDuplicatesTheOther(t *testing.T) {
+func TestKeptWorkouts_DifferentSources_LowerRankDuplicatesTheOther(t *testing.T) {
 	t.Parallel()
 
 	laterSeen := func(c workouts.Candidate) workouts.Candidate {
-		c.SourceFirstSeen = firstSeen.Add(24 * time.Hour)
+		c.Source.FirstSeenAt = firstSeen.Add(24 * time.Hour)
 
 		return c
 	}
@@ -115,7 +113,7 @@ func TestDuplicates_DifferentSources_LowerRankDuplicatesTheOther(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			require.Equal(t, tt.want, workouts.Duplicates(tt.group))
+			require.Equal(t, tt.want, workouts.KeptWorkouts(tt.group))
 		})
 	}
 }
@@ -128,9 +126,9 @@ func instant(c workouts.Candidate) workouts.Candidate {
 }
 
 // Given overlapping workouts of the same source, received through different origins, when
-// Duplicates runs, then the one with a route is kept, then the one imported first. Given the same
+// KeptWorkouts runs, then the one with a route is kept, then the one imported first. Given the same
 // origin, then neither is a duplicate.
-func TestDuplicates_SameSource_RouteThenFirstImportedIsKept(t *testing.T) {
+func TestKeptWorkouts_SameSource_RouteThenFirstImportedIsKept(t *testing.T) {
 	t.Parallel()
 
 	xml := func(c workouts.Candidate) workouts.Candidate {
@@ -176,14 +174,14 @@ func TestDuplicates_SameSource_RouteThenFirstImportedIsKept(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			require.Equal(t, tt.want, workouts.Duplicates(tt.group))
+			require.Equal(t, tt.want, workouts.KeptWorkouts(tt.group))
 		})
 	}
 }
 
-// Given three or more workouts that overlap one another, when Duplicates runs, then one is kept and
+// Given three or more workouts that overlap one another, when KeptWorkouts runs, then one is kept and
 // each other points to it, whatever the order of the group.
-func TestDuplicates_ThreeOverlappingWorkouts_EachPointsToTheKeptOne(t *testing.T) {
+func TestKeptWorkouts_ThreeOverlappingWorkouts_EachPointsToTheKeptOne(t *testing.T) {
 	t.Parallel()
 
 	watch := run(3, 10, store.SourceWatch, 2*time.Minute)
@@ -193,14 +191,14 @@ func TestDuplicates_ThreeOverlappingWorkouts_EachPointsToTheKeptOne(t *testing.T
 
 	want := map[int64]int64{1: 3, 2: 3, 3: 0, 4: 3}
 
-	require.Equal(t, want, workouts.Duplicates([]workouts.Candidate{phone, app, watch, strava}))
-	require.Equal(t, want, workouts.Duplicates([]workouts.Candidate{strava, watch, app, phone}))
+	require.Equal(t, want, workouts.KeptWorkouts([]workouts.Candidate{phone, app, watch, strava}))
+	require.Equal(t, want, workouts.KeptWorkouts([]workouts.Candidate{strava, watch, app, phone}))
 }
 
 // Given workouts that overlap a kept workout but not one another, and a duplicate that overlaps a
-// workout which it does not duplicate, when Duplicates runs, then each points to the kept workout it
+// workout which it does not duplicate, when KeptWorkouts runs, then each points to the kept workout it
 // duplicates, and a workout that only a duplicate overlaps stays kept.
-func TestDuplicates_Chain_PointsOnlyToKeptWorkouts(t *testing.T) {
+func TestKeptWorkouts_Chain_PointsOnlyToKeptWorkouts(t *testing.T) {
 	t.Parallel()
 
 	// The watch run starts at 0, the app copy at 5 minutes, overlapping it by 25 of 30 minutes,
@@ -210,5 +208,5 @@ func TestDuplicates_Chain_PointsOnlyToKeptWorkouts(t *testing.T) {
 	app := run(2, 20, store.SourceApp, 5*time.Minute)
 	phone := run(3, 30, store.SourcePhone, 10*time.Minute)
 
-	require.Equal(t, map[int64]int64{1: 0, 2: 1, 3: 0}, workouts.Duplicates([]workouts.Candidate{app, phone, watch}))
+	require.Equal(t, map[int64]int64{1: 0, 2: 1, 3: 0}, workouts.KeptWorkouts([]workouts.Candidate{app, phone, watch}))
 }

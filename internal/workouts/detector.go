@@ -45,7 +45,7 @@ func (d Detector) Evaluate(ctx context.Context, tx store.Repositories, userID in
 		return err
 	}
 
-	kept := Duplicates(candidates)
+	kept := KeptWorkouts(candidates)
 
 	for _, id := range slices.Sorted(maps.Keys(group)) {
 		if kept[id] == group[id].DuplicateOf {
@@ -141,8 +141,10 @@ func (s *groupSearch) expand(ctx context.Context, id int64, start, end time.Time
 	s.add(self)
 	s.queried[id] = longest
 
+	c := s.d.candidate(self)
+
 	for _, w := range window {
-		if _, ok := s.members[w.ID]; !ok && duplicate(s.d.candidate(self), s.d.candidate(w)) {
+		if _, ok := s.members[w.ID]; !ok && duplicate(c, s.d.candidate(w)) {
 			s.add(w)
 		}
 	}
@@ -150,15 +152,15 @@ func (s *groupSearch) expand(ctx context.Context, id int64, start, end time.Time
 	return nil
 }
 
-// candidate returns w as duplicate detection compares it, without the details of its source and
-// its route.
+// candidate returns w as duplicate detection compares it, with only the id of its source, and
+// without route.
 func (d Detector) candidate(w store.Workout) Candidate {
 	family := catalog.FamilyOther
 	if activity, ok := d.activities.ByKey(w.Activity); ok {
 		family = activity.Family
 	}
 
-	return Candidate{ID: w.ID, SourceID: w.SourceID, Origin: w.Origin, Family: family, Start: w.Start, End: w.End}
+	return Candidate{ID: w.ID, Source: store.Source{ID: w.SourceID}, Origin: w.Origin, Family: family, Start: w.Start, End: w.End}
 }
 
 // candidates returns the workouts of group as duplicate detection compares them, by id.
@@ -189,8 +191,13 @@ func (d Detector) candidates(ctx context.Context, tx store.Repositories, userID 
 
 	for _, id := range ids {
 		c := d.candidate(group[id])
-		source := byID[c.SourceID]
-		c.SourceKind, c.SourceFirstSeen, c.HasRoute = source.Kind, source.FirstSeenAt, routes[id]
+
+		source, ok := byID[c.Source.ID]
+		if !ok {
+			return nil, fmt.Errorf("source %d of workout %d: %w", c.Source.ID, id, store.ErrNotFound)
+		}
+
+		c.Source, c.HasRoute = source, routes[id]
 		candidates = append(candidates, c)
 	}
 

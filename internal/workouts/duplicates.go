@@ -14,11 +14,9 @@ import (
 
 // Candidate is a workout as duplicate detection compares it.
 type Candidate struct {
-	ID              int64
-	SourceID        int64
-	SourceKind      store.SourceKind
-	SourceFirstSeen time.Time
-	Origin          store.Origin
+	ID     int64
+	Source store.Source
+	Origin store.Origin
 	// Family is the activity family of its activity type.
 	Family   catalog.Family
 	Start    time.Time
@@ -26,25 +24,23 @@ type Candidate struct {
 	HasRoute bool
 }
 
-// Duplicates returns the id of the kept workout that each workout of group duplicates, by id, 0 for
-// a kept workout.
+// KeptWorkouts returns the id of the kept workout that each workout of group duplicates, by id, 0
+// for a kept workout.
 //
-// The workouts are ranked by the kind of their source in the default activity and energy list,
-// then by first seen of their source, then by source id, as FR-4 orders sources, which leaves the
-// workouts of one source together: among them, the one with a route first, then the one imported
-// first, of the lower id. In that order, each workout duplicates the first kept workout that it
-// duplicates (see duplicate), and is kept when there is none. The result of a workout depends only
-// on the workouts of group that it duplicates, so that a group closed under duplicate gives the
-// result that all the workouts of the user would.
-func Duplicates(group []Candidate) map[int64]int64 {
-	ranks := aggregate.DefaultRanks(catalog.GroupActivity)
+// The workouts are ranked by their source, as the default activity and energy list of FR-4 orders
+// sources: by kind, then by first seen, then by source id, which leaves the workouts of one source
+// together. Among them, the one with a route comes first, then the one imported first, of the lower
+// id. In that order, each workout duplicates the first kept workout that it duplicates (see
+// duplicate), and is kept when there is none. The result of a workout depends only on the workouts
+// of group that it duplicates, so that a group closed under duplicate gives the result that all the
+// workouts of the user would.
+func KeptWorkouts(group []Candidate) map[int64]int64 {
+	compareSources := aggregate.CompareSources(catalog.GroupActivity)
 
 	ranked := slices.Clone(group)
 	slices.SortFunc(ranked, func(a, b Candidate) int {
 		return cmp.Or(
-			cmp.Compare(ranks[a.SourceKind], ranks[b.SourceKind]),
-			a.SourceFirstSeen.Compare(b.SourceFirstSeen),
-			cmp.Compare(a.SourceID, b.SourceID),
+			compareSources(a.Source, b.Source),
 			compareRoute(a.HasRoute, b.HasRoute),
 			cmp.Compare(a.ID, b.ID),
 		)
@@ -84,7 +80,7 @@ func compareRoute(a, b bool) int {
 // duplicate reports whether a and b record the same workout: of different sources or different
 // origins, of the same activity family, overlapping by more than 80 percent of the shorter one.
 func duplicate(a, b Candidate) bool {
-	if a.ID == b.ID || a.Family != b.Family || (a.SourceID == b.SourceID && a.Origin == b.Origin) {
+	if a.ID == b.ID || a.Family != b.Family || (a.Source.ID == b.Source.ID && a.Origin == b.Origin) {
 		return false
 	}
 

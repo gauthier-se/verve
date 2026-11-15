@@ -697,7 +697,7 @@ func runWorkoutsDuplicates(t *testing.T, newStore NewStoreFunc) {
 		require.Equal(t, []int64{watch.ID}, workoutIDs(st.mustListAll(ctx, t, st.user.ID)))
 
 		query := allWorkouts
-		query.Limit, query.Duplicates = 10, true
+		query.Limit, query.WithDuplicates = 10, true
 
 		all, err := st.store.Workouts().List(ctx, st.user.ID, query)
 		require.NoError(t, err)

@@ -147,8 +147,8 @@ type WorkoutsQuery struct {
 	After Cursor
 	// Limit is the maximum number of workouts, at least 1.
 	Limit int
-	// Duplicates includes the workouts that duplicate another, left out otherwise.
-	Duplicates bool
+	// WithDuplicates includes the workouts that duplicate another, left out otherwise.
+	WithDuplicates bool
 }
 
 // WorkoutsRepository stores the workouts of each user. A workout of another user is never returned.

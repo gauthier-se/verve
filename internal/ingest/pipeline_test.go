@@ -1045,10 +1045,10 @@ func (e *pipelineEnv) duplicatesOf(t *testing.T) map[string]string {
 	t.Helper()
 
 	all, err := e.store.Workouts().List(t.Context(), e.user.ID, store.WorkoutsQuery{
-		From:       time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC),
-		To:         time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC),
-		Limit:      1000,
-		Duplicates: true,
+		From:           time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC),
+		To:             time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC),
+		Limit:          1000,
+		WithDuplicates: true,
 	})
 	require.NoError(t, err)
 

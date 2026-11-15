@@ -87,7 +87,7 @@ func (r workouts) List(ctx context.Context, userID int64, query store.WorkoutsQu
 		AfterAt:        math.MaxInt64,
 		AfterID:        math.MaxInt64,
 		MaxWorkouts:    int64(query.Limit),
-		WithDuplicates: boolInt(query.Duplicates),
+		WithDuplicates: sqliteBool(query.WithDuplicates),
 	}
 
 	if query.After != (store.Cursor{}) {
@@ -472,13 +472,4 @@ func workoutsOf(rows []sqlcgen.Workout) ([]store.Workout, error) {
 	}
 
 	return list, nil
-}
-
-// boolInt returns 1 for true and 0 for false, as SQLite stores booleans.
-func boolInt(v bool) int64 {
-	if v {
-		return 1
-	}
-
-	return 0
 }
