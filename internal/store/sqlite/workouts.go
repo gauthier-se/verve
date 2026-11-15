@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"time"
 
 	"github.com/gauthier-se/verve/internal/clock"
@@ -472,4 +473,78 @@ func workoutsOf(rows []sqlcgen.Workout) ([]store.Workout, error) {
 	}
 
 	return list, nil
+}
+
+func (r workouts) ListOfSource(ctx context.Context, userID, sourceID int64, limit int) ([]store.Workout, error) {
+	if limit < 1 {
+		return nil, fmt.Errorf("list workouts of source %d of user %d: limit %d below 1: %w", sourceID, userID, limit, store.ErrInvalid)
+	}
+
+	rows, err := r.q.read().ListUserWorkoutsOfSource(ctx, sqlcgen.ListUserWorkoutsOfSourceParams{
+		UserID:      userID,
+		SourceID:    sourceID,
+		MaxWorkouts: int64(limit),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list workouts of source %d of user %d: %w", sourceID, userID, err)
+	}
+
+	list, err := workoutsOf(rows)
+	if err != nil {
+		return nil, fmt.Errorf("list workouts of source %d of user %d: %w", sourceID, userID, err)
+	}
+
+	return list, nil
+}
+
+// MoveSource tries the move of each workout first, which a stored key leaves undone, and removes the
+// workout then.
+func (r workouts) MoveSource(ctx context.Context, userID, fromID, toID int64, moves []store.Move) ([]store.Workout, error) {
+	if slices.ContainsFunc(moves, func(m store.Move) bool { return len(m.NaturalKey) == 0 }) {
+		return nil, fmt.Errorf("move workouts of source %d of user %d: empty natural key: %w", fromID, userID, store.ErrInvalid)
+	}
+
+	var removed []store.Workout
+
+	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
+		if err := checkSource(ctx, q, userID, toID); err != nil {
+			return err
+		}
+
+		for _, move := range moves {
+			_, err := q.MoveUserWorkout(ctx, sqlcgen.MoveUserWorkoutParams{
+				ToID: toID, NaturalKey: move.NaturalKey, UserID: userID, ID: move.ID, FromID: fromID,
+			})
+			if err == nil {
+				continue
+			}
+
+			if !errors.Is(err, sql.ErrNoRows) {
+				return err
+			}
+
+			row, err := q.DeleteUserWorkoutOfSource(ctx, sqlcgen.DeleteUserWorkoutOfSourceParams{UserID: userID, ID: move.ID, SourceID: fromID})
+			if errors.Is(err, sql.ErrNoRows) {
+				return fmt.Errorf("workout %d: %w", move.ID, store.ErrNotFound)
+			}
+
+			if err != nil {
+				return err
+			}
+
+			workout, err := workoutOf(row)
+			if err != nil {
+				return err
+			}
+
+			removed = append(removed, workout)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("move workouts of source %d of user %d to %d: %w", fromID, userID, toID, err)
+	}
+
+	return removed, nil
 }

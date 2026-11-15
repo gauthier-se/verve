@@ -71,3 +71,30 @@ SELECT *
 FROM source_stats
 WHERE user_id = ?
 ORDER BY source_id;
+
+-- name: SetUserSourceModel :exec
+UPDATE sources
+SET device_model = ?
+WHERE user_id = ? AND id = ?;
+
+-- name: SetUserSourceMergedInto :exec
+UPDATE sources
+SET merged_into = ?
+WHERE user_id = ? AND id = ?;
+
+-- name: UserSourceHasRecords :one
+-- Whether a source of a user has samples or workouts, from the indexes on samples (user_id,
+-- source_id, type_id) and workouts (user_id, source_id).
+SELECT CAST(EXISTS (SELECT 1 FROM samples AS s WHERE s.user_id = sqlc.arg(user_id) AND s.source_id = sqlc.arg(source_id))
+         OR EXISTS (SELECT 1 FROM workouts AS w WHERE w.user_id = sqlc.arg(user_id) AND w.source_id = sqlc.arg(source_id))
+           AS INTEGER) AS has_records;
+
+-- name: MoveUserSourceAliases :exec
+UPDATE source_aliases
+SET source_id = sqlc.arg(to_id)
+WHERE user_id = sqlc.arg(user_id) AND source_id = sqlc.arg(from_id);
+
+-- name: DeleteUserSource :exec
+DELETE
+FROM sources
+WHERE user_id = ? AND id = ?;

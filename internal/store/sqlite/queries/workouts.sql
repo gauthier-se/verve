@@ -120,3 +120,34 @@ UPDATE workouts
 SET duplicate_of = sqlc.narg(duplicate_of)
 WHERE user_id = sqlc.arg(user_id)
   AND id = sqlc.arg(id);
+
+-- name: ListUserWorkoutsOfSource :many
+-- The workouts of a source of a user, duplicates included, from the index on (user_id, source_id),
+-- which holds the id.
+SELECT *
+FROM workouts
+WHERE user_id = sqlc.arg(user_id)
+  AND source_id = sqlc.arg(source_id)
+ORDER BY id
+LIMIT sqlc.arg(max_workouts);
+
+-- name: MoveUserWorkout :one
+-- Moves a workout of a source of a user to another source with a new natural key. Returns no row
+-- when the workout is not of the source, and when the user has the new key stored, the workout then
+-- left as it is.
+UPDATE OR IGNORE workouts
+SET source_id   = sqlc.arg(to_id),
+    natural_key = sqlc.arg(natural_key)
+WHERE user_id = sqlc.arg(user_id)
+  AND id = sqlc.arg(id)
+  AND source_id = sqlc.arg(from_id)
+RETURNING id;
+
+-- name: DeleteUserWorkoutOfSource :one
+-- Removes a workout of a source of a user, and its route by its foreign key.
+DELETE
+FROM workouts
+WHERE user_id = sqlc.arg(user_id)
+  AND id = sqlc.arg(id)
+  AND source_id = sqlc.arg(source_id)
+RETURNING *;

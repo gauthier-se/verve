@@ -7,13 +7,14 @@ package sqlcgen
 
 import (
 	"context"
+	"database/sql"
 )
 
 const createSource = `-- name: CreateSource :one
 INSERT INTO sources (user_id, name, device_model, display_name, bundle_id, device_name, manufacturer, hardware_version,
                      software_version, kind, kind_set_by_user, first_seen_at, last_seen_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
-RETURNING id, user_id, name, device_model, display_name, bundle_id, device_name, manufacturer, hardware_version, software_version, kind, kind_set_by_user, first_seen_at, last_seen_at
+RETURNING id, user_id, name, device_model, display_name, bundle_id, device_name, manufacturer, hardware_version, software_version, kind, kind_set_by_user, first_seen_at, last_seen_at, merged_into
 `
 
 type CreateSourceParams struct {
@@ -62,6 +63,7 @@ func (q *Queries) CreateSource(ctx context.Context, arg CreateSourceParams) (Sou
 		&i.KindSetByUser,
 		&i.FirstSeenAt,
 		&i.LastSeenAt,
+		&i.MergedInto,
 	)
 	return i, err
 }
@@ -88,8 +90,24 @@ func (q *Queries) CreateSourceAlias(ctx context.Context, arg CreateSourceAliasPa
 	return err
 }
 
+const deleteUserSource = `-- name: DeleteUserSource :exec
+DELETE
+FROM sources
+WHERE user_id = ? AND id = ?
+`
+
+type DeleteUserSourceParams struct {
+	UserID int64
+	ID     int64
+}
+
+func (q *Queries) DeleteUserSource(ctx context.Context, arg DeleteUserSourceParams) error {
+	_, err := q.db.ExecContext(ctx, deleteUserSource, arg.UserID, arg.ID)
+	return err
+}
+
 const getUserSource = `-- name: GetUserSource :one
-SELECT id, user_id, name, device_model, display_name, bundle_id, device_name, manufacturer, hardware_version, software_version, kind, kind_set_by_user, first_seen_at, last_seen_at
+SELECT id, user_id, name, device_model, display_name, bundle_id, device_name, manufacturer, hardware_version, software_version, kind, kind_set_by_user, first_seen_at, last_seen_at, merged_into
 FROM sources
 WHERE user_id = ? AND id = ?
 `
@@ -117,12 +135,13 @@ func (q *Queries) GetUserSource(ctx context.Context, arg GetUserSourceParams) (S
 		&i.KindSetByUser,
 		&i.FirstSeenAt,
 		&i.LastSeenAt,
+		&i.MergedInto,
 	)
 	return i, err
 }
 
 const getUserSourceByIdentity = `-- name: GetUserSourceByIdentity :one
-SELECT id, user_id, name, device_model, display_name, bundle_id, device_name, manufacturer, hardware_version, software_version, kind, kind_set_by_user, first_seen_at, last_seen_at
+SELECT id, user_id, name, device_model, display_name, bundle_id, device_name, manufacturer, hardware_version, software_version, kind, kind_set_by_user, first_seen_at, last_seen_at, merged_into
 FROM sources
 WHERE user_id = ? AND name = ? AND device_model = ?
 `
@@ -151,6 +170,7 @@ func (q *Queries) GetUserSourceByIdentity(ctx context.Context, arg GetUserSource
 		&i.KindSetByUser,
 		&i.FirstSeenAt,
 		&i.LastSeenAt,
+		&i.MergedInto,
 	)
 	return i, err
 }
@@ -225,7 +245,7 @@ func (q *Queries) ListUserSourceStats(ctx context.Context, userID int64) ([]Sour
 }
 
 const listUserSources = `-- name: ListUserSources :many
-SELECT id, user_id, name, device_model, display_name, bundle_id, device_name, manufacturer, hardware_version, software_version, kind, kind_set_by_user, first_seen_at, last_seen_at
+SELECT id, user_id, name, device_model, display_name, bundle_id, device_name, manufacturer, hardware_version, software_version, kind, kind_set_by_user, first_seen_at, last_seen_at, merged_into
 FROM sources
 WHERE user_id = ?
 ORDER BY id
@@ -255,6 +275,7 @@ func (q *Queries) ListUserSources(ctx context.Context, userID int64) ([]Source, 
 			&i.KindSetByUser,
 			&i.FirstSeenAt,
 			&i.LastSeenAt,
+			&i.MergedInto,
 		); err != nil {
 			return nil, err
 		}
@@ -270,7 +291,7 @@ func (q *Queries) ListUserSources(ctx context.Context, userID int64) ([]Source, 
 }
 
 const listUserSourcesByName = `-- name: ListUserSourcesByName :many
-SELECT id, user_id, name, device_model, display_name, bundle_id, device_name, manufacturer, hardware_version, software_version, kind, kind_set_by_user, first_seen_at, last_seen_at
+SELECT id, user_id, name, device_model, display_name, bundle_id, device_name, manufacturer, hardware_version, software_version, kind, kind_set_by_user, first_seen_at, last_seen_at, merged_into
 FROM sources
 WHERE user_id = ? AND name = ?
 ORDER BY id
@@ -305,6 +326,7 @@ func (q *Queries) ListUserSourcesByName(ctx context.Context, arg ListUserSources
 			&i.KindSetByUser,
 			&i.FirstSeenAt,
 			&i.LastSeenAt,
+			&i.MergedInto,
 		); err != nil {
 			return nil, err
 		}
@@ -319,11 +341,28 @@ func (q *Queries) ListUserSourcesByName(ctx context.Context, arg ListUserSources
 	return items, nil
 }
 
+const moveUserSourceAliases = `-- name: MoveUserSourceAliases :exec
+UPDATE source_aliases
+SET source_id = ?1
+WHERE user_id = ?2 AND source_id = ?3
+`
+
+type MoveUserSourceAliasesParams struct {
+	ToID   int64
+	UserID int64
+	FromID int64
+}
+
+func (q *Queries) MoveUserSourceAliases(ctx context.Context, arg MoveUserSourceAliasesParams) error {
+	_, err := q.db.ExecContext(ctx, moveUserSourceAliases, arg.ToID, arg.UserID, arg.FromID)
+	return err
+}
+
 const renameUserSource = `-- name: RenameUserSource :one
 UPDATE sources
 SET display_name = ?
 WHERE user_id = ? AND id = ?
-RETURNING id, user_id, name, device_model, display_name, bundle_id, device_name, manufacturer, hardware_version, software_version, kind, kind_set_by_user, first_seen_at, last_seen_at
+RETURNING id, user_id, name, device_model, display_name, bundle_id, device_name, manufacturer, hardware_version, software_version, kind, kind_set_by_user, first_seen_at, last_seen_at, merged_into
 `
 
 type RenameUserSourceParams struct {
@@ -350,6 +389,7 @@ func (q *Queries) RenameUserSource(ctx context.Context, arg RenameUserSourcePara
 		&i.KindSetByUser,
 		&i.FirstSeenAt,
 		&i.LastSeenAt,
+		&i.MergedInto,
 	)
 	return i, err
 }
@@ -376,7 +416,7 @@ UPDATE sources
 SET kind             = ?,
     kind_set_by_user = 1
 WHERE user_id = ? AND id = ?
-RETURNING id, user_id, name, device_model, display_name, bundle_id, device_name, manufacturer, hardware_version, software_version, kind, kind_set_by_user, first_seen_at, last_seen_at
+RETURNING id, user_id, name, device_model, display_name, bundle_id, device_name, manufacturer, hardware_version, software_version, kind, kind_set_by_user, first_seen_at, last_seen_at, merged_into
 `
 
 type SetUserSourceKindParams struct {
@@ -403,8 +443,43 @@ func (q *Queries) SetUserSourceKind(ctx context.Context, arg SetUserSourceKindPa
 		&i.KindSetByUser,
 		&i.FirstSeenAt,
 		&i.LastSeenAt,
+		&i.MergedInto,
 	)
 	return i, err
+}
+
+const setUserSourceMergedInto = `-- name: SetUserSourceMergedInto :exec
+UPDATE sources
+SET merged_into = ?
+WHERE user_id = ? AND id = ?
+`
+
+type SetUserSourceMergedIntoParams struct {
+	MergedInto sql.NullInt64
+	UserID     int64
+	ID         int64
+}
+
+func (q *Queries) SetUserSourceMergedInto(ctx context.Context, arg SetUserSourceMergedIntoParams) error {
+	_, err := q.db.ExecContext(ctx, setUserSourceMergedInto, arg.MergedInto, arg.UserID, arg.ID)
+	return err
+}
+
+const setUserSourceModel = `-- name: SetUserSourceModel :exec
+UPDATE sources
+SET device_model = ?
+WHERE user_id = ? AND id = ?
+`
+
+type SetUserSourceModelParams struct {
+	DeviceModel string
+	UserID      int64
+	ID          int64
+}
+
+func (q *Queries) SetUserSourceModel(ctx context.Context, arg SetUserSourceModelParams) error {
+	_, err := q.db.ExecContext(ctx, setUserSourceModel, arg.DeviceModel, arg.UserID, arg.ID)
+	return err
 }
 
 const updateSource = `-- name: UpdateSource :one
@@ -418,7 +493,7 @@ SET device_model     = ?,
     kind             = ?,
     last_seen_at     = ?
 WHERE user_id = ? AND id = ?
-RETURNING id, user_id, name, device_model, display_name, bundle_id, device_name, manufacturer, hardware_version, software_version, kind, kind_set_by_user, first_seen_at, last_seen_at
+RETURNING id, user_id, name, device_model, display_name, bundle_id, device_name, manufacturer, hardware_version, software_version, kind, kind_set_by_user, first_seen_at, last_seen_at, merged_into
 `
 
 type UpdateSourceParams struct {
@@ -463,6 +538,27 @@ func (q *Queries) UpdateSource(ctx context.Context, arg UpdateSourceParams) (Sou
 		&i.KindSetByUser,
 		&i.FirstSeenAt,
 		&i.LastSeenAt,
+		&i.MergedInto,
 	)
 	return i, err
+}
+
+const userSourceHasRecords = `-- name: UserSourceHasRecords :one
+SELECT CAST(EXISTS (SELECT 1 FROM samples AS s WHERE s.user_id = ?1 AND s.source_id = ?2)
+         OR EXISTS (SELECT 1 FROM workouts AS w WHERE w.user_id = ?1 AND w.source_id = ?2)
+           AS INTEGER) AS has_records
+`
+
+type UserSourceHasRecordsParams struct {
+	UserID   int64
+	SourceID int64
+}
+
+// Whether a source of a user has samples or workouts, from the indexes on samples (user_id,
+// source_id, type_id) and workouts (user_id, source_id).
+func (q *Queries) UserSourceHasRecords(ctx context.Context, arg UserSourceHasRecordsParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, userSourceHasRecords, arg.UserID, arg.SourceID)
+	var has_records int64
+	err := row.Scan(&has_records)
+	return has_records, err
 }

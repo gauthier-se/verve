@@ -193,6 +193,7 @@ func RunWorkouts(t *testing.T, newStore NewStoreFunc) {
 	runWorkoutsDelete(t, newStore)
 	runWorkoutsDeleteByKey(t, newStore)
 	runWorkoutsDuplicates(t, newStore)
+	runWorkoutsMoveSource(t, newStore)
 }
 
 // runWorkoutsUpsert runs the cases of the workouts stored by an upsert.
@@ -807,4 +808,128 @@ func workoutIDs(workouts []store.Workout) []int64 {
 	}
 
 	return ids
+}
+
+// runWorkoutsMoveSource runs the cases of the workouts that a merge of sources moves.
+func runWorkoutsMoveSource(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+
+	// Given workouts of the watch and of the phone of a user, and of another user, then ListOfSource
+	// returns at most limit workouts of a source of the user, by id, duplicates included, none for
+	// the source of another user, and refuses a limit below 1.
+	t.Run("ListOfSourceReturnsTheWorkoutsOfASourceByID", func(t *testing.T) {
+		t.Parallel()
+
+		st := newWorkoutsTest(t, newStore)
+		ctx := t.Context()
+
+		late := st.mustUpsert(ctx, t, st.user.ID, st.run("late", workoutsTime.Add(time.Hour)))
+		onPhone := st.run("phone", workoutsTime)
+		onPhone.SourceID = st.phone.ID
+		phone := st.mustUpsert(ctx, t, st.user.ID, onPhone)
+		early := st.mustUpsert(ctx, t, st.user.ID, st.run("early", workoutsTime.Add(-time.Hour)))
+		require.NoError(t, st.store.Workouts().SetDuplicateOf(ctx, st.user.ID, early.ID, phone.ID))
+		st.mustUpsert(ctx, t, st.other.ID, st.foreignRun("foreign", workoutsTime))
+
+		list := func(sourceID int64, limit int) []int64 {
+			got, err := st.store.Workouts().ListOfSource(ctx, st.user.ID, sourceID, limit)
+			require.NoError(t, err)
+
+			return workoutIDs(got)
+		}
+
+		require.Equal(t, []int64{late.ID, early.ID}, list(st.source.ID, 10))
+		require.Equal(t, []int64{late.ID}, list(st.source.ID, 1))
+		require.Equal(t, []int64{phone.ID}, list(st.phone.ID, 10))
+		require.Empty(t, list(st.foreign.ID, 10), "the source of another user")
+
+		_, err := st.store.Workouts().ListOfSource(ctx, st.user.ID, st.source.ID, 0)
+		require.ErrorIs(t, err, store.ErrInvalid)
+	})
+
+	// Given workouts of the phone, one with a route, and a workout of the watch, when MoveSource moves
+	// the workouts of the phone to the watch, then a workout whose new key is free moves with it, its
+	// route and its kept workout staying, and a workout whose new key the user has stored, that of
+	// the watch or one moved before in the same call, is removed with its route and returned as it
+	// was.
+	t.Run("MoveSourceMovesTheWorkoutsAndRemovesThoseWhoseKeyIsStored", func(t *testing.T) {
+		t.Parallel()
+
+		st := newWorkoutsTest(t, newStore)
+		ctx := t.Context()
+
+		watch := st.mustUpsert(ctx, t, st.user.ID, st.run("watch", workoutsTime))
+
+		onPhone := func(key string, start time.Time) store.WorkoutUpsert {
+			workout := st.run(key, start)
+			workout.SourceID = st.phone.ID
+
+			return st.mustUpsert(ctx, t, st.user.ID, workout)
+		}
+
+		first := onPhone("first", workoutsTime.Add(-time.Hour))
+		second := onPhone("second", workoutsTime.Add(time.Minute))
+		third := onPhone("third", workoutsTime.Add(time.Hour))
+		st.mustSetRoute(ctx, t, st.user.ID, first.ID, lyonRoute())
+		st.mustSetRoute(ctx, t, st.user.ID, second.ID, parisRoute())
+		require.NoError(t, st.store.Workouts().SetDuplicateOf(ctx, st.user.ID, second.ID, watch.ID))
+
+		wantRemoved := []store.Workout{st.mustGet(ctx, t, st.user.ID, second.ID), st.mustGet(ctx, t, st.user.ID, third.ID)}
+		wantMoved := st.mustGet(ctx, t, st.user.ID, first.ID)
+		wantMoved.SourceID, wantMoved.NaturalKey = st.source.ID, []byte("first moved")
+
+		removed, err := st.store.Workouts().MoveSource(ctx, st.user.ID, st.phone.ID, st.source.ID, []store.Move{
+			{ID: first.ID, NaturalKey: []byte("first moved")},
+			{ID: second.ID, NaturalKey: []byte("watch")},
+			{ID: third.ID, NaturalKey: []byte("first moved")},
+		})
+		require.NoError(t, err)
+		require.Equal(t, wantRemoved, removed)
+
+		require.Equal(t, wantMoved, st.mustGet(ctx, t, st.user.ID, first.ID))
+		require.Equal(t, lyonRoute(), st.mustGetRoute(ctx, t, st.user.ID, first.ID))
+		require.Equal(t, []int64{watch.ID, first.ID}, workoutIDs(st.mustListAll(ctx, t, st.user.ID)))
+
+		_, err = st.store.Workouts().GetRoute(ctx, st.user.ID, second.ID)
+		require.ErrorIs(t, err, store.ErrNotFound)
+	})
+
+	// Given a target that the user does not have, an empty key, or a workout that is not of the
+	// source moved from, of the user or of another user, then MoveSource refuses the call and writes
+	// nothing of it.
+	t.Run("MoveSourceRefusesUnknownTargetsAndWorkouts", func(t *testing.T) {
+		t.Parallel()
+
+		st := newWorkoutsTest(t, newStore)
+		ctx := t.Context()
+
+		onPhone := st.run("phone", workoutsTime)
+		onPhone.SourceID = st.phone.ID
+		phone := st.mustUpsert(ctx, t, st.user.ID, onPhone)
+		watch := st.mustUpsert(ctx, t, st.user.ID, st.run("watch", workoutsTime.Add(time.Hour)))
+		foreign := st.mustUpsert(ctx, t, st.other.ID, st.foreignRun("foreign", workoutsTime))
+		before := st.mustListAll(ctx, t, st.user.ID)
+
+		valid := store.Move{ID: phone.ID, NaturalKey: []byte("moved")}
+
+		for _, tc := range []struct {
+			name   string
+			target int64
+			moves  []store.Move
+			want   error
+		}{
+			{"TargetOfAnotherUser", st.foreign.ID, []store.Move{valid}, store.ErrInvalid},
+			{"UnknownTarget", st.foreign.ID + 1000, []store.Move{valid}, store.ErrInvalid},
+			{"EmptyKey", st.source.ID, []store.Move{valid, {ID: phone.ID}}, store.ErrInvalid},
+			{"WorkoutOfAnotherSource", st.source.ID, []store.Move{valid, {ID: watch.ID, NaturalKey: []byte("w")}}, store.ErrNotFound},
+			{"WorkoutOfAnotherUser", st.source.ID, []store.Move{valid, {ID: foreign.ID, NaturalKey: []byte("f")}}, store.ErrNotFound},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				_, err := st.store.Workouts().MoveSource(ctx, st.user.ID, st.phone.ID, tc.target, tc.moves)
+				require.ErrorIs(t, err, tc.want)
+			})
+		}
+
+		require.Equal(t, before, st.mustListAll(ctx, t, st.user.ID))
+	})
 }

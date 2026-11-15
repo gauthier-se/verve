@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/gauthier-se/verve/internal/aggregate"
+	"github.com/gauthier-se/verve/internal/ingest"
 	"github.com/gauthier-se/verve/internal/jobs"
 	"github.com/gauthier-se/verve/internal/store"
 )
@@ -104,6 +105,7 @@ type sourceItem struct {
 	FirstSeenAt   string `json:"firstSeenAt"`
 	LastSeenAt    string `json:"lastSeenAt"`
 	SampleCount   int64  `json:"sampleCount"`
+	MergedInto    *int64 `json:"mergedInto"`
 }
 
 // mustListSources requires 200 from rec and returns its sources.
@@ -137,8 +139,8 @@ func (m metricsTest) mustPatchSource(t *testing.T, id int64, body string) source
 
 // Given a session or a token with the read scope, when it asks GET /api/v1/sources, then it gets the
 // sources of the user, sorted by id, with their display name, name, device model, kind and whether
-// the user set it, first and last seen, and sample count, zero for a source without samples, and
-// never the sources of another user.
+// the user set it, first and last seen, sample count, zero for a source without samples, and the
+// target of its merge in progress, null without one, and never the sources of another user.
 func TestSources_ListsTheSourcesOfTheUserWithTheirSampleCount(t *testing.T) {
 	t.Parallel()
 
@@ -164,12 +166,12 @@ func TestSources_ListsTheSourcesOfTheUserWithTheirSampleCount(t *testing.T) {
 			{
 				"id": %d, "displayName": "Apple Watch", "name": "Apple Watch", "deviceModel": "Watch", "kind": "watch",
 				"kindSetByUser": false, "firstSeenAt": "2026-11-04T08:00:00Z", "lastSeenAt": "2026-11-04T08:00:00Z",
-				"sampleCount": 3
+				"sampleCount": 3, "mergedInto": null
 			},
 			{
 				"id": %d, "displayName": "iPhone de Camille", "name": "iPhone de Camille", "deviceModel": "",
 				"kind": "phone", "kindSetByUser": false, "firstSeenAt": "2026-11-04T08:00:00Z",
-				"lastSeenAt": "2026-11-04T08:00:00Z", "sampleCount": 0
+				"lastSeenAt": "2026-11-04T08:00:00Z", "sampleCount": 0, "mergedInto": null
 			}
 		]}`, m.aliceSource.ID, phone.ID), rec.Body.String(), name)
 	}
@@ -327,4 +329,175 @@ func TestSources_RequireASessionToChangeAndTheReadScopeToList(t *testing.T) {
 	got, err := m.store.Sources().Get(t.Context(), m.alice.ID, m.aliceSource.ID)
 	require.NoError(t, err)
 	require.Equal(t, "Apple Watch", got.DisplayName)
+}
+
+// mergePath is the path of the merges of sources.
+const mergePath = sourcesPath + "/merge"
+
+// mergeBody returns the body of a merge of sources into target.
+func mergeBody(target int64, sources ...int64) string {
+	ids, _ := json.Marshal(sources)
+
+	return fmt.Sprintf(`{"targetId":%d,"sourceIds":%s}`, target, ids)
+}
+
+// mergeJobs returns the merge jobs queued or running on the import serial key of user.
+func (m metricsTest) mergeJobs(t *testing.T, user store.User) []store.Job {
+	t.Helper()
+
+	active, err := m.store.Jobs().ActiveJobs(t.Context(), ingest.SerialKey(user.ID))
+	require.NoError(t, err)
+
+	var merges []store.Job
+
+	for _, job := range active {
+		if job.Kind == ingest.KindMergeSources {
+			merges = append(merges, job)
+		}
+	}
+
+	return merges
+}
+
+// Given a session, when it sends POST /api/v1/sources/merge with a target and the sources to merge
+// into it, then it answers 202, the merged sources are merged into the target, and a sources.merge
+// job of the user is queued on the import serial key of the user, with the target and the sources
+// as payload. GET /api/v1/sources then shows the merge in progress on the merged sources only.
+func TestSources_MergeSetsTheMergeAndQueuesItsJob(t *testing.T) {
+	t.Parallel()
+
+	m := newMetricsTest(t)
+	old := m.mustResolveNamedSource(t, m.alice, "Ancienne montre", store.SourceWatch)
+	older := m.mustResolveNamedSource(t, m.alice, "Très ancienne montre", store.SourceWatch)
+	phone := m.mustResolveNamedSource(t, m.alice, "iPhone de Camille", store.SourcePhone)
+
+	rec := accountRequest(t, m.handler, http.MethodPost, mergePath, mergeBody(m.aliceSource.ID, old.ID, older.ID), m.aliceCookie)
+	require.Equal(t, http.StatusAccepted, rec.Code, rec.Body.String())
+
+	for _, id := range []int64{old.ID, older.ID} {
+		got, err := m.store.Sources().Get(t.Context(), m.alice.ID, id)
+		require.NoError(t, err)
+		require.Equal(t, m.aliceSource.ID, got.MergedInto)
+	}
+
+	merges := m.mergeJobs(t, m.alice)
+	require.Len(t, merges, 1)
+	require.Equal(t, m.alice.ID, merges[0].UserID)
+	require.Equal(t, ingest.SerialKey(m.alice.ID), merges[0].SerialKey)
+	require.JSONEq(t, mergeBody(m.aliceSource.ID, old.ID, older.ID), string(merges[0].Payload))
+
+	mergedInto := map[int64]*int64{}
+	for _, source := range mustListSources(t, getWith(t, m.handler, sourcesPath, m.aliceCookie)) {
+		mergedInto[source.ID] = source.MergedInto
+	}
+
+	require.Equal(t, map[int64]*int64{
+		m.aliceSource.ID: nil,
+		old.ID:           &m.aliceSource.ID,
+		older.ID:         &m.aliceSource.ID,
+		phone.ID:         nil,
+	}, mergedInto)
+}
+
+// Given a merge in progress, when a record arrives whose identity is a merged source, then it
+// resolves to the target, as the pipeline resolves the source of each record.
+func TestSources_RecordsOfAMergedSourceLandInTheTarget(t *testing.T) {
+	t.Parallel()
+
+	m := newMetricsTest(t)
+	old, err := m.store.Sources().Resolve(t.Context(), m.alice.ID, store.SourceInfo{Name: "Ancienne montre", DeviceModel: "Watch"},
+		store.SourceWatch, authTestNow)
+	require.NoError(t, err)
+
+	rec := accountRequest(t, m.handler, http.MethodPost, mergePath, mergeBody(m.aliceSource.ID, old.ID), m.aliceCookie)
+	require.Equal(t, http.StatusAccepted, rec.Code, rec.Body.String())
+
+	got, err := m.store.Sources().Resolve(t.Context(), m.alice.ID, store.SourceInfo{Name: "Ancienne montre", DeviceModel: "Watch"},
+		store.SourceWatch, authTestNow.Add(time.Hour))
+	require.NoError(t, err)
+	require.Equal(t, m.aliceSource.ID, got.ID)
+}
+
+// Given a target among the merged sources, then POST /api/v1/sources/merge answers 422
+// target_among_merged, given a source of another user or that does not exist, as target or merged,
+// 404, and given no source to merge, 422 validation_failed. Nothing changes then: no source is
+// merged and no job is queued.
+func TestSources_MergeRefusesAnInvalidMerge(t *testing.T) {
+	t.Parallel()
+
+	m := newMetricsTest(t)
+	old := m.mustResolveNamedSource(t, m.alice, "Ancienne montre", store.SourceWatch)
+	unknown := m.bobSource.ID + 1000
+
+	for _, tc := range []struct {
+		body   string
+		status int
+		code   string
+	}{
+		{mergeBody(m.aliceSource.ID, old.ID, m.aliceSource.ID), http.StatusUnprocessableEntity, "target_among_merged"},
+		{mergeBody(m.aliceSource.ID), http.StatusUnprocessableEntity, "validation_failed"},
+		{mergeBody(m.aliceSource.ID, old.ID, m.bobSource.ID), http.StatusNotFound, "not_found"},
+		{mergeBody(m.bobSource.ID, old.ID), http.StatusNotFound, "not_found"},
+		{mergeBody(m.aliceSource.ID, unknown), http.StatusNotFound, "not_found"},
+		{mergeBody(unknown, old.ID), http.StatusNotFound, "not_found"},
+	} {
+		rec := accountRequest(t, m.handler, http.MethodPost, mergePath, tc.body, m.aliceCookie)
+		requireProblem(t, rec, tc.status, tc.code)
+	}
+
+	for _, source := range mustListSources(t, getWith(t, m.handler, sourcesPath, m.aliceCookie)) {
+		require.Nil(t, source.MergedInto, source.Name)
+	}
+
+	require.Empty(t, m.mergeJobs(t, m.alice))
+}
+
+// Given a merge in progress, when a merge names one of its sources, as target or merged, then POST
+// /api/v1/sources/merge answers 409 merge_in_progress and queues nothing, while other sources can
+// merge.
+func TestSources_MergeOfASourceInAMergeInProgressConflicts(t *testing.T) {
+	t.Parallel()
+
+	m := newMetricsTest(t)
+	old := m.mustResolveNamedSource(t, m.alice, "Ancienne montre", store.SourceWatch)
+	phone := m.mustResolveNamedSource(t, m.alice, "iPhone de Camille", store.SourcePhone)
+	oldPhone := m.mustResolveNamedSource(t, m.alice, "Ancien iPhone", store.SourcePhone)
+
+	rec := accountRequest(t, m.handler, http.MethodPost, mergePath, mergeBody(m.aliceSource.ID, old.ID), m.aliceCookie)
+	require.Equal(t, http.StatusAccepted, rec.Code, rec.Body.String())
+
+	for _, body := range []string{
+		mergeBody(old.ID, phone.ID),
+		mergeBody(phone.ID, old.ID),
+		mergeBody(m.aliceSource.ID, phone.ID),
+		mergeBody(phone.ID, m.aliceSource.ID),
+	} {
+		rec := accountRequest(t, m.handler, http.MethodPost, mergePath, body, m.aliceCookie)
+		requireProblem(t, rec, http.StatusConflict, "merge_in_progress")
+	}
+
+	require.Len(t, m.mergeJobs(t, m.alice), 1)
+
+	rec = accountRequest(t, m.handler, http.MethodPost, mergePath, mergeBody(phone.ID, oldPhone.ID), m.aliceCookie)
+	require.Equal(t, http.StatusAccepted, rec.Code, rec.Body.String())
+	require.Len(t, m.mergeJobs(t, m.alice), 2)
+}
+
+// Given a token, even with every scope, then POST /api/v1/sources/merge answers 401 unauthorized, as
+// every operation for sessions only, and given no authentication, 401. Nothing is merged.
+func TestSources_MergeRequiresASession(t *testing.T) {
+	t.Parallel()
+
+	m := newMetricsTest(t)
+	old := m.mustResolveNamedSource(t, m.alice, "Ancienne montre", store.SourceWatch)
+	token, _ := m.mustCreateToken(t, m.alice, time.Time{}, store.ScopeRead, store.ScopeIngest)
+
+	body := mergeBody(m.aliceSource.ID, old.ID)
+	requireProblem(t, bearerRequest(t, m.handler, http.MethodPost, mergePath, body, token), http.StatusUnauthorized, "unauthorized")
+	requireProblem(t, accountRequest(t, m.handler, http.MethodPost, mergePath, body), http.StatusUnauthorized, "unauthorized")
+
+	got, err := m.store.Sources().Get(t.Context(), m.alice.ID, old.ID)
+	require.NoError(t, err)
+	require.Zero(t, got.MergedInto)
+	require.Empty(t, m.mergeJobs(t, m.alice))
 }

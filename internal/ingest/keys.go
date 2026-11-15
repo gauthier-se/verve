@@ -1,6 +1,7 @@
 package ingest
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
 	"math"
@@ -74,6 +75,39 @@ func workoutKey(w store.Workout) []byte {
 	var k key
 
 	return k.text(keyWorkoutNoID).text(w.Activity).int(w.SourceID).time(w.Start).time(w.End).sum()
+}
+
+// movedSampleKey returns the natural key of s once moved to the source of toID by a merge (FR-3 of
+// Deduplication and source priority): the key of its uuid, which holds no source, stays, and the
+// key of a raw sample or of a pre-aggregated point is computed again with toID, by the rule that
+// gave the stored key. A key that neither rule gave stays as it is.
+func movedSampleKey(s store.Sample, toID int64) []byte {
+	if s.UUID != "" {
+		return s.NaturalKey
+	}
+
+	for _, preAggregated := range []bool{false, true} {
+		if bytes.Equal(sampleKey(s, preAggregated), s.NaturalKey) {
+			s.SourceID = toID
+
+			return sampleKey(s, preAggregated)
+		}
+	}
+
+	return s.NaturalKey
+}
+
+// movedWorkoutKey returns the natural key of w once moved to the source of toID by a merge: the key
+// of its external id, which holds no source, stays, and the key of a workout without one is
+// computed again with toID. A key that the rule did not give stays as it is.
+func movedWorkoutKey(w store.Workout, toID int64) []byte {
+	if w.ExternalID != "" || !bytes.Equal(workoutKey(w), w.NaturalKey) {
+		return w.NaturalKey
+	}
+
+	w.SourceID = toID
+
+	return workoutKey(w)
 }
 
 // sampleUUIDKey returns the natural key of the sample of uuid, whatever its origin.

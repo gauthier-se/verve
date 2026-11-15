@@ -12,6 +12,7 @@ import (
 	"github.com/gauthier-se/verve/internal/backup"
 	"github.com/gauthier-se/verve/internal/clock"
 	"github.com/gauthier-se/verve/internal/config"
+	"github.com/gauthier-se/verve/internal/ingest"
 	"github.com/gauthier-se/verve/internal/ingest/native"
 	"github.com/gauthier-se/verve/internal/jobs"
 	"github.com/gauthier-se/verve/internal/store"
@@ -58,6 +59,8 @@ func registerJobs(registry *jobs.Registry, st store.Store, clk clock.Clock, cfg 
 	backup.Register(registry, newBackups(cfg, clk), st, cfg.Backup.Keep)
 
 	native.Register(registry, native.JobDeps{Store: st, Pipeline: ing.pipeline, Inbox: ing.inbox})
+
+	ingest.RegisterMerge(registry, ing.merger)
 
 	aggregate.Register(registry, st)
 

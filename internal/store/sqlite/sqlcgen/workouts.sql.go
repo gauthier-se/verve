@@ -56,6 +56,54 @@ func (q *Queries) DeleteUserWorkoutByNaturalKey(ctx context.Context, arg DeleteU
 	return i, err
 }
 
+const deleteUserWorkoutOfSource = `-- name: DeleteUserWorkoutOfSource :one
+DELETE
+FROM workouts
+WHERE user_id = ?1
+  AND id = ?2
+  AND source_id = ?3
+RETURNING id, user_id, source_id, origin, external_id, activity, start_at, end_at, utc_offset, duration, distance, active_energy, total_energy, elevation_gain, elevation_loss, avg_heart_rate, max_heart_rate, indoor, location_type, events, metadata, import_id, natural_key, duplicate_of
+`
+
+type DeleteUserWorkoutOfSourceParams struct {
+	UserID   int64
+	ID       int64
+	SourceID int64
+}
+
+// Removes a workout of a source of a user, and its route by its foreign key.
+func (q *Queries) DeleteUserWorkoutOfSource(ctx context.Context, arg DeleteUserWorkoutOfSourceParams) (Workout, error) {
+	row := q.db.QueryRowContext(ctx, deleteUserWorkoutOfSource, arg.UserID, arg.ID, arg.SourceID)
+	var i Workout
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.SourceID,
+		&i.Origin,
+		&i.ExternalID,
+		&i.Activity,
+		&i.StartAt,
+		&i.EndAt,
+		&i.UtcOffset,
+		&i.Duration,
+		&i.Distance,
+		&i.ActiveEnergy,
+		&i.TotalEnergy,
+		&i.ElevationGain,
+		&i.ElevationLoss,
+		&i.AvgHeartRate,
+		&i.MaxHeartRate,
+		&i.Indoor,
+		&i.LocationType,
+		&i.Events,
+		&i.Metadata,
+		&i.ImportID,
+		&i.NaturalKey,
+		&i.DuplicateOf,
+	)
+	return i, err
+}
+
 const deleteUserWorkouts = `-- name: DeleteUserWorkouts :execrows
 DELETE
 FROM workouts
@@ -362,6 +410,71 @@ func (q *Queries) ListUserWorkouts(ctx context.Context, arg ListUserWorkoutsPara
 	return items, nil
 }
 
+const listUserWorkoutsOfSource = `-- name: ListUserWorkoutsOfSource :many
+SELECT id, user_id, source_id, origin, external_id, activity, start_at, end_at, utc_offset, duration, distance, active_energy, total_energy, elevation_gain, elevation_loss, avg_heart_rate, max_heart_rate, indoor, location_type, events, metadata, import_id, natural_key, duplicate_of
+FROM workouts
+WHERE user_id = ?1
+  AND source_id = ?2
+ORDER BY id
+LIMIT ?3
+`
+
+type ListUserWorkoutsOfSourceParams struct {
+	UserID      int64
+	SourceID    int64
+	MaxWorkouts int64
+}
+
+// The workouts of a source of a user, duplicates included, from the index on (user_id, source_id),
+// which holds the id.
+func (q *Queries) ListUserWorkoutsOfSource(ctx context.Context, arg ListUserWorkoutsOfSourceParams) ([]Workout, error) {
+	rows, err := q.db.QueryContext(ctx, listUserWorkoutsOfSource, arg.UserID, arg.SourceID, arg.MaxWorkouts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Workout
+	for rows.Next() {
+		var i Workout
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.SourceID,
+			&i.Origin,
+			&i.ExternalID,
+			&i.Activity,
+			&i.StartAt,
+			&i.EndAt,
+			&i.UtcOffset,
+			&i.Duration,
+			&i.Distance,
+			&i.ActiveEnergy,
+			&i.TotalEnergy,
+			&i.ElevationGain,
+			&i.ElevationLoss,
+			&i.AvgHeartRate,
+			&i.MaxHeartRate,
+			&i.Indoor,
+			&i.LocationType,
+			&i.Events,
+			&i.Metadata,
+			&i.ImportID,
+			&i.NaturalKey,
+			&i.DuplicateOf,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUserWorkoutsStarting = `-- name: ListUserWorkoutsStarting :many
 SELECT id, user_id, source_id, origin, external_id, activity, start_at, end_at, utc_offset, duration, distance, active_energy, total_energy, elevation_gain, elevation_loss, avg_heart_rate, max_heart_rate, indoor, location_type, events, metadata, import_id, natural_key, duplicate_of
 FROM workouts
@@ -425,6 +538,40 @@ func (q *Queries) ListUserWorkoutsStarting(ctx context.Context, arg ListUserWork
 		return nil, err
 	}
 	return items, nil
+}
+
+const moveUserWorkout = `-- name: MoveUserWorkout :one
+UPDATE OR IGNORE workouts
+SET source_id   = ?1,
+    natural_key = ?2
+WHERE user_id = ?3
+  AND id = ?4
+  AND source_id = ?5
+RETURNING id
+`
+
+type MoveUserWorkoutParams struct {
+	ToID       int64
+	NaturalKey []byte
+	UserID     int64
+	ID         int64
+	FromID     int64
+}
+
+// Moves a workout of a source of a user to another source with a new natural key. Returns no row
+// when the workout is not of the source, and when the user has the new key stored, the workout then
+// left as it is.
+func (q *Queries) MoveUserWorkout(ctx context.Context, arg MoveUserWorkoutParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, moveUserWorkout,
+		arg.ToID,
+		arg.NaturalKey,
+		arg.UserID,
+		arg.ID,
+		arg.FromID,
+	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
 }
 
 const setUserWorkoutDuplicateOf = `-- name: SetUserWorkoutDuplicateOf :execrows

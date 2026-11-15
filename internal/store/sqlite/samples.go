@@ -210,12 +210,7 @@ func (r samples) DeleteByKey(ctx context.Context, userID int64, key []byte) (sto
 			return err
 		}
 
-		gone, err := q.DeleteLastSampleStats(ctx, sqlcgen.DeleteLastSampleStatsParams{UserID: userID, TypeID: row.TypeID})
-		if err != nil || gone > 0 {
-			return err
-		}
-
-		return q.RemoveSampleStats(ctx, sqlcgen.RemoveSampleStatsParams{UserID: userID, TypeID: row.TypeID})
+		return removeSampleStats(ctx, q, userID, row.TypeID)
 	})
 	if err != nil {
 		return store.Sample{}, fmt.Errorf("delete sample of user %d by key: %w", userID, err)
@@ -478,4 +473,116 @@ func removeSourceStats(ctx context.Context, q *sqlcgen.Queries, userID, sourceID
 	}
 
 	return q.RemoveSourceStats(ctx, sqlcgen.RemoveSourceStatsParams{UserID: userID, SourceID: sourceID})
+}
+
+func (r samples) ListOfSource(ctx context.Context, userID, sourceID int64, limit int) ([]store.Sample, error) {
+	if limit < 1 {
+		return nil, fmt.Errorf("list samples of source %d of user %d: limit %d below 1: %w", sourceID, userID, limit, store.ErrInvalid)
+	}
+
+	rows, err := r.q.read().ListUserSamplesOfSource(ctx, sqlcgen.ListUserSamplesOfSourceParams{
+		UserID:     userID,
+		SourceID:   sourceID,
+		MaxSamples: int64(limit),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list samples of source %d of user %d: %w", sourceID, userID, err)
+	}
+
+	list := make([]store.Sample, 0, len(rows))
+	for _, row := range rows {
+		list = append(list, sampleOf(row))
+	}
+
+	return list, nil
+}
+
+// MoveSource tries the move of each sample first, which a stored key leaves undone, and removes the
+// sample then. Every sample of moves leaves the source moved from, so its count drops by all of
+// them, and the source moved to counts those that moved.
+func (r samples) MoveSource(ctx context.Context, userID, fromID, toID int64, moves []store.Move) ([]store.Sample, error) {
+	if slices.ContainsFunc(moves, func(m store.Move) bool { return len(m.NaturalKey) == 0 }) {
+		return nil, fmt.Errorf("move samples of source %d of user %d: empty natural key: %w", fromID, userID, store.ErrInvalid)
+	}
+
+	var removed []store.Sample
+
+	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
+		if err := checkSource(ctx, q, userID, toID); err != nil {
+			return err
+		}
+
+		for _, move := range moves {
+			_, err := q.MoveUserSample(ctx, sqlcgen.MoveUserSampleParams{
+				ToID: toID, NaturalKey: move.NaturalKey, UserID: userID, ID: move.ID, FromID: fromID,
+			})
+			if err == nil {
+				continue
+			}
+
+			if !errors.Is(err, sql.ErrNoRows) {
+				return err
+			}
+
+			row, err := q.DeleteUserSampleOfSource(ctx, sqlcgen.DeleteUserSampleOfSourceParams{UserID: userID, ID: move.ID, SourceID: fromID})
+			if errors.Is(err, sql.ErrNoRows) {
+				return fmt.Errorf("sample %d: %w", move.ID, store.ErrNotFound)
+			}
+
+			if err != nil {
+				return err
+			}
+
+			if err := removeSampleStats(ctx, q, userID, row.TypeID); err != nil {
+				return err
+			}
+
+			removed = append(removed, sampleOf(row))
+		}
+
+		if len(moves) == 0 {
+			return nil
+		}
+
+		if moved := int64(len(moves) - len(removed)); moved > 0 {
+			if err := q.AddSourceStats(ctx, sqlcgen.AddSourceStatsParams{UserID: userID, SourceID: toID, Count: moved}); err != nil {
+				return err
+			}
+		}
+
+		left := int64(len(moves))
+
+		gone, err := q.DeleteDrainedSourceStats(ctx, sqlcgen.DeleteDrainedSourceStatsParams{UserID: userID, SourceID: fromID, Removed: left})
+		if err != nil || gone > 0 {
+			return err
+		}
+
+		return q.SubtractSourceStats(ctx, sqlcgen.SubtractSourceStatsParams{Removed: left, UserID: userID, SourceID: fromID})
+	})
+	if err != nil {
+		return nil, fmt.Errorf("move samples of source %d of user %d to %d: %w", fromID, userID, toID, err)
+	}
+
+	return removed, nil
+}
+
+// checkSource returns ErrInvalid when the user of userID has no source of sourceID.
+func checkSource(ctx context.Context, q *sqlcgen.Queries, userID, sourceID int64) error {
+	_, err := q.GetUserSource(ctx, sqlcgen.GetUserSourceParams{UserID: userID, ID: sourceID})
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("source %d: %w", sourceID, store.ErrInvalid)
+	}
+
+	return err
+}
+
+// removeSampleStats counts one removed sample of the type of typeID of the user of userID, and
+// removes its data availability with its last sample.
+func removeSampleStats(ctx context.Context, q *sqlcgen.Queries, userID, typeID int64) error {
+	gone, err := q.DeleteLastSampleStats(ctx, sqlcgen.DeleteLastSampleStatsParams{UserID: userID, TypeID: typeID})
+	if err != nil || gone > 0 {
+		return err
+	}
+
+	return q.RemoveSampleStats(ctx, sqlcgen.RemoveSampleStatsParams{UserID: userID, TypeID: typeID})
 }

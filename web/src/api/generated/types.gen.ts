@@ -592,6 +592,17 @@ export type LoginInputBody = {
     password: string;
 };
 
+export type MergeSourcesInputBody = {
+    /**
+     * The ids of the sources to merge into the target, each once.
+     */
+    sourceIds: Array<number> | null;
+    /**
+     * The id of the source that the sources are merged into.
+     */
+    targetId: number;
+};
+
 export type Meta = {
     /**
      * When the server was built in RFC 3339 format, unknown for a development build.
@@ -1018,6 +1029,10 @@ export type Source = {
      * When the source was last seen, from the time of its records.
      */
     lastSeenAt: string;
+    /**
+     * The id of the source that a merge in progress merges the source into, null when it is in none as merged.
+     */
+    mergedInto: number | null;
     /**
      * The name received with the data of the source. With the device model, it identifies the source.
      */
@@ -2765,6 +2780,45 @@ export type ListSourcesResponses = {
 };
 
 export type ListSourcesResponse = ListSourcesResponses[keyof ListSourcesResponses];
+
+export type MergeSourcesData = {
+    body: MergeSourcesInputBody;
+    path?: never;
+    query?: never;
+    url: '/api/v1/sources/merge';
+};
+
+export type MergeSourcesErrors = {
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Not Found
+     */
+    404: Problem;
+    /**
+     * Conflict
+     */
+    409: Problem;
+    /**
+     * Unprocessable Entity
+     */
+    422: Problem;
+    /**
+     * Internal Server Error
+     */
+    500: Problem;
+};
+
+export type MergeSourcesError = MergeSourcesErrors[keyof MergeSourcesErrors];
+
+export type MergeSourcesResponses = {
+    /**
+     * Accepted
+     */
+    202: unknown;
+};
 
 export type UpdateSourceData = {
     body: UpdateSourceInputBody;

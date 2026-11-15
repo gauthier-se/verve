@@ -40,19 +40,41 @@ func (r sources) Resolve(ctx context.Context, userID int64, info store.SourceInf
 				return err
 			}
 
-			update := seenUpdate(row, info, kind, seenAt)
+			// The identity without model that a record with a model matches takes that model: an
+			// alias or a merged source here, and the matched source with its update otherwise.
+			takesModel := info.DeviceModel != "" && matched.model == ""
 
-			// The identity without model that a record with a model matches takes that model.
-			if info.DeviceModel != "" && matched.model == "" {
-				if !matched.alias {
-					update.DeviceModel = info.DeviceModel
-				} else if err := q.SetSourceAliasModel(ctx, sqlcgen.SetSourceAliasModelParams{
+			if takesModel && matched.alias {
+				err := q.SetSourceAliasModel(ctx, sqlcgen.SetSourceAliasModelParams{
 					DeviceModel: info.DeviceModel,
 					UserID:      userID,
 					Name:        info.Name,
-				}); err != nil {
+				})
+				if err != nil {
 					return err
 				}
+			}
+
+			if row.MergedInto.Valid {
+				if takesModel && !matched.alias {
+					err := q.SetUserSourceModel(ctx, sqlcgen.SetUserSourceModelParams{DeviceModel: info.DeviceModel, UserID: userID, ID: row.ID})
+					if err != nil {
+						return err
+					}
+				}
+
+				// A merge in progress makes the merged identity an alias of its target.
+				row, err = q.GetUserSource(ctx, sqlcgen.GetUserSourceParams{UserID: userID, ID: row.MergedInto.Int64})
+				if err != nil {
+					return err
+				}
+
+				takesModel = false
+			}
+
+			update := seenUpdate(row, info, kind, seenAt)
+			if takesModel && !matched.alias {
+				update.DeviceModel = info.DeviceModel
 			}
 
 			row, err = q.UpdateSource(ctx, update)
@@ -220,6 +242,113 @@ func (r sources) SampleCounts(ctx context.Context, userID int64) (map[int64]int6
 	return counts, nil
 }
 
+// StartMerge reads the sources of the user, a few, to check the merge in the transaction of its
+// writes.
+func (r sources) StartMerge(ctx context.Context, userID, targetID int64, mergedIDs []int64) error {
+	ids := append([]int64{targetID}, mergedIDs...)
+	if len(mergedIDs) == 0 || len(slices.Compact(slices.Sorted(slices.Values(ids)))) != len(ids) {
+		return fmt.Errorf("merge sources of user %d into %d: %w", userID, targetID, store.ErrInvalid)
+	}
+
+	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
+		rows, err := q.ListUserSources(ctx, userID)
+		if err != nil {
+			return err
+		}
+
+		known := make(map[int64]bool, len(rows))
+		// inMerge holds the sources of a merge in progress, merged or target.
+		inMerge := make(map[int64]bool)
+
+		for _, row := range rows {
+			known[row.ID] = true
+
+			if row.MergedInto.Valid {
+				inMerge[row.ID] = true
+				inMerge[row.MergedInto.Int64] = true
+			}
+		}
+
+		for _, id := range ids {
+			if !known[id] {
+				return store.ErrNotFound
+			}
+		}
+
+		if slices.ContainsFunc(ids, func(id int64) bool { return inMerge[id] }) {
+			return store.ErrConflict
+		}
+
+		for _, id := range mergedIDs {
+			err := q.SetUserSourceMergedInto(ctx, sqlcgen.SetUserSourceMergedIntoParams{
+				MergedInto: sql.NullInt64{Int64: targetID, Valid: true},
+				UserID:     userID,
+				ID:         id,
+			})
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("merge sources of user %d into %d: %w", userID, targetID, err)
+	}
+
+	return nil
+}
+
+// FinishMerge creates the alias once the source is deleted, since no identity is both an alias and
+// a source of the same user.
+func (r sources) FinishMerge(ctx context.Context, userID, id int64) error {
+	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
+		row, err := q.GetUserSource(ctx, sqlcgen.GetUserSourceParams{UserID: userID, ID: id})
+		if errors.Is(err, sql.ErrNoRows) {
+			return store.ErrNotFound
+		}
+
+		if err != nil {
+			return err
+		}
+
+		if !row.MergedInto.Valid {
+			return store.ErrInvalid
+		}
+
+		target := row.MergedInto.Int64
+
+		hasRecords, err := q.UserSourceHasRecords(ctx, sqlcgen.UserSourceHasRecordsParams{UserID: userID, SourceID: id})
+		if err != nil {
+			return err
+		}
+
+		if hasRecords == 1 {
+			return store.ErrConflict
+		}
+
+		if err := q.MoveUserSourceAliases(ctx, sqlcgen.MoveUserSourceAliasesParams{ToID: target, UserID: userID, FromID: id}); err != nil {
+			return err
+		}
+
+		if err := q.DeleteUserSource(ctx, sqlcgen.DeleteUserSourceParams{UserID: userID, ID: id}); err != nil {
+			return err
+		}
+
+		return q.CreateSourceAlias(ctx, sqlcgen.CreateSourceAliasParams{
+			UserID:      userID,
+			Name:        row.Name,
+			DeviceModel: row.DeviceModel,
+			SourceID:    target,
+		})
+	})
+	if err != nil {
+		return fmt.Errorf("finish merge of source %d of user %d: %w", id, userID, err)
+	}
+
+	return nil
+}
+
 // candidate is an identity of a source or of an alias, of the name of a record, that a record may
 // match.
 type candidate struct {
@@ -334,5 +463,6 @@ func sourceOf(row sqlcgen.Source) store.Source {
 		KindSetByUser:   row.KindSetByUser == 1,
 		FirstSeenAt:     fromMillis(row.FirstSeenAt),
 		LastSeenAt:      fromMillis(row.LastSeenAt),
+		MergedInto:      row.MergedInto.Int64,
 	}
 }

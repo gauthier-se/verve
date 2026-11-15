@@ -182,4 +182,16 @@ type SamplesRepository interface {
 	// TypesOfSource returns the ids of the types that the source of userID whose id is sourceID has
 	// samples of, sorted, or an empty list, also for a source that userID does not have.
 	TypesOfSource(ctx context.Context, userID, sourceID int64) ([]int64, error)
+	// ListOfSource returns at most limit samples of the source of userID whose id is sourceID,
+	// sorted by type then id, as a merge moves them. It returns ErrInvalid when limit is below 1.
+	ListOfSource(ctx context.Context, userID, sourceID int64, limit int) ([]Sample, error)
+	// MoveSource moves each sample of moves, of the source of fromID of userID, to the source of
+	// toID with its natural key, in order (FR-3 of Deduplication and source priority). A sample whose
+	// new key userID has stored, a sample moved earlier in moves included, is removed instead, and
+	// returned as it was. The same transaction updates the data availability of the types of the
+	// removed samples and the sample counts of both sources.
+	//
+	// It returns ErrInvalid when userID has no source of toID or a key is empty, and ErrNotFound when
+	// a sample of moves is not one of the source of fromID of userID, and writes nothing then.
+	MoveSource(ctx context.Context, userID, fromID, toID int64, moves []Move) ([]Sample, error)
 }

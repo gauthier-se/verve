@@ -78,6 +78,16 @@ type Source struct {
 	// time given to a Resolve of it.
 	FirstSeenAt time.Time
 	LastSeenAt  time.Time
+	// MergedInto is the id of the source that a merge in progress merges the source into, 0 when it
+	// is in none as merged (FR-3).
+	MergedInto int64
+}
+
+// Move is the move of a sample or a workout to the target of a merge: its id, and its natural key
+// once on the target.
+type Move struct {
+	ID         int64
+	NaturalKey []byte
 }
 
 // SourcesRepository stores the sources of each user and the aliases of merged sources (FR-2 and
@@ -95,11 +105,13 @@ type SourcesRepository interface {
 	//   - info without device model matches the only source of its name, otherwise the identity of
 	//     its name without model, otherwise it creates a source of its name without model.
 	//
-	// An alias matched returns its source. A matched source keeps its FirstSeenAt, and its
-	// LastSeenAt never moves back. When seenAt is not before LastSeenAt, the details of info that
-	// are not empty, and kind unless it is SourceUnknown, replace those of the source. Otherwise
-	// they only fill the empty ones, and kind only replaces SourceUnknown. A kind set by the user
-	// is always kept.
+	// An alias matched returns its source, and a source merged into another, or the source of an
+	// alias that is, returns the target of the merge, as if the identity were an alias of it. The
+	// model that a matched identity without model takes stays on that identity. The returned
+	// source keeps its FirstSeenAt, and its LastSeenAt never moves back. When seenAt is not before
+	// LastSeenAt, the details of info that are not empty, and kind unless it is SourceUnknown,
+	// replace those of the source. Otherwise they only fill the empty ones, and kind only replaces
+	// SourceUnknown. A kind set by the user is always kept.
 	//
 	// It returns ErrInvalid when the name of info is empty or kind not Known, and ErrNotFound when
 	// no user has userID.
@@ -125,4 +137,16 @@ type SourcesRepository interface {
 	// source id. The sources without samples are left out. SamplesRepository keeps the counts in the
 	// transactions of its writes, so that reading them never counts the samples.
 	SampleCounts(ctx context.Context, userID int64) (map[int64]int64, error)
+	// StartMerge sets the sources of mergedIDs of userID as merged into the source of targetID, in
+	// one write: Resolve then returns the target for their identities. It returns ErrInvalid when
+	// mergedIDs is empty, holds targetID or an id twice, ErrNotFound when userID has no source of
+	// one of the ids, and ErrConflict when one of the sources is already in a merge in progress, as
+	// target or merged. It changes nothing then.
+	StartMerge(ctx context.Context, userID, targetID int64, mergedIDs []int64) error
+	// FinishMerge replaces the source of userID whose id is id, merged into another, by an alias of
+	// its identity to that other source, which also takes the aliases of the source, and deletes
+	// the source, which removes it from the priorities. It returns ErrNotFound when userID has no
+	// source of id, ErrInvalid when the source is not merged, and ErrConflict when it still has
+	// samples or workouts. It changes nothing then.
+	FinishMerge(ctx context.Context, userID, id int64) error
 }
