@@ -4,6 +4,7 @@ import (
 	"encoding"
 	"errors"
 	"fmt"
+	"math/big"
 	"os"
 	"reflect"
 	"slices"
@@ -129,14 +130,7 @@ func (l *fileLoader) mapping(node *yaml.Node, prefix string) {
 				continue
 			}
 
-			// The YAML decoder silently drops the fraction of a float decoded into an integer.
-			if isInteger(s.value) && value.ShortTag() == "!!float" {
-				l.errs = append(l.errs, fmt.Errorf("%s:%d: %s: %w", l.path, value.Line, s.name(), invalidValue(value.Value, "must be a whole number")))
-
-				continue
-			}
-
-			if err := value.Decode(s.value.Addr().Interface()); err != nil {
+			if err := decodeSetting(value, s); err != nil {
 				l.errs = append(l.errs, fmt.Errorf("%s:%d: %s: %w", l.path, value.Line, s.name(), err))
 
 				continue
@@ -161,6 +155,26 @@ func (l *fileLoader) mapping(node *yaml.Node, prefix string) {
 
 		l.errs = append(l.errs, fmt.Errorf("%s:%d: unknown key %q", l.path, key.Line, path))
 	}
+}
+
+// decodeSetting decodes a YAML value into the field of a setting.
+func decodeSetting(value *yaml.Node, s setting) error {
+	scalar := value
+	if scalar.Kind == yaml.AliasNode {
+		scalar = scalar.Alias
+	}
+
+	// The YAML decoder silently drops the fraction of a float decoded into an integer, and reads a
+	// whole number too large for 64 bits as a float.
+	if isInteger(s.value) && scalar.ShortTag() == "!!float" {
+		if _, ok := new(big.Int).SetString(scalar.Value, 10); ok {
+			return invalidValue(scalar.Value, "too large")
+		}
+
+		return invalidValue(scalar.Value, "must be a whole number")
+	}
+
+	return value.Decode(s.value.Addr().Interface())
 }
 
 // isInteger reports whether a setting is held in a plain integer field. Types that parse their own
