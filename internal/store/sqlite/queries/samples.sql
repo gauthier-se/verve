@@ -174,3 +174,45 @@ WHERE st.user_id = sqlc.arg(user_id)
                 AND s.source_id = sqlc.arg(source_id)
                 AND s.type_id = st.type_id)
 ORDER BY st.type_id;
+
+-- name: ListUserSamplesOfSource :many
+-- The samples of a source of a user, in the order of the index on samples (user_id, source_id,
+-- type_id): by type, then id.
+SELECT *
+FROM samples
+WHERE user_id = sqlc.arg(user_id)
+  AND source_id = sqlc.arg(source_id)
+ORDER BY type_id, id
+LIMIT sqlc.arg(max_samples);
+
+-- name: MoveUserSample :one
+-- Moves a sample of a source of a user to another source with a new natural key. Returns no row
+-- when the sample is not of the source, and when the user has the new key stored, the sample then
+-- left as it is.
+UPDATE OR IGNORE samples
+SET source_id   = sqlc.arg(to_id),
+    natural_key = sqlc.arg(natural_key)
+WHERE user_id = sqlc.arg(user_id)
+  AND id = sqlc.arg(id)
+  AND source_id = sqlc.arg(from_id)
+RETURNING id;
+
+-- name: DeleteUserSampleOfSource :one
+DELETE
+FROM samples
+WHERE user_id = sqlc.arg(user_id)
+  AND id = sqlc.arg(id)
+  AND source_id = sqlc.arg(source_id)
+RETURNING *;
+
+-- name: DeleteDrainedSourceStats :execrows
+-- Removes the sample count of a source of a user once at least that many samples left it.
+DELETE
+FROM source_stats
+WHERE user_id = sqlc.arg(user_id) AND source_id = sqlc.arg(source_id) AND count <= sqlc.arg(removed);
+
+-- name: SubtractSourceStats :exec
+-- Counts samples that left a source of a user.
+UPDATE source_stats
+SET count = count - sqlc.arg(removed)
+WHERE user_id = sqlc.arg(user_id) AND source_id = sqlc.arg(source_id);

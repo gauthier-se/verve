@@ -200,6 +200,7 @@ type Source struct {
 	KindSetByUser   int64
 	FirstSeenAt     int64
 	LastSeenAt      int64
+	MergedInto      sql.NullInt64
 }
 
 type SourceAlias struct {

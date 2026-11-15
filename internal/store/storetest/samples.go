@@ -993,9 +993,9 @@ func runSamplesMoveSource(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
 
 	// Given samples of the watch and of the phone of a user, and of another user, then ListOfSource
-	// returns at most limit samples of a source of the user, by id, none for the source of another
-	// user, and refuses a limit below 1.
-	t.Run("ListOfSourceReturnsTheSamplesOfASourceByID", func(t *testing.T) {
+	// returns at most limit samples of a source of the user, by type then id, none for the source of
+	// another user, and refuses a limit below 1.
+	t.Run("ListOfSourceReturnsTheSamplesOfASourceByTypeThenID", func(t *testing.T) {
 		t.Parallel()
 
 		st := newSamplesTest(t, newStore)
@@ -1021,7 +1021,6 @@ func runSamplesMoveSource(t *testing.T, newStore NewStoreFunc) {
 
 		all := list(st.user.ID, st.source.ID, 10)
 		require.Equal(t, []string{"late", "early", "stood"}, sampleKeys(all))
-		require.True(t, slices.IsSortedFunc(all, func(a, b store.Sample) int { return cmp.Compare(a.ID, b.ID) }))
 		require.Equal(t, all[:2], list(st.user.ID, st.source.ID, 2))
 		require.Equal(t, []string{"phone"}, sampleKeys(list(st.user.ID, st.phone.ID, 10)))
 		require.Empty(t, list(st.user.ID, st.foreign.ID, 10), "the source of another user")

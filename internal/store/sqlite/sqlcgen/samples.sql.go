@@ -109,6 +109,27 @@ func (q *Queries) CountUsersSamples(ctx context.Context, userIds []int64) ([]Cou
 	return items, nil
 }
 
+const deleteDrainedSourceStats = `-- name: DeleteDrainedSourceStats :execrows
+DELETE
+FROM source_stats
+WHERE user_id = ?1 AND source_id = ?2 AND count <= ?3
+`
+
+type DeleteDrainedSourceStatsParams struct {
+	UserID   int64
+	SourceID int64
+	Removed  int64
+}
+
+// Removes the sample count of a source of a user once at least that many samples left it.
+func (q *Queries) DeleteDrainedSourceStats(ctx context.Context, arg DeleteDrainedSourceStatsParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteDrainedSourceStats, arg.UserID, arg.SourceID, arg.Removed)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const deleteLastSampleStats = `-- name: DeleteLastSampleStats :execrows
 DELETE
 FROM sample_stats
@@ -163,6 +184,45 @@ type DeleteUserSampleByNaturalKeyParams struct {
 
 func (q *Queries) DeleteUserSampleByNaturalKey(ctx context.Context, arg DeleteUserSampleByNaturalKeyParams) (Sample, error) {
 	row := q.db.QueryRowContext(ctx, deleteUserSampleByNaturalKey, arg.UserID, arg.NaturalKey)
+	var i Sample
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.TypeID,
+		&i.SourceID,
+		&i.StartAt,
+		&i.EndAt,
+		&i.UtcOffset,
+		&i.Value,
+		&i.Min,
+		&i.Max,
+		&i.Category,
+		&i.Origin,
+		&i.ImportID,
+		&i.Uuid,
+		&i.NaturalKey,
+		&i.Metadata,
+	)
+	return i, err
+}
+
+const deleteUserSampleOfSource = `-- name: DeleteUserSampleOfSource :one
+DELETE
+FROM samples
+WHERE user_id = ?1
+  AND id = ?2
+  AND source_id = ?3
+RETURNING id, user_id, type_id, source_id, start_at, end_at, utc_offset, value, min, max, category, origin, import_id, uuid, natural_key, metadata
+`
+
+type DeleteUserSampleOfSourceParams struct {
+	UserID   int64
+	ID       int64
+	SourceID int64
+}
+
+func (q *Queries) DeleteUserSampleOfSource(ctx context.Context, arg DeleteUserSampleOfSourceParams) (Sample, error) {
+	row := q.db.QueryRowContext(ctx, deleteUserSampleOfSource, arg.UserID, arg.ID, arg.SourceID)
 	var i Sample
 	err := row.Scan(
 		&i.ID,
@@ -414,6 +474,63 @@ func (q *Queries) ListUserSamples(ctx context.Context, arg ListUserSamplesParams
 	return items, nil
 }
 
+const listUserSamplesOfSource = `-- name: ListUserSamplesOfSource :many
+SELECT id, user_id, type_id, source_id, start_at, end_at, utc_offset, value, min, max, category, origin, import_id, uuid, natural_key, metadata
+FROM samples
+WHERE user_id = ?1
+  AND source_id = ?2
+ORDER BY type_id, id
+LIMIT ?3
+`
+
+type ListUserSamplesOfSourceParams struct {
+	UserID     int64
+	SourceID   int64
+	MaxSamples int64
+}
+
+// The samples of a source of a user, in the order of the index on samples (user_id, source_id,
+// type_id): by type, then id.
+func (q *Queries) ListUserSamplesOfSource(ctx context.Context, arg ListUserSamplesOfSourceParams) ([]Sample, error) {
+	rows, err := q.db.QueryContext(ctx, listUserSamplesOfSource, arg.UserID, arg.SourceID, arg.MaxSamples)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Sample
+	for rows.Next() {
+		var i Sample
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.TypeID,
+			&i.SourceID,
+			&i.StartAt,
+			&i.EndAt,
+			&i.UtcOffset,
+			&i.Value,
+			&i.Min,
+			&i.Max,
+			&i.Category,
+			&i.Origin,
+			&i.ImportID,
+			&i.Uuid,
+			&i.NaturalKey,
+			&i.Metadata,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUserSamplesOverlapping = `-- name: ListUserSamplesOverlapping :many
 SELECT samples.id, samples.user_id, samples.type_id, samples.source_id, samples.start_at, samples.end_at, samples.utc_offset, samples.value, samples.min, samples.max, samples.category, samples.origin, samples.import_id, samples.uuid, samples.natural_key, samples.metadata
 FROM samples
@@ -568,6 +685,40 @@ func (q *Queries) ListUserTypesOfSource(ctx context.Context, arg ListUserTypesOf
 	return items, nil
 }
 
+const moveUserSample = `-- name: MoveUserSample :one
+UPDATE OR IGNORE samples
+SET source_id   = ?1,
+    natural_key = ?2
+WHERE user_id = ?3
+  AND id = ?4
+  AND source_id = ?5
+RETURNING id
+`
+
+type MoveUserSampleParams struct {
+	ToID       int64
+	NaturalKey []byte
+	UserID     int64
+	ID         int64
+	FromID     int64
+}
+
+// Moves a sample of a source of a user to another source with a new natural key. Returns no row
+// when the sample is not of the source, and when the user has the new key stored, the sample then
+// left as it is.
+func (q *Queries) MoveUserSample(ctx context.Context, arg MoveUserSampleParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, moveUserSample,
+		arg.ToID,
+		arg.NaturalKey,
+		arg.UserID,
+		arg.ID,
+		arg.FromID,
+	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
 const removeSampleStats = `-- name: RemoveSampleStats :exec
 UPDATE sample_stats
 SET count    = count - 1,
@@ -634,6 +785,24 @@ func (q *Queries) ReplaceSample(ctx context.Context, arg ReplaceSampleParams) (i
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const subtractSourceStats = `-- name: SubtractSourceStats :exec
+UPDATE source_stats
+SET count = count - ?1
+WHERE user_id = ?2 AND source_id = ?3
+`
+
+type SubtractSourceStatsParams struct {
+	Removed  int64
+	UserID   int64
+	SourceID int64
+}
+
+// Counts samples that left a source of a user.
+func (q *Queries) SubtractSourceStats(ctx context.Context, arg SubtractSourceStatsParams) error {
+	_, err := q.db.ExecContext(ctx, subtractSourceStats, arg.Removed, arg.UserID, arg.SourceID)
+	return err
 }
 
 const updateSampleIfChanged = `-- name: UpdateSampleIfChanged :execrows

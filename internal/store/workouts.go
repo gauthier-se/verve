@@ -202,4 +202,18 @@ type WorkoutsRepository interface {
 	// and ErrInvalid, writing nothing, when keptID is id or not a workout of userID. Removing a
 	// workout leaves its duplicates as they are: the caller evaluates them again.
 	SetDuplicateOf(ctx context.Context, userID, id, keptID int64) error
+
+	// ListOfSource returns at most limit workouts of the source of userID whose id is sourceID,
+	// duplicates included, sorted by id, as a merge moves them. It returns ErrInvalid when limit is
+	// below 1.
+	ListOfSource(ctx context.Context, userID, sourceID int64, limit int) ([]Workout, error)
+	// MoveSource moves each workout of moves, of the source of fromID of userID, to the source of
+	// toID with its natural key, in order, its route and kept workout staying (FR-3 of Deduplication
+	// and source priority). A workout whose new key userID has stored, a workout moved earlier in
+	// moves included, is removed instead with its route, and returned as it was. Its duplicates stay
+	// as they are: the caller evaluates them again.
+	//
+	// It returns ErrInvalid when userID has no source of toID or a key is empty, and ErrNotFound when
+	// a workout of moves is not one of the source of fromID of userID, and writes nothing then.
+	MoveSource(ctx context.Context, userID, fromID, toID int64, moves []Move) ([]Workout, error)
 }
