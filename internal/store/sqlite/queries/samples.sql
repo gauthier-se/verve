@@ -65,6 +65,16 @@ WHERE user_id = sqlc.arg(user_id)
 ORDER BY start_at, id
 LIMIT sqlc.arg(max_samples);
 
+-- name: CountUserSamples :one
+-- The samples of a user and type whose start is in a range, counted on the index on (user_id,
+-- type_id, start_at) alone.
+SELECT count(*)
+FROM samples
+WHERE user_id = sqlc.arg(user_id)
+  AND type_id = sqlc.arg(type_id)
+  AND start_at >= sqlc.arg(from_at)
+  AND start_at < sqlc.arg(to_at);
+
 -- name: DeleteUserSamples :execrows
 DELETE
 FROM samples

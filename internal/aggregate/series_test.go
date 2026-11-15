@@ -23,7 +23,7 @@ type seriesEnv struct {
 	source store.Source
 }
 
-func newSeriesEnv(t *testing.T) seriesEnv {
+func newSeriesEnv(t testing.TB) seriesEnv {
 	t.Helper()
 
 	ctx := t.Context()
@@ -51,7 +51,7 @@ func newSeriesEnv(t *testing.T) seriesEnv {
 }
 
 // mustType returns the metric type of key.
-func (e seriesEnv) mustType(t *testing.T, key string) store.MetricType {
+func (e seriesEnv) mustType(t testing.TB, key string) store.MetricType {
 	t.Helper()
 
 	metricType, err := e.store.MetricTypes().GetByKey(t.Context(), key)

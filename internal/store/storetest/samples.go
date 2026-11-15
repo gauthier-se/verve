@@ -739,6 +739,46 @@ func runSamplesList(t *testing.T, newStore NewStoreFunc) {
 			require.ErrorIs(t, err, store.ErrInvalid)
 		}
 	})
+
+	// Given samples of a user of two types, before, in and at the end of a range, and samples of
+	// another user, when Count counts a type and the range, then it counts the samples of that user
+	// and type that start in it, as List lists them.
+	t.Run("CountCountsTheSamplesOfTheUserTypeAndRange", func(t *testing.T) {
+		t.Parallel()
+
+		st := newSamplesTest(t, newStore)
+		ctx := t.Context()
+
+		at := func(hours int) time.Time { return samplesTime.Add(time.Duration(hours) * time.Hour) }
+
+		st.mustUpsert(ctx, t, st.user.ID,
+			st.heartRate("before", at(-1), 1, store.ConflictIgnore),
+			st.heartRate("first-a", at(0), 1, store.ConflictIgnore),
+			st.heartRate("first-b", at(0), 1, store.ConflictIgnore),
+			st.heartRate("third", at(3), 1, store.ConflictIgnore),
+			st.heartRate("to", at(4), 1, store.ConflictIgnore),
+			st.standHour(at(2)),
+		)
+		st.mustUpsert(ctx, t, st.other.ID, st.foreignHeartRate("foreign", at(1), 1))
+
+		got, err := st.store.Samples().Count(ctx, st.user.ID, st.heart.ID, at(0), at(4))
+		require.NoError(t, err)
+		require.Equal(t, int64(3), got)
+
+		got, err = st.store.Samples().Count(ctx, st.other.ID, st.standing.ID, at(0), at(4))
+		require.NoError(t, err)
+		require.Zero(t, got)
+	})
+
+	// Given a range whose end is not after its start, then Count answers ErrInvalid.
+	t.Run("CountRefusesAnInvalidRange", func(t *testing.T) {
+		t.Parallel()
+
+		st := newSamplesTest(t, newStore)
+
+		_, err := st.store.Samples().Count(t.Context(), st.user.ID, st.heart.ID, samplesTime, samplesTime)
+		require.ErrorIs(t, err, store.ErrInvalid)
+	})
 }
 
 // runSamplesDelete runs the cases of DeleteByUser.
