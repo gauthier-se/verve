@@ -424,3 +424,65 @@ func TestMerge_ResumesAfterAStopAndEndsAsAnUninterruptedRun(t *testing.T) {
 
 	require.GreaterOrEqual(t, stops, 6, "the merge stops after each of its batches")
 }
+
+// Given a raw heart rate that the old and the new watch both hold, when the merge removes the moved
+// one as a duplicate, then the transaction of its batch records its range as dirty, as any removal
+// does, and the data availability of the heart rate counts one sample less.
+func TestMerge_RemovingADuplicateRecordsItsDirtyRange(t *testing.T) {
+	t.Parallel()
+
+	e := newMergeEnv(t, ingest.DefaultBatchSize)
+	ctx := t.Context()
+	old, target := e.mergeScenario(t)
+	payload := e.startMerge(t, target, old)
+
+	heart := e.metricType(t, "HKQuantityTypeIdentifierHeartRate")
+	statsOf := func() store.SampleStats {
+		stats, err := e.store.Samples().Stats(ctx, e.user.ID)
+		require.NoError(t, err)
+
+		i := slices.IndexFunc(stats, func(s store.SampleStats) bool { return s.TypeID == heart.ID })
+		require.GreaterOrEqual(t, i, 0)
+
+		return stats[i]
+	}
+
+	before := statsOf()
+
+	merger := ingest.NewMerger(ingest.MergeConfig{
+		Store:       e.store,
+		DirtyRanges: aggregate.NewRecorder(nil),
+		Duplicates:  workouts.NewDetector(e.activities),
+		Recompute:   ingest.NoRecompute{},
+	})
+	require.NoError(t, merger.Run(ctx, e.user.ID, payload))
+
+	ranges, err := e.store.Aggregates().ListDirty(ctx, e.user.ID)
+	require.NoError(t, err)
+	require.Len(t, ranges, 1)
+
+	removedAt := time.Date(2026, 11, 10, 7, 10, 0, 0, time.UTC)
+	require.Equal(t, heart.ID, ranges[0].TypeID)
+	require.Equal(t, removedAt, ranges[0].From)
+	require.Equal(t, removedAt, ranges[0].To)
+
+	after := statsOf()
+	require.Equal(t, before.Count-1, after.Count)
+	require.Equal(t, before.FirstAt, after.FirstAt)
+	require.Equal(t, before.LastAt, after.LastAt)
+}
+
+// Given a merger without recomputer, when a merge ends, then it ends without recomputing.
+func TestMerge_WithoutRecomputerEnds(t *testing.T) {
+	t.Parallel()
+
+	e := newMergeEnv(t, ingest.DefaultBatchSize)
+	old, target := e.mergeScenario(t)
+	payload := e.startMerge(t, target, old)
+
+	merger := ingest.NewMerger(ingest.MergeConfig{Store: e.store})
+	require.NoError(t, merger.Run(t.Context(), e.user.ID, payload))
+
+	_, err := e.store.Sources().Get(t.Context(), e.user.ID, old.ID)
+	require.ErrorIs(t, err, store.ErrNotFound)
+}
