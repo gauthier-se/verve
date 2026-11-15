@@ -3,14 +3,18 @@
 package applexml
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
 	"iter"
 	"math"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gauthier-se/verve/internal/ingest"
@@ -53,13 +57,13 @@ func Records(ctx context.Context, r io.Reader) iter.Seq2[ingest.Record, error] {
 
 			switch start.Name.Local {
 			case "Record":
-				if err := t.skip(); err != nil {
+				record, err := t.record(start)
+				if err != nil {
 					yield(ingest.Record{}, err)
 
 					return
 				}
 
-				record := newRecord(start.Attr)
 				record.Position = position
 
 				if !yield(record, nil) {
@@ -206,6 +210,171 @@ func (a attributes) get(name string) (string, bool) {
 	return "", false
 }
 
+// record reads the children of the Record element of start, whose start tag was read last, and
+// returns its record.
+func (t *tokenizer) record(start xml.StartElement) (ingest.Record, error) {
+	var m metadata
+
+	depth := t.depth()
+
+	for {
+		tok, err := t.next()
+		if err != nil {
+			return ingest.Record{}, err
+		}
+
+		if t.depth() < depth {
+			break
+		}
+
+		child, ok := tok.(xml.StartElement)
+		if !ok || t.depth() != depth+1 {
+			continue
+		}
+
+		switch child.Name.Local {
+		case "MetadataEntry":
+			a := attributes(child.Attr)
+			key, _ := a.get("key")
+			value, _ := a.get("value")
+			m.entry(key, value)
+		case "HeartRateVariabilityMetadataList":
+			beats, err := t.beats()
+			if err != nil {
+				return ingest.Record{}, err
+			}
+
+			m.beats(beats)
+		}
+	}
+
+	record := newRecord(start.Attr)
+
+	switch {
+	case record.Quantity != nil:
+		record.Quantity.Metadata = m.object()
+	case record.Category != nil:
+		record.Category.Metadata = m.object()
+	}
+
+	return record, nil
+}
+
+// beats reads the children of a HeartRateVariabilityMetadataList element, whose start tag was read
+// last, and returns the attributes of its beats, in document order.
+func (t *tokenizer) beats() ([]attributes, error) {
+	var beats []attributes
+
+	depth := t.depth()
+
+	for {
+		tok, err := t.next()
+		if err != nil {
+			return nil, err
+		}
+
+		if t.depth() < depth {
+			return beats, nil
+		}
+
+		if beat, ok := tok.(xml.StartElement); ok && t.depth() == depth+1 && beat.Name.Local == "InstantaneousBeatsPerMinute" {
+			beats = append(beats, beat.Attr)
+		}
+	}
+}
+
+// metadataBeats is the metadata key of the beats of a heart rate variability record (FR-6 of XML
+// import).
+const metadataBeats = "HeartRateVariabilityMetadataList"
+
+// metadata writes the metadata of a record as a JSON object, its keys in document order. A key that
+// a record holds twice keeps its first value.
+type metadata struct {
+	buf  bytes.Buffer
+	enc  *json.Encoder
+	keys []string
+}
+
+// entry adds the key of a MetadataEntry, with its value as a string, as received.
+func (m *metadata) entry(key, value string) {
+	if m.key(key) {
+		m.string(value)
+	}
+}
+
+// beats adds the beats of a HeartRateVariabilityMetadataList, as an array of objects holding their
+// attributes as received.
+func (m *metadata) beats(beats []attributes) {
+	if !m.key(metadataBeats) {
+		return
+	}
+
+	m.buf.WriteByte('[')
+
+	for i, beat := range beats {
+		if i > 0 {
+			m.buf.WriteByte(',')
+		}
+
+		m.buf.WriteByte('{')
+
+		for j, attr := range beat {
+			if j > 0 {
+				m.buf.WriteByte(',')
+			}
+
+			m.string(attr.Name.Local)
+			m.buf.WriteByte(':')
+			m.string(attr.Value)
+		}
+
+		m.buf.WriteByte('}')
+	}
+
+	m.buf.WriteByte(']')
+}
+
+// key writes key and returns true, or returns false when the object already has it.
+func (m *metadata) key(key string) bool {
+	if slices.Contains(m.keys, key) {
+		return false
+	}
+
+	m.keys = append(m.keys, key)
+
+	if m.enc == nil {
+		m.enc = json.NewEncoder(&m.buf)
+		m.enc.SetEscapeHTML(false)
+		m.buf.WriteByte('{')
+	} else {
+		m.buf.WriteByte(',')
+	}
+
+	m.string(key)
+	m.buf.WriteByte(':')
+
+	return true
+}
+
+// string writes s as a JSON string, without escaping the characters that HTML reserves, so that
+// the stored metadata holds them as received.
+func (m *metadata) string(s string) {
+	_ = m.enc.Encode(s) // a string always encodes
+
+	m.buf.Truncate(m.buf.Len() - 1) // the newline of Encode
+}
+
+// object returns the JSON object, nil when the record has no metadata.
+func (m *metadata) object() json.RawMessage {
+	if m.enc == nil {
+		return nil
+	}
+
+	m.buf.WriteByte('}')
+
+	return m.buf.Bytes()
+}
+
 // newRecord returns the sample of a Record element of attrs: a quantity sample when it has a unit,
 // a category sample otherwise, and an invalid record whose reason names the first attribute that
 // is missing or invalid, never its value.
@@ -247,6 +416,10 @@ func newRecord(attrs []xml.Attr) ingest.Record {
 	sourceName, _ := a.get("sourceName")
 	source := store.SourceInfo{Name: sourceName}
 
+	if device, ok := a.get("device"); ok {
+		setDevice(&source, device)
+	}
+
 	if quantity {
 		return ingest.Record{Quantity: &ingest.QuantitySample{
 			Type: typ, Start: start, End: end, Value: number, Unit: unit, Source: source,
@@ -256,6 +429,77 @@ func newRecord(attrs []xml.Attr) ingest.Record {
 	return ingest.Record{Category: &ingest.CategorySample{
 		Type: typ, Start: start, End: end, Value: value, Source: source,
 	}}
+}
+
+// setDevice sets the device fields of source from the device string of a record, such as
+// <<HKDevice: 0x141b957d8>, name:Apple Watch, manufacturer:Apple Inc., model:Watch,
+// hardware:Watch7,3, software:26.0, creation date:2025-12-29 23:00:00 +0000> (FR-6 of XML import).
+// A field that the string lacks is left empty, and its other fields are ignored.
+func setDevice(source *store.SourceInfo, device string) {
+	body, ok := strings.CutPrefix(device, "<<HKDevice: ")
+	if !ok {
+		return
+	}
+
+	if _, body, ok = strings.Cut(body, ">, "); !ok {
+		return
+	}
+
+	for body = strings.TrimSuffix(body, ">"); body != ""; {
+		var field string
+
+		field, body = nextField(body)
+		key, value, _ := strings.Cut(field, ":")
+
+		switch key {
+		case "name":
+			source.DeviceName = value
+		case "manufacturer":
+			source.Manufacturer = value
+		case "model":
+			source.DeviceModel = value
+		case "hardware":
+			source.HardwareVersion = value
+		case "software":
+			source.SoftwareVersion = value
+		}
+	}
+}
+
+// nextField splits the fields of a device string into the first one and the others. A field ends
+// at the comma and space that come before the key of the next one, letters and spaces followed by a
+// colon, so that a value may hold a comma, as hardware:Watch7,3 does.
+func nextField(fields string) (string, string) {
+	for i := 0; ; {
+		j := strings.Index(fields[i:], ", ")
+		if j < 0 {
+			return fields, ""
+		}
+
+		next := i + j + len(", ")
+		if isKey(fields[next:]) {
+			return fields[:i+j], fields[next:]
+		}
+
+		i = next
+	}
+}
+
+// isKey reports whether s starts with the key of a device field: a letter, then letters and spaces,
+// then a colon.
+func isKey(s string) bool {
+	for i, c := range s {
+		switch {
+		case c == ':':
+			return i > 0
+		case 'a' <= c && c <= 'z', 'A' <= c && c <= 'Z':
+		case c == ' ' && i > 0:
+		default:
+			return false
+		}
+	}
+
+	return false
 }
 
 // invalid returns an invalid sample of the type typ, with reason.
