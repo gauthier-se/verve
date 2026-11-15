@@ -518,3 +518,159 @@ func TestRecords_HeartRateVariabilityBeats(t *testing.T) {
 	require.JSONEq(t, `{"HeartRateVariabilityMetadataList": [{"bpm": "58", "time": "15:05:01,02"}]}`,
 		string(records[1].Quantity.Metadata))
 }
+
+// Given a document whose inline DTD is malformed, an unbalanced quote or an unclosed declaration,
+// then the records read are the same as with a valid DTD, and positions count the bytes of the DTD.
+func TestRecords_MalformedDTDIsSkipped(t *testing.T) {
+	t.Parallel()
+
+	valid := document(heartRate, sleep)
+	want := readAll(t, valid)
+	require.Len(t, want, 2)
+
+	tests := []struct {
+		name string
+		dtd  string
+	}{
+		{
+			name: "unbalanced quote",
+			dtd: `<!DOCTYPE HealthData [
+<!ATTLIST HealthData
+  locale CDATA "en_FR
+>
+<!ELEMENT Record ((MetadataEntry|HeartRateVariabilityMetadataList)*)>
+]>`,
+		},
+		{
+			name: "unclosed declaration",
+			dtd: `<!DOCTYPE HealthData [
+<!ELEMENT HealthData (ExportDate,Me,(Record|Correlation|Workout)*)
+<!ELEMENT Record ((MetadataEntry|HeartRateVariabilityMetadataList)*
+<!-- HealthKit Export Version: 17
+]>`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			doc := `<?xml version="1.0" encoding="UTF-8"?>` + "\n" + tt.dtd + "\n" +
+				`<HealthData locale="en_FR">` + "\n " + heartRate + "\n " + sleep + "\n</HealthData>\n"
+
+			got := readAll(t, doc)
+			require.Len(t, got, 2)
+			require.Equal(t, offset(t, doc, "<Record", 0), got[0].Position)
+			require.Equal(t, offset(t, doc, "<Record", 1), got[1].Position)
+
+			got[0].Position, got[1].Position = want[0].Position, want[1].Position
+			require.Equal(t, want, got)
+		})
+	}
+}
+
+// Given a Correlation, then each inner record is read as a top-level record at its own position,
+// and the correlation itself yields nothing.
+func TestRecords_CorrelationsYieldTheirInnerRecords(t *testing.T) {
+	t.Parallel()
+
+	doc := document(
+		`<Correlation type="HKCorrelationTypeIdentifierBloodPressure" sourceName="Cardio Cuff" sourceVersion="42" creationDate="2025-12-30 08:15:00 +0100" startDate="2025-12-30 08:15:00 +0100" endDate="2025-12-30 08:15:00 +0100">`,
+		` <MetadataEntry key="HKWasUserEntered" value="0"/>`,
+		` <Record type="HKQuantityTypeIdentifierBloodPressureSystolic" sourceName="Cardio Cuff" sourceVersion="42" unit="mmHg" creationDate="2025-12-30 08:15:00 +0100" startDate="2025-12-30 08:15:00 +0100" endDate="2025-12-30 08:15:00 +0100" value="121"/>`,
+		` <Record type="HKQuantityTypeIdentifierBloodPressureDiastolic" sourceName="Cardio Cuff" sourceVersion="42" unit="mmHg" creationDate="2025-12-30 08:15:00 +0100" startDate="2025-12-30 08:15:00 +0100" endDate="2025-12-30 08:15:00 +0100" value="79"/>`,
+		`</Correlation>`,
+		heartRate,
+	)
+
+	require.Equal(t, []ingest.Record{
+		{Position: offset(t, doc, "<Record", 0), Quantity: &ingest.QuantitySample{
+			Type:   "HKQuantityTypeIdentifierBloodPressureSystolic",
+			Start:  "2025-12-30T08:15:00+01:00",
+			End:    "2025-12-30T08:15:00+01:00",
+			Value:  121,
+			Unit:   "mmHg",
+			Source: store.SourceInfo{Name: "Cardio Cuff"},
+		}},
+		{Position: offset(t, doc, "<Record", 1), Quantity: &ingest.QuantitySample{
+			Type:   "HKQuantityTypeIdentifierBloodPressureDiastolic",
+			Start:  "2025-12-30T08:15:00+01:00",
+			End:    "2025-12-30T08:15:00+01:00",
+			Value:  79,
+			Unit:   "mmHg",
+			Source: store.SourceInfo{Name: "Cardio Cuff"},
+		}},
+		{Position: offset(t, doc, "<Record", 2), Quantity: &ingest.QuantitySample{
+			Type:   "HKQuantityTypeIdentifierHeartRate",
+			Start:  "2025-12-30T07:00:00+01:00",
+			End:    "2025-12-30T07:00:00+01:00",
+			Value:  62,
+			Unit:   "count/min",
+			Source: store.SourceInfo{Name: "Apple Watch de Alex"},
+		}},
+	}, readAll(t, doc))
+}
+
+// Given ActivitySummary, ClinicalRecord, Audiogram and VisionPrescription elements, then each
+// yields an unsupported record of its element name. Given ExportDate and Me, then they yield
+// nothing.
+func TestRecords_UnsupportedAndSkippedElements(t *testing.T) {
+	t.Parallel()
+
+	doc := document(
+		`<ExportDate value="2026-01-05 09:00:00 +0100"/>`,
+		`<Me HKCharacteristicTypeIdentifierDateOfBirth="1990-06-15" HKCharacteristicTypeIdentifierBiologicalSex="HKBiologicalSexFemale"/>`,
+		heartRate,
+		`<ActivitySummary dateComponents="2025-12-30" activeEnergyBurned="512.3" activeEnergyBurnedGoal="600" activeEnergyBurnedUnit="Cal"/>`,
+		`<ClinicalRecord type="HKClinicalTypeIdentifierLabResultRecord" identifier="lab-1" sourceName="Clinic" fhirVersion="4.0.1" receivedDate="2025-12-30 10:00:00 +0100" resourceFilePath="/clinical-records/lab-1.json"/>`,
+		`<Audiogram type="HKDataTypeIdentifierAudiogram" sourceName="Hearing" startDate="2025-12-30 10:00:00 +0100" endDate="2025-12-30 10:00:00 +0100">`,
+		` <SensitivityPoint frequencyValue="1000" frequencyUnit="Hz" leftEarValue="20" leftEarUnit="dBHL"/>`,
+		`</Audiogram>`,
+		`<VisionPrescription type="HKVisionPrescriptionTypeGlasses" dateIssued="2025-12-30 10:00:00 +0100" sourceName="Optician">`,
+		` <Prescription eye="left" sphere="-1.25"/>`,
+		`</VisionPrescription>`,
+		sleep,
+	)
+
+	unsupported := func(element string) ingest.Record {
+		return ingest.Record{
+			Position:    offset(t, doc, "<"+element, 0),
+			Unsupported: &ingest.Unsupported{Identifier: element},
+		}
+	}
+
+	records := readAll(t, doc)
+	require.Len(t, records, 6)
+	require.Equal(t, offset(t, doc, "<Record", 0), records[0].Position)
+	require.NotNil(t, records[0].Quantity)
+	require.Equal(t, []ingest.Record{
+		unsupported("ActivitySummary"),
+		unsupported("ClinicalRecord"),
+		unsupported("Audiogram"),
+		unsupported("VisionPrescription"),
+	}, records[1:5])
+	require.Equal(t, offset(t, doc, "<Record", 1), records[5].Position)
+	require.NotNil(t, records[5].Category)
+}
+
+// Given a Workout, then it and its children yield nothing until #267.
+func TestRecords_WorkoutsYieldNothingYet(t *testing.T) {
+	t.Parallel()
+
+	doc := document(
+		`<Workout workoutActivityType="HKWorkoutActivityTypeRunning" duration="30" durationUnit="min" sourceName="Apple Watch de Alex" startDate="2025-12-30 07:00:00 +0100" endDate="2025-12-30 07:30:00 +0100">`,
+		` <MetadataEntry key="HKIndoorWorkout" value="0"/>`,
+		` <WorkoutEvent type="HKWorkoutEventTypeSegment" date="2025-12-30 07:00:00 +0100" duration="10" durationUnit="min"/>`,
+		` <WorkoutStatistics type="HKQuantityTypeIdentifierActiveEnergyBurned" startDate="2025-12-30 07:00:00 +0100" endDate="2025-12-30 07:30:00 +0100" sum="312" unit="kcal"/>`,
+		` <Record type="HKQuantityTypeIdentifierRunningPower" sourceName="Apple Watch de Alex" unit="W" startDate="2025-12-30 07:00:00 +0100" endDate="2025-12-30 07:00:00 +0100" value="250"/>`,
+		` <WorkoutRoute sourceName="Apple Watch de Alex" startDate="2025-12-30 07:00:00 +0100" endDate="2025-12-30 07:30:00 +0100">`,
+		`  <FileReference path="/workout-routes/route_2025-12-30_7.00am.gpx"/>`,
+		` </WorkoutRoute>`,
+		`</Workout>`,
+		heartRate,
+	)
+
+	records := readAll(t, doc)
+	require.Len(t, records, 1)
+	require.Equal(t, "HKQuantityTypeIdentifierHeartRate", records[0].Quantity.Type)
+}
