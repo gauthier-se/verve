@@ -51,7 +51,7 @@ var unsupportedElements = []string{"ActivitySummary", "ClinicalRecord", "Audiogr
 
 // records reads the elements under the root element and yields their records, until the document
 // ends, yield returns false or ctx is done, which it checks at each of them. Elements of no record,
-// such as ExportDate, Me and, until workouts are read, Workout, are skipped with their children.
+// such as ExportDate and Me, are skipped with their children.
 func (t *tokenizer) records(ctx context.Context, yield func(ingest.Record) bool) error {
 	for {
 		tok, err := t.next()
@@ -83,6 +83,8 @@ func (t *tokenizer) records(ctx context.Context, yield func(ingest.Record) bool)
 			}
 		case name == "Correlation":
 			more, err = t.correlation(yield)
+		case name == "Workout":
+			more, err = t.workout(start, yield)
 		case slices.Contains(unsupportedElements, name):
 			position := t.start
 
@@ -172,17 +174,14 @@ func (t *tokenizer) record(start xml.StartElement) (ingest.Record, error) {
 
 		switch child.Name.Local {
 		case "MetadataEntry":
-			a := attributes(child.Attr)
-			key, _ := a.get("key")
-			value, _ := a.get("value")
-			m.entry(key, value)
+			m.entry(newMetadataEntry(child.Attr))
 		case metadataBeats:
-			beats, err := t.beats()
+			beats, err := t.children("InstantaneousBeatsPerMinute")
 			if err != nil {
 				return ingest.Record{}, err
 			}
 
-			m.beats(beats)
+			m.objects(metadataBeats, beats)
 		}
 	}
 
@@ -199,10 +198,10 @@ func (t *tokenizer) record(start xml.StartElement) (ingest.Record, error) {
 	return record, nil
 }
 
-// beats reads the children of a HeartRateVariabilityMetadataList element, whose start tag was read
-// last, and returns the attributes of its beats, in document order.
-func (t *tokenizer) beats() ([]attributes, error) {
-	var beats []attributes
+// children reads the children of the element whose start tag was read last, and returns the
+// attributes of those named name, in document order.
+func (t *tokenizer) children(name string) ([]attributes, error) {
+	var children []attributes
 
 	depth := t.depth()
 
@@ -213,11 +212,11 @@ func (t *tokenizer) beats() ([]attributes, error) {
 		}
 
 		if t.depth() < depth {
-			return beats, nil
+			return children, nil
 		}
 
-		if beat, ok := tok.(xml.StartElement); ok && t.depth() == depth+1 && beat.Name.Local == "InstantaneousBeatsPerMinute" {
-			beats = append(beats, beat.Attr)
+		if child, ok := tok.(xml.StartElement); ok && t.depth() == depth+1 && child.Name.Local == name {
+			children = append(children, child.Attr)
 		}
 	}
 }
@@ -234,43 +233,70 @@ type metadata struct {
 	keys []string
 }
 
-// entry adds the key of a MetadataEntry, with its value as a string, as received.
-func (m *metadata) entry(key, value string) {
-	if m.key(key) {
-		m.string(value)
+// metadataEntry is a MetadataEntry element: a metadata key and its value as received.
+type metadataEntry struct {
+	key, value string
+}
+
+// newMetadataEntry returns the entry of the attributes of a MetadataEntry element.
+func newMetadataEntry(attrs []xml.Attr) metadataEntry {
+	a := attributes(attrs)
+	key, _ := a.get("key")
+	value, _ := a.get("value")
+
+	return metadataEntry{key: key, value: value}
+}
+
+// entry adds the key of e, with its value as a string, as received.
+func (m *metadata) entry(e metadataEntry) {
+	if m.key(e.key) {
+		m.string(e.value)
 	}
 }
 
-// beats adds the beats of a HeartRateVariabilityMetadataList, as an array of objects holding their
-// attributes as received.
-func (m *metadata) beats(beats []attributes) {
-	if !m.key(metadataBeats) {
+// objects adds key with an array of objects holding the attributes of each of items as received,
+// such as the beats of a HeartRateVariabilityMetadataList.
+func (m *metadata) objects(key string, items []attributes) {
+	if !m.key(key) {
 		return
 	}
 
+	m.array(len(items), func(i int) { m.attributes(items[i]) })
+}
+
+// array writes an array of n items, each written by item.
+func (m *metadata) array(n int, item func(i int)) {
 	m.buf.WriteByte('[')
 
-	for i, beat := range beats {
+	for i := range n {
 		if i > 0 {
 			m.buf.WriteByte(',')
 		}
 
-		m.buf.WriteByte('{')
-
-		for j, attr := range beat {
-			if j > 0 {
-				m.buf.WriteByte(',')
-			}
-
-			m.string(attr.Name.Local)
-			m.buf.WriteByte(':')
-			m.string(attr.Value)
-		}
-
-		m.buf.WriteByte('}')
+		item(i)
 	}
 
 	m.buf.WriteByte(']')
+}
+
+// attributes writes an object of attrs, as received.
+func (m *metadata) attributes(attrs attributes) {
+	m.buf.WriteByte('{')
+	m.members(attrs)
+	m.buf.WriteByte('}')
+}
+
+// members writes the members of an object of attrs, as received, without its braces.
+func (m *metadata) members(attrs attributes) {
+	for i, attr := range attrs {
+		if i > 0 {
+			m.buf.WriteByte(',')
+		}
+
+		m.string(attr.Name.Local)
+		m.buf.WriteByte(':')
+		m.string(attr.Value)
+	}
 }
 
 // key writes key and returns true, or returns false when the object already has it.
@@ -352,12 +378,7 @@ func newRecord(attrs []xml.Attr) ingest.Record {
 		return invalidRecord(typ, reason)
 	}
 
-	sourceName, _ := a.get("sourceName")
-	source := store.SourceInfo{Name: sourceName}
-
-	if device, ok := a.get("device"); ok {
-		setDevice(&source, device)
-	}
+	source := source(a)
 
 	if quantity {
 		return ingest.Record{Quantity: &ingest.QuantitySample{
@@ -368,6 +389,19 @@ func newRecord(attrs []xml.Attr) ingest.Record {
 	return ingest.Record{Category: &ingest.CategorySample{
 		Type: typ, Start: start, End: end, Value: value, Source: source,
 	}}
+}
+
+// source returns the source of the attributes of a record or a workout: its sourceName and the
+// fields of its device string.
+func source(a attributes) store.SourceInfo {
+	sourceName, _ := a.get("sourceName")
+	source := store.SourceInfo{Name: sourceName}
+
+	if device, ok := a.get("device"); ok {
+		setDevice(&source, device)
+	}
+
+	return source
 }
 
 // setDevice sets the device fields of source from the device string of a record, such as
@@ -470,20 +504,31 @@ var dateLayouts = []string{"2006-01-02 15:04:05 Z0700", "2006-01-02 15:04:05 Z07
 // date returns the date attribute name of a as RFC 3339, with its instant and offset, or the reason
 // of an invalid record.
 func date(a attributes, name string) (string, string) {
+	t, reason := parseDate(a, name)
+	if reason != "" {
+		return "", reason
+	}
+
+	return t.Format(time.RFC3339Nano), ""
+}
+
+// parseDate returns the date attribute name of a, in its offset, or the reason of an invalid
+// record.
+func parseDate(a attributes, name string) (time.Time, string) {
 	value, ok := a.get(name)
 	if !ok {
-		return "", name + " is missing"
+		return time.Time{}, name + " is missing"
 	}
 
 	if strings.Contains(value, ",") {
-		return "", name + " is not a date"
+		return time.Time{}, name + " is not a date"
 	}
 
 	for _, layout := range dateLayouts {
 		if t, err := time.Parse(layout, value); err == nil {
-			return t.Format(time.RFC3339Nano), ""
+			return t, ""
 		}
 	}
 
-	return "", name + " is not a date"
+	return time.Time{}, name + " is not a date"
 }
