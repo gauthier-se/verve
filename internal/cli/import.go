@@ -35,7 +35,7 @@ func newImportCommand(loadConfig func() (config.Config, error), deps Deps) *cobr
 
 	var login string
 
-	xml := &cobra.Command{
+	fromXML := &cobra.Command{
 		Use:   "xml --user <username> <path>",
 		Short: "Import an Apple Health export for a user, also while the server runs",
 		Long: "Import an Apple Health export, its export.zip or a bare export.xml, for a user, in this process. " +
@@ -59,9 +59,9 @@ func newImportCommand(loadConfig func() (config.Config, error), deps Deps) *cobr
 		}),
 	}
 
-	xml.Flags().StringVar(&login, "user", "", "username of the user who imports")
+	fromXML.Flags().StringVar(&login, "user", "", "username of the user who imports")
 
-	cmd.AddCommand(xml)
+	cmd.AddCommand(fromXML)
 
 	return cmd
 }

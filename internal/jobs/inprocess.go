@@ -8,6 +8,10 @@ import (
 	"github.com/gauthier-se/verve/internal/store"
 )
 
+// CreateFunc writes through tx what the job of RunInProcessWith needs, such as the record that its
+// payload names, and returns the job.
+type CreateFunc func(ctx context.Context, tx store.Repositories) (store.NewJob, error)
+
 // RunInProcess runs job in this process, for a command such as verve import xml that runs its job
 // itself instead of leaving it to the server. While the serial key of job is held, it waits and
 // tries again at every wait interval, and calls onWait once, when the wait starts. It then creates
@@ -25,13 +29,10 @@ func (w *Worker) RunInProcess(ctx context.Context, job store.NewJob, onWait func
 	}, onWait)
 }
 
-// RunInProcessWith is RunInProcess for the job that create returns, once it wrote through tx what the
-// job needs, such as the record that its payload names. Each try calls create in the transaction
+// RunInProcessWith is RunInProcess for the job that create returns. Each try calls create in the transaction
 // that creates and claims the job, so that a try that waits for the serial key, and a command
 // stopped while it waits, store none of its writes.
-func (w *Worker) RunInProcessWith(ctx context.Context, create func(ctx context.Context, tx store.Repositories) (store.NewJob, error),
-	onWait func(),
-) error {
+func (w *Worker) RunInProcessWith(ctx context.Context, create CreateFunc, onWait func()) error {
 	claimed, err := w.claimInProcess(ctx, create, onWait)
 	if err != nil {
 		return err
@@ -65,9 +66,7 @@ func (w *Worker) RunInProcessWith(ctx context.Context, create func(ctx context.C
 
 // claimInProcess creates the job that create returns and claims it, waiting while its serial key is
 // held. It calls onWait once, when the wait starts.
-func (w *Worker) claimInProcess(ctx context.Context, create func(ctx context.Context, tx store.Repositories) (store.NewJob, error),
-	onWait func(),
-) (store.Job, error) {
+func (w *Worker) claimInProcess(ctx context.Context, create CreateFunc, onWait func()) (store.Job, error) {
 	waiting := false
 
 	for {

@@ -558,7 +558,7 @@ func TestRunInProcess_ProcessStopped_TheHandlerSeesTheCancellation(t *testing.T)
 
 // createSetting returns the create function of RunInProcessWith that stores the setting key
 // through its transaction and returns job.
-func createSetting(job store.NewJob, key string) func(context.Context, store.Repositories) (store.NewJob, error) {
+func createSetting(job store.NewJob, key string) CreateFunc {
 	return func(ctx context.Context, tx store.Repositories) (store.NewJob, error) {
 		return job, tx.InstanceSettings().Set(ctx, key, "created")
 	}
