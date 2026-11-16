@@ -123,23 +123,75 @@ func (e *Export) Size() int64 {
 	return e.size
 }
 
-// Records reads the records of the export, as Records reads those of a document. A corrupted entry
-// of a zip ends the read with an error wrapping ErrMalformed, and a read error of the file with the
-// error of the file.
+// Records reads the records of the export, as Records reads those of a document, with the routes
+// of its workouts, then yields an unsupported record for each electrocardiograms/*.csv entry of a
+// zip, in central directory order, at positions after the size of export.xml (FR-6 of XML import).
+// export_cda.xml is not read.
+//
+// A corrupted entry of a zip ends the read with an error wrapping ErrMalformed, and a read error of
+// the file with the error of the file.
 func (e *Export) Records(ctx context.Context) iter.Seq2[ingest.Record, error] {
 	return func(yield func(ingest.Record, error) bool) {
-		r, err := e.open()
-		if err == nil {
-			defer func() { _ = r.Close() }() // a read-only entry or section
+		more := true
 
-			routes := &routes{zip: e.zip, dir: e.dir}
-			err = readRecords(ctx, r, routes, func(r ingest.Record) bool { return yield(r, nil) })
+		err := e.readXML(ctx, func(r ingest.Record) bool {
+			more = yield(r, nil)
+
+			return more
+		})
+		if err == nil && more {
+			err = e.electrocardiograms(ctx, func(r ingest.Record) bool { return yield(r, nil) })
 		}
 
 		if err != nil {
 			yield(ingest.Record{}, err)
 		}
 	}
+}
+
+// readXML reads the records of export.xml, with the routes of its workouts.
+func (e *Export) readXML(ctx context.Context, yield func(ingest.Record) bool) error {
+	r, err := e.open()
+	if err != nil {
+		return err
+	}
+
+	defer func() { _ = r.Close() }() // a read-only entry or section
+
+	return readRecords(ctx, r, &routes{zip: e.zip, dir: e.dir}, yield)
+}
+
+// electrocardiogram is the identifier under which an electrocardiograms/*.csv entry counts as
+// unsupported.
+const electrocardiogram = "HKDataTypeIdentifierElectrocardiogram"
+
+// electrocardiograms yields an unsupported record for each electrocardiograms/*.csv entry of the
+// folder of export.xml, at the positions that follow the size of export.xml.
+func (e *Export) electrocardiograms(ctx context.Context, yield func(ingest.Record) bool) error {
+	if e.zip == nil {
+		return nil
+	}
+
+	position := e.size
+
+	for _, entry := range e.zip.File {
+		name, ok := strings.CutPrefix(entry.Name, e.dir+"electrocardiograms/")
+		if !ok || strings.Contains(name, "/") || !strings.HasSuffix(name, ".csv") {
+			continue
+		}
+
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("read electrocardiograms: %w", err)
+		}
+
+		position++
+
+		if !yield(ingest.Record{Position: position, Unsupported: &ingest.Unsupported{Identifier: electrocardiogram}}) {
+			return nil
+		}
+	}
+
+	return nil
 }
 
 // open opens export.xml.
