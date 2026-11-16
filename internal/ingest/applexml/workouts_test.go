@@ -208,3 +208,238 @@ func TestRecords_WorkoutEvents(t *testing.T) {
 
 	require.Nil(t, workoutOf(t, readAll(t, document(run, `</Workout>`))).Events, "a workout without events has none")
 }
+
+// statistic returns a WorkoutStatistics element of the run of the type typ, whose other attributes
+// are attrs.
+func statistic(typ, attrs string) string {
+	return ` <WorkoutStatistics type="` + typ + `" startDate="2025-12-30 07:00:00 +0100" endDate="2025-12-30 07:25:00 +0100" ` + attrs + `/>`
+}
+
+// Given WorkoutStatistics, then the active energy is the sum of ActiveEnergyBurned, the total
+// energy its sum with BasalEnergyBurned when both exist, the distance the sum of the first
+// statistic whose type starts with Distance, and the average and maximum heart rates the average
+// and maximum of HeartRate, each in its unit. A total without its statistic is left out.
+func TestRecords_WorkoutTotalsFromTheStatistics(t *testing.T) {
+	t.Parallel()
+
+	quantity := func(value float64, unit string) *ingest.Quantity {
+		return &ingest.Quantity{Value: value, Unit: unit}
+	}
+
+	tests := []struct {
+		name       string
+		statistics []string
+		want       ingest.WorkoutTotals
+	}{
+		{
+			name: "every statistic",
+			statistics: []string{
+				statistic("HKQuantityTypeIdentifierActiveEnergyBurned", `sum="250.408" unit="kcal"`),
+				statistic("HKQuantityTypeIdentifierBasalEnergyBurned", `sum="29.414" unit="kcal"`),
+				statistic("HKQuantityTypeIdentifierStepCount", `sum="4171.189" unit="count"`),
+				statistic("HKQuantityTypeIdentifierDistanceWalkingRunning", `sum="4.933" unit="km"`),
+				statistic("HKQuantityTypeIdentifierDistanceCycling", `sum="12" unit="km"`),
+				statistic("HKQuantityTypeIdentifierHeartRate", `average="142.538" minimum="114.030" maximum="171.045" unit="count/min"`),
+				statistic("HKQuantityTypeIdentifierRunningPower", `average="222.863" minimum="178.290" maximum="267.436" unit="W"`),
+			},
+			want: ingest.WorkoutTotals{
+				Distance:     quantity(4.933, "km"),
+				ActiveEnergy: quantity(250.408, "kcal"),
+				TotalEnergy:  quantity(279.822, "kcal"),
+				AvgHeartRate: quantity(142.538, "count/min"),
+				MaxHeartRate: quantity(171.045, "count/min"),
+			},
+		},
+		{
+			name: "basal energy in another unit",
+			statistics: []string{
+				statistic("HKQuantityTypeIdentifierActiveEnergyBurned", `sum="250" unit="kcal"`),
+				statistic("HKQuantityTypeIdentifierBasalEnergyBurned", `sum="4.184" unit="kJ"`),
+			},
+			want: ingest.WorkoutTotals{ActiveEnergy: quantity(250, "kcal"), TotalEnergy: quantity(251, "kcal")},
+		},
+		{
+			name: "active energy without basal energy",
+			statistics: []string{
+				statistic("HKQuantityTypeIdentifierActiveEnergyBurned", `sum="185.390" unit="kcal"`),
+			},
+			want: ingest.WorkoutTotals{ActiveEnergy: quantity(185.39, "kcal")},
+		},
+		{
+			name: "basal energy without active energy",
+			statistics: []string{
+				statistic("HKQuantityTypeIdentifierBasalEnergyBurned", `sum="29.414" unit="kcal"`),
+			},
+		},
+		{
+			name: "heart rate without maximum",
+			statistics: []string{
+				statistic("HKQuantityTypeIdentifierHeartRate", `average="117.202" unit="count/min"`),
+			},
+			want: ingest.WorkoutTotals{AvgHeartRate: quantity(117.202, "count/min")},
+		},
+		{name: "without statistics"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			body := append(append([]string{run}, tt.statistics...), `</Workout>`)
+
+			w := workoutOf(t, readAll(t, document(body...)))
+			if tt.want.TotalEnergy != nil {
+				require.NotNil(t, w.Totals.TotalEnergy)
+				require.InDelta(t, tt.want.TotalEnergy.Value, w.Totals.TotalEnergy.Value, 1e-9)
+				w.Totals.TotalEnergy.Value = tt.want.TotalEnergy.Value
+			}
+
+			require.Equal(t, tt.want, w.Totals)
+		})
+	}
+}
+
+// Given a workout without such statistics and with totalDistance and totalEnergyBurned and their
+// units, as older exports write, then they give the distance and the active energy. Given both,
+// then the statistics win.
+func TestRecords_WorkoutTotalsOfOlderExports(t *testing.T) {
+	t.Parallel()
+
+	older := `<Workout workoutActivityType="HKWorkoutActivityTypeCycling" duration="45" durationUnit="min" totalDistance="18.2" totalDistanceUnit="km" totalEnergyBurned="410" totalEnergyBurnedUnit="kcal" sourceName="iPhone" startDate="2019-06-01 18:00:00 +0200" endDate="2019-06-01 18:45:00 +0200">`
+
+	w := workoutOf(t, readAll(t, document(older, `</Workout>`)))
+	require.Equal(t, ingest.WorkoutTotals{
+		Distance:     &ingest.Quantity{Value: 18.2, Unit: "km"},
+		ActiveEnergy: &ingest.Quantity{Value: 410, Unit: "kcal"},
+	}, w.Totals)
+
+	w = workoutOf(t, readAll(t, document(
+		older,
+		statistic("HKQuantityTypeIdentifierDistanceCycling", `sum="18.4" unit="km"`),
+		statistic("HKQuantityTypeIdentifierActiveEnergyBurned", `sum="412" unit="kcal"`),
+		`</Workout>`,
+	)))
+	require.Equal(t, &ingest.Quantity{Value: 18.4, Unit: "km"}, w.Totals.Distance)
+	require.Equal(t, &ingest.Quantity{Value: 412, Unit: "kcal"}, w.Totals.ActiveEnergy)
+}
+
+// Given a statistic or an older total that is not a number, then the workout is invalid, with a
+// reason that names the attribute and never its value.
+func TestRecords_InvalidWorkoutTotals(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		workout []string
+		reason  string
+	}{
+		{
+			name:    "sum of a statistic",
+			workout: []string{run, statistic("HKQuantityTypeIdentifierActiveEnergyBurned", `sum="lots" unit="kcal"`)},
+			reason:  "WorkoutStatistics sum is not a number",
+		},
+		{
+			name:    "maximum of the heart rate",
+			workout: []string{run, statistic("HKQuantityTypeIdentifierHeartRate", `average="140" maximum="high" unit="count/min"`)},
+			reason:  "WorkoutStatistics maximum is not a number",
+		},
+		{
+			name:    "total distance",
+			workout: []string{`<Workout workoutActivityType="HKWorkoutActivityTypeCycling" totalDistance="far" totalDistanceUnit="km" sourceName="iPhone" startDate="2019-06-01 18:00:00 +0200" endDate="2019-06-01 18:45:00 +0200">`},
+			reason:  "totalDistance is not a number",
+		},
+		{
+			name: "basal energy that cannot be added to the active energy",
+			workout: []string{
+				run,
+				statistic("HKQuantityTypeIdentifierActiveEnergyBurned", `sum="250" unit="kcal"`),
+				statistic("HKQuantityTypeIdentifierBasalEnergyBurned", `sum="30" unit="km"`),
+			},
+			reason: "WorkoutStatistics unit of HKQuantityTypeIdentifierBasalEnergyBurned is not a unit of energy",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			records := readAll(t, document(append(tt.workout, `</Workout>`)...))
+			require.Len(t, records, 1)
+			require.Equal(t, &ingest.Invalid{Of: ingest.WorkoutRecord, Reason: tt.reason}, records[0].Invalid)
+		})
+	}
+}
+
+// Given the metadata HKElevationAscended and HKElevationDescended (7092 cm), then they give the
+// elevations, and HKIndoorWorkout 1 or 0 the indoor flag, which is unknown otherwise. These
+// entries also stay in the metadata.
+func TestRecords_WorkoutElevationsAndIndoorFlag(t *testing.T) {
+	t.Parallel()
+
+	indoor, outdoor := true, false
+
+	tests := []struct {
+		name      string
+		entries   []string
+		ascended  *ingest.Quantity
+		descended *ingest.Quantity
+		indoor    *bool
+		metadata  string
+	}{
+		{
+			name: "elevations outdoor",
+			entries: []string{
+				` <MetadataEntry key="HKIndoorWorkout" value="0"/>`,
+				` <MetadataEntry key="HKElevationAscended" value="7092 cm"/>`,
+				` <MetadataEntry key="HKElevationDescended" value="6810.5 cm"/>`,
+			},
+			ascended:  &ingest.Quantity{Value: 7092, Unit: "cm"},
+			descended: &ingest.Quantity{Value: 6810.5, Unit: "cm"},
+			indoor:    &outdoor,
+			metadata:  `{"HKIndoorWorkout": "0", "HKElevationAscended": "7092 cm", "HKElevationDescended": "6810.5 cm"}`,
+		},
+		{
+			name:     "indoor",
+			entries:  []string{` <MetadataEntry key="HKIndoorWorkout" value="1"/>`},
+			indoor:   &indoor,
+			metadata: `{"HKIndoorWorkout": "1"}`,
+		},
+		{
+			name:     "indoor flag of another value",
+			entries:  []string{` <MetadataEntry key="HKIndoorWorkout" value="yes"/>`},
+			metadata: `{"HKIndoorWorkout": "yes"}`,
+		},
+		{name: "without entries"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			body := append(append([]string{run}, tt.entries...), `</Workout>`)
+
+			w := workoutOf(t, readAll(t, document(body...)))
+			require.Equal(t, tt.ascended, w.Totals.ElevationAscended)
+			require.Equal(t, tt.descended, w.Totals.ElevationDescended)
+			require.Equal(t, tt.indoor, w.Indoor)
+
+			if tt.metadata == "" {
+				require.Nil(t, w.Metadata)
+			} else {
+				require.JSONEq(t, tt.metadata, string(w.Metadata))
+			}
+		})
+	}
+
+	t.Run("elevation that is not a quantity", func(t *testing.T) {
+		t.Parallel()
+
+		for _, value := range []string{"high", "7092", "cm 7092", "7092 cm cm"} {
+			records := readAll(t, document(run, ` <MetadataEntry key="HKElevationDescended" value="`+value+`"/>`, `</Workout>`))
+			require.Equal(t, []ingest.Record{{
+				Position: records[0].Position,
+				Invalid:  &ingest.Invalid{Of: ingest.WorkoutRecord, Reason: "HKElevationDescended is not a quantity"},
+			}}, records, value)
+		}
+	})
+}
