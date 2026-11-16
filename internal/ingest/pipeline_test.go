@@ -1151,3 +1151,41 @@ func TestRun_UnsupportedRecordsCountUnderTheirIdentifier(t *testing.T) {
 	_, err := env.store.MetricTypes().GetByIdentifier(t.Context(), "ActivitySummary")
 	require.ErrorIs(t, err, store.ErrNotFound, "an unsupported record creates no type")
 }
+
+// Given records that carry the warning of their adapter, such as a workout whose route lost
+// points, when the pipeline runs, then each one stored counts under warnings, with its message
+// among the sample error messages, joined to the warnings of the pipeline. A record dropped as
+// invalid counts as invalid only.
+func TestRun_WarningOfARecordCountsWithItsMessage(t *testing.T) {
+	t.Parallel()
+
+	env := newPipelineEnv(t)
+
+	warned := func(r ingest.Record, warning string) ingest.Record {
+		r.Warning = warning
+
+		return r
+	}
+
+	unknown := workout()
+	unknown.UUID, unknown.ActivityType = "", "HKWorkoutActivityTypeSkyRunning"
+
+	invalid := quantitySample()
+	invalid.UUID, invalid.Unit = "", "kg"
+
+	imp := env.run(t, store.OriginXML,
+		warned(workoutRecord(workout()), "2 route points outside the workout are dropped"),
+		warned(quantity(quantitySample()), "a detail is dropped"),
+		warned(workoutRecord(unknown), "route file is missing"),
+		warned(quantity(invalid), "a detail is dropped"),
+	)
+
+	require.Equal(t, store.ImportCounters{Received: 2, Inserted: 2, Warnings: 2}, imp.Report.Workouts)
+	require.Equal(t, store.ImportCounters{Received: 2, Inserted: 1, Invalid: 1, Warnings: 1}, imp.Report.Types["heart_rate"])
+	require.Equal(t, []string{
+		"record 0 (workout): 2 route points outside the workout are dropped",
+		"record 1 (HKQuantityTypeIdentifierHeartRate): a detail is dropped",
+		`record 2 (workout): activity type "HKWorkoutActivityTypeSkyRunning" is not a known activity type, stored as other; route file is missing`,
+		"record 3 (HKQuantityTypeIdentifierHeartRate): unit \"kg\" is not a unit of heart_rate",
+	}, imp.Report.Errors)
+}
