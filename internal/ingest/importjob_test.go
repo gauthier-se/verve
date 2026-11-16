@@ -33,10 +33,12 @@ const importJobLease = time.Minute
 
 // The sample error messages of the payloads of testImportKind that fail as a whole.
 const (
-	notAPayload    = "the file is not a test payload"
-	brokenPayload  = "the test payload is broken"
-	stepsOfPayload = "1240\n860\n15\n"
+	notAPayload   = "the file is not a test payload"
+	brokenPayload = "the test payload is broken"
 )
+
+// stepsOfPayload is a payload of testImportKind of three step counts.
+const stepsOfPayload = "1240\n860\n15\n"
 
 // importJobEnv is a pipeline environment with an inbox and a worker that runs the jobs of
 // testImportKind through a pipeline of batches of one record, on one fake clock.

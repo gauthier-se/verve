@@ -58,14 +58,10 @@ func openRecords(ctx context.Context, imports store.ImportsRepository, imp store
 	}, nil
 }
 
-// causes are the errors of an export that fails as a whole, whose messages are fixed texts.
-var causes = []error{ErrNotAnExport, ErrTruncated, ErrNotWellFormed, ErrCorruptedZip}
-
-// reject returns err as the error of an export that fails as a whole, with the message of its
-// cause, when it has one of causes, and err otherwise, such as a read error of the disk, which is
-// retried.
+// reject returns err as the error of an export that fails as a whole, with the fixed message of its
+// cause, and err otherwise, such as a read error of the disk, which is retried.
 func reject(err error) error {
-	for _, cause := range causes {
+	for _, cause := range []error{ErrNotAnExport, ErrTruncated, ErrNotWellFormed, ErrCorruptedZip} {
 		if errors.Is(err, cause) {
 			return ingest.Reject(cause.Error(), err)
 		}

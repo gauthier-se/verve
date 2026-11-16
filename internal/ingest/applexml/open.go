@@ -161,12 +161,34 @@ func (e *Export) readXML(ctx context.Context, yield func(ingest.Record) bool) er
 	if e.zip != nil && errors.Is(err, ErrMalformed) && !errors.Is(err, ErrCorruptedZip) {
 		// Corrupted compressed data decompresses to bytes that are not XML before the checksum at
 		// the end of the entry tells the corruption: the rest of the entry tells the cause.
-		if _, drainErr := io.Copy(io.Discard, r); errors.Is(drainErr, ErrCorruptedZip) {
+		if drainErr := drainEntry(ctx, r); drainErr != nil {
 			return fmt.Errorf("read export.xml: %w", drainErr)
 		}
 	}
 
 	return err
+}
+
+// drainEntry reads the rest of the zip entry of r, until its end or until ctx is done, which it
+// checks at each chunk. It returns nil for an entry that reads to its end, and otherwise the error
+// of ctx, of a corrupted entry or of a read of the disk, which is retried.
+func drainEntry(ctx context.Context, r io.Reader) error {
+	buf := make([]byte, 64<<10)
+
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		_, err := r.Read(buf)
+
+		switch {
+		case errors.Is(err, io.EOF):
+			return nil
+		case err != nil:
+			return err
+		}
+	}
 }
 
 // electrocardiogram is the identifier under which an electrocardiograms/*.csv entry counts as
