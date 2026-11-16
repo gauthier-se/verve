@@ -62,8 +62,8 @@ type importOptions struct {
 // importXML is ImportXML with opts.
 func importXML(ctx context.Context, cfg config.Config, req XMLImport, logger *slog.Logger, opts importOptions,
 ) (store.Import, error) {
-	return withSharedDB(ctx, cfg, func(s store.Store) (store.Import, error) {
-		user, err := importingUser(ctx, s, req.Login)
+	return withSharedDB(ctx, cfg, func(s store.Store) (_ store.Import, err error) {
+		user, err := importingUser(ctx, s.Users(), req.Login)
 		if err != nil {
 			return store.Import{}, err
 		}
@@ -102,8 +102,18 @@ func importXML(ctx context.Context, cfg config.Config, req XMLImport, logger *sl
 
 		stopReporting := reportProgress(ctx, s, user.ID, &importID, opts.progressInterval, req.Progress)
 
-		// The import is created with its job, so that a command stopped while it waits leaves none.
+		// The import is created with its job, so that a command stopped while it waits leaves none, and
+		// only for a user who can still import once the wait ends.
 		runErr := worker.RunInProcessWith(ctx, func(ctx context.Context, tx store.Repositories) (store.NewJob, error) {
+			current, err := tx.Users().Get(ctx, user.ID)
+			if err != nil {
+				return store.NewJob{}, fmt.Errorf("get user: %w", err)
+			}
+
+			if err := canImport(current); err != nil {
+				return store.NewJob{}, err
+			}
+
 			imp, err := tx.Imports().Create(ctx, store.NewImport{UserID: user.ID, Origin: store.OriginCLI})
 			if err != nil {
 				return store.NewJob{}, fmt.Errorf("create import: %w", err)
@@ -135,21 +145,27 @@ func importXML(ctx context.Context, cfg config.Config, req XMLImport, logger *sl
 	})
 }
 
-// importingUser returns the user of login, who must be active to import.
-func importingUser(ctx context.Context, s store.Store, login string) (store.User, error) {
-	user, err := s.Users().GetByLogin(ctx, login)
+// importingUser returns the user of login, who must be able to import (see canImport).
+func importingUser(ctx context.Context, users store.UsersRepository, login string) (store.User, error) {
+	user, err := users.GetByLogin(ctx, login)
 	if err != nil {
 		return store.User{}, fmt.Errorf("get user: %w", err)
 	}
 
+	return user, canImport(user)
+}
+
+// canImport returns auth.ErrUserDisabled or auth.ErrUserDeleting for a user who cannot import, and
+// nil for an active user.
+func canImport(user store.User) error {
 	switch user.Status {
 	case store.UserDisabled:
-		return store.User{}, auth.ErrUserDisabled
+		return auth.ErrUserDisabled
 	case store.UserDeleting:
-		return store.User{}, auth.ErrUserDeleting
+		return auth.ErrUserDeleting
 	}
 
-	return user, nil
+	return nil
 }
 
 // checkReadable returns the *os.PathError of the file at path when it cannot be opened for reading,
