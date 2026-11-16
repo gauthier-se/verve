@@ -51,7 +51,7 @@ var unsupportedElements = []string{"ActivitySummary", "ClinicalRecord", "Audiogr
 
 // records reads the elements under the root element and yields their records, until the document
 // ends, yield returns false or ctx is done, which it checks at each of them. Elements of no record,
-// such as ExportDate, Me and, until workouts are read, Workout, are skipped with their children.
+// such as ExportDate and Me, are skipped with their children.
 func (t *tokenizer) records(ctx context.Context, yield func(ingest.Record) bool) error {
 	for {
 		tok, err := t.next()
@@ -83,6 +83,8 @@ func (t *tokenizer) records(ctx context.Context, yield func(ingest.Record) bool)
 			}
 		case name == "Correlation":
 			more, err = t.correlation(yield)
+		case name == "Workout":
+			more, err = t.workout(start, yield)
 		case slices.Contains(unsupportedElements, name):
 			position := t.start
 
@@ -352,12 +354,7 @@ func newRecord(attrs []xml.Attr) ingest.Record {
 		return invalidRecord(typ, reason)
 	}
 
-	sourceName, _ := a.get("sourceName")
-	source := store.SourceInfo{Name: sourceName}
-
-	if device, ok := a.get("device"); ok {
-		setDevice(&source, device)
-	}
+	source := source(a)
 
 	if quantity {
 		return ingest.Record{Quantity: &ingest.QuantitySample{
@@ -368,6 +365,19 @@ func newRecord(attrs []xml.Attr) ingest.Record {
 	return ingest.Record{Category: &ingest.CategorySample{
 		Type: typ, Start: start, End: end, Value: value, Source: source,
 	}}
+}
+
+// source returns the source of the attributes of a record or a workout: its sourceName and the
+// fields of its device string.
+func source(a attributes) store.SourceInfo {
+	sourceName, _ := a.get("sourceName")
+	source := store.SourceInfo{Name: sourceName}
+
+	if device, ok := a.get("device"); ok {
+		setDevice(&source, device)
+	}
+
+	return source
 }
 
 // setDevice sets the device fields of source from the device string of a record, such as
@@ -470,20 +480,31 @@ var dateLayouts = []string{"2006-01-02 15:04:05 Z0700", "2006-01-02 15:04:05 Z07
 // date returns the date attribute name of a as RFC 3339, with its instant and offset, or the reason
 // of an invalid record.
 func date(a attributes, name string) (string, string) {
+	t, reason := parseDate(a, name)
+	if reason != "" {
+		return "", reason
+	}
+
+	return t.Format(time.RFC3339Nano), ""
+}
+
+// parseDate returns the date attribute name of a, in its offset, or the reason of an invalid
+// record.
+func parseDate(a attributes, name string) (time.Time, string) {
 	value, ok := a.get(name)
 	if !ok {
-		return "", name + " is missing"
+		return time.Time{}, name + " is missing"
 	}
 
 	if strings.Contains(value, ",") {
-		return "", name + " is not a date"
+		return time.Time{}, name + " is not a date"
 	}
 
 	for _, layout := range dateLayouts {
 		if t, err := time.Parse(layout, value); err == nil {
-			return t.Format(time.RFC3339Nano), ""
+			return t, ""
 		}
 	}
 
-	return "", name + " is not a date"
+	return time.Time{}, name + " is not a date"
 }

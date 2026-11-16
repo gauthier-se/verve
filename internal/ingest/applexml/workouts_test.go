@@ -71,6 +71,22 @@ func TestRecords_WorkoutComesAfterItsInnerRecordsAtItsEndTag(t *testing.T) {
 	}
 }
 
+// Given a self-closing Workout followed by an element without space between them, then the
+// workout is at the offset of its start tag, so that the positions still increase strictly.
+func TestRecords_SelfClosingWorkoutIsAtItsStartTag(t *testing.T) {
+	t.Parallel()
+
+	doc := document(
+		`<Workout workoutActivityType="HKWorkoutActivityTypeYoga" sourceName="Mat" startDate="2025-12-30 18:00:00 +0100" endDate="2025-12-30 18:40:00 +0100"/>` + heartRate,
+	)
+
+	records := readAll(t, doc)
+	require.Len(t, records, 2)
+	require.Equal(t, offset(t, doc, "<Workout", 0), records[0].Position)
+	require.NotNil(t, records[0].Workout)
+	require.Equal(t, offset(t, doc, "<Record", 0), records[1].Position)
+}
+
 // Given a workout, then its activity type is workoutActivityType, its start and end are its dates,
 // its duration is duration in durationUnit, its source comes from sourceName and device as for a
 // record, and it has no uuid.
