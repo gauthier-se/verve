@@ -15,11 +15,24 @@ import (
 // does. If the process dies, the lease expires and the server resumes the job.
 //
 // The run is final, because the command reports its end: a failed attempt fails the job without a
-// retry, and a cancelled ctx cancels the job. RunInProcess returns nil once the job completed, and
-// otherwise why it did not: the error of the handler, the context error, errCancelled when the
-// cancellation of the job was requested, or the error of a lost lease or of a write that failed.
+// retry, and a cancelled ctx cancels the job, its handler context reporting Cancelled. RunInProcess
+// returns nil once the job completed, and otherwise why it did not: the error of the handler, the
+// context error, errCancelled when the cancellation of the job was requested, or the error of a lost
+// lease or of a write that failed.
 func (w *Worker) RunInProcess(ctx context.Context, job store.NewJob, onWait func()) error {
-	claimed, err := w.claimInProcess(ctx, job, onWait)
+	return w.RunInProcessWith(ctx, func(context.Context, store.Repositories) (store.NewJob, error) {
+		return job, nil
+	}, onWait)
+}
+
+// RunInProcessWith is RunInProcess for the job that create returns, once it wrote through tx what the
+// job needs, such as the record that its payload names. Each try calls create in the transaction
+// that creates and claims the job, so that a try that waits for the serial key, and a command
+// stopped while it waits, store none of its writes.
+func (w *Worker) RunInProcessWith(ctx context.Context, create func(ctx context.Context, tx store.Repositories) (store.NewJob, error),
+	onWait func(),
+) error {
+	claimed, err := w.claimInProcess(ctx, create, onWait)
 	if err != nil {
 		return err
 	}
@@ -50,14 +63,31 @@ func (w *Worker) RunInProcess(ctx context.Context, job store.NewJob, onWait func
 	return end.err
 }
 
-// claimInProcess creates and claims job, waiting while its serial key is held. It calls onWait
-// once, when the wait starts.
-func (w *Worker) claimInProcess(ctx context.Context, job store.NewJob, onWait func()) (store.Job, error) {
+// claimInProcess creates the job that create returns and claims it, waiting while its serial key is
+// held. It calls onWait once, when the wait starts.
+func (w *Worker) claimInProcess(ctx context.Context, create func(ctx context.Context, tx store.Repositories) (store.NewJob, error),
+	onWait func(),
+) (store.Job, error) {
 	waiting := false
 
 	for {
-		claimed, err := w.store.Jobs().EnqueueClaimed(ctx, job, w.opts.Lease)
-		if !errors.Is(err, store.ErrConflict) {
+		var (
+			claimed store.Job
+			held    bool
+		)
+
+		err := w.store.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
+			job, err := create(ctx, tx)
+			if err != nil {
+				return err
+			}
+
+			claimed, err = tx.Jobs().EnqueueClaimed(ctx, job, w.opts.Lease)
+			held = errors.Is(err, store.ErrConflict)
+
+			return err
+		})
+		if !held {
 			return claimed, err
 		}
 

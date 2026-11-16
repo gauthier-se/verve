@@ -282,8 +282,19 @@ func (w *Worker) claim(ctx context.Context) (store.Job, []store.Job, error) {
 func (w *Worker) run(ctx context.Context, job store.Job, final bool) jobEnd {
 	start := w.clk.Now()
 
-	handlerCtx, cancel := context.WithCancelCause(ctx)
+	parent := ctx
+	if final {
+		// A stopped command cancels its job: its handler sees a cancellation, not a shutdown.
+		parent = context.WithoutCancel(ctx)
+	}
+
+	handlerCtx, cancel := context.WithCancelCause(parent)
 	defer cancel(nil)
+
+	if final {
+		stop := context.AfterFunc(ctx, func() { cancel(errCancelled) })
+		defer stop()
+	}
 
 	stopHeartbeat := w.startHeartbeat(ctx, job, cancel)
 	handlerErr := w.invoke(handlerCtx, job, final)

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -50,6 +51,12 @@ func ImportXML(ctx context.Context, cfg config.Config, req XMLImport, logger *sl
 // importOptions tunes importXML for the tests.
 type importOptions struct {
 	progressInterval time.Duration
+	// waitInterval is how often a waiting import tries again, the default of jobs.Options when 0.
+	waitInterval time.Duration
+	// batchSize is the batch size of the pipeline, its default when 0.
+	batchSize int
+	// wrapPipeline, when set, returns the pipeline that the import runs in place of the one it gets.
+	wrapPipeline func(ingest.ImportPipeline) ingest.ImportPipeline
 }
 
 // importXML is ImportXML with opts.
@@ -72,41 +79,56 @@ func importXML(ctx context.Context, cfg config.Config, req XMLImport, logger *sl
 
 		clk := clock.Real()
 
-		ing, err := newIngestion(s, shipped, newLayout(cfg.DataDir).Inbox, clk)
+		ing, err := newIngestion(s, shipped, newLayout(cfg.DataDir).Inbox, clk, opts.batchSize)
 		if err != nil {
 			return store.Import{}, err
 		}
 
 		defer func() { err = errors.Join(err, ing.Close()) }()
 
+		var pipeline ingest.ImportPipeline = ing.pipeline
+		if opts.wrapPipeline != nil {
+			pipeline = opts.wrapPipeline(pipeline)
+		}
+
+		// Only the import runs here: the server recomputes the aggregates that it changes.
 		registry := jobs.NewRegistry()
-		applexml.Register(registry, ingest.ImportJobDeps{Store: s, Pipeline: ing.pipeline, Inbox: ing.inbox})
+		applexml.Register(registry, ingest.ImportJobDeps{Store: s, Pipeline: pipeline, Inbox: ing.inbox})
 
-		worker := jobs.NewWorker(s, registry, clk, logger, jobs.Options{})
+		worker := jobs.NewWorker(s, registry, clk, logger, jobs.Options{WaitInterval: opts.waitInterval})
 
-		imp, err := s.Imports().Create(ctx, store.NewImport{UserID: user.ID, Origin: store.OriginCLI})
-		if err != nil {
-			return store.Import{}, fmt.Errorf("create import: %w", err)
-		}
+		// The id of the import once it is created with its job, read by the progress reports.
+		var importID atomic.Int64
 
-		job, err := applexml.Job(user.ID, imp.ID, req.Path)
-		if err != nil {
-			return store.Import{}, err
-		}
+		stopReporting := reportProgress(ctx, s, user.ID, &importID, opts.progressInterval, req.Progress)
 
-		stopReporting := reportProgress(ctx, s, imp, opts.progressInterval, req.Progress)
-		runErr := worker.RunInProcess(ctx, job, req.Waiting)
+		// The import is created with its job, so that a command stopped while it waits leaves none.
+		runErr := worker.RunInProcessWith(ctx, func(ctx context.Context, tx store.Repositories) (store.NewJob, error) {
+			imp, err := tx.Imports().Create(ctx, store.NewImport{UserID: user.ID, Origin: store.OriginCLI})
+			if err != nil {
+				return store.NewJob{}, fmt.Errorf("create import: %w", err)
+			}
+
+			tx.AfterCommit(func() { importID.Store(imp.ID) })
+
+			return applexml.Job(user.ID, imp.ID, req.Path)
+		}, req.Waiting)
 
 		stopReporting()
 
+		id := importID.Load()
+		if id == 0 {
+			return store.Import{}, runErr
+		}
+
 		// Read even once ctx is done, since an interrupted import ends cancelled.
-		ended, err := s.Imports().Get(context.WithoutCancel(ctx), user.ID, imp.ID)
+		ended, err := s.Imports().Get(context.WithoutCancel(ctx), user.ID, id)
 		if err != nil {
-			return store.Import{}, errors.Join(runErr, fmt.Errorf("get import %d: %w", imp.ID, err))
+			return store.Import{}, errors.Join(runErr, fmt.Errorf("get import %d: %w", id, err))
 		}
 
 		if !ended.Status.Finished() {
-			return ended, errors.Join(runErr, fmt.Errorf("import %d is still %s", imp.ID, ended.Status))
+			return ended, errors.Join(runErr, fmt.Errorf("import %d is still %s", id, ended.Status))
 		}
 
 		return ended, nil
@@ -152,10 +174,10 @@ func checkReadable(path string) error {
 	return closeErr
 }
 
-// reportProgress calls report with the progress of imp every interval, once its job stored the size
-// of its export and when it changed, until the returned function is called, which waits for it to
-// stop.
-func reportProgress(ctx context.Context, s store.Store, imp store.Import, interval time.Duration,
+// reportProgress calls report every interval with the progress of the import of userID whose id
+// importID holds, once it is created and its job stored the size of its export, when it changed,
+// until the returned function is called, which waits for it to stop.
+func reportProgress(ctx context.Context, s store.Store, userID int64, importID *atomic.Int64, interval time.Duration,
 	report func(float64),
 ) func() {
 	ctx, cancel := context.WithCancel(ctx)
@@ -175,7 +197,12 @@ func reportProgress(ctx context.Context, s store.Store, imp store.Import, interv
 			case <-ticker.C:
 			}
 
-			current, err := s.Imports().Get(ctx, imp.UserID, imp.ID)
+			id := importID.Load()
+			if id == 0 {
+				continue
+			}
+
+			current, err := s.Imports().Get(ctx, userID, id)
 			if err != nil {
 				// A failed read skips a report: the next one tells.
 				continue

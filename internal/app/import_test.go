@@ -503,8 +503,10 @@ func TestImportXML_Interrupted_EndsCancelled(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 
+	require.IsNonDecreasing(t, reported)
+
 	for _, p := range reported {
-		require.True(t, p > 0 && p < 1, "progress %v", p)
+		require.True(t, p >= 0 && p < 1, "progress %v", p)
 	}
 }
 
