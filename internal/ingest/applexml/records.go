@@ -21,8 +21,9 @@ import (
 	"github.com/gauthier-se/verve/internal/store"
 )
 
-// ErrMalformed is the error of a document that is truncated or is not well-formed XML, which fails
-// its import without retry (FR-5 of XML import).
+// ErrMalformed is the error of a document that is truncated or is not well-formed XML, or of a zip
+// whose entry or central directory is corrupted, which fails its import without retry (FR-5 of XML
+// import).
 var ErrMalformed = errors.New("malformed XML")
 
 // Records reads the records of the export.xml document of r, as a stream (FR-5 and FR-6 of XML
@@ -34,15 +35,21 @@ var ErrMalformed = errors.New("malformed XML")
 // for a document that is truncated or is not well-formed XML, and the error of r when r fails.
 func Records(ctx context.Context, r io.Reader) iter.Seq2[ingest.Record, error] {
 	return func(yield func(ingest.Record, error) bool) {
-		t, err := newTokenizer(r)
-		if err == nil {
-			err = t.records(ctx, func(r ingest.Record) bool { return yield(r, nil) })
-		}
-
-		if err != nil {
+		if err := readRecords(ctx, r, func(r ingest.Record) bool { return yield(r, nil) }); err != nil {
 			yield(ingest.Record{}, err)
 		}
 	}
+}
+
+// readRecords reads the records of the document of r, and yields them until it ends, yield returns
+// false or ctx is done.
+func readRecords(ctx context.Context, r io.Reader, yield func(ingest.Record) bool) error {
+	t, err := newTokenizer(r)
+	if err != nil {
+		return err
+	}
+
+	return t.records(ctx, yield)
 }
 
 // unsupportedElements are the elements under the root that count as unsupported under their name
