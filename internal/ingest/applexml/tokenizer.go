@@ -23,9 +23,9 @@ type tokenizer struct {
 	closed bool
 	// start is the byte offset in the document of the last token read.
 	start int64
-	// implicit is true when the last token read is the end of a self-closing element, which takes no
+	// selfClosed is true when the last token read is the end of a self-closing element, which takes no
 	// byte of the document.
-	implicit bool
+	selfClosed bool
 }
 
 // gap is a range of bytes of the document that the decoder does not read: size bytes at the offset
@@ -146,7 +146,7 @@ func (t *tokenizer) next() (xml.Token, error) {
 	}
 
 	tok, err := t.dec.RawToken()
-	t.implicit = t.dec.InputOffset() == before
+	t.selfClosed = t.dec.InputOffset() == before
 
 	switch {
 	case t.src.err != nil:

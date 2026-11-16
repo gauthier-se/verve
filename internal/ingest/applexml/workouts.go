@@ -14,8 +14,8 @@ import (
 // workoutElement is what a Workout element holds, read from its start tag to its end tag.
 type workoutElement struct {
 	attrs attributes
-	// entries are the key and the value of each MetadataEntry, in document order.
-	entries    [][2]string
+	// entries are its MetadataEntry items, in document order.
+	entries    []metadataEntry
 	events     []attributes
 	statistics []attributes
 	zoneGroups []zoneGroup
@@ -55,10 +55,7 @@ func (t *tokenizer) workout(start xml.StartElement, yield func(ingest.Record) bo
 				return false, nil
 			}
 		case "MetadataEntry":
-			a := attributes(child.Attr)
-			key, _ := a.get("key")
-			value, _ := a.get("value")
-			w.entries = append(w.entries, [2]string{key, value})
+			w.entries = append(w.entries, newMetadataEntry(child.Attr))
 		case "WorkoutEvent":
 			w.events = append(w.events, child.Attr)
 		case "WorkoutStatistics":
@@ -76,7 +73,7 @@ func (t *tokenizer) workout(start xml.StartElement, yield func(ingest.Record) bo
 	record := w.record()
 	record.Position = position
 
-	if !t.implicit {
+	if !t.selfClosed {
 		record.Position = t.start
 	}
 
@@ -128,7 +125,7 @@ func (w workoutElement) record() ingest.Record {
 	var m metadata
 
 	for _, e := range w.entries {
-		m.entry(e[0], e[1])
+		m.entry(e)
 	}
 
 	if len(w.statistics) > 0 {
@@ -159,8 +156,8 @@ const (
 // entry returns the value of the first MetadataEntry of key, and false when w has none.
 func (w workoutElement) entry(key string) (string, bool) {
 	for _, e := range w.entries {
-		if e[0] == key {
-			return e[1], true
+		if e.key == key {
+			return e.value, true
 		}
 	}
 
@@ -219,20 +216,14 @@ func (w workoutElement) totals() (ingest.WorkoutTotals, string) {
 		totals.TotalEnergy = &ingest.Quantity{Value: active.Value + value, Unit: active.Unit}
 	}
 
-	older := []struct {
-		total      **ingest.Quantity
-		name, unit string
-	}{
-		{total: &totals.Distance, name: "totalDistance", unit: "totalDistanceUnit"},
-		{total: &totals.ActiveEnergy, name: "totalEnergyBurned", unit: "totalEnergyBurnedUnit"},
+	if totals.Distance == nil {
+		if totals.Distance, reason = quantity(w.attrs, "totalDistance", "totalDistanceUnit"); reason != "" {
+			return ingest.WorkoutTotals{}, reason
+		}
 	}
 
-	for _, o := range older {
-		if *o.total != nil {
-			continue
-		}
-
-		if *o.total, reason = quantity(w.attrs, o.name, o.unit); reason != "" {
+	if totals.ActiveEnergy == nil {
+		if totals.ActiveEnergy, reason = quantity(w.attrs, "totalEnergyBurned", "totalEnergyBurnedUnit"); reason != "" {
 			return ingest.WorkoutTotals{}, reason
 		}
 	}

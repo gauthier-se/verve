@@ -174,10 +174,7 @@ func (t *tokenizer) record(start xml.StartElement) (ingest.Record, error) {
 
 		switch child.Name.Local {
 		case "MetadataEntry":
-			a := attributes(child.Attr)
-			key, _ := a.get("key")
-			value, _ := a.get("value")
-			m.entry(key, value)
+			m.entry(newMetadataEntry(child.Attr))
 		case metadataBeats:
 			beats, err := t.children("InstantaneousBeatsPerMinute")
 			if err != nil {
@@ -236,10 +233,24 @@ type metadata struct {
 	keys []string
 }
 
-// entry adds the key of a MetadataEntry, with its value as a string, as received.
-func (m *metadata) entry(key, value string) {
-	if m.key(key) {
-		m.string(value)
+// metadataEntry is a MetadataEntry element: a metadata key and its value as received.
+type metadataEntry struct {
+	key, value string
+}
+
+// newMetadataEntry returns the entry of the attributes of a MetadataEntry element.
+func newMetadataEntry(attrs []xml.Attr) metadataEntry {
+	a := attributes(attrs)
+	key, _ := a.get("key")
+	value, _ := a.get("value")
+
+	return metadataEntry{key: key, value: value}
+}
+
+// entry adds the key of e, with its value as a string, as received.
+func (m *metadata) entry(e metadataEntry) {
+	if m.key(e.key) {
+		m.string(e.value)
 	}
 }
 
