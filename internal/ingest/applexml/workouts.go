@@ -77,10 +77,8 @@ func (t *tokenizer) workout(start xml.StartElement, yield func(ingest.Record) bo
 				return false, err
 			}
 
-			for _, ref := range refs {
-				if path, _ := ref.get("path"); w.route == "" {
-					w.route = path
-				}
+			if len(refs) > 0 && w.route == "" {
+				w.route, _ = refs[0].get("path")
 			}
 		}
 	}

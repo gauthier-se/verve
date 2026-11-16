@@ -3,7 +3,6 @@ package applexml
 import (
 	"archive/zip"
 	"bufio"
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -33,7 +32,7 @@ type Export struct {
 }
 
 // zipHeader starts a zip local file header.
-var zipHeader = []byte("PK\x03\x04")
+const zipHeader = "PK\x03\x04"
 
 // Open opens the export of f, which stays open while the export is read: a zip when it starts
 // with a local file header, a bare export.xml when its first byte other than XML white space is <
@@ -44,7 +43,7 @@ var zipHeader = []byte("PK\x03\x04")
 // whose central directory is corrupted, and with the error of f when f fails.
 func Open(ctx context.Context, f *os.File) (*Export, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("open export: %w", err)
 	}
 
 	info, err := f.Stat()
@@ -60,7 +59,7 @@ func Open(ctx context.Context, f *os.File) (*Export, error) {
 		return nil, fmt.Errorf("open export: %w", err)
 	}
 
-	if bytes.Equal(head, zipHeader) {
+	if string(head) == zipHeader {
 		return openZip(file, size)
 	}
 
