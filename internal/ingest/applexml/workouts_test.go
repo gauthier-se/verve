@@ -443,3 +443,82 @@ func TestRecords_WorkoutElevationsAndIndoorFlag(t *testing.T) {
 		}
 	})
 }
+
+// Given a workout, then its metadata holds its MetadataEntry items as received, under
+// WorkoutStatistics the array of its statistics, totals included, and under WorkoutZoneGroup the
+// array of its zone groups, each an object of its attributes as received, a zone group holding its
+// WorkoutZone items under zones.
+func TestRecords_WorkoutMetadata(t *testing.T) {
+	t.Parallel()
+
+	w := workoutOf(t, readAll(t, document(
+		run,
+		` <MetadataEntry key="HKIndoorWorkout" value="0"/>`,
+		` <MetadataEntry key="HKWeatherTemperature" value="61.8510 degF"/>`,
+		` <MetadataEntry key="HKAverageMETs" value="10.70187 kcal/hr·kg"/>`,
+		` <MetadataEntry key="Note" value="Côte &amp; &lt;pluie&gt;"/>`,
+		statistic("HKQuantityTypeIdentifierActiveEnergyBurned", `sum="250.408" unit="kcal"`),
+		statistic("HKQuantityTypeIdentifierRunningPower", `average="222.863" minimum="178.290" maximum="267.436" unit="W"`),
+		` <WorkoutZoneGroup type="HKQuantityTypeIdentifierHeartRate" source="system" unit="count/min">`,
+		`  <WorkoutZone maximum="120" duration="2.5000" durationUnit="min"/>`,
+		`  <WorkoutZone minimum="120" maximum="135" duration="5.0000" durationUnit="min"/>`,
+		`  <WorkoutZone minimum="165" duration="2.5000" durationUnit="min"/>`,
+		` </WorkoutZoneGroup>`,
+		` <WorkoutZoneGroup type="HKQuantityTypeIdentifierRunningPower" source="user" unit="W"/>`,
+		`</Workout>`,
+	)))
+
+	require.JSONEq(t, `{
+		"HKIndoorWorkout": "0",
+		"HKWeatherTemperature": "61.8510 degF",
+		"HKAverageMETs": "10.70187 kcal/hr·kg",
+		"Note": "Côte & <pluie>",
+		"WorkoutStatistics": [
+			{"type": "HKQuantityTypeIdentifierActiveEnergyBurned", "startDate": "2025-12-30 07:00:00 +0100", "endDate": "2025-12-30 07:25:00 +0100", "sum": "250.408", "unit": "kcal"},
+			{"type": "HKQuantityTypeIdentifierRunningPower", "startDate": "2025-12-30 07:00:00 +0100", "endDate": "2025-12-30 07:25:00 +0100", "average": "222.863", "minimum": "178.290", "maximum": "267.436", "unit": "W"}
+		],
+		"WorkoutZoneGroup": [
+			{"type": "HKQuantityTypeIdentifierHeartRate", "source": "system", "unit": "count/min", "zones": [
+				{"maximum": "120", "duration": "2.5000", "durationUnit": "min"},
+				{"minimum": "120", "maximum": "135", "duration": "5.0000", "durationUnit": "min"},
+				{"minimum": "165", "duration": "2.5000", "durationUnit": "min"}
+			]},
+			{"type": "HKQuantityTypeIdentifierRunningPower", "source": "user", "unit": "W", "zones": []}
+		]
+	}`, string(w.Metadata))
+	require.Contains(t, string(w.Metadata), "Côte & <pluie>", "non-ASCII and reserved characters are kept as received")
+
+	t.Run("statistics without entries", func(t *testing.T) {
+		t.Parallel()
+
+		w := workoutOf(t, readAll(t, document(run, statistic("HKQuantityTypeIdentifierStepCount", `sum="4171" unit="count"`), `</Workout>`)))
+		require.JSONEq(t, `{"WorkoutStatistics": [
+			{"type": "HKQuantityTypeIdentifierStepCount", "startDate": "2025-12-30 07:00:00 +0100", "endDate": "2025-12-30 07:25:00 +0100", "sum": "4171", "unit": "count"}
+		]}`, string(w.Metadata))
+	})
+}
+
+// Given a WorkoutRoute, then it is skipped until #268: its metadata and its file reference are
+// none of the workout.
+func TestRecords_WorkoutRouteIsSkipped(t *testing.T) {
+	t.Parallel()
+
+	doc := document(
+		run,
+		` <MetadataEntry key="HKIndoorWorkout" value="0"/>`,
+		` <WorkoutRoute sourceName="Apple Watch de Alex" sourceVersion="26.0" startDate="2025-12-30 07:00:00 +0100" endDate="2025-12-30 07:25:00 +0100">`,
+		`  <MetadataEntry key="HKMetadataKeySyncIdentifier" value="3F915F69-55AC-ABEF-337E-D33B479CA34D"/>`,
+		`  <FileReference path="/workout-routes/route_2025-12-30_7.00am.gpx"/>`,
+		` </WorkoutRoute>`,
+		` `+effort,
+		`</Workout>`,
+	)
+
+	records := readAll(t, doc)
+	require.Len(t, records, 2)
+	require.NotNil(t, records[0].Quantity)
+
+	w := workoutOf(t, records)
+	require.Nil(t, w.Route)
+	require.JSONEq(t, `{"HKIndoorWorkout": "0"}`, string(w.Metadata))
+}
