@@ -1186,6 +1186,6 @@ func TestRun_WarningOfARecordCountsWithItsMessage(t *testing.T) {
 		"record 0 (workout): 2 route points outside the workout are dropped",
 		"record 1 (HKQuantityTypeIdentifierHeartRate): a detail is dropped",
 		`record 2 (workout): activity type "HKWorkoutActivityTypeSkyRunning" is not a known activity type, stored as other; route file is missing`,
-		"record 3 (HKQuantityTypeIdentifierHeartRate): unit \"kg\" is not a unit of heart_rate",
+		"record 3 (HKQuantityTypeIdentifierHeartRate): unit \"kg\" is not a unit of count/min",
 	}, imp.Report.Errors)
 }

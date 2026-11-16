@@ -103,6 +103,14 @@ func largeExport(t testing.TB, dir string) string {
 	opts.Days = 30
 	opts.Density = 12
 
+	return writeExport(t, dir, opts)
+}
+
+// writeExport writes the generated export of opts to a file of dir, and returns the path of its
+// zip.
+func writeExport(t testing.TB, dir string, opts synthexport.Options) string {
+	t.Helper()
+
 	path := filepath.Join(dir, "export.zip")
 
 	f, err := os.Create(path) //nolint:gosec // G304: a file of the temporary directory of the test

@@ -16,6 +16,7 @@ import (
 	"github.com/gauthier-se/verve/internal/ingest/applexml"
 	"github.com/gauthier-se/verve/internal/store"
 	"github.com/gauthier-se/verve/internal/store/sqlite"
+	"github.com/gauthier-se/verve/internal/synthexport"
 	"github.com/gauthier-se/verve/internal/workouts"
 	"github.com/gauthier-se/verve/internal/workouts/route"
 )
@@ -24,12 +25,14 @@ import (
 // created.
 var importTime = time.Date(2026, 11, 16, 20, 0, 0, 0, time.UTC)
 
-// importer runs the export.xml of the fixture through a pipeline with the duplicate detector, on a
+// importer runs the fixture, written as a zip, through a pipeline with the duplicate detector, on a
 // migrated store in a fresh temporary directory, closed at the end of the test.
 type importer struct {
 	store    store.Store
 	user     store.User
 	pipeline *ingest.Pipeline
+	// export is the path of the zip of the fixture.
+	export string
 }
 
 // newImporter returns an importer of a new user.
@@ -68,7 +71,7 @@ func newImporter(t *testing.T) *importer {
 		dec.Close()
 	})
 
-	return &importer{store: s, user: user, pipeline: ingest.NewPipeline(ingest.Config{
+	return &importer{store: s, user: user, export: writeExport(t, t.TempDir(), synthexport.Fixture()), pipeline: ingest.NewPipeline(ingest.Config{
 		Store:      s,
 		Catalog:    cat,
 		Activities: activities,
@@ -77,7 +80,7 @@ func newImporter(t *testing.T) *importer {
 	})}
 }
 
-// run imports the export.xml of the fixture in a new running XML import, and returns the import
+// run imports the zip of the fixture in a new running XML import, and returns the import
 // once the run is over.
 func (im *importer) run(t *testing.T) store.Import {
 	t.Helper()
@@ -90,12 +93,15 @@ func (im *importer) run(t *testing.T) store.Import {
 	imp, err = im.store.Imports().SetStatus(ctx, im.user.ID, imp.ID, store.ImportRunning)
 	require.NoError(t, err)
 
-	f, err := os.Open(fixture) //nolint:gosec // G304: the fixture of testdata
+	f, err := os.Open(im.export)
 	require.NoError(t, err)
 
 	defer func() { require.NoError(t, f.Close()) }()
 
-	require.NoError(t, im.pipeline.Run(ctx, im.user.ID, imp.ID, applexml.Records(ctx, f)))
+	export, err := applexml.Open(ctx, f)
+	require.NoError(t, err)
+
+	require.NoError(t, im.pipeline.Run(ctx, im.user.ID, imp.ID, export.Records(ctx)))
 
 	imp, err = im.store.Imports().Get(ctx, im.user.ID, imp.ID)
 	require.NoError(t, err)
@@ -161,4 +167,10 @@ func TestRecords_FixtureImportedTwice_InsertsNoWorkoutTheSecondTime(t *testing.T
 			require.Zero(t, w.DuplicateOf, "workout %d duplicates nothing", w.ID)
 		}
 	}
+
+	require.Zero(t, first.Report.Workouts.Warnings, "every route of the zip is whole")
+
+	rt, err := im.store.Workouts().GetRoute(t.Context(), im.user.ID, watchRun.ID)
+	require.NoError(t, err)
+	require.Equal(t, 25, rt.PointCount, "the route of the run is stored with it")
 }

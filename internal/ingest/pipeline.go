@@ -598,6 +598,10 @@ func (b *batchRun) prepare(ctx context.Context, r Record) (item, error) {
 		it.reason = "metadata is not a JSON object"
 	}
 
+	if r.Warning != "" {
+		it.warnings = append(it.warnings, r.Warning)
+	}
+
 	return it, nil
 }
 
