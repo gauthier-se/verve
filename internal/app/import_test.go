@@ -724,3 +724,28 @@ func TestImportXML_NextToTheServer_TheServerShowsTheImportedSteps(t *testing.T) 
 		require.Positive(t, point.Value)
 	}
 }
+
+// Given a user disabled while their import waits for another one, then ImportXML returns
+// auth.ErrUserDisabled once the wait ends, and creates no import.
+func TestImportXML_UserDisabledWhileWaiting_CreatesNoImport(t *testing.T) {
+	t.Parallel()
+
+	it := newImportTest(t)
+	holder := it.holdImportKey(t, it.alice)
+
+	res := receive(t, it.importInBackground(t.Context(), XMLImport{
+		Login: "alice", Path: writeFixture(t), Progress: func(float64) {},
+		Waiting: func() {
+			_, err := it.store.Users().SetStatus(context.Background(), it.alice.ID, store.UserDisabled)
+			if err == nil {
+				err = it.store.Jobs().Complete(context.Background(), holder.ID, holder.Claims)
+			}
+
+			if err != nil {
+				t.Error(err)
+			}
+		},
+	}, importOptions{progressInterval: time.Hour, waitInterval: 5 * time.Millisecond}), "the import did not return")
+	require.ErrorIs(t, res.err, auth.ErrUserDisabled)
+	require.Len(t, it.importsOf(t, it.alice), 1, "only the import of the other process exists")
+}
