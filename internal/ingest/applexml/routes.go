@@ -27,6 +27,7 @@ type routes struct {
 // The warnings of a workout whose route is not stored whole (FR-6 of XML import).
 const (
 	routeMissing      = "route file is missing"
+	routeInvalid      = "route file is not a valid GPX file"
 	routeNotAvailable = "route is not available"
 	bareRoutes        = "routes are not available in a bare export.xml"
 )
@@ -34,10 +35,11 @@ const (
 // attach sets the route of the workout of record, whose WorkoutRoute refers to the GPX file at
 // path, a path from the folder of export.xml such as /workout-routes/route_2025-12-30_7.00am.gpx.
 // The points outside the time range of the workout are dropped, and a workout whose GPX file is
-// missing, or whose export is a bare export.xml, has no route: each gets a warning.
+// missing, is not well-formed XML or holds an unreadable point, or whose export is a bare
+// export.xml, has no route: each gets a warning.
 //
-// It returns an error wrapping ErrMalformed for a GPX file that is corrupted, is not well-formed
-// XML or holds an unreadable point, and the error of the file when it fails.
+// It returns an error wrapping ErrMalformed for a corrupted GPX entry, and the error of the file
+// when it fails.
 func (r *routes) attach(record *ingest.Record, path string) error {
 	if r.zip == nil {
 		record.Warning = routeNotAvailable
@@ -76,7 +78,13 @@ func (r *routes) attach(record *ingest.Record, path string) error {
 	}
 
 	points, err := readGPX(entryReader{f})
-	if err != nil {
+
+	switch {
+	case errors.Is(err, errInvalidGPX):
+		record.Warning = routeInvalid
+
+		return nil
+	case err != nil:
 		return err
 	}
 
@@ -122,8 +130,12 @@ type timedPoint struct {
 	at time.Time
 }
 
+// errInvalidGPX is the error of a GPX file that is not well-formed XML or holds an unreadable point.
+var errInvalidGPX = errors.New("invalid GPX file")
+
 // readGPX returns the points of the GPX file of r in time order, those of the same instant in file
-// order.
+// order. It returns an error wrapping errInvalidGPX for a file that is not well-formed XML or holds
+// an unreadable point, and the error of r otherwise.
 func readGPX(r io.Reader) ([]timedPoint, error) {
 	var points []timedPoint
 
@@ -151,7 +163,7 @@ func readGPX(r io.Reader) ([]timedPoint, error) {
 
 		point, reason := p.point()
 		if reason != "" {
-			return nil, fmt.Errorf("%w: route point %d: %s", ErrMalformed, len(points), reason)
+			return nil, fmt.Errorf("%w: route point %d: %s", errInvalidGPX, len(points), reason)
 		}
 
 		points = append(points, point)
@@ -208,12 +220,12 @@ func (p gpxPoint) point() (timedPoint, string) {
 	return point, ""
 }
 
-// gpxError returns err, an error of reading a GPX file, as an error of a malformed file, unless it
-// already is one or is a read error of the file.
+// gpxError returns err, an error of reading a GPX file, as an error of an invalid file, unless it
+// is the error of a corrupted entry or a read error of the file.
 func gpxError(err error) error {
 	if errors.Is(err, ErrMalformed) || errors.As(err, new(diskError)) {
 		return fmt.Errorf("read route file: %w", err)
 	}
 
-	return fmt.Errorf("%w: route file is not well-formed XML: %w", ErrMalformed, err)
+	return fmt.Errorf("%w: %w", errInvalidGPX, err)
 }
