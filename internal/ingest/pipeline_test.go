@@ -623,6 +623,11 @@ func TestRun_ValidAndInvalidRecordsInOneBatch(t *testing.T) {
 			"sleep_analysis": {Received: 1, Invalid: 1},
 		},
 		Workouts: store.ImportCounters{Received: 1, Invalid: 1},
+		// The suspicious sample is stored, not invalid: it counts in the period.
+		Period: store.ImportPeriod{
+			Start: time.Date(1999, 12, 31, 22, 0, 0, 0, time.UTC),
+			End:   time.Date(2026, 11, 10, 7, 0, 0, 0, time.UTC),
+		},
 		Errors: []string{
 			`record 1 (HKQuantityTypeIdentifierHeartRate): unit "bpm" is not a unit of count/min`,
 			`record 2: type is missing`,
@@ -891,6 +896,10 @@ func TestRun_DeletionsRemoveTheRecordsOfTheirUUID(t *testing.T) {
 			"sleep_analysis": {Received: 1, Inserted: 1, Deleted: 1},
 		},
 		Workouts: store.ImportCounters{Deleted: 1},
+		Period: store.ImportPeriod{
+			Start: time.Date(2026, 11, 10, 0, 12, 0, 0, time.UTC),
+			End:   time.Date(2026, 11, 10, 1, 3, 30, 250_000_000, time.UTC),
+		},
 	}, env.importOf(t, imp.ID).Report)
 
 	hr := env.samples(t, "HKQuantityTypeIdentifierHeartRate")
@@ -1144,6 +1153,10 @@ func TestRun_UnsupportedRecordsCountUnderTheirIdentifier(t *testing.T) {
 			"heart_rate":      {Received: 1, Inserted: 1},
 			"ActivitySummary": {Received: 2, Unsupported: 2},
 			"Audiogram":       {Received: 1, Unsupported: 1},
+		},
+		Period: store.ImportPeriod{
+			Start: time.Date(2026, 11, 10, 7, 0, 0, 0, time.UTC),
+			End:   time.Date(2026, 11, 10, 7, 0, 0, 0, time.UTC),
 		},
 	}, imp.Report)
 	require.Len(t, env.samples(t, "HKQuantityTypeIdentifierHeartRate"), 1)

@@ -59,7 +59,10 @@ UPDATE imports
 SET position      = sqlc.arg(position),
     counters      = sqlc.arg(counters),
     type_counters = sqlc.arg(type_counters),
-    errors        = sqlc.arg(errors)
+    errors        = sqlc.arg(errors),
+    period_start  = sqlc.narg(period_start),
+    period_end    = sqlc.narg(period_end),
+    routes        = sqlc.arg(routes)
 WHERE user_id = sqlc.arg(user_id)
   AND id = sqlc.arg(id)
   AND status = 'running';

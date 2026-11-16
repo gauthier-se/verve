@@ -169,6 +169,9 @@ func (r imports) SaveProgress(ctx context.Context, userID, id int64, progress st
 			Counters:     columns.counters,
 			TypeCounters: columns.typeCounters,
 			Errors:       columns.errors,
+			PeriodStart:  columns.periodStart,
+			PeriodEnd:    columns.periodEnd,
+			Routes:       progress.Report.Routes,
 			UserID:       userID,
 			ID:           id,
 		})
@@ -305,11 +308,14 @@ type typeCounters struct {
 	Workouts importCounters            `json:"workouts,omitzero"`
 }
 
-// reportColumns are the JSON columns that hold the report of an import.
+// reportColumns are the JSON columns that hold the report of an import, and the columns of its
+// period, NULL for none.
 type reportColumns struct {
 	counters     string
 	typeCounters string
 	errors       string
+	periodStart  sql.NullInt64
+	periodEnd    sql.NullInt64
 }
 
 // encodeReport returns the columns of report, keeping its first store.ImportErrorsLimit error
@@ -343,11 +349,16 @@ func encodeReport(report store.ImportReport) (reportColumns, error) {
 		return reportColumns{}, fmt.Errorf("encode errors: %w", err)
 	}
 
-	return reportColumns{counters: string(counters), typeCounters: string(types), errors: string(errs)}, nil
+	columns := reportColumns{counters: string(counters), typeCounters: string(types), errors: string(errs)}
+	if report.Period != (store.ImportPeriod{}) {
+		columns.periodStart, columns.periodEnd = nullMillis(report.Period.Start), nullMillis(report.Period.End)
+	}
+
+	return columns, nil
 }
 
-// decodeReport returns the report of the counters, type_counters and errors columns of row, its
-// empty types and errors nil.
+// decodeReport returns the report of the counters, type_counters, errors, period and routes columns
+// of row, its empty types and errors nil.
 func decodeReport(row sqlcgen.Import) (store.ImportReport, error) {
 	var (
 		total    importCounters
@@ -367,7 +378,12 @@ func decodeReport(row sqlcgen.Import) (store.ImportReport, error) {
 		return store.ImportReport{}, fmt.Errorf("decode errors: %w", err)
 	}
 
-	report := store.ImportReport{Total: store.ImportCounters(total), Workouts: store.ImportCounters(perType.Workouts)}
+	report := store.ImportReport{
+		Total:    store.ImportCounters(total),
+		Workouts: store.ImportCounters(perType.Workouts),
+		Period:   store.ImportPeriod{Start: fromNullMillis(row.PeriodStart), End: fromNullMillis(row.PeriodEnd)},
+		Routes:   row.Routes,
+	}
 
 	if len(perType.Types) > 0 {
 		report.Types = make(map[string]store.ImportCounters, len(perType.Types))

@@ -64,13 +64,25 @@ type ImportCounters struct {
 	NotFound    int64
 }
 
+// ImportPeriod is the time range of the records of an import that are not invalid: the first start
+// and the last end, in UTC with millisecond precision. Its zero value is the period of an import
+// without such a record.
+type ImportPeriod struct {
+	Start time.Time
+	End   time.Time
+}
+
 // ImportReport is the report of an import: its counters in total, per type key and for the
-// workouts, and its sample error messages, which name a record and a reason, never a value.
+// workouts, its period and routes, and its sample error messages, which name a record and a
+// reason, never a value.
 type ImportReport struct {
 	Total ImportCounters
 	// Types holds the counters of each type key, nil when there are none.
 	Types    map[string]ImportCounters
 	Workouts ImportCounters
+	Period   ImportPeriod
+	// Routes is the number of routes stored with a workout.
+	Routes int64
 	// Errors holds at most ImportErrorsLimit messages, nil when there are none.
 	Errors []string
 }
