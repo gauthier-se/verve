@@ -2,6 +2,7 @@ package applexml
 
 import (
 	"encoding/xml"
+	"fmt"
 	"math"
 	"slices"
 	"strings"
@@ -14,6 +15,9 @@ import (
 // workoutElement is what a Workout element holds, read from its start tag to its end tag.
 type workoutElement struct {
 	attrs attributes
+	// route is the path of the first FileReference of its WorkoutRoute items, empty when it has
+	// none.
+	route string
 	// entries are its MetadataEntry items, in document order.
 	entries    []metadataEntry
 	events     []attributes
@@ -67,6 +71,17 @@ func (t *tokenizer) workout(start xml.StartElement, yield func(ingest.Record) bo
 			}
 
 			w.zoneGroups = append(w.zoneGroups, zoneGroup{attrs: child.Attr, zones: zones})
+		case "WorkoutRoute":
+			refs, err := t.children("FileReference")
+			if err != nil {
+				return false, err
+			}
+
+			for _, ref := range refs {
+				if path, _ := ref.get("path"); w.route == "" {
+					w.route = path
+				}
+			}
 		}
 	}
 
@@ -75,6 +90,12 @@ func (t *tokenizer) workout(start xml.StartElement, yield func(ingest.Record) bo
 
 	if !t.selfClosed {
 		record.Position = t.start
+	}
+
+	if record.Workout != nil && w.route != "" {
+		if err := t.routes.attach(&record, w.route); err != nil {
+			return false, fmt.Errorf("read the route of the workout at byte %d: %w", record.Position, err)
+		}
 	}
 
 	return yield(record), nil

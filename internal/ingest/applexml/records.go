@@ -27,27 +27,30 @@ import (
 var ErrMalformed = errors.New("malformed XML")
 
 // Records reads the records of the export.xml document of r, as a stream (FR-5 and FR-6 of XML
-// import). The position of a record is the byte offset of its start tag in the document. A record
-// that the adapter cannot read, such as one whose value is not a number, is an ingest.Invalid
-// record with its reason, and the others are read.
+// import), as a bare export.xml: a workout with a route has none, and carries a warning. The
+// position of a record is the byte offset of its start tag in the document. A record that the
+// adapter cannot read, such as one whose value is not a number, is an ingest.Invalid record with
+// its reason, and the others are read.
 //
 // It yields an error, and stops, after the records that came before it: one wrapping ErrMalformed
 // for a document that is truncated or is not well-formed XML, and the error of r when r fails.
 func Records(ctx context.Context, r io.Reader) iter.Seq2[ingest.Record, error] {
 	return func(yield func(ingest.Record, error) bool) {
-		if err := readRecords(ctx, r, func(r ingest.Record) bool { return yield(r, nil) }); err != nil {
+		if err := readRecords(ctx, r, &routes{}, func(r ingest.Record) bool { return yield(r, nil) }); err != nil {
 			yield(ingest.Record{}, err)
 		}
 	}
 }
 
-// readRecords reads the records of the document of r, and yields them until it ends, yield returns
-// false or ctx is done.
-func readRecords(ctx context.Context, r io.Reader, yield func(ingest.Record) bool) error {
+// readRecords reads the records of the document of r, the routes of its workouts attached by
+// routes, and yields them until it ends, yield returns false or ctx is done.
+func readRecords(ctx context.Context, r io.Reader, routes *routes, yield func(ingest.Record) bool) error {
 	t, err := newTokenizer(r)
 	if err != nil {
 		return err
 	}
+
+	t.routes = routes
 
 	return t.records(ctx, yield)
 }

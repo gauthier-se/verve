@@ -186,7 +186,7 @@ func TestRecords_RouteThatIsNotInTheExport(t *testing.T) {
 		t.Parallel()
 
 		workouts := workoutRecords(t, routedZip(t, "apple_health_export/", routed(routePath), map[string]string{
-			strings.TrimPrefix(routePath, "/"):              gpx(trkpt("2025-12-30T06:00:00Z")),
+			strings.TrimPrefix(routePath, "/"):             gpx(trkpt("2025-12-30T06:00:00Z")),
 			"apple_health_export/workout-routes/other.gpx": gpx(trkpt("2025-12-30T06:00:00Z")),
 		}))
 		require.Nil(t, workouts[0].Workout.Route, "the path resolves against the folder of export.xml only")

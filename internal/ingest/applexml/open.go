@@ -132,7 +132,8 @@ func (e *Export) Records(ctx context.Context) iter.Seq2[ingest.Record, error] {
 		if err == nil {
 			defer func() { _ = r.Close() }() // a read-only entry or section
 
-			err = readRecords(ctx, r, func(r ingest.Record) bool { return yield(r, nil) })
+			routes := &routes{zip: e.zip, dir: e.dir}
+			err = readRecords(ctx, r, routes, func(r ingest.Record) bool { return yield(r, nil) })
 		}
 
 		if err != nil {
