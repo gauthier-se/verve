@@ -260,9 +260,13 @@ func TestImportXML_Refused_CreatesNoImport(t *testing.T) {
 
 			for _, user := range users {
 				require.Empty(t, it.importsOf(t, user), user.Username)
+
+				active, err := it.store.Jobs().ActiveJobs(t.Context(), ingest.SerialKey(user.ID))
+				require.NoError(t, err)
+				require.Empty(t, active, user.Username)
 			}
 
-			for _, status := range []store.JobStatus{store.JobQueued, store.JobRunning, store.JobCompleted, store.JobFailed, store.JobCancelled} {
+			for _, status := range []store.JobStatus{store.JobCompleted, store.JobFailed, store.JobCancelled} {
 				require.Empty(t, it.jobsWith(t, status), status)
 			}
 		})
