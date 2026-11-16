@@ -84,10 +84,11 @@ Import the full Apple Health export (the `export.zip` produced by the Health app
   Routes:
   - A `FileReference` path resolves against the folder of `export.xml` in the zip: `/workout-routes/route_2025-12-30_7.00am.gpx` next to `apple_health_export/export.xml` is `apple_health_export/workout-routes/route_2025-12-30_7.00am.gpx`.
   - The GPX points are read in time order. The adapter drops the points outside the time range of the workout, and the workout counts under `warnings` with a sample error message, instead of being refused by the pipeline.
-  - A workout whose GPX entry is missing, or whose export is a bare `export.xml`, is stored without route and counts under `warnings` with a sample error message. A bare `export.xml` also adds the sample error message `routes are not available in a bare export.xml`, once.
+  - A workout whose GPX entry is missing, is not well-formed XML or holds a point whose `lat`, `lon`, `time`, `ele`, `speed`, `course`, `hAcc` or `vAcc` cannot be read, or whose export is a bare `export.xml`, is stored without route and counts under `warnings` with a sample error message. A bare `export.xml` also adds the sample error message `routes are not available in a bare export.xml`, once, to the message of its first such workout.
+  - A corrupted GPX entry fails the import as a corrupted zip does (FR-5).
 
   Other entries of a zip:
-  - Each `electrocardiograms/*.csv` entry counts once as `received` and `unsupported` under `HKDataTypeIdentifierElectrocardiogram`, at positions after those of `export.xml`.
+  - Each `electrocardiograms/*.csv` entry of the folder of `export.xml` counts once as `received` and `unsupported` under `HKDataTypeIdentifierElectrocardiogram`, at positions after the size of `export.xml`, in central directory order.
   - `export_cda.xml` is not read and counts nowhere, since it repeats documents, not records.
 
 - **FR-7**: Progress is the position over the uncompressed size of `export.xml`, read from the central directory for a zip, since data descriptors leave the local headers without size, and from the file size for a bare `export.xml`. The job stores the size once it opens the export, and the import exposes `progress` ([Ingestion pipeline](ingestion-pipeline.md), Data and API notes). The import banner and the CLI show it as a percentage.

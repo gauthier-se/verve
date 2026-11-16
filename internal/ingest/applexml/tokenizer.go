@@ -15,6 +15,8 @@ import (
 type tokenizer struct {
 	dec *xml.Decoder
 	src *sourceReader
+	// routes attaches the routes of the workouts read.
+	routes *routes
 	// dtd is where the DTD was in the document, which the decoder never reads.
 	dtd gap
 	// open are the names of the elements that are open.

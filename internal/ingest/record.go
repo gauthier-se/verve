@@ -161,4 +161,8 @@ type Record struct {
 	Deletion    *Deletion
 	Invalid     *Invalid
 	Unsupported *Unsupported
+	// Warning names a detail that the adapter dropped from a record it read, such as the route
+	// points of a workout outside its time range, never a value, empty when there is none. A stored
+	// record with a warning counts under warnings (FR-3 of Ingestion pipeline).
+	Warning string
 }

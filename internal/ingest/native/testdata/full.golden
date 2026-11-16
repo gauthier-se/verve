@@ -36,7 +36,8 @@
       "Workout": null,
       "Deletion": null,
       "Invalid": null,
-      "Unsupported": null
+      "Unsupported": null,
+      "Warning": ""
     },
     {
       "Position": 1,
@@ -61,7 +62,8 @@
       "Workout": null,
       "Deletion": null,
       "Invalid": null,
-      "Unsupported": null
+      "Unsupported": null,
+      "Warning": ""
     },
     {
       "Position": 2,
@@ -90,7 +92,8 @@
       "Workout": null,
       "Deletion": null,
       "Invalid": null,
-      "Unsupported": null
+      "Unsupported": null,
+      "Warning": ""
     },
     {
       "Position": 3,
@@ -181,7 +184,8 @@
       },
       "Deletion": null,
       "Invalid": null,
-      "Unsupported": null
+      "Unsupported": null,
+      "Warning": ""
     },
     {
       "Position": 4,
@@ -221,7 +225,8 @@
       },
       "Deletion": null,
       "Invalid": null,
-      "Unsupported": null
+      "Unsupported": null,
+      "Warning": ""
     },
     {
       "Position": 5,
@@ -232,7 +237,8 @@
         "UUID": "5A4B3C2D-1E0F-4A9B-8C7D-6E5F4A3B2C1D"
       },
       "Invalid": null,
-      "Unsupported": null
+      "Unsupported": null,
+      "Warning": ""
     },
     {
       "Position": 6,
@@ -243,7 +249,8 @@
         "UUID": "c3a9f5d7-1e2b-4c8a-b6d4-5f7e9a1c3b2d"
       },
       "Invalid": null,
-      "Unsupported": null
+      "Unsupported": null,
+      "Warning": ""
     }
   ]
 }
