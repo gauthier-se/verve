@@ -31,12 +31,21 @@ type ImportSummary struct {
 	CreatedAt  time.Time           `json:"createdAt" doc:"When the import was created."`
 	StartedAt  *time.Time          `json:"startedAt,omitempty" doc:"When the import first ran, left out until it does."`
 	FinishedAt *time.Time          `json:"finishedAt,omitempty" doc:"When the import ended, left out until it does."`
-	Report     ImportSummaryReport `json:"report" doc:"The total counters of the import so far."`
+	Progress   *float64            `json:"progress,omitempty" minimum:"0" maximum:"1" example:"0.42" doc:"The progress of an XML import, from 0 to 1, left out for other origins and until its job opened the export."`
+	Report     ImportSummaryReport `json:"report" doc:"The total counters, the period and the routes of the import so far."`
 }
 
 // ImportSummaryReport is the report of an import as the list gives it.
 type ImportSummaryReport struct {
-	Total ImportCounters `json:"total" doc:"Every counter, for every record."`
+	Total  ImportCounters `json:"total" doc:"Every counter, for every record."`
+	Period *ImportPeriod  `json:"period,omitempty" doc:"The first start and the last end of the records read that are not invalid, left out when there is none."`
+	Routes int64          `json:"routes,omitempty" example:"2" doc:"The number of routes stored with a workout, left out at zero."`
+}
+
+// ImportPeriod is the time range of the records of an import that are not invalid.
+type ImportPeriod struct {
+	Start time.Time `json:"start" doc:"The first start of the records."`
+	End   time.Time `json:"end" doc:"The last end of the records."`
 }
 
 // importsInput is the input of GET /api/v1/imports.
@@ -279,7 +288,8 @@ func importSummaryOf(imp Import) ImportSummary {
 		CreatedAt:  imp.CreatedAt,
 		StartedAt:  imp.StartedAt,
 		FinishedAt: imp.FinishedAt,
-		Report:     ImportSummaryReport{Total: imp.Report.Total},
+		Progress:   imp.Progress,
+		Report:     ImportSummaryReport{Total: imp.Report.Total, Period: imp.Report.Period, Routes: imp.Report.Routes},
 	}
 }
 
@@ -294,6 +304,7 @@ type Import struct {
 	CreatedAt  time.Time         `json:"createdAt" doc:"When the import was created."`
 	StartedAt  *time.Time        `json:"startedAt,omitempty" doc:"When the import first ran, left out until it does."`
 	FinishedAt *time.Time        `json:"finishedAt,omitempty" doc:"When the import ended, left out until it does."`
+	Progress   *float64          `json:"progress,omitempty" minimum:"0" maximum:"1" example:"0.42" doc:"The progress of an XML import, from 0 to 1: its position over the uncompressed size of its export.xml. Left out for other origins and until its job opened the export."`
 	Report     ImportReport      `json:"report" doc:"What happened to the records of the import so far."`
 }
 
@@ -303,6 +314,8 @@ type ImportReport struct {
 	Total    ImportCounters                `json:"total" doc:"Every counter, for every record."`
 	Types    map[string]ImportTypeCounters `json:"types" nullable:"false" doc:"The counters of each type key, a metric type key or the identifier of an unsupported type."`
 	Workouts ImportTypeCounters            `json:"workouts" doc:"The counters of the workouts."`
+	Period   *ImportPeriod                 `json:"period,omitempty" doc:"The first start and the last end of the records read that are not invalid, left out when there is none."`
+	Routes   int64                         `json:"routes,omitempty" example:"2" doc:"The number of routes stored with a workout, left out at zero."`
 	Errors   []string                      `json:"errors" nullable:"false" doc:"Up to 100 sample error messages, which name the position, the type and the reason of a record."`
 }
 
@@ -350,8 +363,17 @@ func importOf(imp store.Import, tokenName string) Import {
 			Total:    ImportCounters(imp.Report.Total),
 			Types:    make(map[string]ImportTypeCounters, len(imp.Report.Types)),
 			Workouts: ImportTypeCounters(imp.Report.Workouts),
+			Routes:   imp.Report.Routes,
 			Errors:   imp.Report.Errors,
 		},
+	}
+
+	if progress, ok := imp.Progress(); ok {
+		out.Progress = &progress
+	}
+
+	if period := imp.Report.Period; period != (store.ImportPeriod{}) {
+		out.Report.Period = &ImportPeriod{Start: period.Start, End: period.End}
 	}
 
 	for key, counters := range imp.Report.Types {

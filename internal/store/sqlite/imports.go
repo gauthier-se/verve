@@ -217,6 +217,34 @@ func (r imports) SetClient(ctx context.Context, userID, id int64, client map[str
 	return nil
 }
 
+func (r imports) SetExportSize(ctx context.Context, userID, id int64, size int64) error {
+	if size < 1 {
+		return fmt.Errorf("set export size of import %d of user %d: size %d: %w", id, userID, size, store.ErrInvalid)
+	}
+
+	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
+		set, err := q.SetUserImportExportSize(ctx, sqlcgen.SetUserImportExportSizeParams{
+			ExportSize: sql.NullInt64{Int64: size, Valid: true},
+			UserID:     userID,
+			ID:         id,
+		})
+		if err != nil {
+			return err
+		}
+
+		if set == 0 {
+			return missingOrConflict(ctx, q, userID, id)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("set export size of import %d of user %d: %w", id, userID, err)
+	}
+
+	return nil
+}
+
 func (r imports) InboxFilesKept(ctx context.Context, failedSince time.Time) ([]string, error) {
 	files, err := r.q.read().InboxFilesKept(ctx, nullMillis(failedSince))
 	if err != nil {
@@ -448,6 +476,7 @@ func importOf(row sqlcgen.Import) (store.Import, error) {
 		Status:     store.ImportStatus(row.Status),
 		Position:   row.Position,
 		Report:     report,
+		ExportSize: row.ExportSize.Int64,
 		CreatedAt:  fromMillis(row.CreatedAt),
 		StartedAt:  fromNullMillis(row.StartedAt),
 		FinishedAt: fromNullMillis(row.FinishedAt),

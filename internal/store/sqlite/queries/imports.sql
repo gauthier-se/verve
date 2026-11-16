@@ -74,6 +74,13 @@ WHERE user_id = sqlc.arg(user_id)
   AND id = sqlc.arg(id)
   AND status = 'running';
 
+-- name: SetUserImportExportSize :execrows
+UPDATE imports
+SET export_size = sqlc.arg(export_size)
+WHERE user_id = sqlc.arg(user_id)
+  AND id = sqlc.arg(id)
+  AND status = 'running';
+
 -- name: InboxFilesKept :many
 -- The inbox files of the queued and running imports, and of the imports that failed since a time.
 SELECT CAST(inbox_file AS TEXT) AS inbox_file

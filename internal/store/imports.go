@@ -123,12 +123,32 @@ type Import struct {
 	Status    ImportStatus
 	Position  int64
 	Report    ImportReport
+	// ExportSize is the uncompressed size of the export.xml of an XML import, once its job opened
+	// the export, and 0 otherwise.
+	ExportSize int64
 	// CreatedAt is the time of Create.
 	CreatedAt time.Time
 	// StartedAt is the time the import first ran, or zero when it never did.
 	StartedAt time.Time
 	// FinishedAt is the time the import ended, or zero when it did not.
 	FinishedAt time.Time
+}
+
+// Progress returns the progress of an XML import, of origin xml or cli, from 0 to 1: its position
+// over the size of its export (FR-7 of XML import), at most 1, since the records of the other
+// entries of a zip come after export.xml, and 1 once it completed, the end tags after its last
+// record counting then. It returns false for an import of another origin and before its job opened
+// the export.
+func (i Import) Progress() (float64, bool) {
+	if (i.Origin != OriginXML && i.Origin != OriginCLI) || i.ExportSize == 0 {
+		return 0, false
+	}
+
+	if i.Status == ImportCompleted {
+		return 1, true
+	}
+
+	return min(float64(i.Position)/float64(i.ExportSize), 1), true
 }
 
 // Cursor returns the position of the import in the lists of ImportsRepository.List.
@@ -165,6 +185,10 @@ type ImportsRepository interface {
 	// removes it when client is empty: a push stores its client once its job reads the payload. It
 	// returns ErrNotFound for a missing import and ErrConflict for one that is not running.
 	SetClient(ctx context.Context, userID, id int64, client map[string]string) error
+	// SetExportSize stores size, the uncompressed size of the export.xml of the running import of id
+	// of userID, once its job opened the export. It returns ErrNotFound for a missing import,
+	// ErrConflict for one that is not running, and ErrInvalid for a size below 1.
+	SetExportSize(ctx context.Context, userID, id int64, size int64) error
 	// InboxFilesKept returns the inbox files that imports still need, whatever their user: those of the
 	// queued and running imports, and those of the imports that failed since failedSince, kept for a
 	// while for a retry or a diagnosis. A completed or cancelled import needs its file no more.

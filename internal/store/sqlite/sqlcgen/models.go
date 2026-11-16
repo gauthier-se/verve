@@ -91,6 +91,7 @@ type Import struct {
 	PeriodStart  sql.NullInt64
 	PeriodEnd    sql.NullInt64
 	Routes       int64
+	ExportSize   sql.NullInt64
 }
 
 type InstanceSetting struct {

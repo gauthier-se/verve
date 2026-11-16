@@ -3,6 +3,7 @@ package applexml
 import (
 	"context"
 	"errors"
+	"fmt"
 	"iter"
 	"os"
 
@@ -30,11 +31,18 @@ func Register(registry *jobs.Registry, deps ingest.ImportJobDeps) {
 	ingest.RegisterImport(registry, KindImport, deps, openRecords)
 }
 
-// openRecords opens the export of f and returns its records.
-func openRecords(ctx context.Context, _ store.ImportsRepository, _ store.Import, f *os.File) (iter.Seq2[ingest.Record, error], error) {
+// openRecords opens the export of f, stores its size on imp, which its progress is computed
+// against, and returns its records.
+func openRecords(ctx context.Context, imports store.ImportsRepository, imp store.Import, f *os.File) (iter.Seq2[ingest.Record, error], error) {
 	export, err := Open(ctx, f)
 	if err != nil {
 		return nil, reject(err)
+	}
+
+	if size := export.Size(); size > 0 {
+		if err := imports.SetExportSize(ctx, imp.UserID, imp.ID, size); err != nil {
+			return nil, fmt.Errorf("store export size of import %d: %w", imp.ID, err)
+		}
 	}
 
 	return func(yield func(ingest.Record, error) bool) {

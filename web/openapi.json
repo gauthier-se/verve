@@ -704,6 +704,16 @@
             ],
             "type": "string"
           },
+          "progress": {
+            "description": "The progress of an XML import, from 0 to 1: its position over the uncompressed size of its export.xml. Left out for other origins and until its job opened the export.",
+            "examples": [
+              0.42
+            ],
+            "format": "double",
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
           "report": {
             "$ref": "#/components/schemas/ImportReport",
             "description": "What happened to the records of the import so far."
@@ -818,6 +828,26 @@
         ],
         "type": "object"
       },
+      "ImportPeriod": {
+        "additionalProperties": false,
+        "properties": {
+          "end": {
+            "description": "The last end of the records.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "start": {
+            "description": "The first start of the records.",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ],
+        "type": "object"
+      },
       "ImportReport": {
         "additionalProperties": false,
         "properties": {
@@ -827,6 +857,18 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "period": {
+            "$ref": "#/components/schemas/ImportPeriod",
+            "description": "The first start and the last end of the records read that are not invalid, left out when there is none."
+          },
+          "routes": {
+            "description": "The number of routes stored with a workout, left out at zero.",
+            "examples": [
+              2
+            ],
+            "format": "int64",
+            "type": "integer"
           },
           "total": {
             "$ref": "#/components/schemas/ImportCounters",
@@ -893,9 +935,19 @@
             ],
             "type": "string"
           },
+          "progress": {
+            "description": "The progress of an XML import, from 0 to 1, left out for other origins and until its job opened the export.",
+            "examples": [
+              0.42
+            ],
+            "format": "double",
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
           "report": {
             "$ref": "#/components/schemas/ImportSummaryReport",
-            "description": "The total counters of the import so far."
+            "description": "The total counters, the period and the routes of the import so far."
           },
           "startedAt": {
             "description": "When the import first ran, left out until it does.",
@@ -936,6 +988,18 @@
       "ImportSummaryReport": {
         "additionalProperties": false,
         "properties": {
+          "period": {
+            "$ref": "#/components/schemas/ImportPeriod",
+            "description": "The first start and the last end of the records read that are not invalid, left out when there is none."
+          },
+          "routes": {
+            "description": "The number of routes stored with a workout, left out at zero.",
+            "examples": [
+              2
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
           "total": {
             "$ref": "#/components/schemas/ImportCounters",
             "description": "Every counter, for every record."
