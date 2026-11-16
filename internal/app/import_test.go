@@ -714,11 +714,12 @@ func TestImportXML_NextToTheServer_TheServerShowsTheImportedSteps(t *testing.T) 
 		} `json:"points"`
 	}
 
+	// Once a second, under the 60 requests a minute of a token, however slow the worker is.
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		get(c, "/api/v1/metrics/step_count/series?from=2025-12-29&to=2026-01-05&bucket=day&statistic=sum", &series)
 		require.False(c, series.Updating)
 		require.NotEmpty(c, series.Points)
-	}, 20*time.Second, 50*time.Millisecond, "the worker of the server must recompute the daily sums")
+	}, 60*time.Second, time.Second, "the worker of the server must recompute the daily sums")
 
 	for _, point := range series.Points {
 		require.Positive(t, point.Value)
