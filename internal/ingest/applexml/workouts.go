@@ -18,6 +18,7 @@ type workoutElement struct {
 	entries    [][2]string
 	events     []attributes
 	statistics []attributes
+	zoneGroups []zoneGroup
 }
 
 // workout reads the children of the Workout element of start, whose start tag was read last. It
@@ -62,6 +63,13 @@ func (t *tokenizer) workout(start xml.StartElement, yield func(ingest.Record) bo
 			w.events = append(w.events, child.Attr)
 		case "WorkoutStatistics":
 			w.statistics = append(w.statistics, child.Attr)
+		case "WorkoutZoneGroup":
+			zones, err := t.children("WorkoutZone")
+			if err != nil {
+				return false, err
+			}
+
+			w.zoneGroups = append(w.zoneGroups, zoneGroup{attrs: child.Attr, zones: zones})
 		}
 	}
 
@@ -121,6 +129,14 @@ func (w workoutElement) record() ingest.Record {
 
 	for _, e := range w.entries {
 		m.entry(e[0], e[1])
+	}
+
+	if len(w.statistics) > 0 {
+		m.objects(metadataStatistics, w.statistics)
+	}
+
+	if len(w.zoneGroups) > 0 {
+		m.zoneGroups(w.zoneGroups)
 	}
 
 	workout.Metadata = m.object()
@@ -296,6 +312,43 @@ func workoutEvent(a attributes) (ingest.WorkoutEvent, string) {
 	}
 
 	return ingest.WorkoutEvent{Type: typ, Start: start.Format(time.RFC3339Nano), End: end.Format(time.RFC3339Nano)}, ""
+}
+
+// zoneGroup is a WorkoutZoneGroup element: its attributes and those of its WorkoutZone items.
+type zoneGroup struct {
+	attrs attributes
+	zones []attributes
+}
+
+// The metadata keys of the statistics and of the zone groups of a workout (FR-6 of XML import).
+const (
+	metadataStatistics = "WorkoutStatistics"
+	metadataZoneGroups = "WorkoutZoneGroup"
+)
+
+// zoneGroups adds the zone groups of a workout under metadataZoneGroups, as an array of objects
+// holding their attributes as received, and their zones under zones, as objects of their
+// attributes.
+func (m *metadata) zoneGroups(groups []zoneGroup) {
+	if !m.key(metadataZoneGroups) {
+		return
+	}
+
+	m.array(len(groups), func(i int) {
+		g := groups[i]
+
+		m.buf.WriteByte('{')
+		m.members(g.attrs)
+
+		if len(g.attrs) > 0 {
+			m.buf.WriteByte(',')
+		}
+
+		m.string("zones")
+		m.buf.WriteByte(':')
+		m.array(len(g.zones), func(j int) { m.attributes(g.zones[j]) })
+		m.buf.WriteByte('}')
+	})
 }
 
 // invalidWorkout returns an invalid workout record, with reason.

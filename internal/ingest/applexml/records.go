@@ -179,12 +179,12 @@ func (t *tokenizer) record(start xml.StartElement) (ingest.Record, error) {
 			value, _ := a.get("value")
 			m.entry(key, value)
 		case metadataBeats:
-			beats, err := t.beats()
+			beats, err := t.children("InstantaneousBeatsPerMinute")
 			if err != nil {
 				return ingest.Record{}, err
 			}
 
-			m.beats(beats)
+			m.objects(metadataBeats, beats)
 		}
 	}
 
@@ -201,10 +201,10 @@ func (t *tokenizer) record(start xml.StartElement) (ingest.Record, error) {
 	return record, nil
 }
 
-// beats reads the children of a HeartRateVariabilityMetadataList element, whose start tag was read
-// last, and returns the attributes of its beats, in document order.
-func (t *tokenizer) beats() ([]attributes, error) {
-	var beats []attributes
+// children reads the children of the element whose start tag was read last, and returns the
+// attributes of those named name, in document order.
+func (t *tokenizer) children(name string) ([]attributes, error) {
+	var children []attributes
 
 	depth := t.depth()
 
@@ -215,11 +215,11 @@ func (t *tokenizer) beats() ([]attributes, error) {
 		}
 
 		if t.depth() < depth {
-			return beats, nil
+			return children, nil
 		}
 
-		if beat, ok := tok.(xml.StartElement); ok && t.depth() == depth+1 && beat.Name.Local == "InstantaneousBeatsPerMinute" {
-			beats = append(beats, beat.Attr)
+		if child, ok := tok.(xml.StartElement); ok && t.depth() == depth+1 && child.Name.Local == name {
+			children = append(children, child.Attr)
 		}
 	}
 }
@@ -243,36 +243,49 @@ func (m *metadata) entry(key, value string) {
 	}
 }
 
-// beats adds the beats of a HeartRateVariabilityMetadataList, as an array of objects holding their
-// attributes as received.
-func (m *metadata) beats(beats []attributes) {
-	if !m.key(metadataBeats) {
+// objects adds key with an array of objects holding the attributes of each of items as received,
+// such as the beats of a HeartRateVariabilityMetadataList.
+func (m *metadata) objects(key string, items []attributes) {
+	if !m.key(key) {
 		return
 	}
 
+	m.array(len(items), func(i int) { m.attributes(items[i]) })
+}
+
+// array writes an array of n items, each written by item.
+func (m *metadata) array(n int, item func(i int)) {
 	m.buf.WriteByte('[')
 
-	for i, beat := range beats {
+	for i := range n {
 		if i > 0 {
 			m.buf.WriteByte(',')
 		}
 
-		m.buf.WriteByte('{')
-
-		for j, attr := range beat {
-			if j > 0 {
-				m.buf.WriteByte(',')
-			}
-
-			m.string(attr.Name.Local)
-			m.buf.WriteByte(':')
-			m.string(attr.Value)
-		}
-
-		m.buf.WriteByte('}')
+		item(i)
 	}
 
 	m.buf.WriteByte(']')
+}
+
+// attributes writes an object of attrs, as received.
+func (m *metadata) attributes(attrs attributes) {
+	m.buf.WriteByte('{')
+	m.members(attrs)
+	m.buf.WriteByte('}')
+}
+
+// members writes the members of an object of attrs, as received, without its braces.
+func (m *metadata) members(attrs attributes) {
+	for i, attr := range attrs {
+		if i > 0 {
+			m.buf.WriteByte(',')
+		}
+
+		m.string(attr.Name.Local)
+		m.buf.WriteByte(':')
+		m.string(attr.Value)
+	}
 }
 
 // key writes key and returns true, or returns false when the object already has it.
