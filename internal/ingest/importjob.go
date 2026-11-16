@@ -183,7 +183,7 @@ func (r importRun) process(ctx context.Context, imp store.Import, path string) (
 
 	records, err := r.open(ctx, r.deps.Store.Imports(), imp, f)
 	if err != nil {
-		return err
+		return fmt.Errorf("open records of import %d: %w", imp.ID, err)
 	}
 
 	return r.deps.Pipeline.Run(ctx, imp.UserID, imp.ID, records)

@@ -99,7 +99,7 @@ Import the full Apple Health export (the `export.zip` produced by the Health app
   - The username is folded as at login ([ADR 0013](../decisions/0013-case-folded-logins.md)).
   - The import has the origin `cli` and no inbox file. The absolute path of the file is in the payload of its job, `{"importId": 42, "path": "/data/export.zip"}`, and the file is read in place, never copied, moved or deleted. A server that resumes the job of a command that died reads the same path, and fails the import without retry when the file is gone, as for a missing inbox file.
   - The command prints its progress to stderr, at most every 5 seconds, and once the import ends, the counters of `total`, the period and the routes of the report to stdout. It exits `0` when the import completes and `1` otherwise. Interrupting it cancels the import ([Job worker](platform-jobs.md) FR-7).
-- **FR-11**: The final report includes per-type counts, the date range covered (`period`) and the number of routes stored with workouts (`routes`), as for every origin ([Ingestion pipeline](ingestion-pipeline.md) FR-3).
+- **FR-11**: The final report includes per-type counts, the date range covered (`period`) and the number of routes that the import stored with workouts (`routes`), as for every origin ([Ingestion pipeline](ingestion-pipeline.md) FR-3).
 
 ## UX notes
 
