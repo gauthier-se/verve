@@ -1189,3 +1189,78 @@ func TestRun_WarningOfARecordCountsWithItsMessage(t *testing.T) {
 		"record 3 (HKQuantityTypeIdentifierHeartRate): unit \"kg\" is not a unit of count/min",
 	}, imp.Report.Errors)
 }
+
+// Given records that are valid, invalid or unsupported, then the report holds the first start and
+// the last end of the valid ones as its period, in UTC, and the number of routes stored with a
+// workout. A run that stores no route, its workout a duplicate of one that has a route already,
+// counts none.
+func TestRun_ReportHoldsThePeriodOfTheValidRecordsAndTheRoutesStored(t *testing.T) {
+	t.Parallel()
+
+	env := newPipelineEnv(t)
+
+	early := quantitySample()
+	early.UUID, early.Unit = "", "bpm"
+	early.Start, early.End = "2026-11-01T08:00:00+01:00", "2026-11-01T08:00:00+01:00"
+
+	late := quantitySample()
+	late.UUID, late.Unit = "", "bpm"
+	late.Start, late.End = "2026-11-10T23:00:00+01:00", "2026-11-10T23:00:00+01:00"
+
+	ecg := quantitySample()
+	ecg.UUID, ecg.Type = "", "HKDataTypeIdentifierElectrocardiogram"
+	ecg.Start, ecg.End = "2026-11-12T08:00:00+01:00", "2026-11-12T08:00:00+01:00"
+
+	records := []ingest.Record{
+		quantity(early),
+		quantity(quantitySample()),
+		category(categorySample()),
+		workoutRecord(workout()),
+		quantity(late),
+		quantity(ecg),
+		deletion("5A4B3C2D-1E0F-4A9B-8C7D-6E5F4A3B2C1D"),
+	}
+
+	first := env.run(t, store.OriginNative, records...)
+	require.Equal(t, store.ImportPeriod{
+		Start: time.Date(2026, 11, 10, 0, 12, 0, 0, time.UTC),
+		End:   time.Date(2026, 11, 10, 17, 31, 0, 0, time.UTC),
+	}, first.Report.Period)
+	require.Equal(t, int64(1), first.Report.Routes)
+
+	second := env.run(t, store.OriginNative, records...)
+	require.Equal(t, first.Report.Period, second.Report.Period, "duplicates are read, and count in the period")
+	require.Zero(t, second.Report.Routes, "the route of the duplicate is stored already")
+
+	none := env.run(t, store.OriginNative, quantity(early), quantity(ecg))
+	require.Zero(t, none.Report.Period, "no valid record, no period")
+	require.Zero(t, none.Report.Routes)
+}
+
+// Given a run stopped after a committed batch, then the period and the routes of the batches
+// committed are saved with them, and the resumed run ends with those of an uninterrupted run.
+func TestRun_SavesThePeriodAndTheRoutesWithEachBatch(t *testing.T) {
+	t.Parallel()
+
+	env := newPipelineEnv(t)
+	imp := env.running(t, store.OriginNative)
+	batches := func(cfg *ingest.Config) { cfg.BatchSize = 1 }
+
+	records := []ingest.Record{workoutRecord(workout()), category(categorySample()), quantity(quantitySample())}
+
+	err := env.pipeline(batches).Run(t.Context(), env.user.ID, imp.ID, failingAfter(recordsOf(records...), 2))
+	require.ErrorIs(t, err, errSourceFailed)
+
+	stopped := env.importOf(t, imp.ID)
+	require.Equal(t, store.ImportPeriod{
+		Start: time.Date(2026, 11, 10, 0, 12, 0, 0, time.UTC),
+		End:   time.Date(2026, 11, 10, 17, 31, 0, 0, time.UTC),
+	}, stopped.Report.Period)
+	require.Equal(t, int64(1), stopped.Report.Routes)
+
+	require.NoError(t, env.pipeline(batches).Run(t.Context(), env.user.ID, imp.ID, recordsOf(records...)))
+
+	got := env.importOf(t, imp.ID)
+	require.Equal(t, stopped.Report.Period, got.Report.Period)
+	require.Equal(t, int64(1), got.Report.Routes)
+}

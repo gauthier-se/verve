@@ -155,7 +155,7 @@ func importIDs(imports ...store.Import) []int64 {
 }
 
 // fullReport returns a report with every counter set, each to a distinct value, in total, for two
-// type keys and for the workouts, and two error messages.
+// type keys and for the workouts, a period, routes and two error messages.
 func fullReport() store.ImportReport {
 	return store.ImportReport{
 		Total: store.ImportCounters{
@@ -167,6 +167,11 @@ func fullReport() store.ImportReport {
 			"HKDataTypeIdentifierElectrocardiogram": {Received: 1, Unsupported: 1},
 		},
 		Workouts: store.ImportCounters{Received: 1, Inserted: 1, Warnings: 1},
+		Period: store.ImportPeriod{
+			Start: time.Date(2026, 11, 10, 0, 12, 0, 250_000_000, time.UTC),
+			End:   time.Date(2026, 11, 10, 17, 31, 0, 0, time.UTC),
+		},
+		Routes: 1,
 		Errors: []string{
 			`record 17 (HKQuantityTypeIdentifierHeartRate): unit "bpm" is not a unit of count/min`,
 			"record 18 (HKQuantityTypeIdentifierHeartRate): end before start",
@@ -353,6 +358,33 @@ func runImportsSaveProgress(t *testing.T, newStore NewStoreFunc) {
 
 		got := mustGetImport(ctx, t, imports, st.user.ID, created.ID)
 		require.Equal(t, store.ImportReport{Total: store.ImportCounters{Received: 1, NotFound: 1}}, got.Report)
+	})
+
+	// Given a period of times in another zone and with sub-millisecond digits, when SaveProgress
+	// runs, then the period comes back in UTC, truncated to the millisecond, and the routes with it.
+	t.Run("SaveProgressStoresThePeriodInUTCAndTheRoutes", func(t *testing.T) {
+		t.Parallel()
+
+		st := newImportsTest(t, newStore)
+		ctx := t.Context()
+		imports := st.store.Imports()
+
+		created := mustCreateImport(ctx, t, imports, xmlUpload(st.user.ID))
+		mustSetImportStatus(ctx, t, imports, st.user.ID, created.ID, store.ImportRunning)
+
+		require.NoError(t, imports.SaveProgress(ctx, st.user.ID, created.ID, store.ImportProgress{
+			Position: 42,
+			Report: store.ImportReport{
+				Total:  store.ImportCounters{Received: 2, Inserted: 2},
+				Period: store.ImportPeriod{Start: importsTime.Add(-time.Hour), End: importsTime},
+				Routes: 2,
+			},
+		}))
+
+		got := mustGetImport(ctx, t, imports, st.user.ID, created.ID)
+		require.Equal(t, store.ImportPeriod{Start: importsUTC.Add(-time.Hour), End: importsUTC}, got.Report.Period)
+		require.Equal(t, int64(2), got.Report.Routes)
+		require.Equal(t, []store.Import{got}, mustListAllImports(ctx, t, imports, st.user.ID, 10), "List returns them")
 	})
 
 	// Given 101 error messages, when SaveProgress runs, then the first 100 are kept and the 101st
