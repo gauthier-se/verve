@@ -29,6 +29,10 @@ import (
 	"github.com/gauthier-se/verve/internal/webui"
 )
 
+// startupTimeout bounds the wait for a server to start, migrate and be ready. It only catches a server
+// that never starts: a loaded CI run with the race detector and coverage takes seconds.
+const startupTimeout = 30 * time.Second
+
 var loggedAddr = regexp.MustCompile(`addr=(127\.0\.0\.1:\d+)`)
 
 // testConfig returns the default configuration with dataDir and a random local port.
@@ -49,7 +53,7 @@ func startRun(t *testing.T, cfg config.Config) (string, *syncBuffer, func()) {
 
 	require.Eventually(t, func() bool {
 		return strings.Contains(logs.String(), `msg="server ready"`)
-	}, 5*time.Second, 10*time.Millisecond, "Run must log that the server is ready")
+	}, startupTimeout, 10*time.Millisecond, "Run must log that the server is ready")
 
 	return addr, logs, stop
 }
@@ -90,7 +94,7 @@ func runUntilListening(t *testing.T, cfg config.Config, logger *slog.Logger, std
 		addr = m[1]
 
 		return true
-	}, 5*time.Second, 10*time.Millisecond, "Run must log the bound address")
+	}, startupTimeout, 10*time.Millisecond, "Run must log the bound address")
 
 	stop := func() {
 		t.Helper()
@@ -341,7 +345,7 @@ func TestRun_StartsWorkerAfterMigrationsAndStopsItBeforeTheDatabaseCloses(t *tes
 
 	select {
 	case <-migrating:
-	case <-time.After(5 * time.Second):
+	case <-time.After(startupTimeout):
 		t.Fatal("Run did not start migrating")
 	}
 
@@ -351,7 +355,7 @@ func TestRun_StartsWorkerAfterMigrationsAndStopsItBeforeTheDatabaseCloses(t *tes
 
 	require.Eventually(t, func() bool {
 		return strings.Contains(logs.String(), `msg="worker started"`)
-	}, 5*time.Second, 10*time.Millisecond, "the worker must start once the migrations complete")
+	}, startupTimeout, 10*time.Millisecond, "the worker must start once the migrations complete")
 
 	stop()
 
@@ -915,7 +919,7 @@ func TestRun_BacksUpBeforeMigratingWhileStarting(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		return strings.Contains(logs.String(), `msg="server ready"`)
-	}, 5*time.Second, 10*time.Millisecond, "Run must be ready once the backup and the migrations complete")
+	}, startupTimeout, 10*time.Millisecond, "Run must be ready once the backup and the migrations complete")
 
 	stop()
 
@@ -992,7 +996,7 @@ func TestRun_GatesApplicationRoutesWhileMigrating(t *testing.T) {
 
 	select {
 	case <-migrating:
-	case <-time.After(5 * time.Second):
+	case <-time.After(startupTimeout):
 		t.Fatal("Run did not start migrating")
 	}
 
@@ -1015,7 +1019,7 @@ func TestRun_GatesApplicationRoutesWhileMigrating(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		return fetch(t, base+"/readyz").status == http.StatusOK
-	}, 5*time.Second, 10*time.Millisecond, "the server must be ready once the migrations complete")
+	}, startupTimeout, 10*time.Millisecond, "the server must be ready once the migrations complete")
 
 	res = fetch(t, base+"/readyz")
 	require.JSONEq(t, `{"status":"ready","version":"`+wantVersion+`"}`, res.body)

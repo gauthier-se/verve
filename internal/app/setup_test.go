@@ -41,7 +41,7 @@ func startServe(t *testing.T, cfg config.Config) (string, *syncBuffer, func()) {
 
 	require.Eventually(t, func() bool {
 		return strings.Contains(trace.String(), `msg="server ready"`)
-	}, 5*time.Second, 10*time.Millisecond, "Run must log that the server is ready")
+	}, startupTimeout, 10*time.Millisecond, "Run must log that the server is ready")
 
 	return addr, &stderr, stop
 }
