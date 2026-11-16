@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/gauthier-se/verve/internal/clock"
 	"github.com/gauthier-se/verve/internal/config"
 	"github.com/gauthier-se/verve/internal/ingest"
+	"github.com/gauthier-se/verve/internal/ingest/applexml"
 	"github.com/gauthier-se/verve/internal/ingest/native"
 	"github.com/gauthier-se/verve/internal/jobs"
 	"github.com/gauthier-se/verve/internal/store"
@@ -308,4 +310,73 @@ func TestJobs_MergeSourcesMovesTheRecordsToTheTarget(t *testing.T) {
 	counts, err := jt.store.Sources().SampleCounts(ctx, alice.ID)
 	require.NoError(t, err)
 	require.Equal(t, map[int64]int64{target.ID: 1}, counts)
+}
+
+// Given a native push and then an XML upload of one user, then the server runs the import.xml job,
+// whose serial key is import:<user id>: it waits while the native import runs, and completes the
+// XML import once the native one ended.
+func TestJobs_ImportXMLWaitsForTheOtherImportsOfTheUser(t *testing.T) {
+	t.Parallel()
+
+	jt := newJobsTest(t)
+	ctx := t.Context()
+	alice := jt.mustCreateUser(t, "alice", store.UserActive)
+
+	enqueue := func(name, payload string, origin store.Origin, job func(importID int64) (store.NewJob, error)) (store.Import, store.Job) {
+		require.NoError(t, os.WriteFile(filepath.Join(jt.inboxDir, name), []byte(payload), 0o600))
+
+		imp, err := jt.store.Imports().Create(ctx, store.NewImport{UserID: alice.ID, Origin: origin, InboxFile: name})
+		require.NoError(t, err)
+
+		newJob, err := job(imp.ID)
+		require.NoError(t, err)
+
+		queued, err := jt.store.Jobs().Enqueue(ctx, newJob)
+		require.NoError(t, err)
+
+		return imp, queued
+	}
+
+	nativeImp, nativeJob := enqueue("2a7c4e9b1d3f5a8c0e2b4d6f8a1c3e5b",
+		`{"format":"verve.ingest.v1","client":{"name":"Verve for iOS","version":"1.0.0"}}`, store.OriginNative,
+		func(id int64) (store.NewJob, error) { return native.Job(alice.ID, id) })
+
+	xmlImp, xmlJob := enqueue("9d1b3f5a7c0e2a4c6e8b0d2f4a6c8e1b", `<?xml version="1.0" encoding="UTF-8"?>
+<HealthData locale="en_US">
+ <Record type="HKQuantityTypeIdentifierStepCount" sourceName="iPhone" unit="count" creationDate="2026-11-10 08:10:00 +0100" startDate="2026-11-10 08:00:00 +0100" endDate="2026-11-10 08:10:00 +0100" value="1240"/>
+</HealthData>
+`, store.OriginXML, func(id int64) (store.NewJob, error) { return applexml.Job(alice.ID, id, "") })
+
+	require.Equal(t, applexml.KindImport, xmlJob.Kind)
+	require.Equal(t, ingest.SerialKey(alice.ID), xmlJob.SerialKey)
+	require.Equal(t, "import:"+strconv.FormatInt(alice.ID, 10), xmlJob.SerialKey)
+
+	// The native import runs in another process, which holds the serial key.
+	claimed, _, err := jt.store.Jobs().Claim(ctx, time.Minute)
+	require.NoError(t, err)
+	require.Equal(t, nativeJob.ID, claimed.ID)
+
+	ran, err := jt.worker.Tick(ctx)
+	require.NoError(t, err)
+	require.False(t, ran, "the XML import waits for the native one")
+
+	// The process dies: the native job is claimed first once its lease expires.
+	jt.clock.Advance(time.Minute + time.Second)
+
+	for range 2 {
+		ran, err := jt.worker.Tick(ctx)
+		require.NoError(t, err)
+		require.True(t, ran)
+	}
+
+	for _, imp := range []store.Import{nativeImp, xmlImp} {
+		got, err := jt.store.Imports().Get(ctx, alice.ID, imp.ID)
+		require.NoError(t, err)
+		require.Equal(t, store.ImportCompleted, got.Status, "import %s", imp.Origin)
+	}
+
+	got, err := jt.store.Imports().Get(ctx, alice.ID, xmlImp.ID)
+	require.NoError(t, err)
+	require.Equal(t, store.ImportCounters{Received: 1, Inserted: 1}, got.Report.Total)
+	require.NoFileExists(t, filepath.Join(jt.inboxDir, xmlImp.InboxFile))
 }

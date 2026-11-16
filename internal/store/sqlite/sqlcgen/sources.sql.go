@@ -90,6 +90,24 @@ func (q *Queries) CreateSourceAlias(ctx context.Context, arg CreateSourceAliasPa
 	return err
 }
 
+const createSourceAliasWithoutModel = `-- name: CreateSourceAliasWithoutModel :exec
+INSERT INTO source_aliases (user_id, name, device_model, source_id, takes_model)
+VALUES (?1, ?2, '', ?3, 0)
+`
+
+type CreateSourceAliasWithoutModelParams struct {
+	UserID   int64
+	Name     string
+	SourceID int64
+}
+
+// The alias that an identity without model leaves behind once it takes a model: it matches the
+// records of its name without model, and takes no model.
+func (q *Queries) CreateSourceAliasWithoutModel(ctx context.Context, arg CreateSourceAliasWithoutModelParams) error {
+	_, err := q.db.ExecContext(ctx, createSourceAliasWithoutModel, arg.UserID, arg.Name, arg.SourceID)
+	return err
+}
+
 const deleteUserSource = `-- name: DeleteUserSource :exec
 DELETE
 FROM sources
@@ -176,7 +194,7 @@ func (q *Queries) GetUserSourceByIdentity(ctx context.Context, arg GetUserSource
 }
 
 const listUserSourceAliasesByName = `-- name: ListUserSourceAliasesByName :many
-SELECT user_id, name, device_model, source_id
+SELECT user_id, name, device_model, source_id, takes_model
 FROM source_aliases
 WHERE user_id = ? AND name = ?
 `
@@ -200,6 +218,7 @@ func (q *Queries) ListUserSourceAliasesByName(ctx context.Context, arg ListUserS
 			&i.Name,
 			&i.DeviceModel,
 			&i.SourceID,
+			&i.TakesModel,
 		); err != nil {
 			return nil, err
 		}

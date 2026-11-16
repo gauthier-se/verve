@@ -26,6 +26,22 @@ import (
 // import).
 var ErrMalformed = errors.New("malformed XML")
 
+// The causes of ErrMalformed, whose fixed messages, which never quote a value, are the sample error
+// messages of the import that they fail (FR-5 of XML import). Each one is an ErrMalformed for
+// errors.Is.
+var (
+	ErrTruncated     error = malformed("export.xml is truncated")
+	ErrNotWellFormed error = malformed("export.xml is not well-formed XML")
+	ErrCorruptedZip  error = malformed("the zip file is corrupted")
+)
+
+// malformed is a cause of ErrMalformed.
+type malformed string
+
+func (m malformed) Error() string { return string(m) }
+
+func (m malformed) Is(target error) bool { return target == ErrMalformed }
+
 // Records reads the records of the export.xml document of r, as a stream (FR-5 and FR-6 of XML
 // import), as a bare export.xml: a workout with a route has none, and carries a warning. The
 // position of a record is the byte offset of its start tag in the document. A record that the

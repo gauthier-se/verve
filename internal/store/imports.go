@@ -64,13 +64,25 @@ type ImportCounters struct {
 	NotFound    int64
 }
 
+// ImportPeriod is the time range of the records of an import that are not invalid: the first start
+// and the last end, in UTC with millisecond precision. Its zero value is the period of an import
+// without such a record.
+type ImportPeriod struct {
+	Start time.Time
+	End   time.Time
+}
+
 // ImportReport is the report of an import: its counters in total, per type key and for the
-// workouts, and its sample error messages, which name a record and a reason, never a value.
+// workouts, its period and routes, and its sample error messages, which name a record and a
+// reason, never a value.
 type ImportReport struct {
 	Total ImportCounters
 	// Types holds the counters of each type key, nil when there are none.
 	Types    map[string]ImportCounters
 	Workouts ImportCounters
+	Period   ImportPeriod
+	// Routes is the number of routes stored with a workout.
+	Routes int64
 	// Errors holds at most ImportErrorsLimit messages, nil when there are none.
 	Errors []string
 }
@@ -111,12 +123,32 @@ type Import struct {
 	Status    ImportStatus
 	Position  int64
 	Report    ImportReport
+	// ExportSize is the uncompressed size of the export.xml of an XML import, once its job opened
+	// the export, and 0 otherwise.
+	ExportSize int64
 	// CreatedAt is the time of Create.
 	CreatedAt time.Time
 	// StartedAt is the time the import first ran, or zero when it never did.
 	StartedAt time.Time
 	// FinishedAt is the time the import ended, or zero when it did not.
 	FinishedAt time.Time
+}
+
+// Progress returns the progress of an XML import, of origin xml or cli, from 0 to 1: its position
+// over the size of its export (FR-7 of XML import), at most 1, since the records of the other
+// entries of a zip come after export.xml, and 1 once it completed, the end tags after its last
+// record counting then. It returns false for an import of another origin and before its job opened
+// the export.
+func (i Import) Progress() (float64, bool) {
+	if (i.Origin != OriginXML && i.Origin != OriginCLI) || i.ExportSize == 0 {
+		return 0, false
+	}
+
+	if i.Status == ImportCompleted {
+		return 1, true
+	}
+
+	return min(float64(i.Position)/float64(i.ExportSize), 1), true
 }
 
 // Cursor returns the position of the import in the lists of ImportsRepository.List.
@@ -153,6 +185,10 @@ type ImportsRepository interface {
 	// removes it when client is empty: a push stores its client once its job reads the payload. It
 	// returns ErrNotFound for a missing import and ErrConflict for one that is not running.
 	SetClient(ctx context.Context, userID, id int64, client map[string]string) error
+	// SetExportSize stores size, the uncompressed size of the export.xml of the running import of id
+	// of userID, once its job opened the export. It returns ErrNotFound for a missing import,
+	// ErrConflict for one that is not running, and ErrInvalid for a size below 1.
+	SetExportSize(ctx context.Context, userID, id int64, size int64) error
 	// InboxFilesKept returns the inbox files that imports still need, whatever their user: those of the
 	// queued and running imports, and those of the imports that failed since failedSince, kept for a
 	// while for a retry or a diagnosis. A completed or cancelled import needs its file no more.

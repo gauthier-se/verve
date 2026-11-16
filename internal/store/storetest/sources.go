@@ -560,7 +560,8 @@ func runSourcesAliases(t *testing.T, newStore NewStoreFunc) {
 
 	// Given an alias without model, when a record of its name with a model is resolved, then it
 	// returns the source of the alias, whose model does not change, and the alias takes the model:
-	// a record of another model then creates a source.
+	// a record of another model then creates a source, and a record without model still lands in
+	// the source of the alias.
 	t.Run("ResolveMatchesAnAliasWithoutModelWhichTakesTheModel", func(t *testing.T) {
 		t.Parallel()
 
@@ -577,6 +578,10 @@ func runSourcesAliases(t *testing.T, newStore NewStoreFunc) {
 		other := mustResolve(ctx, t, s.Sources(), user.ID, sourceInfo("Ancienne montre", "iPhone"), store.SourcePhone, sourcesTime)
 		require.NotEqual(t, target.ID, other.ID)
 		require.Equal(t, sourceIdentity("Ancienne montre", "iPhone"), sourceIdentity(other.Name, other.DeviceModel))
+
+		withoutModel := mustResolve(ctx, t, s.Sources(), user.ID, sourceInfo("Ancienne montre", ""), store.SourceWatch, sourcesTime)
+		require.Equal(t, target.ID, withoutModel.ID)
+		require.Len(t, mustListSources(ctx, t, s.Sources(), user.ID), 2, "a record without model creates no source")
 	})
 
 	// Given an alias with a model, when a record of its name without model is resolved, then it
@@ -761,6 +766,16 @@ func runSourcesIdentity(t *testing.T, newStore NewStoreFunc) {
 			},
 			want:       []int{0, 0, 1},
 			identities: []store.SourceIdentity{sourceIdentity("Camille", "Watch"), sourceIdentity("Camille", "iPhone")},
+		},
+		{
+			// So that a record keeps its source whatever the order of the records of an import.
+			name: "RecordWithoutModelMatchesTheSourceWithoutModelThatTookAModel",
+			records: []store.SourceInfo{
+				sourceInfo("Camille", ""), sourceInfo("Camille", "Watch"), sourceInfo("Camille", "iPhone"),
+				sourceInfo("Camille", ""), sourceInfo("Camille", "iPad"),
+			},
+			want:       []int{0, 0, 1, 0, 2},
+			identities: []store.SourceIdentity{sourceIdentity("Camille", "Watch"), sourceIdentity("Camille", "iPhone"), sourceIdentity("Camille", "iPad")},
 		},
 		{
 			name:       "RecordWithoutModelMatchesTheOnlySourceOfItsName",

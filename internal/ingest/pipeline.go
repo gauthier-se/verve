@@ -384,6 +384,8 @@ func (b *batchRun) filter(ctx context.Context, it *item, sources map[store.Sourc
 		return false, nil
 	}
 
+	b.widenPeriod(it.times)
+
 	candidate := it.identify(sources[it.source()].ID)
 
 	blocked, err := b.p.cfg.BlockRules.Blocks(ctx, b.tx, b.imp.UserID, candidate)
@@ -408,6 +410,19 @@ func (b *batchRun) filter(ctx context.Context, it *item, sources map[store.Sourc
 	}
 
 	return true, nil
+}
+
+// widenPeriod widens the period of the report to the times of a record that is not invalid.
+func (b *batchRun) widenPeriod(times Times) {
+	period := &b.report.Period
+
+	if period.Start.IsZero() || times.Start.Before(period.Start) {
+		period.Start = times.Start
+	}
+
+	if period.End.IsZero() || times.End.After(period.End) {
+		period.End = times.End
+	}
 }
 
 // identify sets the source of the record of it and its natural key (FR-2 stage 6), and returns it
@@ -575,6 +590,8 @@ func (b *batchRun) storeWorkout(ctx context.Context, it *item) error {
 	if err := b.tx.Workouts().SetRoute(ctx, b.imp.UserID, upsert.ID, *it.route); err != nil {
 		return fmt.Errorf("set route of workout %d: %w", upsert.ID, err)
 	}
+
+	b.report.Routes++
 
 	return nil
 }

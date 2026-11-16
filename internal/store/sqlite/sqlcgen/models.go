@@ -88,6 +88,10 @@ type Import struct {
 	StartedAt    sql.NullInt64
 	FinishedAt   sql.NullInt64
 	InboxFile    sql.NullString
+	PeriodStart  sql.NullInt64
+	PeriodEnd    sql.NullInt64
+	Routes       int64
+	ExportSize   sql.NullInt64
 }
 
 type InstanceSetting struct {
@@ -208,6 +212,7 @@ type SourceAlias struct {
 	Name        string
 	DeviceModel string
 	SourceID    int64
+	TakesModel  int64
 }
 
 type SourcePriority struct {

@@ -358,6 +358,10 @@ export type Import = {
      */
     origin: 'xml' | 'hae' | 'native' | 'cli';
     /**
+     * The progress of an XML import, from 0 to 1: its position over the uncompressed size of its export.xml. Left out for other origins and until its job opened the export.
+     */
+    progress?: number;
+    /**
      * What happened to the records of the import so far.
      */
     report: ImportReport;
@@ -422,11 +426,30 @@ export type ImportCounters = {
     warnings: number;
 };
 
+export type ImportPeriod = {
+    /**
+     * The last end of the records.
+     */
+    end: string;
+    /**
+     * The first start of the records.
+     */
+    start: string;
+};
+
 export type ImportReport = {
     /**
      * Up to 100 sample error messages, which name the position, the type and the reason of a record.
      */
     errors: Array<string>;
+    /**
+     * The first start and the last end of the records read that are not invalid, left out when there is none.
+     */
+    period?: ImportPeriod;
+    /**
+     * The number of routes stored with a workout, left out at zero.
+     */
+    routes?: number;
     /**
      * Every counter, for every record.
      */
@@ -467,7 +490,11 @@ export type ImportSummary = {
      */
     origin: 'xml' | 'hae' | 'native' | 'cli';
     /**
-     * The total counters of the import so far.
+     * The progress of an XML import, from 0 to 1, left out for other origins and until its job opened the export.
+     */
+    progress?: number;
+    /**
+     * The total counters, the period and the routes of the import so far.
      */
     report: ImportSummaryReport;
     /**
@@ -485,6 +512,14 @@ export type ImportSummary = {
 };
 
 export type ImportSummaryReport = {
+    /**
+     * The first start and the last end of the records read that are not invalid, left out when there is none.
+     */
+    period?: ImportPeriod;
+    /**
+     * The number of routes stored with a workout, left out at zero.
+     */
+    routes?: number;
     /**
      * Every counter, for every record.
      */

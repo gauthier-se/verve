@@ -155,7 +155,7 @@ func importIDs(imports ...store.Import) []int64 {
 }
 
 // fullReport returns a report with every counter set, each to a distinct value, in total, for two
-// type keys and for the workouts, and two error messages.
+// type keys and for the workouts, a period, routes and two error messages.
 func fullReport() store.ImportReport {
 	return store.ImportReport{
 		Total: store.ImportCounters{
@@ -167,6 +167,11 @@ func fullReport() store.ImportReport {
 			"HKDataTypeIdentifierElectrocardiogram": {Received: 1, Unsupported: 1},
 		},
 		Workouts: store.ImportCounters{Received: 1, Inserted: 1, Warnings: 1},
+		Period: store.ImportPeriod{
+			Start: time.Date(2026, 11, 10, 0, 12, 0, 250_000_000, time.UTC),
+			End:   time.Date(2026, 11, 10, 17, 31, 0, 0, time.UTC),
+		},
+		Routes: 1,
 		Errors: []string{
 			`record 17 (HKQuantityTypeIdentifierHeartRate): unit "bpm" is not a unit of count/min`,
 			"record 18 (HKQuantityTypeIdentifierHeartRate): end before start",
@@ -214,6 +219,7 @@ func RunImports(t *testing.T, newStore NewStoreFunc) {
 	runImportsSaveProgress(t, newStore)
 	runImportsSetStatus(t, newStore)
 	runImportsSetClient(t, newStore)
+	runImportsSetExportSize(t, newStore)
 	runImportsInboxFiles(t, newStore)
 	runImportsList(t, newStore)
 	runImportsPurge(t, newStore)
@@ -353,6 +359,33 @@ func runImportsSaveProgress(t *testing.T, newStore NewStoreFunc) {
 
 		got := mustGetImport(ctx, t, imports, st.user.ID, created.ID)
 		require.Equal(t, store.ImportReport{Total: store.ImportCounters{Received: 1, NotFound: 1}}, got.Report)
+	})
+
+	// Given a period of times in another zone and with sub-millisecond digits, when SaveProgress
+	// runs, then the period comes back in UTC, truncated to the millisecond, and the routes with it.
+	t.Run("SaveProgressStoresThePeriodInUTCAndTheRoutes", func(t *testing.T) {
+		t.Parallel()
+
+		st := newImportsTest(t, newStore)
+		ctx := t.Context()
+		imports := st.store.Imports()
+
+		created := mustCreateImport(ctx, t, imports, xmlUpload(st.user.ID))
+		mustSetImportStatus(ctx, t, imports, st.user.ID, created.ID, store.ImportRunning)
+
+		require.NoError(t, imports.SaveProgress(ctx, st.user.ID, created.ID, store.ImportProgress{
+			Position: 42,
+			Report: store.ImportReport{
+				Total:  store.ImportCounters{Received: 2, Inserted: 2},
+				Period: store.ImportPeriod{Start: importsTime.Add(-time.Hour), End: importsTime},
+				Routes: 2,
+			},
+		}))
+
+		got := mustGetImport(ctx, t, imports, st.user.ID, created.ID)
+		require.Equal(t, store.ImportPeriod{Start: importsUTC.Add(-time.Hour), End: importsUTC}, got.Report.Period)
+		require.Equal(t, int64(2), got.Report.Routes)
+		require.Equal(t, []store.Import{got}, mustListAllImports(ctx, t, imports, st.user.ID, 10), "List returns them")
 	})
 
 	// Given 101 error messages, when SaveProgress runs, then the first 100 are kept and the 101st
@@ -682,6 +715,76 @@ func runImportsSetClient(t *testing.T, newStore NewStoreFunc) {
 		err = imports.SetClient(ctx, st.other.ID, foreign.ID+1, map[string]string{"name": "Verve for iOS"})
 		require.ErrorIs(t, err, store.ErrNotFound)
 
+		require.Equal(t, foreign, mustGetImport(ctx, t, imports, st.other.ID, foreign.ID))
+	})
+}
+
+func runImportsSetExportSize(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+
+	// Given a running XML import, when SetExportSize runs, then the size of its export is stored,
+	// its other fields are kept, and Get and List return it. A new import has none.
+	t.Run("SetExportSizeStoresTheSizeOfTheExportOfARunningImport", func(t *testing.T) {
+		t.Parallel()
+
+		st := newImportsTest(t, newStore)
+		ctx := t.Context()
+		imports := st.store.Imports()
+
+		created := mustCreateImport(ctx, t, imports, xmlUpload(st.user.ID))
+		require.Zero(t, created.ExportSize)
+
+		running := mustSetImportStatus(ctx, t, imports, st.user.ID, created.ID, store.ImportRunning)
+		require.NoError(t, imports.SetExportSize(ctx, st.user.ID, created.ID, 6_442_450_944))
+
+		want := running
+		want.ExportSize = 6_442_450_944
+		require.Equal(t, want, mustGetImport(ctx, t, imports, st.user.ID, created.ID))
+		require.Equal(t, []store.Import{want}, mustListAllImports(ctx, t, imports, st.user.ID, 10))
+	})
+
+	// Given a queued or a finished import, when SetExportSize runs, then it answers ErrConflict, and
+	// given a size below 1, ErrInvalid. It stores nothing.
+	t.Run("SetExportSizeOfAnImportThatIsNotRunningOrOfNoSizeIsRefused", func(t *testing.T) {
+		t.Parallel()
+
+		st := newImportsTest(t, newStore)
+		ctx := t.Context()
+		imports := st.store.Imports()
+
+		queued := mustCreateImport(ctx, t, imports, xmlUpload(st.user.ID))
+		failed := mustCreateFinished(ctx, t, imports, xmlUpload(st.user.ID), store.ImportFailed)
+
+		for _, imp := range []store.Import{queued, failed} {
+			err := imports.SetExportSize(ctx, st.user.ID, imp.ID, 1000)
+			require.ErrorIs(t, err, store.ErrConflict, "import %s", imp.Status)
+			require.Equal(t, imp, mustGetImport(ctx, t, imports, st.user.ID, imp.ID))
+		}
+
+		running := mustCreateImport(ctx, t, imports, xmlUpload(st.user.ID))
+		running = mustSetImportStatus(ctx, t, imports, st.user.ID, running.ID, store.ImportRunning)
+
+		for _, size := range []int64{0, -1} {
+			require.ErrorIs(t, imports.SetExportSize(ctx, st.user.ID, running.ID, size), store.ErrInvalid, "size %d", size)
+		}
+
+		require.Equal(t, running, mustGetImport(ctx, t, imports, st.user.ID, running.ID))
+	})
+
+	// Given an import of another user, or an unknown id, when SetExportSize runs, then it answers
+	// ErrNotFound.
+	t.Run("SetExportSizeOfAnImportOfAnotherUserReturnsErrNotFound", func(t *testing.T) {
+		t.Parallel()
+
+		st := newImportsTest(t, newStore)
+		ctx := t.Context()
+		imports := st.store.Imports()
+
+		foreign := mustCreateImport(ctx, t, imports, xmlUpload(st.other.ID))
+		foreign = mustSetImportStatus(ctx, t, imports, st.other.ID, foreign.ID, store.ImportRunning)
+
+		require.ErrorIs(t, imports.SetExportSize(ctx, st.user.ID, foreign.ID, 1000), store.ErrNotFound)
+		require.ErrorIs(t, imports.SetExportSize(ctx, st.other.ID, foreign.ID+1, 1000), store.ErrNotFound)
 		require.Equal(t, foreign, mustGetImport(ctx, t, imports, st.other.ID, foreign.ID))
 	})
 }

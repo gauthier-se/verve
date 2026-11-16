@@ -15,7 +15,7 @@ const createImport = `-- name: CreateImport :one
 INSERT INTO imports (user_id, origin, token_id, client, inbox_file, status, position, counters, type_counters, errors,
                      created_at)
 VALUES (?, ?, ?, ?, ?, 'queued', 0, '{}', '{}', '[]', ?)
-RETURNING id, user_id, origin, token_id, client, status, position, counters, type_counters, errors, created_at, started_at, finished_at, inbox_file
+RETURNING id, user_id, origin, token_id, client, status, position, counters, type_counters, errors, created_at, started_at, finished_at, inbox_file, period_start, period_end, routes, export_size
 `
 
 type CreateImportParams struct {
@@ -52,6 +52,10 @@ func (q *Queries) CreateImport(ctx context.Context, arg CreateImportParams) (Imp
 		&i.StartedAt,
 		&i.FinishedAt,
 		&i.InboxFile,
+		&i.PeriodStart,
+		&i.PeriodEnd,
+		&i.Routes,
+		&i.ExportSize,
 	)
 	return i, err
 }
@@ -85,7 +89,7 @@ SET status      = ?1,
 WHERE user_id = ?3
   AND id = ?4
   AND status IN ('queued', 'running')
-RETURNING id, user_id, origin, token_id, client, status, position, counters, type_counters, errors, created_at, started_at, finished_at, inbox_file
+RETURNING id, user_id, origin, token_id, client, status, position, counters, type_counters, errors, created_at, started_at, finished_at, inbox_file, period_start, period_end, routes, export_size
 `
 
 type FinishUserImportParams struct {
@@ -118,12 +122,16 @@ func (q *Queries) FinishUserImport(ctx context.Context, arg FinishUserImportPara
 		&i.StartedAt,
 		&i.FinishedAt,
 		&i.InboxFile,
+		&i.PeriodStart,
+		&i.PeriodEnd,
+		&i.Routes,
+		&i.ExportSize,
 	)
 	return i, err
 }
 
 const getUserImport = `-- name: GetUserImport :one
-SELECT id, user_id, origin, token_id, client, status, position, counters, type_counters, errors, created_at, started_at, finished_at, inbox_file
+SELECT id, user_id, origin, token_id, client, status, position, counters, type_counters, errors, created_at, started_at, finished_at, inbox_file, period_start, period_end, routes, export_size
 FROM imports
 WHERE user_id = ? AND id = ?
 `
@@ -151,6 +159,10 @@ func (q *Queries) GetUserImport(ctx context.Context, arg GetUserImportParams) (I
 		&i.StartedAt,
 		&i.FinishedAt,
 		&i.InboxFile,
+		&i.PeriodStart,
+		&i.PeriodEnd,
+		&i.Routes,
+		&i.ExportSize,
 	)
 	return i, err
 }
@@ -234,7 +246,7 @@ func (q *Queries) LastCompletedUsersImports(ctx context.Context, userIds []int64
 }
 
 const listUserImports = `-- name: ListUserImports :many
-SELECT id, user_id, origin, token_id, client, status, position, counters, type_counters, errors, created_at, started_at, finished_at, inbox_file
+SELECT id, user_id, origin, token_id, client, status, position, counters, type_counters, errors, created_at, started_at, finished_at, inbox_file, period_start, period_end, routes, export_size
 FROM imports
 WHERE user_id = ?1
   AND (status = ?2 OR ?2 IS NULL)
@@ -285,6 +297,10 @@ func (q *Queries) ListUserImports(ctx context.Context, arg ListUserImportsParams
 			&i.StartedAt,
 			&i.FinishedAt,
 			&i.InboxFile,
+			&i.PeriodStart,
+			&i.PeriodEnd,
+			&i.Routes,
+			&i.ExportSize,
 		); err != nil {
 			return nil, err
 		}
@@ -328,9 +344,12 @@ UPDATE imports
 SET position      = ?1,
     counters      = ?2,
     type_counters = ?3,
-    errors        = ?4
-WHERE user_id = ?5
-  AND id = ?6
+    errors        = ?4,
+    period_start  = ?5,
+    period_end    = ?6,
+    routes        = ?7
+WHERE user_id = ?8
+  AND id = ?9
   AND status = 'running'
 `
 
@@ -339,6 +358,9 @@ type SaveUserImportProgressParams struct {
 	Counters     string
 	TypeCounters string
 	Errors       string
+	PeriodStart  sql.NullInt64
+	PeriodEnd    sql.NullInt64
+	Routes       int64
 	UserID       int64
 	ID           int64
 }
@@ -349,6 +371,9 @@ func (q *Queries) SaveUserImportProgress(ctx context.Context, arg SaveUserImport
 		arg.Counters,
 		arg.TypeCounters,
 		arg.Errors,
+		arg.PeriodStart,
+		arg.PeriodEnd,
+		arg.Routes,
 		arg.UserID,
 		arg.ID,
 	)
@@ -380,6 +405,28 @@ func (q *Queries) SetUserImportClient(ctx context.Context, arg SetUserImportClie
 	return result.RowsAffected()
 }
 
+const setUserImportExportSize = `-- name: SetUserImportExportSize :execrows
+UPDATE imports
+SET export_size = ?1
+WHERE user_id = ?2
+  AND id = ?3
+  AND status = 'running'
+`
+
+type SetUserImportExportSizeParams struct {
+	ExportSize sql.NullInt64
+	UserID     int64
+	ID         int64
+}
+
+func (q *Queries) SetUserImportExportSize(ctx context.Context, arg SetUserImportExportSizeParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setUserImportExportSize, arg.ExportSize, arg.UserID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const startUserImport = `-- name: StartUserImport :one
 UPDATE imports
 SET status     = 'running',
@@ -387,7 +434,7 @@ SET status     = 'running',
 WHERE user_id = ?2
   AND id = ?3
   AND status IN ('queued', 'running')
-RETURNING id, user_id, origin, token_id, client, status, position, counters, type_counters, errors, created_at, started_at, finished_at, inbox_file
+RETURNING id, user_id, origin, token_id, client, status, position, counters, type_counters, errors, created_at, started_at, finished_at, inbox_file, period_start, period_end, routes, export_size
 `
 
 type StartUserImportParams struct {
@@ -415,6 +462,10 @@ func (q *Queries) StartUserImport(ctx context.Context, arg StartUserImportParams
 		&i.StartedAt,
 		&i.FinishedAt,
 		&i.InboxFile,
+		&i.PeriodStart,
+		&i.PeriodEnd,
+		&i.Routes,
+		&i.ExportSize,
 	)
 	return i, err
 }

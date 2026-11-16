@@ -169,6 +169,9 @@ func (r imports) SaveProgress(ctx context.Context, userID, id int64, progress st
 			Counters:     columns.counters,
 			TypeCounters: columns.typeCounters,
 			Errors:       columns.errors,
+			PeriodStart:  columns.periodStart,
+			PeriodEnd:    columns.periodEnd,
+			Routes:       progress.Report.Routes,
 			UserID:       userID,
 			ID:           id,
 		})
@@ -209,6 +212,34 @@ func (r imports) SetClient(ctx context.Context, userID, id int64, client map[str
 	})
 	if err != nil {
 		return fmt.Errorf("set client of import %d of user %d: %w", id, userID, err)
+	}
+
+	return nil
+}
+
+func (r imports) SetExportSize(ctx context.Context, userID, id int64, size int64) error {
+	if size < 1 {
+		return fmt.Errorf("set export size of import %d of user %d: size %d: %w", id, userID, size, store.ErrInvalid)
+	}
+
+	err := r.q.write(ctx, func(q *sqlcgen.Queries) error {
+		set, err := q.SetUserImportExportSize(ctx, sqlcgen.SetUserImportExportSizeParams{
+			ExportSize: sql.NullInt64{Int64: size, Valid: true},
+			UserID:     userID,
+			ID:         id,
+		})
+		if err != nil {
+			return err
+		}
+
+		if set == 0 {
+			return missingOrConflict(ctx, q, userID, id)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("set export size of import %d of user %d: %w", id, userID, err)
 	}
 
 	return nil
@@ -305,11 +336,14 @@ type typeCounters struct {
 	Workouts importCounters            `json:"workouts,omitzero"`
 }
 
-// reportColumns are the JSON columns that hold the report of an import.
+// reportColumns are the JSON columns that hold the report of an import, and the columns of its
+// period, NULL for none.
 type reportColumns struct {
 	counters     string
 	typeCounters string
 	errors       string
+	periodStart  sql.NullInt64
+	periodEnd    sql.NullInt64
 }
 
 // encodeReport returns the columns of report, keeping its first store.ImportErrorsLimit error
@@ -343,11 +377,16 @@ func encodeReport(report store.ImportReport) (reportColumns, error) {
 		return reportColumns{}, fmt.Errorf("encode errors: %w", err)
 	}
 
-	return reportColumns{counters: string(counters), typeCounters: string(types), errors: string(errs)}, nil
+	columns := reportColumns{counters: string(counters), typeCounters: string(types), errors: string(errs)}
+	if report.Period != (store.ImportPeriod{}) {
+		columns.periodStart, columns.periodEnd = nullMillis(report.Period.Start), nullMillis(report.Period.End)
+	}
+
+	return columns, nil
 }
 
-// decodeReport returns the report of the counters, type_counters and errors columns of row, its
-// empty types and errors nil.
+// decodeReport returns the report of the counters, type_counters, errors, period and routes columns
+// of row, its empty types and errors nil.
 func decodeReport(row sqlcgen.Import) (store.ImportReport, error) {
 	var (
 		total    importCounters
@@ -367,7 +406,12 @@ func decodeReport(row sqlcgen.Import) (store.ImportReport, error) {
 		return store.ImportReport{}, fmt.Errorf("decode errors: %w", err)
 	}
 
-	report := store.ImportReport{Total: store.ImportCounters(total), Workouts: store.ImportCounters(perType.Workouts)}
+	report := store.ImportReport{
+		Total:    store.ImportCounters(total),
+		Workouts: store.ImportCounters(perType.Workouts),
+		Period:   store.ImportPeriod{Start: fromNullMillis(row.PeriodStart), End: fromNullMillis(row.PeriodEnd)},
+		Routes:   row.Routes,
+	}
 
 	if len(perType.Types) > 0 {
 		report.Types = make(map[string]store.ImportCounters, len(perType.Types))
@@ -432,6 +476,7 @@ func importOf(row sqlcgen.Import) (store.Import, error) {
 		Status:     store.ImportStatus(row.Status),
 		Position:   row.Position,
 		Report:     report,
+		ExportSize: row.ExportSize.Int64,
 		CreatedAt:  fromMillis(row.CreatedAt),
 		StartedAt:  fromNullMillis(row.StartedAt),
 		FinishedAt: fromNullMillis(row.FinishedAt),
