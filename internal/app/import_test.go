@@ -6,8 +6,10 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"iter"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/gauthier-se/verve/internal/auth"
@@ -301,11 +304,13 @@ func TestImportXML_NotAnExport_FailsWithItsSampleErrorMessage(t *testing.T) {
 }
 
 // pausingPipeline is a pipeline that, once it has read after records, closes paused and waits for
-// the context of the run to be done, as a command that is stopped or killed while it imports.
+// release to be closed or the context of the run to be done, as a long import, or a command that
+// is stopped or killed while it imports. A nil release waits for the context only.
 type pausingPipeline struct {
 	pipeline ingest.ImportPipeline
 	after    int
 	paused   chan struct{}
+	release  chan struct{}
 }
 
 func (p *pausingPipeline) Run(ctx context.Context, userID, importID int64, records iter.Seq2[ingest.Record, error]) error {
@@ -317,7 +322,11 @@ func (p *pausingPipeline) Run(ctx context.Context, userID, importID int64, recor
 
 			if read == p.after {
 				close(p.paused)
-				<-ctx.Done()
+
+				select {
+				case <-p.release:
+				case <-ctx.Done():
+				}
 			}
 
 			if !yield(r, err) {
@@ -328,14 +337,14 @@ func (p *pausingPipeline) Run(ctx context.Context, userID, importID int64, recor
 }
 
 // pauseAfter returns the options of an import whose batches hold 100 records and that pauses once
-// it has read 150, closing paused, so that one batch is committed. Progress is reported every
-// millisecond.
-func pauseAfter(paused chan struct{}) importOptions {
+// it has read 150, closing paused, so that one batch is committed, until release is closed or its
+// context is done. Progress is reported every millisecond.
+func pauseAfter(paused, release chan struct{}) importOptions {
 	return importOptions{
 		progressInterval: time.Millisecond,
 		batchSize:        100,
 		wrapPipeline: func(p ingest.ImportPipeline) ingest.ImportPipeline {
-			return &pausingPipeline{pipeline: p, after: 150, paused: paused}
+			return &pausingPipeline{pipeline: p, after: 150, paused: paused, release: release}
 		},
 	}
 }
@@ -480,7 +489,7 @@ func TestImportXML_Interrupted_EndsCancelled(t *testing.T) {
 
 			reported = append(reported, p)
 		},
-	}, pauseAfter(paused))
+	}, pauseAfter(paused, nil))
 
 	receive(t, paused, "the import did not start")
 	require.Eventually(t, func() bool {
@@ -536,7 +545,7 @@ func TestImportXMLHelperProcess(t *testing.T) {
 
 	_, err := importXML(context.Background(), testConfig(dataDir), XMLImport{
 		Login: "alice", Path: os.Getenv(envHelperPath), Waiting: func() {}, Progress: func(float64) {},
-	}, discardLogger(), pauseAfter(paused))
+	}, discardLogger(), pauseAfter(paused, nil))
 	t.Fatalf("the import returned instead of waiting to be killed: %v", err)
 }
 
@@ -619,4 +628,93 @@ func TestImportXML_Killed_TheServerResumesTheJob(t *testing.T) {
 	require.Equal(t, int64(2), completed[0].Claims)
 
 	require.Equal(t, before, checksum(t, path))
+}
+
+// Given the server running on the same data directory, then the command imports while the server
+// answers requests, and the series of the server show the imported steps once its worker
+// recomputed them.
+func TestImportXML_NextToTheServer_TheServerShowsTheImportedSteps(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	cfg := testConfig(t.TempDir())
+
+	_, err := Migrate(ctx, cfg, discardLogger())
+	require.NoError(t, err)
+
+	token, err := withSharedDB(ctx, cfg, func(s store.Store) (string, error) {
+		user, err := s.Users().Create(ctx, store.NewUser{Username: "alice", Role: store.RoleMember})
+		if err != nil {
+			return "", err
+		}
+
+		token, _, err := auth.NewTokens(clock.Real()).Create(ctx, s, auth.NewAPIToken{
+			UserID: user.ID, Name: "reader", Scopes: []store.TokenScope{store.ScopeRead},
+		})
+
+		return token, err
+	})
+	require.NoError(t, err)
+
+	// The server syncs the metric types before it is ready.
+	addr, _, stop := startRun(t, cfg)
+	defer stop()
+
+	// get fails through c, which may be the collector of EventuallyWithT.
+	get := func(c require.TestingT, path string, body any) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+addr+path, nil)
+		require.NoError(c, err)
+		req.Header.Set("Authorization", "Bearer "+token)
+
+		res, err := http.DefaultClient.Do(req)
+		require.NoError(c, err)
+
+		raw, err := io.ReadAll(res.Body)
+		require.NoError(c, err)
+		require.NoError(c, res.Body.Close())
+		require.Equal(c, http.StatusOK, res.StatusCode, string(raw))
+		require.NoError(c, json.Unmarshal(raw, body))
+	}
+
+	paused, release := make(chan struct{}), make(chan struct{})
+	done := importTest{cfg: cfg}.importInBackground(ctx, XMLImport{
+		Login: "alice", Path: writeFixture(t), Waiting: noWait(t), Progress: func(float64) {},
+	}, pauseAfter(paused, release))
+
+	receive(t, paused, "the import did not start")
+
+	var imports struct {
+		Items []struct {
+			Origin string `json:"origin"`
+			Status string `json:"status"`
+		} `json:"items"`
+	}
+
+	get(t, "/api/v1/imports", &imports)
+	require.Len(t, imports.Items, 1)
+	require.Equal(t, "cli", imports.Items[0].Origin)
+	require.Equal(t, "running", imports.Items[0].Status, "the server answers while the command imports")
+
+	close(release)
+
+	res := receive(t, done, "the import did not return")
+	require.NoError(t, res.err)
+	require.Equal(t, store.ImportCompleted, res.imp.Status)
+
+	var series struct {
+		Updating bool `json:"updating"`
+		Points   []struct {
+			Value float64 `json:"value"`
+		} `json:"points"`
+	}
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		get(c, "/api/v1/metrics/step_count/series?from=2025-12-29&to=2026-01-05&bucket=day&statistic=sum", &series)
+		require.False(c, series.Updating)
+		require.NotEmpty(c, series.Points)
+	}, 20*time.Second, 50*time.Millisecond, "the worker of the server must recompute the daily sums")
+
+	for _, point := range series.Points {
+		require.Positive(t, point.Value)
+	}
 }
