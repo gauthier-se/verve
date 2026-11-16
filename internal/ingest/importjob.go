@@ -97,13 +97,8 @@ func NewImportJob(kind string, userID int64, payload JobPayload) (store.NewJob, 
 func RegisterImport(registry *jobs.Registry, kind string, deps ImportJobDeps, open OpenRecords) {
 	run := importRun{deps: deps, open: open}
 
-	k := jobs.Register(registry, kind, jobs.KindOptions{}, func(ctx context.Context, job jobs.Job[JobPayload]) error {
-		return run.run(ctx, job)
-	})
-
-	jobs.OnEndedByClaim(registry, k, func(ctx context.Context, tx store.Repositories, job jobs.Job[JobPayload], status store.JobStatus) error {
-		return run.endedByClaim(ctx, tx, job, status)
-	})
+	k := jobs.Register(registry, kind, jobs.KindOptions{}, run.run)
+	jobs.OnEndedByClaim(registry, k, run.endedByClaim)
 }
 
 // importRun runs the import jobs of a kind.

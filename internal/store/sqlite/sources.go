@@ -400,7 +400,7 @@ func candidatesOf(ctx context.Context, q *sqlcgen.Queries, userID int64, name st
 // the device model model matches by the rule of FR-2, or false when the record makes a new source.
 func match(identities []candidate, model string) (candidate, bool) {
 	byModel := func(model string, takingModel bool) (candidate, bool) {
-		i := slices.IndexFunc(identities, func(id candidate) bool { return id.model == model && !(takingModel && id.keepsModel) })
+		i := slices.IndexFunc(identities, func(id candidate) bool { return id.model == model && (!takingModel || !id.keepsModel) })
 		if i < 0 {
 			return candidate{}, false
 		}
