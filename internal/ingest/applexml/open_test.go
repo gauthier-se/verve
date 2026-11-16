@@ -360,3 +360,38 @@ func TestOpen_ReadErrorIsNotMalformed(t *testing.T) {
 		})
 	}
 }
+
+// Given electrocardiograms/*.csv entries, then each yields an unsupported record
+// HKDataTypeIdentifierElectrocardiogram, at positions after the size of the export, in central
+// directory order. export_cda.xml is not read.
+func TestOpen_ElectrocardiogramsAreUnsupported(t *testing.T) {
+	t.Parallel()
+
+	doc := document(heartRate, steps)
+	cda := "apple_health_export/export_cda.xml"
+
+	data := zipOf(t,
+		entry{name: "apple_health_export/export.xml", body: doc},
+		entry{name: "apple_health_export/electrocardiograms/ecg_2025-12-30_1.csv", body: "Name,Alex\n"},
+		entry{name: cda, body: strings.Repeat("<ClinicalDocument/>", 100)},
+		entry{name: "apple_health_export/electrocardiograms/ecg_2025-12-30.csv", body: "Name,Alex\n"},
+		entry{name: "apple_health_export/electrocardiograms/notes.txt", body: "notes\n"},
+		entry{name: "apple_health_export/electrocardiograms/old/ecg_2024-01-01.csv", body: "Name,Alex\n"},
+		entry{name: "electrocardiograms/ecg_2025-12-30.csv", body: "Name,Alex\n"},
+	)
+	data = corrupt(data, dataOffset(t, data, cda)+10, 16)
+
+	e, err := open(t, data)
+	require.NoError(t, err)
+
+	records, err := recordsOf(t, e)
+	require.NoError(t, err, "export_cda.xml, whose entry is corrupted, is not read")
+
+	size := int64(len(doc))
+	ecg := &ingest.Unsupported{Identifier: "HKDataTypeIdentifierElectrocardiogram"}
+
+	require.Equal(t, append(readAll(t, doc),
+		ingest.Record{Position: size + 1, Unsupported: ecg},
+		ingest.Record{Position: size + 2, Unsupported: ecg},
+	), records)
+}
