@@ -524,3 +524,131 @@ func TestImports_CancelWithATokenAnswers401(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, store.ImportQueued, got.Status)
 }
+
+// importFields returns the fields of the import of id as GET /api/v1/imports/{id} answers it, and
+// as the list answers it.
+func (it importsTest) importFields(t *testing.T, id int64) (got, listed map[string]any) {
+	t.Helper()
+
+	rec := getWith(t, it.handler, importPath(id), it.aliceCookie)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+
+	rec = getWith(t, it.handler, importsPath, it.aliceCookie)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+	var page struct {
+		Items []map[string]any `json:"items"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &page))
+
+	for _, item := range page.Items {
+		if item["id"] == float64(id) {
+			return got, item
+		}
+	}
+
+	t.Fatalf("the list has no import %d", id)
+
+	return nil, nil
+}
+
+// Given a running XML import, then GET /api/v1/imports/{id} and the list answer its progress, its
+// position over the size of its export, from 0 to 1, once its job stored that size, and 1 once it
+// completed. An import of another origin has none.
+func TestImports_ProgressOfAnXMLImport(t *testing.T) {
+	t.Parallel()
+
+	it := newImportsTest(t)
+	ctx := t.Context()
+
+	start := func(origin store.Origin) store.Import {
+		imp, err := it.store.Imports().Create(ctx, store.NewImport{UserID: it.alice.ID, Origin: origin})
+		require.NoError(t, err)
+
+		return it.mustRun(t, it.alice, imp.ID)
+	}
+
+	opened := func(imp store.Import, position int64) {
+		require.NoError(t, it.store.Imports().SetExportSize(ctx, it.alice.ID, imp.ID, 1000))
+		require.NoError(t, it.store.Imports().SaveProgress(ctx, it.alice.ID, imp.ID, store.ImportProgress{Position: position}))
+	}
+
+	xml := start(store.OriginXML)
+
+	got, listed := it.importFields(t, xml.ID)
+	require.NotContains(t, got, "progress", "the job did not open the export yet")
+	require.NotContains(t, listed, "progress")
+
+	opened(xml, 250)
+
+	got, listed = it.importFields(t, xml.ID)
+	require.InDelta(t, 0.25, got["progress"], 1e-9)
+	require.InDelta(t, 0.25, listed["progress"], 1e-9)
+
+	cli := start(store.OriginCLI)
+	opened(cli, 1001)
+
+	got, _ = it.importFields(t, cli.ID)
+	require.InDelta(t, 1, got["progress"], 1e-9, "the electrocardiograms of a zip come after export.xml")
+
+	native := start(store.OriginNative)
+	opened(native, 250)
+
+	got, listed = it.importFields(t, native.ID)
+	require.NotContains(t, got, "progress", "an import of another origin has none")
+	require.NotContains(t, listed, "progress")
+
+	completed := start(store.OriginXML)
+	opened(completed, 990)
+	it.mustFinish(t, it.alice, completed.ID, store.ImportCompleted)
+
+	got, _ = it.importFields(t, completed.ID)
+	require.InDelta(t, 1, got["progress"], 1e-9, "the end tags after the last record count once completed")
+}
+
+// Given a report with a period and routes, then GET /api/v1/imports/{id} and the list answer them
+// next to the counters, as RFC 3339 instants in UTC, and leave them out when there are none.
+func TestImports_ReportHoldsThePeriodAndTheRoutes(t *testing.T) {
+	t.Parallel()
+
+	it := newImportsTest(t)
+	ctx := t.Context()
+
+	withPeriod, err := it.store.Imports().Create(ctx, store.NewImport{UserID: it.alice.ID, Origin: store.OriginXML})
+	require.NoError(t, err)
+	it.mustRun(t, it.alice, withPeriod.ID)
+
+	require.NoError(t, it.store.Imports().SaveProgress(ctx, it.alice.ID, withPeriod.ID, store.ImportProgress{
+		Position: 2,
+		Report: store.ImportReport{
+			Total: store.ImportCounters{Received: 2, Inserted: 2},
+			Period: store.ImportPeriod{
+				Start: time.Date(2025, 12, 29, 22, 52, 0, 0, time.UTC),
+				End:   time.Date(2026, 1, 4, 23, 0, 0, 0, time.UTC),
+			},
+			Routes: 2,
+		},
+	}))
+
+	got, listed := it.importFields(t, withPeriod.ID)
+
+	for name, fields := range map[string]map[string]any{"get": got, "list": listed} {
+		report, ok := fields["report"].(map[string]any)
+		require.True(t, ok, name)
+		require.Equal(t, map[string]any{"start": "2025-12-29T22:52:00Z", "end": "2026-01-04T23:00:00Z"}, report["period"], name)
+		require.InDelta(t, 2, report["routes"], 0, name)
+	}
+
+	empty, err := it.store.Imports().Create(ctx, store.NewImport{UserID: it.alice.ID, Origin: store.OriginXML})
+	require.NoError(t, err)
+
+	got, listed = it.importFields(t, empty.ID)
+
+	for name, fields := range map[string]map[string]any{"get": got, "list": listed} {
+		report, ok := fields["report"].(map[string]any)
+		require.True(t, ok, name)
+		require.NotContains(t, report, "period", name)
+		require.NotContains(t, report, "routes", name)
+	}
+}

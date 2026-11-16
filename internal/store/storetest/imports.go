@@ -219,6 +219,7 @@ func RunImports(t *testing.T, newStore NewStoreFunc) {
 	runImportsSaveProgress(t, newStore)
 	runImportsSetStatus(t, newStore)
 	runImportsSetClient(t, newStore)
+	runImportsSetExportSize(t, newStore)
 	runImportsInboxFiles(t, newStore)
 	runImportsList(t, newStore)
 	runImportsPurge(t, newStore)
@@ -714,6 +715,76 @@ func runImportsSetClient(t *testing.T, newStore NewStoreFunc) {
 		err = imports.SetClient(ctx, st.other.ID, foreign.ID+1, map[string]string{"name": "Verve for iOS"})
 		require.ErrorIs(t, err, store.ErrNotFound)
 
+		require.Equal(t, foreign, mustGetImport(ctx, t, imports, st.other.ID, foreign.ID))
+	})
+}
+
+func runImportsSetExportSize(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+
+	// Given a running XML import, when SetExportSize runs, then the size of its export is stored,
+	// its other fields are kept, and Get and List return it. A new import has none.
+	t.Run("SetExportSizeStoresTheSizeOfTheExportOfARunningImport", func(t *testing.T) {
+		t.Parallel()
+
+		st := newImportsTest(t, newStore)
+		ctx := t.Context()
+		imports := st.store.Imports()
+
+		created := mustCreateImport(ctx, t, imports, xmlUpload(st.user.ID))
+		require.Zero(t, created.ExportSize)
+
+		running := mustSetImportStatus(ctx, t, imports, st.user.ID, created.ID, store.ImportRunning)
+		require.NoError(t, imports.SetExportSize(ctx, st.user.ID, created.ID, 6_442_450_944))
+
+		want := running
+		want.ExportSize = 6_442_450_944
+		require.Equal(t, want, mustGetImport(ctx, t, imports, st.user.ID, created.ID))
+		require.Equal(t, []store.Import{want}, mustListAllImports(ctx, t, imports, st.user.ID, 10))
+	})
+
+	// Given a queued or a finished import, when SetExportSize runs, then it answers ErrConflict, and
+	// given a size below 1, ErrInvalid. It stores nothing.
+	t.Run("SetExportSizeOfAnImportThatIsNotRunningOrOfNoSizeIsRefused", func(t *testing.T) {
+		t.Parallel()
+
+		st := newImportsTest(t, newStore)
+		ctx := t.Context()
+		imports := st.store.Imports()
+
+		queued := mustCreateImport(ctx, t, imports, xmlUpload(st.user.ID))
+		failed := mustCreateFinished(ctx, t, imports, xmlUpload(st.user.ID), store.ImportFailed)
+
+		for _, imp := range []store.Import{queued, failed} {
+			err := imports.SetExportSize(ctx, st.user.ID, imp.ID, 1000)
+			require.ErrorIs(t, err, store.ErrConflict, "import %s", imp.Status)
+			require.Equal(t, imp, mustGetImport(ctx, t, imports, st.user.ID, imp.ID))
+		}
+
+		running := mustCreateImport(ctx, t, imports, xmlUpload(st.user.ID))
+		running = mustSetImportStatus(ctx, t, imports, st.user.ID, running.ID, store.ImportRunning)
+
+		for _, size := range []int64{0, -1} {
+			require.ErrorIs(t, imports.SetExportSize(ctx, st.user.ID, running.ID, size), store.ErrInvalid, "size %d", size)
+		}
+
+		require.Equal(t, running, mustGetImport(ctx, t, imports, st.user.ID, running.ID))
+	})
+
+	// Given an import of another user, or an unknown id, when SetExportSize runs, then it answers
+	// ErrNotFound.
+	t.Run("SetExportSizeOfAnImportOfAnotherUserReturnsErrNotFound", func(t *testing.T) {
+		t.Parallel()
+
+		st := newImportsTest(t, newStore)
+		ctx := t.Context()
+		imports := st.store.Imports()
+
+		foreign := mustCreateImport(ctx, t, imports, xmlUpload(st.other.ID))
+		foreign = mustSetImportStatus(ctx, t, imports, st.other.ID, foreign.ID, store.ImportRunning)
+
+		require.ErrorIs(t, imports.SetExportSize(ctx, st.user.ID, foreign.ID, 1000), store.ErrNotFound)
+		require.ErrorIs(t, imports.SetExportSize(ctx, st.other.ID, foreign.ID+1, 1000), store.ErrNotFound)
 		require.Equal(t, foreign, mustGetImport(ctx, t, imports, st.other.ID, foreign.ID))
 	})
 }

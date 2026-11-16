@@ -459,3 +459,34 @@ func TestXMLImportJob_FileThatFailsAsAWhole_FailsAtOnceAndKeepsTheCommittedBatch
 		})
 	}
 }
+
+// Given an export, a zip or a bare export.xml, when its job opens it, then the import stores the
+// uncompressed size of its export.xml, which its progress is computed against.
+func TestXMLImportJob_StoresTheSizeOfTheExportOnceOpened(t *testing.T) {
+	t.Parallel()
+
+	xml := fixtureXML(t)
+
+	for name, data := range map[string][]byte{"zip": fixtureZip(t), "bare export.xml": xml} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			e := newXMLJobEnv(t)
+			imp, _ := e.upload(t, data)
+			require.Zero(t, imp.ExportSize, "the size is unknown before the job opens the export")
+
+			stopped, stop := context.WithCancel(t.Context())
+			e.pipeline.stopOnce(150, stop)
+			e.tick(stopped, t)
+
+			got := e.importOf(t, imp.ID)
+			require.Equal(t, store.ImportRunning, got.Status)
+			require.Equal(t, int64(len(xml)), got.ExportSize)
+
+			progress, ok := got.Progress()
+			require.True(t, ok)
+			require.Greater(t, progress, 0.0)
+			require.Less(t, progress, 1.0)
+		})
+	}
+}
