@@ -659,25 +659,3 @@ func TestRecords_UnsupportedAndSkippedElements(t *testing.T) {
 	require.Equal(t, offset(t, doc, "<Record", 1), records[5].Position)
 	require.NotNil(t, records[5].Category)
 }
-
-// Given a Workout, then it and its children yield nothing until #267.
-func TestRecords_WorkoutsYieldNothingYet(t *testing.T) {
-	t.Parallel()
-
-	doc := document(
-		`<Workout workoutActivityType="HKWorkoutActivityTypeRunning" duration="30" durationUnit="min" sourceName="Apple Watch de Alex" startDate="2025-12-30 07:00:00 +0100" endDate="2025-12-30 07:30:00 +0100">`,
-		` <MetadataEntry key="HKIndoorWorkout" value="0"/>`,
-		` <WorkoutEvent type="HKWorkoutEventTypeSegment" date="2025-12-30 07:00:00 +0100" duration="10" durationUnit="min"/>`,
-		` <WorkoutStatistics type="HKQuantityTypeIdentifierActiveEnergyBurned" startDate="2025-12-30 07:00:00 +0100" endDate="2025-12-30 07:30:00 +0100" sum="312" unit="kcal"/>`,
-		` <Record type="HKQuantityTypeIdentifierRunningPower" sourceName="Apple Watch de Alex" unit="W" startDate="2025-12-30 07:00:00 +0100" endDate="2025-12-30 07:00:00 +0100" value="250"/>`,
-		` <WorkoutRoute sourceName="Apple Watch de Alex" startDate="2025-12-30 07:00:00 +0100" endDate="2025-12-30 07:30:00 +0100">`,
-		`  <FileReference path="/workout-routes/route_2025-12-30_7.00am.gpx"/>`,
-		` </WorkoutRoute>`,
-		`</Workout>`,
-		heartRate,
-	)
-
-	records := readAll(t, doc)
-	require.Len(t, records, 1)
-	require.Equal(t, "HKQuantityTypeIdentifierHeartRate", records[0].Quantity.Type)
-}
