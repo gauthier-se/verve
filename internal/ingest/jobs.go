@@ -20,6 +20,9 @@ func SerialKey(userID int64) string {
 // API notes).
 type JobPayload struct {
 	ImportID int64 `json:"importId"`
+	// Path is the absolute path of the file of a CLI import, read in place and never removed, empty
+	// for an import whose payload is its inbox file (FR-10 of XML import).
+	Path string `json:"path,omitempty"`
 }
 
 // JobOfImport returns the queued or running job of the import of importID of userID, the job of the
