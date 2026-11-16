@@ -528,3 +528,119 @@ func TestRunInProcess_LastAttempt_IsReportedAtOnce(t *testing.T) {
 	require.NoError(t, w.RunInProcess(t.Context(), newKeyedJob(t, kind, "first"), func() {}))
 	require.True(t, last)
 }
+
+// Given RunInProcess stopped while its handler runs, then the handler context reports the
+// cancellation of the job, so that the handler ends its own records as cancelled.
+func TestRunInProcess_ProcessStopped_TheHandlerSeesTheCancellation(t *testing.T) {
+	t.Parallel()
+
+	s, clk := newTestStore(t)
+	ctx, stop := context.WithCancel(t.Context())
+	defer stop()
+
+	reg := NewRegistry()
+
+	var cancelled atomic.Bool
+
+	kind := Register(reg, "test.kind", KindOptions{}, func(ctx context.Context, _ Job[testPayload]) error {
+		stop()
+		<-ctx.Done()
+		cancelled.Store(Cancelled(ctx))
+
+		return ctx.Err()
+	})
+
+	w, _ := newTestWorker(s, reg, clk, Options{HeartbeatInterval: shortInterval})
+
+	require.ErrorIs(t, w.RunInProcess(ctx, newKeyedJob(t, kind, "first"), func() {}), context.Canceled)
+	require.True(t, cancelled.Load(), "a stopped command cancels its job")
+}
+
+// createSetting returns the create function of RunInProcessWith that stores the setting key
+// through its transaction and returns job.
+func createSetting(job store.NewJob, key string) func(context.Context, store.Repositories) (store.NewJob, error) {
+	return func(ctx context.Context, tx store.Repositories) (store.NewJob, error) {
+		return job, tx.InstanceSettings().Set(ctx, key, "created")
+	}
+}
+
+// requireSetting checks whether the setting key is stored.
+func requireSetting(t *testing.T, s store.Store, key string, stored bool) {
+	t.Helper()
+
+	_, err := s.InstanceSettings().Get(t.Context(), key)
+	if stored {
+		require.NoError(t, err)
+	} else {
+		require.ErrorIs(t, err, store.ErrNotFound)
+	}
+}
+
+// Given a held serial key, then RunInProcessWith commits the writes of its create function with the
+// job once the key is free, and none while it waits.
+func TestRunInProcessWith_HeldSerialKey_CommitsTheWritesOfCreateWithTheJob(t *testing.T) {
+	t.Parallel()
+
+	s, clk := newTestStore(t)
+	ctx := t.Context()
+	reg := NewRegistry()
+	ran := make(chan struct{}, 1)
+	kind := Register(reg, "test.kind", KindOptions{}, func(ctx context.Context, _ Job[testPayload]) error {
+		_, err := s.InstanceSettings().Get(ctx, "record")
+		ran <- struct{}{}
+
+		return err
+	})
+	holder := holdSerialKey(ctx, t, s, kind)
+
+	waiting := make(chan struct{})
+	w, _ := newTestWorker(s, reg, clk, Options{WaitInterval: shortInterval})
+
+	done := make(chan error, 1)
+
+	go func() {
+		done <- w.RunInProcessWith(ctx, createSetting(newKeyedJob(t, kind, "first"), "record"), func() { close(waiting) })
+	}()
+
+	receive(t, waiting, "RunInProcessWith did not wait")
+	requireSetting(t, s, "record", false)
+
+	require.NoError(t, s.Jobs().Complete(ctx, holder.ID, holder.Claims))
+	require.NoError(t, receive(t, done, "RunInProcessWith did not return"), "the handler sees the writes of create")
+	receive(t, ran, "the handler did not run")
+	requireSetting(t, s, "record", true)
+}
+
+// Given RunInProcessWith stopped while it waits, then the writes of its create function are not
+// stored, as its job is not.
+func TestRunInProcessWith_StoppedWhileWaiting_StoresNothing(t *testing.T) {
+	t.Parallel()
+
+	s, clk := newTestStore(t)
+	reg := NewRegistry()
+	kind := Register(reg, "test.kind", KindOptions{}, func(context.Context, Job[testPayload]) error { return nil })
+	holder := holdSerialKey(t.Context(), t, s, kind)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	w, _ := newTestWorker(s, reg, clk, Options{WaitInterval: noPoll})
+
+	err := w.RunInProcessWith(ctx, createSetting(newKeyedJob(t, kind, "first"), "record"), cancel)
+	require.ErrorIs(t, err, context.Canceled)
+	requireSetting(t, s, "record", false)
+
+	active, err := s.Jobs().ActiveJobs(t.Context(), testSerialKey)
+	require.NoError(t, err)
+	require.Equal(t, []int64{holder.ID}, jobIDs(active))
+}
+
+// jobIDs returns the ids of jobs.
+func jobIDs(jobs []store.Job) []int64 {
+	ids := make([]int64, 0, len(jobs))
+	for _, job := range jobs {
+		ids = append(ids, job.ID)
+	}
+
+	return ids
+}
