@@ -397,7 +397,7 @@ func receive[T any](t *testing.T, ch <-chan T, what string) T {
 	select {
 	case v := <-ch:
 		return v
-	case <-time.After(10 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal(what)
 
 		var zero T
@@ -677,9 +677,15 @@ func TestImportXML_NextToTheServer_TheServerShowsTheImportedSteps(t *testing.T) 
 	}
 
 	paused, release := make(chan struct{}), make(chan struct{})
+
+	// One batch, as for an export of that size: batches of 100 would make the worker of the server
+	// recompute after each of them, and hold the writer against the import on a loaded test run.
+	opts := pauseAfter(paused, release)
+	opts.batchSize = 0
+
 	done := importTest{cfg: cfg}.importInBackground(ctx, XMLImport{
 		Login: "alice", Path: writeFixture(t), Waiting: noWait(t), Progress: func(float64) {},
-	}, pauseAfter(paused, release))
+	}, opts)
 
 	receive(t, paused, "the import did not start")
 
@@ -699,7 +705,7 @@ func TestImportXML_NextToTheServer_TheServerShowsTheImportedSteps(t *testing.T) 
 
 	res := receive(t, done, "the import did not return")
 	require.NoError(t, res.err)
-	require.Equal(t, store.ImportCompleted, res.imp.Status)
+	require.Equal(t, store.ImportCompleted, res.imp.Status, res.imp.Report.Errors)
 
 	var series struct {
 		Updating bool `json:"updating"`

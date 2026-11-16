@@ -596,11 +596,10 @@ func TestRunInProcessWith_HeldSerialKey_CommitsTheWritesOfCreateWithTheJob(t *te
 	waiting := make(chan struct{})
 	w, _ := newTestWorker(s, reg, clk, Options{WaitInterval: shortInterval})
 
+	create := createSetting(newKeyedJob(t, kind, "first"), "record")
 	done := make(chan error, 1)
 
-	go func() {
-		done <- w.RunInProcessWith(ctx, createSetting(newKeyedJob(t, kind, "first"), "record"), func() { close(waiting) })
-	}()
+	go func() { done <- w.RunInProcessWith(ctx, create, func() { close(waiting) }) }()
 
 	receive(t, waiting, "RunInProcessWith did not wait")
 	requireSetting(t, s, "record", false)
