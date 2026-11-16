@@ -30,8 +30,10 @@ type ingestion struct {
 }
 
 // newIngestion returns the ingestion of st, whose metric types are those of shipped, with the
-// inbox of the directory inboxDir. Close releases its codec.
-func newIngestion(st store.Store, shipped *catalog.Catalog, inboxDir string, clk clock.Clock) (*ingestion, error) {
+// inbox of the directory inboxDir and batches of batchSize records, ingest.DefaultBatchSize when 0.
+// Close releases its codec.
+func newIngestion(st store.Store, shipped *catalog.Catalog, inboxDir string, clk clock.Clock, batchSize int,
+) (*ingestion, error) {
 	activities, err := catalog.ShippedActivities()
 	if err != nil {
 		return nil, err
@@ -61,6 +63,7 @@ func newIngestion(st store.Store, shipped *catalog.Catalog, inboxDir string, clk
 			Codec:       route.NewCodec(enc, dec),
 			DirtyRanges: recorder,
 			Duplicates:  detector,
+			BatchSize:   batchSize,
 		}),
 		merger: ingest.NewMerger(ingest.MergeConfig{
 			Store:       st,

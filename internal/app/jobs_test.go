@@ -55,7 +55,7 @@ func newJobsTest(t *testing.T) jobsTest {
 
 	inboxDir := t.TempDir()
 
-	ing, err := newIngestion(st, shipped, inboxDir, clk)
+	ing, err := newIngestion(st, shipped, inboxDir, clk, 0)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, ing.Close()) })
 

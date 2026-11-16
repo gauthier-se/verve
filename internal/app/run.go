@@ -84,7 +84,7 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger, stderr io.
 
 	layout := newLayout(cfg.DataDir)
 
-	ing, err := newIngestion(st, shipped, layout.Inbox, clk)
+	ing, err := newIngestion(st, shipped, layout.Inbox, clk, 0)
 	if err != nil {
 		return err
 	}
