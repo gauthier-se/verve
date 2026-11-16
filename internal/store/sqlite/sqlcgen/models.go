@@ -211,6 +211,7 @@ type SourceAlias struct {
 	Name        string
 	DeviceModel string
 	SourceID    int64
+	TakesModel  int64
 }
 
 type SourcePriority struct {

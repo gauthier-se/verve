@@ -43,6 +43,7 @@ func (r sources) Resolve(ctx context.Context, userID int64, info store.SourceInf
 			// The identity without model that a record with a model matches takes that model: an
 			// alias or a merged source here, and the matched source with its update otherwise.
 			takesModel := info.DeviceModel != "" && matched.model == ""
+			tookModel := takesModel
 
 			if takesModel && matched.alias {
 				err := q.SetSourceAliasModel(ctx, sqlcgen.SetSourceAliasModelParams{
@@ -78,8 +79,16 @@ func (r sources) Resolve(ctx context.Context, userID int64, info store.SourceInf
 			}
 
 			row, err = q.UpdateSource(ctx, update)
+			if err != nil || !tookModel {
+				return err
+			}
 
-			return err
+			// The identity keeps matching the records of its name without model.
+			return q.CreateSourceAliasWithoutModel(ctx, sqlcgen.CreateSourceAliasWithoutModelParams{
+				UserID:   userID,
+				Name:     info.Name,
+				SourceID: matched.sourceID,
+			})
 		}
 
 		row, err = q.CreateSource(ctx, sqlcgen.CreateSourceParams{
@@ -356,6 +365,9 @@ type candidate struct {
 	// sourceID is the source of the identity, or the target of the alias.
 	sourceID int64
 	alias    bool
+	// keepsModel is true for the alias without model that an identity left behind once it took a
+	// model: it matches the records without model only.
+	keepsModel bool
 }
 
 // candidatesOf returns the identities of the sources and of the aliases of userID named name.
@@ -376,7 +388,9 @@ func candidatesOf(ctx context.Context, q *sqlcgen.Queries, userID int64, name st
 	}
 
 	for _, alias := range aliases {
-		identities = append(identities, candidate{model: alias.DeviceModel, sourceID: alias.SourceID, alias: true})
+		identities = append(identities, candidate{
+			model: alias.DeviceModel, sourceID: alias.SourceID, alias: true, keepsModel: alias.TakesModel == 0,
+		})
 	}
 
 	return identities, nil
@@ -385,8 +399,8 @@ func candidatesOf(ctx context.Context, q *sqlcgen.Queries, userID int64, name st
 // match returns the identity among identities, all of one name, that a record of that name and of
 // the device model model matches by the rule of FR-2, or false when the record makes a new source.
 func match(identities []candidate, model string) (candidate, bool) {
-	byModel := func(model string) (candidate, bool) {
-		i := slices.IndexFunc(identities, func(id candidate) bool { return id.model == model })
+	byModel := func(model string, takingModel bool) (candidate, bool) {
+		i := slices.IndexFunc(identities, func(id candidate) bool { return id.model == model && !(takingModel && id.keepsModel) })
 		if i < 0 {
 			return candidate{}, false
 		}
@@ -395,11 +409,11 @@ func match(identities []candidate, model string) (candidate, bool) {
 	}
 
 	if model != "" {
-		if matched, ok := byModel(model); ok {
+		if matched, ok := byModel(model, false); ok {
 			return matched, true
 		}
 
-		return byModel("")
+		return byModel("", true)
 	}
 
 	only := len(identities) > 0 && !slices.ContainsFunc(identities, func(id candidate) bool {
@@ -409,7 +423,7 @@ func match(identities []candidate, model string) (candidate, bool) {
 		return identities[0], true
 	}
 
-	return byModel("")
+	return byModel("", false)
 }
 
 // seenUpdate returns the update of the source of row that a record of info and of kind, seen at seenAt,
