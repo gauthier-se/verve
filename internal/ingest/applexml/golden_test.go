@@ -22,9 +22,6 @@ import (
 // update rewrites the golden files, whose diff then shows every change of the reading.
 var update = flag.Bool("update", false, "rewrite the golden files in testdata")
 
-// fixture is the export.xml of the synthetic export kept unpacked by internal/synthexport.
-var fixture = filepath.Join("..", "..", "synthexport", "testdata", "apple_health_export", "export.xml")
-
 // line is what a golden line holds of a record: the kinds it lacks are left out.
 type line struct {
 	Position    int64
@@ -33,30 +30,56 @@ type line struct {
 	Workout     *ingest.Workout        `json:",omitempty"`
 	Invalid     *ingest.Invalid        `json:",omitempty"`
 	Unsupported *ingest.Unsupported    `json:",omitempty"`
+	Warning     string                 `json:",omitempty"`
 }
 
-// Given the export.xml of the fixture of #138, when its records are read, then they equal a golden
-// file in testdata, one normalized record per line, and -update rewrites it.
-func TestRecords_Fixture_MatchesTheGoldenFile(t *testing.T) {
-	t.Parallel()
+// openExport opens the export of the zip at path, whose file is closed at the end of the test.
+func openExport(t testing.TB, path string) *applexml.Export {
+	t.Helper()
 
-	f, err := os.Open(fixture) //nolint:gosec // G304: the fixture of testdata
+	f, err := os.Open(path) //nolint:gosec // G304: a file of the temporary directory of the test
 	require.NoError(t, err)
 
 	t.Cleanup(func() { require.NoError(t, f.Close()) })
 
-	var got bytes.Buffer
+	e, err := applexml.Open(t.Context(), f)
+	require.NoError(t, err)
+
+	return e
+}
+
+// Given the fixture of #138 written as a zip by synthexport.Write, when its records are read, then
+// they equal a golden file in testdata, one normalized record per line, with the routes of its two
+// runs, and the strength sessions have none. -update rewrites it.
+func TestRecords_FixtureZip_MatchesTheGoldenFile(t *testing.T) {
+	t.Parallel()
+
+	e := openExport(t, writeExport(t, t.TempDir(), synthexport.Fixture()))
+
+	var (
+		got    bytes.Buffer
+		routed []string
+	)
 
 	enc := json.NewEncoder(&got)
 	enc.SetEscapeHTML(false)
 
-	for r, err := range applexml.Records(t.Context(), f) {
+	for r, err := range e.Records(t.Context()) {
 		require.NoError(t, err)
 		require.NoError(t, enc.Encode(line{
 			Position: r.Position, Quantity: r.Quantity, Category: r.Category, Workout: r.Workout,
-			Invalid: r.Invalid, Unsupported: r.Unsupported,
+			Invalid: r.Invalid, Unsupported: r.Unsupported, Warning: r.Warning,
 		}))
+
+		if r.Workout != nil && r.Workout.Route != nil {
+			routed = append(routed, r.Workout.ActivityType+" "+r.Workout.Start)
+		}
 	}
+
+	require.Equal(t, []string{
+		"HKWorkoutActivityTypeRunning 2025-12-30T07:00:00+01:00",
+		"HKWorkoutActivityTypeWalking 2026-01-03T07:28:00+01:00",
+	}, routed, "the strength sessions and the copy of Strava have no route")
 
 	path := filepath.Join("testdata", "export.golden")
 
@@ -149,55 +172,63 @@ func openExportXML(t testing.TB, path string) (io.Reader, int64) {
 	return nil, 0
 }
 
-// heapWatcher measures the live heap while the document of r is read through it.
+// heapWatcher measures the live heap while the records of an export are read, every 512 KiB of
+// their positions.
 type heapWatcher struct {
-	r          io.Reader
-	read, next int
-	peak       uint64
+	next int64
+	peak uint64
 }
 
-func (w *heapWatcher) Read(p []byte) (int, error) {
+// at measures the live heap when the record read is at position.
+func (w *heapWatcher) at(position int64) {
 	const checkEvery = 512 << 10
 
-	n, err := w.r.Read(p)
-	w.read += n
-
-	if w.read >= w.next {
-		w.next = w.read + checkEvery
-
-		var stats runtime.MemStats
-
-		runtime.GC()
-		runtime.ReadMemStats(&stats)
-		w.peak = max(w.peak, stats.HeapAlloc)
+	if position < w.next {
+		return
 	}
 
-	return n, err
+	w.next = position + checkEvery
+
+	var stats runtime.MemStats
+
+	runtime.GC()
+	runtime.ReadMemStats(&stats)
+	w.peak = max(w.peak, stats.HeapAlloc)
 }
 
-// Given a generated export of several tens of megabytes, then the live heap stays under 16 MiB
-// during the read. Not parallel, since other tests would count in the heap.
+// Given a generated export of several tens of megabytes as a zip, then the live heap stays under
+// 16 MiB during the read, routes included. Not parallel, since other tests would count in the heap.
 func TestRecords_LargeExport_KeepsTheLiveHeapBounded(t *testing.T) {
 	const (
 		ceiling = 16 << 20
 		minSize = 20 << 20
 	)
 
-	r, size := openExportXML(t, largeExport(t, t.TempDir()))
-	require.Greater(t, size, int64(minSize))
+	e := openExport(t, largeExport(t, t.TempDir()))
+	require.Greater(t, e.Size(), int64(minSize))
 
-	watcher := &heapWatcher{r: r}
+	var (
+		watcher        heapWatcher
+		records, route int
+		last           int64
+	)
 
-	var records int
-
-	for _, err := range applexml.Records(t.Context(), watcher) {
+	for r, err := range e.Records(t.Context()) {
 		require.NoError(t, err)
 
+		watcher.at(r.Position)
+
 		records++
+		last = r.Position
+
+		if r.Workout != nil {
+			route += len(r.Workout.Route)
+		}
 	}
 
-	require.Equal(t, int(size), watcher.read, "the whole document is read")
+	require.Greater(t, last, e.Size(), "the whole document is read, then the electrocardiograms")
 	require.Positive(t, records)
+	require.Positive(t, route, "the routes are read")
 	require.NotZero(t, watcher.peak)
 	require.Less(t, watcher.peak, uint64(ceiling))
 }
