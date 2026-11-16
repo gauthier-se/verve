@@ -236,9 +236,10 @@ func TestRecords_RouteThatIsNotInTheExport(t *testing.T) {
 	})
 }
 
-// Given a GPX entry that is not well-formed XML, whose point is not readable or that is
-// corrupted, then the read ends with applexml.ErrMalformed.
-func TestRecords_MalformedGPXEntry(t *testing.T) {
+// Given a GPX entry that is not well-formed XML or whose point is not readable, then its workout
+// has no route and carries a warning, as for a missing one. Given a corrupted GPX entry, then the
+// read ends with applexml.ErrMalformed.
+func TestRecords_InvalidGPXEntry(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -257,13 +258,11 @@ func TestRecords_MalformedGPXEntry(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			e, err := open(t, routedZip(t, "apple_health_export/", routed(routePath), map[string]string{
+			workouts := workoutRecords(t, routedZip(t, "apple_health_export/", routed(routePath), map[string]string{
 				"apple_health_export" + routePath: tt.route,
 			}))
-			require.NoError(t, err)
-
-			_, err = recordsOf(t, e)
-			require.ErrorIs(t, err, applexml.ErrMalformed)
+			require.Nil(t, workouts[0].Workout.Route)
+			require.Equal(t, "route file is not a valid GPX file", workouts[0].Warning)
 		})
 	}
 
