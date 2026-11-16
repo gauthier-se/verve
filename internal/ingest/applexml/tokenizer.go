@@ -154,9 +154,11 @@ func (t *tokenizer) next() (xml.Token, error) {
 	case t.src.err != nil:
 		return nil, fmt.Errorf("read export.xml: %w", t.src.err)
 	case errors.Is(err, io.EOF) && !t.closed:
-		return nil, t.malformed(errors.New("document ends before its root element is closed"))
+		return nil, t.truncated(errors.New("document ends before its root element is closed"))
 	case errors.Is(err, io.EOF):
 		return nil, io.EOF
+	case isUnexpectedEOF(err):
+		return nil, t.truncated(err)
 	case err != nil:
 		return nil, t.malformed(err)
 	}
@@ -197,9 +199,22 @@ func (t *tokenizer) skip() error {
 	return nil
 }
 
-// malformed returns err as an error of a malformed document, at the offset of the last token.
+// malformed returns err as an error of a document that is not well-formed XML, at the offset of the
+// last token.
 func (t *tokenizer) malformed(err error) error {
-	return fmt.Errorf("%w at byte %d: %w", ErrMalformed, t.start, err)
+	return fmt.Errorf("%w at byte %d: %w", ErrNotWellFormed, t.start, err)
+}
+
+// truncated returns err as an error of a document that ends early, at the offset of the last token.
+func (t *tokenizer) truncated(err error) error {
+	return fmt.Errorf("%w at byte %d: %w", ErrTruncated, t.start, err)
+}
+
+// isUnexpectedEOF reports whether err is the syntax error of a document that ends inside a token.
+func isUnexpectedEOF(err error) bool {
+	var syntax *xml.SyntaxError
+
+	return errors.As(err, &syntax) && syntax.Msg == "unexpected EOF"
 }
 
 // isSpace reports whether data holds only XML white space.

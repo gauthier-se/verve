@@ -157,7 +157,16 @@ func (e *Export) readXML(ctx context.Context, yield func(ingest.Record) bool) er
 
 	defer func() { _ = r.Close() }() // a read-only entry or section
 
-	return readRecords(ctx, r, &routes{zip: e.zip, dir: e.dir}, yield)
+	err = readRecords(ctx, r, &routes{zip: e.zip, dir: e.dir}, yield)
+	if e.zip != nil && errors.Is(err, ErrMalformed) && !errors.Is(err, ErrCorruptedZip) {
+		// Corrupted compressed data decompresses to bytes that are not XML before the checksum at
+		// the end of the entry tells the corruption: the rest of the entry tells the cause.
+		if _, drainErr := io.Copy(io.Discard, r); errors.Is(drainErr, ErrCorruptedZip) {
+			return fmt.Errorf("read export.xml: %w", drainErr)
+		}
+	}
+
+	return err
 }
 
 // electrocardiogram is the identifier under which an electrocardiograms/*.csv entry counts as
@@ -239,7 +248,7 @@ func zipError(err error) error {
 		return err
 	}
 
-	return fmt.Errorf("%w: the zip file is corrupted: %w", ErrMalformed, err)
+	return fmt.Errorf("%w: %w", ErrCorruptedZip, err)
 }
 
 // entryReader reads a zip entry, its errors as zipError returns them.

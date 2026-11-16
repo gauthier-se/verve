@@ -46,7 +46,7 @@ type rejectedError struct {
 	err    error
 }
 
-func (e *rejectedError) Error() string { return e.reason + ": " + e.err.Error() }
+func (e *rejectedError) Error() string { return e.err.Error() }
 
 func (e *rejectedError) Unwrap() error { return e.err }
 
