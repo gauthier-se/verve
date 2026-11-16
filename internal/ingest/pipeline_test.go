@@ -42,6 +42,13 @@ type pipelineEnv struct {
 func newPipelineEnv(t *testing.T) *pipelineEnv {
 	t.Helper()
 
+	return newPipelineEnvOn(t, clock.NewFake(pipelineTime))
+}
+
+// newPipelineEnvOn returns an environment as newPipelineEnv does, whose store runs on clk.
+func newPipelineEnvOn(t *testing.T, clk clock.Clock) *pipelineEnv {
+	t.Helper()
+
 	ctx := t.Context()
 
 	db, err := sqlite.Open(ctx, filepath.Join(t.TempDir(), "verve.db"))
@@ -50,7 +57,7 @@ func newPipelineEnv(t *testing.T) *pipelineEnv {
 	_, err = sqlite.Migrate(ctx, db, sqlite.MigrateOptions{})
 	require.NoError(t, err)
 
-	s := sqlite.New(db, clock.NewFake(pipelineTime))
+	s := sqlite.New(db, clk)
 	t.Cleanup(func() { require.NoError(t, s.Close(context.Background())) })
 
 	cat, err := catalog.Shipped()
