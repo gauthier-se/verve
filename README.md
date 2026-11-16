@@ -50,6 +50,23 @@ Verve then runs on http://localhost:8080. To deploy it for real, follow these gu
 - [Reverse proxy](docs/deployment/reverse-proxy.md): HTTPS with Caddy, Traefik or Nginx Proxy Manager, trusted proxies, public URL, large uploads.
 - [Binary](docs/deployment/binary.md): release binary with a systemd service.
 
+## Command line
+
+The binary is also the command line, and its commands work while the server runs. In Docker, run them with `docker exec`:
+
+```sh
+# Create the first admin, the password being asked on the terminal
+docker exec -it verve verve user create --admin alice
+
+# Back up the database and the secret key
+docker exec verve verve backup
+
+# Import an Apple Health export copied into the data volume
+docker exec verve verve import xml --user alice /data/export.zip
+```
+
+`verve import xml` waits while another import of the user runs, prints its progress to stderr and its report to stdout, and exits `1` unless the import completes. Interrupting it cancels the import. `verve --help` lists every command.
+
 ## Tech stack
 
 - **Backend**: Go 1.27, `net/http` with [Huma](https://huma.rocks) for a code-first OpenAPI 3.1 API, SQLite through the pure Go `modernc.org/sqlite` driver, sqlc, goose migrations.
