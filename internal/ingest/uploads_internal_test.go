@@ -32,7 +32,7 @@ func TestUploads_Append_DiskFull_ReturnsTheSyncedBytesAndENOSPC(t *testing.T) {
 	require.ErrorIs(t, err, syscall.ENOSPC)
 	require.Equal(t, int64(4), written)
 
-	data, err := os.ReadFile(filepath.Join(dir, name))
+	data, err := os.ReadFile(filepath.Join(dir, name)) //nolint:gosec // G304: a file of the test directory
 	require.NoError(t, err)
 	require.Equal(t, "0123", string(data))
 }
