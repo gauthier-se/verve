@@ -110,7 +110,8 @@ Import the full Apple Health export (the `export.zip` produced by the Health app
 
 - Upload page `/imports/xml`, linked from the imports page and from its empty state, with a drop zone and a short guide of numbered text steps: Health app, profile picture, "Export All Health Data", then share to Files or upload directly from Safari. The guide has no screenshots, which would hold Apple's interface and age with each iOS release.
 - Clear expectations: "An export of several years can take 10 to 30 minutes to process on a Raspberry Pi."
-- The upload is held by the app shell, not the page, so that it continues while the user navigates elsewhere in the app. While it runs, the import banner shows its percentage with a link to the upload page.
+- The upload is held by the app shell, not the page, so that it continues while the user navigates elsewhere in the app. The page shows its percentage, which screen readers hear at steps of 10 percent. While it runs, the import banner of the other pages shows its percentage with a link to the upload page.
+- A file above `VERVE_MAX_UPLOAD_SIZE`, a full disk or a network loss that outlasts the retries of the client is explained in plain words, with an offer to try again, which resumes the upload where it stopped when the server still has it.
 - Selecting the same file again after a reload resumes its upload: the browser keeps the upload address of each file in local storage.
 - Once the upload completes, the page follows the import named by `Verve-Import-Id` and shows its progress, then its report: counters per type, period and routes.
 
