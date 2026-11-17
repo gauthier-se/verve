@@ -47,6 +47,20 @@ type importTest struct {
 func newImportTest(t *testing.T) importTest {
 	t.Helper()
 
+	it := newUnsyncedImportTest(t)
+
+	shipped, err := catalog.Shipped()
+	require.NoError(t, err)
+	require.NoError(t, it.store.MetricTypes().Sync(t.Context(), shipped))
+
+	return it
+}
+
+// newUnsyncedImportTest returns an importTest without metric types, as before a first start of the
+// server.
+func newUnsyncedImportTest(t *testing.T) importTest {
+	t.Helper()
+
 	ctx := t.Context()
 	cfg := testConfig(t.TempDir())
 
@@ -57,13 +71,7 @@ func newImportTest(t *testing.T) importTest {
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.CloseShared()) })
 
-	st := sqlite.New(db, clock.Real())
-
-	shipped, err := catalog.Shipped()
-	require.NoError(t, err)
-	require.NoError(t, st.MetricTypes().Sync(ctx, shipped))
-
-	it := importTest{cfg: cfg, store: st}
+	it := importTest{cfg: cfg, store: sqlite.New(db, clock.Real())}
 	it.alice = it.createUser(t, "alice", store.UserActive)
 
 	return it
@@ -183,6 +191,31 @@ func TestImportXML_Fixture_CompletesInThisProcess(t *testing.T) {
 	inbox, err := os.ReadDir(newLayout(it.cfg.DataDir).Inbox)
 	require.NoError(t, err)
 	require.Empty(t, inbox)
+}
+
+// Given a data directory that the server never started on, whose database has no metric types yet,
+// then ImportXML stores the types of the shipped catalog, as the server does at its start, and
+// completes the import.
+func TestImportXML_NoMetricTypesYet_SynchronizesThemAndCompletes(t *testing.T) {
+	t.Parallel()
+
+	it := newUnsyncedImportTest(t)
+
+	imp, err := ImportXML(t.Context(), it.cfg, XMLImport{
+		Login: "alice", Path: writeFixture(t), Waiting: noWait(t), Progress: func(float64) {},
+	}, discardLogger())
+	require.NoError(t, err)
+
+	require.Equal(t, store.ImportCompleted, imp.Status, "errors: %v", imp.Report.Errors)
+	require.Equal(t, int64(fixtureRecords), imp.Report.Total.Received)
+
+	shipped, err := catalog.Shipped()
+	require.NoError(t, err)
+
+	for _, typ := range shipped.Types() {
+		_, err := it.store.MetricTypes().GetByIdentifier(t.Context(), typ.Identifier)
+		require.NoError(t, err, typ.Identifier)
+	}
 }
 
 // Given a username in another case than at creation, then ImportXML imports for that user.
