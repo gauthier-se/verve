@@ -201,6 +201,40 @@ jobs:
           name: playwright-report
           path: web/playwright-report/
 
+  import-check:
+    name: import-check
+    runs-on: ubuntu-latest
+    # The tool stops the import at 30 minutes: the margin covers the build and the export.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      # The flags of task build without the web app, which an import does not load.
+      - name: Build
+        env:
+          CGO_ENABLED: "0"
+        run: go build -trimpath -ldflags "-s -w" -o bin/verve ./cmd/verve
+
+      # The figures go to stdout, the output of the import to stderr.
+      - name: Check the memory and duration of a 1 GB import
+        shell: bash
+        run: go run ./tools/importcheck -verve bin/verve | tee import-check.txt
+
+      - name: Import check summary
+        if: ${{ !cancelled() && hashFiles('import-check.txt') != '' }}
+        run: |
+          {
+            echo "## Import check"
+            echo
+            echo '```text'
+            cat import-check.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
   docker:
     name: docker
     runs-on: ubuntu-latest
