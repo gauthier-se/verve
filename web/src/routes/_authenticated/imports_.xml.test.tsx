@@ -121,6 +121,45 @@ describe("upload page", () => {
     });
   });
 
+  it("given a file that is neither a .zip nor an .xml file, when the user drops it, then the page asks for the export file and uploads nothing", async () => {
+    fakeImports();
+    const uploads = fakeUploads();
+    await openUploadPage();
+
+    fireEvent.drop(screen.getByRole("region", { name: "Upload the export" }), {
+      dataTransfer: {
+        files: [new File(["notes"], "notes.txt", { type: "text/plain" })],
+        types: ["Files"],
+      },
+    });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Choose the export.zip or export.xml file of the Health app.",
+    );
+    expect(uploads.creations).toEqual([]);
+  });
+
+  it("given local storage that throws, as in a private window, when a file is selected, then it is uploaded", async () => {
+    const denied = () => {
+      throw new DOMException("The storage is not available.", "SecurityError");
+    };
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(denied);
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(denied);
+    onTestFinished(() => {
+      vi.restoreAllMocks();
+    });
+    const user = userEvent.setup();
+    fakeImports([completedXmlImport]);
+    const uploads = fakeUploads();
+    await openUploadPage();
+
+    await user.upload(getFilePicker(), exportFile(MiB));
+
+    await waitFor(() => {
+      expect(uploads.patches).toHaveLength(1);
+    });
+  });
+
   it("given a file selected, then it is uploaded with tus to /api/v1/uploads/ in chunks of 8 MiB, with the CSRF header and its file name", async () => {
     const user = userEvent.setup();
     fakeImports([completedXmlImport]);
@@ -330,6 +369,48 @@ describe("upload page, once the upload ends", () => {
     expect(
       within(completed).getByRole("region", { name: "Routes" }),
     ).toHaveTextContent("1 route stored with its workout.");
+  });
+
+  it("given an upload that completes without Verve-Import-Id, then the page says that it is complete and links to the imports page", async () => {
+    const user = setupUser();
+    fakeImports();
+    fakeUploads({ importId: null });
+    await openUploadPage();
+
+    await user.upload(getFilePicker(), exportFile(MiB));
+
+    expect(
+      await screen.findByText(
+        "The upload of export.zip is complete. Its import shows on the imports page.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View imports" })).toHaveAttribute(
+      "href",
+      "/imports",
+    );
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("given the app in French and a file above the limit, then the explanation and the offer to try again are translated", async () => {
+    const user = setupUser();
+    const i18n = await initI18n();
+    await i18n.changeLanguage("fr");
+    fakeImports();
+    fakeUploads({ maxSize: MiB });
+    server.use(...fakeAuth({ user: member, signedIn: true }));
+    renderRoute("/imports/xml");
+
+    await user.upload(
+      await screen.findByLabelText("Choisir un fichier"),
+      exportFile(2 * MiB),
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Le fichier dépasse la taille que ce serveur accepte.",
+    );
+    expect(
+      screen.getByRole("button", { name: "Réessayer" }),
+    ).toBeInTheDocument();
   });
 
   it.each([

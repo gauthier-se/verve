@@ -234,4 +234,57 @@ describe("import banner", () => {
       expect(queryBanner()).not.toBeInTheDocument();
     });
   });
+
+  it("given an upload that stops while the user is on another page, then the banner says so with a link to the upload page", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    fakeImports();
+    const uploads = fakeUploads();
+    const { release } = uploads.holdAt(8 * MiB);
+    openPage("/imports/xml");
+    await user.upload(
+      await screen.findByLabelText("Choose a file"),
+      exportFile(12 * MiB),
+    );
+    await screen.findByText("Uploading export.zip: 67%");
+    await user.click(screen.getByRole("link", { name: "Home" }));
+    await findBanner();
+
+    uploads.fail("network");
+    release();
+    // Past every retry of tus.
+    await elapse(30_000);
+
+    const banner = await findBanner();
+    expect(banner).toHaveTextContent(
+      /^The upload of export\.zip stopped\.View upload$/,
+    );
+    expect(
+      within(banner).getByRole("link", { name: "View upload" }),
+    ).toHaveAttribute("href", "/imports/xml");
+  });
+
+  it("given the app in French and an upload running, when the user navigates to another page, then the banner of the upload is translated", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const i18n = await initI18n();
+    await i18n.changeLanguage("fr");
+    fakeImports([completedXmlImport]);
+    const uploads = fakeUploads();
+    const { release } = uploads.holdAt(8 * MiB);
+    openPage("/imports/xml");
+    await user.upload(
+      await screen.findByLabelText("Choisir un fichier"),
+      exportFile(12 * MiB),
+    );
+    await screen.findByRole("progressbar");
+
+    await user.click(screen.getByRole("link", { name: "Accueil" }));
+
+    const banner = await screen.findByRole("region", {
+      name: "Importation en cours",
+    });
+    expect(banner.textContent.replace(/\s+/g, " ")).toBe(
+      "Envoi du fichier export.zip : 67 %Voir l'envoi",
+    );
+    release();
+  });
 });

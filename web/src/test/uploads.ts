@@ -37,8 +37,11 @@ export type FakeFailure =
 interface FakeUploadsOptions {
   /** The largest upload that the server accepts, `VERVE_MAX_UPLOAD_SIZE`. */
   maxSize?: number;
-  /** The id of the import that a completed upload creates. */
-  importId?: number;
+  /**
+   * The id of the import that a completed upload creates, or null for a
+   * response without `Verve-Import-Id`, as a proxy that drops it answers.
+   */
+  importId?: number | null;
 }
 
 interface Hold {
@@ -162,7 +165,9 @@ export function fakeUploads({
         };
         if (upload.offset === upload.length) {
           uploads.delete(params.id);
-          headers["Verve-Import-Id"] = String(importId);
+          if (importId !== null) {
+            headers["Verve-Import-Id"] = String(importId);
+          }
         }
         return new HttpResponse(null, { status: 204, headers });
       },
