@@ -129,7 +129,10 @@ export function fakeUploads({
         }
         const offset = Number(request.headers.get("Upload-Offset"));
         if (hold?.offset === offset) {
-          if ((await hold.released) === "drop") {
+          const held = hold;
+          // One write only: the client resumes once it is settled.
+          hold = undefined;
+          if ((await held.released) === "drop") {
             return HttpResponse.error();
           }
         }
@@ -170,8 +173,8 @@ export function fakeUploads({
     creations,
     patches,
     /**
-     * Holds the write at `offset` until `release` lets it through, or `drop`
-     * loses its connection without writing it.
+     * Holds the next write at `offset` until `release` lets it through, or
+     * `drop` loses its connection without writing it.
      */
     holdAt(offset: number) {
       let settle: Hold["settle"] = () => undefined;

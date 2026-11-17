@@ -135,4 +135,31 @@ describe("upload page", () => {
     ).toBe(true);
     release();
   });
+
+  it("given a reload during an upload, when the same file is selected again, then the upload resumes at the offset of the server", async () => {
+    const user = userEvent.setup();
+    fakeImports([completedXmlImport]);
+    const uploads = fakeUploads();
+    const { drop } = uploads.holdAt(8 * MiB);
+    const first = await openUploadPage();
+    await user.upload(getFilePicker(), exportFile(12 * MiB));
+    await screen.findByText("Uploading export.zip: 67%");
+
+    // The page goes away with its requests, and the held one never arrives.
+    first.unmount();
+    drop();
+    await openUploadPage();
+    await user.upload(getFilePicker(), exportFile(12 * MiB));
+
+    await waitFor(() => {
+      expect(uploads.patches).toHaveLength(2);
+    });
+    expect(uploads.creations).toHaveLength(1);
+    expect(
+      uploads.patches.map(({ offset, size }) => ({ offset, size })),
+    ).toEqual([
+      { offset: 0, size: 8 * MiB },
+      { offset: 8 * MiB, size: 4 * MiB },
+    ]);
+  });
 });

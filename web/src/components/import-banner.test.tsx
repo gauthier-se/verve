@@ -1,10 +1,11 @@
-import { act, screen, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Import } from "@/api/generated";
 import {
   completedImport,
+  completedXmlImport,
   fakeImports,
   queuedImport,
   runningImport,
@@ -13,6 +14,7 @@ import {
 import { renderRoute } from "@/test/render";
 import { fakeAuth, member, server } from "@/test/server";
 import { fakeTokens } from "@/test/tokens";
+import { exportFile, fakeUploads, MiB } from "@/test/uploads";
 
 /** The text of the banner of `runningImport`. */
 const runningText = "An import is running. 5,000 records received so far.";
@@ -176,5 +178,35 @@ describe("import banner", () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: "Imports" }),
     ).toBeInTheDocument();
+  });
+
+  it("given an upload running, when the user navigates to another page, then the upload continues, and the banner shows its percentage with a link to the upload page", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    fakeImports([completedXmlImport]);
+    const uploads = fakeUploads();
+    const { release } = uploads.holdAt(8 * MiB);
+    openPage("/imports/xml");
+    await user.upload(
+      await screen.findByLabelText("Choose a file"),
+      exportFile(12 * MiB),
+    );
+    await screen.findByText("Uploading export.zip: 67%");
+    // The page shows the upload itself.
+    expect(queryBanner()).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("link", { name: "Home" }));
+
+    const banner = await findBanner();
+    expect(banner).toHaveTextContent(/^Uploading export\.zip: 67%View upload$/);
+    expect(
+      within(banner).getByRole("link", { name: "View upload" }),
+    ).toHaveAttribute("href", "/imports/xml");
+    release();
+    await waitFor(() => {
+      expect(uploads.patches).toHaveLength(2);
+    });
+    await waitFor(() => {
+      expect(queryBanner()).not.toBeInTheDocument();
+    });
   });
 });
