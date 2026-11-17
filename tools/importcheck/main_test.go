@@ -94,8 +94,9 @@ func (f fake) calls(t *testing.T) []call {
 	return calls
 }
 
-// TestFakeVerve is the verve binary that the script of newFake runs: it logs its call, and an
-// import allocates memory and runs as the script says.
+// TestFakeVerve is the verve binary that the script of newFake runs: it logs its call, migrate
+// creates the data directory, which the other commands need as verve does, and an import allocates
+// memory and runs as the script says.
 func TestFakeVerve(t *testing.T) {
 	t.Parallel()
 
@@ -111,9 +112,20 @@ func fakeVerve(log string, args []string) int {
 	stdin, _ := io.ReadAll(os.Stdin)
 	c := call{Args: args, DataDir: os.Getenv("VERVE_DATA_DIR"), Stdin: string(stdin)}
 
-	status, _ := strconv.Atoi(os.Getenv(envFakeUserExit))
+	migrated := filepath.Join(c.DataDir, "migrated")
 
-	if len(args) == 5 && args[0] == "import" {
+	var status int
+
+	switch {
+	case len(args) == 1 && args[0] == "migrate":
+		if os.MkdirAll(c.DataDir, 0o700) != nil || os.WriteFile(migrated, nil, 0o600) != nil {
+			return 3
+		}
+	case !fileExists(migrated):
+		status = 1 // as verve fails on a database without its schema
+	case len(args) == 4 && args[0] == "user":
+		status, _ = strconv.Atoi(os.Getenv(envFakeUserExit))
+	case len(args) == 5 && args[0] == "import":
 		c.XMLSize = xmlSize(args[4])
 
 		mb, _ := strconv.Atoi(os.Getenv(envFakeAllocMB))
@@ -123,6 +135,8 @@ func fakeVerve(log string, args []string) int {
 		time.Sleep(sleep)
 
 		status, _ = strconv.Atoi(os.Getenv(envFakeImportExit))
+	default:
+		status = 2 // a usage error
 	}
 
 	line, _ := json.Marshal(c)
@@ -136,6 +150,12 @@ func fakeVerve(log string, args []string) int {
 	_ = f.Close()
 
 	return status
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+
+	return err == nil
 }
 
 // xmlSize returns the uncompressed size of the export.xml of the zip at path, or 0.
@@ -208,8 +228,8 @@ func parseFigures(t *testing.T, stdout string) figures {
 	return f
 }
 
-// Given -verve and a small export, then run generates the export, creates a user with the binary
-// in a new data directory, imports the export for them with the binary, prints the size of the
+// Given -verve and a small export, then run generates the export, creates a data directory and a
+// user with the binary, imports the export for them with the binary, prints the size of the
 // export, the duration and the peak memory of the import, and removes what it created.
 func TestRun_SmallExport_ImportsItWithTheBinaryAndPrintsItsFigures(t *testing.T) {
 	t.Parallel()
@@ -221,9 +241,10 @@ func TestRun_SmallExport_ImportsItWithTheBinaryAndPrintsItsFigures(t *testing.T)
 	require.NoError(t, run(t.Context(), []string{"-verve", verve.path, "-size-mb", "3"}, &stdout, io.Discard))
 
 	calls := verve.calls(t)
-	require.Len(t, calls, 2)
+	require.Len(t, calls, 3)
 
-	create, imp := calls[0], calls[1]
+	migrate, create, imp := calls[0], calls[1], calls[2]
+	require.Equal(t, []string{"migrate"}, migrate.Args)
 	require.Len(t, create.Args, 4)
 	require.Equal(t, []string{"user", "create"}, create.Args[:2])
 	require.Equal(t, "--password-stdin", create.Args[3])
@@ -232,8 +253,9 @@ func TestRun_SmallExport_ImportsItWithTheBinaryAndPrintsItsFigures(t *testing.T)
 	user := create.Args[2]
 	require.Equal(t, []string{"import", "xml", "--user", user}, imp.Args[:4])
 
-	require.NotEmpty(t, create.DataDir)
-	require.Equal(t, create.DataDir, imp.DataDir)
+	require.NotEmpty(t, migrate.DataDir)
+	require.Equal(t, migrate.DataDir, create.DataDir)
+	require.Equal(t, migrate.DataDir, imp.DataDir)
 	require.NoDirExists(t, create.DataDir, "the data directory is removed")
 	require.NoFileExists(t, imp.Args[4], "the export is removed")
 
