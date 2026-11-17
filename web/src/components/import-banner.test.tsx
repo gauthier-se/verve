@@ -9,8 +9,10 @@ import {
   fakeImports,
   queuedImport,
   runningImport,
+  runningXmlImport,
   zeroCounters,
 } from "@/test/imports";
+import { initI18n } from "@/i18n";
 import { renderRoute } from "@/test/render";
 import { fakeAuth, member, server } from "@/test/server";
 import { fakeTokens } from "@/test/tokens";
@@ -104,6 +106,29 @@ describe("import banner", () => {
 
     expect(await findBanner()).toHaveTextContent(
       /^An import is running\.View imports$/,
+    );
+  });
+
+  it("given a running XML import, then the banner shows its progress as a percentage", async () => {
+    fakeImports([runningXmlImport]);
+    openPage("/");
+
+    expect(await findBanner()).toHaveTextContent(
+      /^An import is running\. 5,000 records received so far\. 42% done\.View imports$/,
+    );
+  });
+
+  it("given the app in French, then the banner of a running XML import is translated", async () => {
+    const i18n = await initI18n();
+    await i18n.changeLanguage("fr");
+    fakeImports([runningXmlImport]);
+    openPage("/");
+
+    const banner = await screen.findByRole("region", {
+      name: "Importation en cours",
+    });
+    expect(banner.textContent?.replace(/\s+/g, " ")).toBe(
+      "Une importation est en cours. 5 000 enregistrements reçus pour l'instant. 42 % effectués.Voir les importations",
     );
   });
 

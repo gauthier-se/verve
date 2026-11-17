@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initI18n } from "@/i18n";
 import {
   completedImport,
+  completedXmlImport,
   failedImport,
   fakeImports,
   importsPath,
@@ -36,6 +37,7 @@ const completedTime = "Nov 10, 2026, 9:00:00 AM";
 const queuedTime = "Nov 9, 2026, 8:30:00 PM";
 const failedTime = "Nov 8, 2026, 8:00:00 AM";
 const runningTime = "Nov 11, 2026, 12:58:00 PM";
+const xmlTime = "Nov 11, 2026, 12:59:00 PM";
 
 /**
  * `text` with each run of white space, such as the narrow no-break space of
@@ -254,6 +256,37 @@ describe("imports page", () => {
       ).toHaveAttribute("href", "/settings/tokens");
       expect(screen.queryByRole("table")).not.toBeInTheDocument();
     });
+
+    it("given no import, then the empty state links to the upload page", async () => {
+      fakeImports();
+      await openImportsPage();
+
+      const empty = await screen.findByRole("region", {
+        name: "No import yet",
+      });
+      expect(
+        within(empty).getByRole("link", {
+          name: "Upload your Apple Health export",
+        }),
+      ).toHaveAttribute("href", "/imports/xml");
+    });
+  });
+
+  describe("upload link", () => {
+    it.each([
+      { imports: "imports", initial: [completedImport] },
+      { imports: "no import", initial: [] },
+    ])(
+      "given $imports, then the page links to the upload page",
+      async ({ initial }) => {
+        fakeImports(initial);
+        await openImportsPage();
+
+        expect(
+          screen.getByRole("link", { name: "Import an Apple Health export" }),
+        ).toHaveAttribute("href", "/imports/xml");
+      },
+    );
   });
 
   describe("drawer", () => {
@@ -379,6 +412,40 @@ describe("imports page", () => {
         expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
       });
       expect(details).toHaveFocus();
+    });
+
+    it("given an XML import, when the user opens it, then the drawer shows the period and the routes of its report", async () => {
+      const user = userEvent.setup();
+      fakeImports([completedXmlImport]);
+      await openImportsPage();
+
+      const drawer = await openDrawer(user, xmlTime);
+
+      const period = await within(drawer).findByRole("region", {
+        name: "Period",
+      });
+      expect(normalize(period.textContent)).toBe(
+        "PeriodFrom Dec 30, 2025 to Jan 5, 2026",
+      );
+      expect(
+        within(drawer).getByRole("region", { name: "Routes" }),
+      ).toHaveTextContent("1 route stored with its workout.");
+    });
+
+    it("given an import without period or route, when the user opens it, then the drawer shows neither", async () => {
+      const user = userEvent.setup();
+      fakeImports([failedImport]);
+      await openImportsPage();
+
+      const drawer = await openDrawer(user, failedTime);
+
+      await within(drawer).findByRole("region", { name: "Totals" });
+      expect(
+        within(drawer).queryByRole("region", { name: "Period" }),
+      ).not.toBeInTheDocument();
+      expect(
+        within(drawer).queryByRole("region", { name: "Routes" }),
+      ).not.toBeInTheDocument();
     });
 
     it("given two imports created in the same minute, then their buttons have different names", async () => {
@@ -627,6 +694,36 @@ describe("imports page", () => {
       ]);
     });
 
+    it("given the app in French, then the upload link and the period and routes of the drawer are translated", async () => {
+      const user = userEvent.setup();
+      const i18n = await initI18n();
+      await i18n.changeLanguage("fr");
+      fakeImports([completedXmlImport]);
+      server.use(...fakeAuth({ user: member, signedIn: true }));
+      renderRoute("/imports");
+
+      expect(
+        await screen.findByRole("link", {
+          name: "Importer un export Apple Health",
+        }),
+      ).toBeInTheDocument();
+      await user.click(
+        await screen.findByRole("button", {
+          name: named("Détails de l'importation du 11 nov. 2026, 12:59:00"),
+        }),
+      );
+      const drawer = await screen.findByRole("dialog");
+      const period = await within(drawer).findByRole("region", {
+        name: "Période",
+      });
+      expect(normalize(period.textContent)).toBe(
+        "PériodeDu 30 déc. 2025 au 5 janv. 2026",
+      );
+      expect(
+        within(drawer).getByRole("region", { name: "Parcours" }),
+      ).toHaveTextContent("1 parcours enregistré avec son entraînement.");
+    });
+
     it("given the app in French and no import, then the empty state is translated", async () => {
       const i18n = await initI18n();
       await i18n.changeLanguage("fr");
@@ -639,6 +736,11 @@ describe("imports page", () => {
       });
       expect(
         within(empty).getByRole("link", { name: "Créer un jeton d'API" }),
+      ).toBeInTheDocument();
+      expect(
+        within(empty).getByRole("link", {
+          name: "Envoyer votre export Apple Health",
+        }),
       ).toBeInTheDocument();
     });
   });
