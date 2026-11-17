@@ -200,11 +200,13 @@ type figures struct {
 	days   int
 	took   time.Duration
 	peakMB float64
+	ownMB  float64
 }
 
 var figuresPattern = regexp.MustCompile(`^Export: ([0-9.]+) MB of XML, (\d+) days\n` +
 	`Duration: (\S+) \(limit \S+\)\n` +
-	`Peak memory: ([0-9.]+) MB \(limit \d+ MB\)\n$`)
+	`Peak memory: ([0-9.]+) MB \(limit 300 MB\)\n` +
+	`Peak memory of importcheck: ([0-9.]+) MB \(the import reports at most this much of it\)\n$`)
 
 func parseFigures(t *testing.T, stdout string) figures {
 	t.Helper()
@@ -224,13 +226,16 @@ func parseFigures(t *testing.T, stdout string) figures {
 	require.NoError(t, err)
 	f.peakMB, err = strconv.ParseFloat(m[4], 64)
 	require.NoError(t, err)
+	f.ownMB, err = strconv.ParseFloat(m[5], 64)
+	require.NoError(t, err)
 
 	return f
 }
 
 // Given -verve and a small export, then run generates the export, creates a data directory and a
 // user with the binary, imports the export for them with the binary, prints the size of the
-// export, the duration and the peak memory of the import, and removes what it created.
+// export, the duration and the peak memory of the import, then its own peak memory, which a child
+// can report as its own, and removes what it created.
 func TestRun_SmallExport_ImportsItWithTheBinaryAndPrintsItsFigures(t *testing.T) {
 	t.Parallel()
 
@@ -267,40 +272,24 @@ func TestRun_SmallExport_ImportsItWithTheBinaryAndPrintsItsFigures(t *testing.T)
 	require.Positive(t, got.took)
 	require.GreaterOrEqual(t, got.peakMB, 20.0, "the memory that the import touched")
 	require.Less(t, got.peakMB, 300.0)
+	require.Positive(t, got.ownMB)
 }
 
-// Given a peak resident memory of the import above the limit, 300 MB unless -max-memory-mb changes
-// it, then run fails and says so, after printing the figures.
+// Given a peak resident memory of the import above 300 MB, then run fails and says so, after
+// printing the figures.
 func TestRun_PeakMemoryAboveTheLimit_Fails(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name    string
-		allocMB int
-		flags   []string
-		limit   string
-	}{
-		{"default limit", 320, nil, "300 MB"},
-		{"lower limit", 120, []string{"-max-memory-mb", "100"}, "100 MB"},
-	}
+	verve := newFake(t, fakeBehavior{allocMB: 320})
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+	var stdout bytes.Buffer
 
-			verve := newFake(t, fakeBehavior{allocMB: tt.allocMB})
+	err := run(t.Context(), []string{"-verve", verve.path, "-size-mb", "1"}, &stdout, io.Discard)
+	require.ErrorContains(t, err, "peak memory")
+	require.ErrorContains(t, err, "300 MB")
 
-			var stdout bytes.Buffer
-
-			args := append([]string{"-verve", verve.path, "-size-mb", "1"}, tt.flags...)
-			err := run(t.Context(), args, &stdout, io.Discard)
-			require.ErrorContains(t, err, "peak memory")
-			require.ErrorContains(t, err, tt.limit)
-
-			got := parseFigures(t, stdout.String())
-			require.GreaterOrEqual(t, got.peakMB, float64(tt.allocMB))
-		})
-	}
+	got := parseFigures(t, stdout.String())
+	require.GreaterOrEqual(t, got.peakMB, 320.0)
 }
 
 // Given an import that runs longer than -max-duration, then run stops it and fails.
@@ -356,7 +345,6 @@ func TestRun_InvalidArguments_Fail(t *testing.T) {
 		{"unknown flag", []string{"-verve", binary, "-unknown"}},
 		{"extra operand", []string{"-verve", binary, "extra"}},
 		{"no size", []string{"-verve", binary, "-size-mb", "0"}},
-		{"no memory", []string{"-verve", binary, "-max-memory-mb", "0"}},
 		{"no duration", []string{"-verve", binary, "-max-duration", "0s"}},
 		{"not a number", []string{"-verve", binary, "-size-mb", "large"}},
 	}
