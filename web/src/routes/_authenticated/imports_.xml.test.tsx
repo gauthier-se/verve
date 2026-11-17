@@ -1,8 +1,18 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { completedXmlImport, fakeImports } from "@/test/imports";
+import {
+  completedXmlImport,
+  fakeImports,
+  runningXmlImport,
+} from "@/test/imports";
 import { renderRoute } from "@/test/render";
 import { fakeAuth, member, server } from "@/test/server";
 import { exportFile, fakeUploads, MiB } from "@/test/uploads";
@@ -21,6 +31,19 @@ async function openUploadPage() {
 /** The file picker of the drop zone. */
 function getFilePicker() {
   return screen.getByLabelText("Choose a file");
+}
+
+/**
+ * `text` with each run of white space, such as the narrow no-break space of
+ * a formatted number, as one space.
+ */
+function normalize(text: string | null) {
+  return (text ?? "").replace(/\s+/g, " ");
+}
+
+/** Lets `ms` of time pass for the timers of the page and its requests. */
+async function elapse(ms: number) {
+  await act(() => vi.advanceTimersByTimeAsync(ms));
 }
 
 /** Moves the focus with the Tab key until it reaches `element`. */
@@ -162,4 +185,150 @@ describe("upload page", () => {
       { offset: 8 * MiB, size: 4 * MiB },
     ]);
   });
+});
+
+describe("upload page, once the upload ends", () => {
+  beforeEach(() => {
+    // The timers of the polling and of the retries are fake, and advance on
+    // their own with real time, so that the requests complete.
+    vi.useFakeTimers({
+      toFake: [
+        "setTimeout",
+        "clearTimeout",
+        "setInterval",
+        "clearInterval",
+        "Date",
+      ],
+      shouldAdvanceTime: true,
+    });
+    vi.setSystemTime(new Date("2026-11-11T12:00:00Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function setupUser() {
+    return userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+  }
+
+  /** The section of the import of the completed upload, once it shows. */
+  function findImportSection() {
+    return screen.findByRole("region", { name: "Import of export.zip" });
+  }
+
+  it("given an upload that completes, then the page follows the import of Verve-Import-Id: its progress while it runs, then its status, the counters per type, the period and the routes", async () => {
+    const user = setupUser();
+    const { replace } = fakeImports([runningXmlImport]);
+    fakeUploads({ importId: runningXmlImport.id });
+    await openUploadPage();
+
+    await user.upload(getFilePicker(), exportFile(MiB));
+
+    const running = await findImportSection();
+    expect(await within(running).findByText("Running")).toBeInTheDocument();
+    expect(
+      within(running).getByRole("progressbar", { name: "Import progress" }),
+    ).toHaveAttribute("aria-valuenow", "42");
+    expect(within(running).getByText("42% processed")).toBeInTheDocument();
+
+    replace([completedXmlImport]);
+    await elapse(5500);
+
+    const completed = await findImportSection();
+    expect(await within(completed).findByText("Completed")).toBeInTheDocument();
+    expect(
+      within(completed).queryByRole("progressbar"),
+    ).not.toBeInTheDocument();
+    const byType = within(completed).getByRole("region", { name: "By type" });
+    expect(
+      within(byType)
+        .getAllByRole("heading", { level: 4 })
+        .map((heading) => heading.textContent),
+    ).toEqual(["Steps", "Workouts"]);
+    expect(
+      normalize(
+        within(completed).getByRole("region", { name: "Period" }).textContent,
+      ),
+    ).toBe("PeriodFrom Dec 30, 2025 to Jan 5, 2026");
+    expect(
+      within(completed).getByRole("region", { name: "Routes" }),
+    ).toHaveTextContent("1 route stored with its workout.");
+  });
+
+  it.each([
+    {
+      failure: "a file above the limit",
+      message:
+        "The file is larger than this server accepts. Its administrator can raise the limit, VERVE_MAX_UPLOAD_SIZE, then you can try again.",
+      setup: () => fakeUploads({ maxSize: MiB }),
+    },
+    {
+      failure: "a disk full",
+      message:
+        "The server has run out of disk space. Once space is freed, try again: the upload resumes where it stopped.",
+      setup: () => {
+        const uploads = fakeUploads();
+        uploads.fail("diskFull");
+        return uploads;
+      },
+    },
+    {
+      failure: "a network loss that outlasts the retries",
+      message:
+        "The connection to the server was lost. Check your network, then try again: the upload resumes where it stopped.",
+      setup: () => {
+        const uploads = fakeUploads();
+        uploads.fail("network");
+        return uploads;
+      },
+    },
+  ])(
+    "given $failure, then the page explains it in plain words and offers to try again",
+    async ({ setup, message }) => {
+      const user = setupUser();
+      fakeImports([completedXmlImport]);
+      setup();
+      await openUploadPage();
+
+      await user.upload(getFilePicker(), exportFile(2 * MiB));
+      await elapse(10_000);
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(message);
+      expect(
+        screen.getByRole("button", { name: "Try again" }),
+      ).toBeInTheDocument();
+    },
+  );
+
+  it.each(["diskFull", "network"] as const)(
+    "given an upload stopped by %s, when the user tries again once it is over, then the upload resumes where it stopped",
+    async (failure) => {
+      const user = setupUser();
+      fakeImports([completedXmlImport]);
+      const uploads = fakeUploads();
+      const { release } = uploads.holdAt(8 * MiB);
+      await openUploadPage();
+      await user.upload(getFilePicker(), exportFile(12 * MiB));
+      await screen.findByText("Uploading export.zip: 67%");
+      uploads.fail(failure);
+      release();
+      await elapse(10_000);
+      await screen.findByRole("alert");
+
+      uploads.recover();
+      await user.click(screen.getByRole("button", { name: "Try again" }));
+
+      await waitFor(() => {
+        expect(uploads.patches).toHaveLength(2);
+      });
+      expect(uploads.creations).toHaveLength(1);
+      expect(uploads.patches[1]).toMatchObject({
+        offset: 8 * MiB,
+        size: 4 * MiB,
+      });
+      expect(await findImportSection()).toBeInTheDocument();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    },
+  );
 });
