@@ -147,8 +147,8 @@ func pushError(err error, maxBody int64) error {
 		return bodyTooLarge(maxBody)
 	}
 
-	if errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.EDQUOT) || errors.Is(err, store.ErrFull) {
-		return huma.NewError(http.StatusInsufficientStorage, "the server is out of storage, retry later")
+	if isOutOfStorage(err) {
+		return huma.NewError(http.StatusInsufficientStorage, outOfStorageDetail)
 	}
 
 	return err
@@ -178,4 +178,13 @@ func nameOfToken(ctx context.Context, s store.Store, principal auth.Principal) (
 	}
 
 	return "", nil
+}
+
+// outOfStorageDetail is the detail of the 507 problem of a full disk.
+const outOfStorageDetail = "the server is out of storage, retry later"
+
+// isOutOfStorage reports whether err is the failure of a full disk, or of a disk quota, while a file
+// or the database is written.
+func isOutOfStorage(err error) bool {
+	return errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.EDQUOT) || errors.Is(err, store.ErrFull)
 }

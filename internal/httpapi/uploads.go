@@ -13,7 +13,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -36,6 +35,8 @@ type UploadFiles interface {
 	Append(ctx context.Context, name string, offset int64, body io.Reader) (int64, error)
 	// Complete moves the file of name into the inbox, and returns its name there.
 	Complete(ctx context.Context, name string) (inboxName string, err error)
+	// Return moves the inbox file of inboxName back to the file of name, undoing Complete.
+	Return(ctx context.Context, name, inboxName string) error
 	// Remove removes the file of name, and succeeds when it is already gone.
 	Remove(ctx context.Context, name string) error
 }
@@ -54,12 +55,11 @@ const (
 )
 
 // tusUploads serves the tus endpoint under uploadsPathPrefix: the incomplete uploads of the sessions,
-// stored in its store with their files in its files, which complete into its inbox with a job of
+// stored in its store with their files in its files, which complete into the inbox with a job of
 // its jobs.
 type tusUploads struct {
 	store   store.Store
 	files   UploadFiles
-	inbox   Inbox
 	jobs    auth.JobQueue
 	clock   clock.Clock
 	maxSize int64
@@ -76,7 +76,6 @@ func registerUploads(mux *http.ServeMux, deps APIDeps) {
 	u := &tusUploads{
 		store:   deps.Store,
 		files:   deps.Uploads,
-		inbox:   deps.Inbox,
 		jobs:    deps.Jobs,
 		clock:   deps.Clock,
 		maxSize: deps.MaxUploadSize,
@@ -179,7 +178,7 @@ func (u *tusUploads) create(w http.ResponseWriter, r *http.Request, principal au
 
 // head gives the offset of an upload, where its client resumes it.
 func (u *tusUploads) head(w http.ResponseWriter, r *http.Request, principal auth.Principal) error {
-	upload, err := u.find(r.Context(), principal, r.PathValue("id"))
+	upload, err := u.findWithFile(r.Context(), principal, r.PathValue("id"))
 	if err != nil {
 		return err
 	}
@@ -212,16 +211,22 @@ func (u *tusUploads) patch(w http.ResponseWriter, r *http.Request, principal aut
 		return tusProblem(http.StatusBadRequest, "Upload-Offset must be a number of bytes")
 	}
 
+	ctx := r.Context()
 	id := r.PathValue("id")
+
+	// Looked up before the lock, so that an upload of another user answers 404 whatever its lock.
+	if _, err := u.findUnexpired(ctx, principal, id); err != nil {
+		return err
+	}
+
 	if !u.lock(id) {
-		return tusProblem(http.StatusLocked, "another request writes to the upload")
+		return uploadLocked()
 	}
 
 	defer u.unlock(id)
 
-	ctx := r.Context()
-
-	upload, err := u.find(ctx, principal, id)
+	// Looked up again under the lock, for the offset that the write before stored.
+	upload, err := u.findWithFile(ctx, principal, id)
 	if err != nil {
 		return err
 	}
@@ -246,7 +251,9 @@ func (u *tusUploads) patch(w http.ResponseWriter, r *http.Request, principal aut
 		return uploadNotFound()
 	}
 
-	if err == nil && upload.Offset+written == upload.Length {
+	// The bytes written are synced: the last one completes the upload, also when the body or the
+	// request failed after it, so that the offset is never stored at the length.
+	if upload.Offset+written == upload.Length {
 		return u.complete(ctx, w, principal, upload)
 	}
 
@@ -256,7 +263,14 @@ func (u *tusUploads) patch(w http.ResponseWriter, r *http.Request, principal aut
 
 		upload, advanceErr = u.store.Uploads().Advance(context.WithoutCancel(ctx), principal.UserID, upload.ID,
 			upload.Offset, upload.Offset+written, u.clock.Now().Add(uploadLifetime))
-		if advanceErr != nil {
+
+		switch {
+		case errors.Is(advanceErr, store.ErrNotFound):
+			// Removed meanwhile, such as by cleanup.uploads once expired.
+			return uploadNotFound()
+		case errors.Is(advanceErr, store.ErrConflict):
+			return tusProblem(http.StatusConflict, "another request moved the offset of the upload")
+		case advanceErr != nil:
 			return errors.Join(err, advanceErr)
 		}
 	}
@@ -281,7 +295,8 @@ func (u *tusUploads) patch(w http.ResponseWriter, r *http.Request, principal aut
 // of origin xml, with the file name of the upload as the name of its client, and its job import.xml,
 // and answers with the import id in Verve-Import-Id. Its offset is never stored at the length, so
 // that a client resumes an upload that a crash left before the commit. A failure of the transaction
-// removes the inbox file.
+// returns the file to the upload, so that its client resumes it, once space is freed for a full
+// disk.
 func (u *tusUploads) complete(ctx context.Context, w http.ResponseWriter, principal auth.Principal, upload store.Upload) error {
 	// Every byte is received: the import is created also when the client went away.
 	ctx = context.WithoutCancel(ctx)
@@ -324,8 +339,13 @@ func (u *tusUploads) complete(ctx context.Context, w http.ResponseWriter, princi
 
 		return err
 	})
+	if errors.Is(err, store.ErrNotFound) {
+		// Removed meanwhile: the returned file has no upload, and cleanup.uploads removes it.
+		return errors.Join(uploadNotFound(), u.files.Return(ctx, upload.ID, inboxFile))
+	}
+
 	if err != nil {
-		return errors.Join(fmt.Errorf("queue import of upload: %w", err), u.inbox.Remove(ctx, inboxFile))
+		return errors.Join(fmt.Errorf("queue import of upload: %w", err), u.files.Return(ctx, upload.ID, inboxFile))
 	}
 
 	w.Header().Set("Upload-Offset", strconv.FormatInt(upload.Length, 10))
@@ -337,19 +357,20 @@ func (u *tusUploads) complete(ctx context.Context, w http.ResponseWriter, princi
 
 // terminate removes an upload and its file.
 func (u *tusUploads) terminate(w http.ResponseWriter, r *http.Request, principal auth.Principal) error {
+	ctx := r.Context()
 	id := r.PathValue("id")
+
+	// The upload goes also when its file is gone. Looked up before the lock, so that an upload of
+	// another user answers 404 whatever its lock.
+	if _, err := u.findUnexpired(ctx, principal, id); err != nil {
+		return err
+	}
+
 	if !u.lock(id) {
-		return tusProblem(http.StatusLocked, "another request writes to the upload")
+		return uploadLocked()
 	}
 
 	defer u.unlock(id)
-
-	ctx := r.Context()
-
-	// The upload goes also when its file is gone.
-	if _, err := u.findStored(ctx, principal, id); err != nil {
-		return err
-	}
 
 	err := u.store.Uploads().Delete(ctx, principal.UserID, id)
 	if errors.Is(err, store.ErrNotFound) {
@@ -446,11 +467,11 @@ func bodyPastLength() *Problem {
 	return tusProblem(http.StatusBadRequest, "the body goes past Upload-Length")
 }
 
-// find returns the upload of id of the user of principal, or a 404 problem when it is unknown,
+// findWithFile returns the upload of id of the user of principal, or a 404 problem when it is unknown,
 // expired or of another user, or when its file is gone, such as after a crash between the rename
 // of its last write and the commit of its import (FR-4 of XML import).
-func (u *tusUploads) find(ctx context.Context, principal auth.Principal, id string) (store.Upload, error) {
-	upload, err := u.findStored(ctx, principal, id)
+func (u *tusUploads) findWithFile(ctx context.Context, principal auth.Principal, id string) (store.Upload, error) {
+	upload, err := u.findUnexpired(ctx, principal, id)
 	if err != nil {
 		return store.Upload{}, err
 	}
@@ -467,9 +488,9 @@ func (u *tusUploads) find(ctx context.Context, principal auth.Principal, id stri
 	return upload, nil
 }
 
-// findStored returns the upload of id of the user of principal, or a 404 problem when it is
+// findUnexpired returns the upload of id of the user of principal, or a 404 problem when it is
 // unknown, expired (FR-3 of XML import) or of another user.
-func (u *tusUploads) findStored(ctx context.Context, principal auth.Principal, id string) (store.Upload, error) {
+func (u *tusUploads) findUnexpired(ctx context.Context, principal auth.Principal, id string) (store.Upload, error) {
 	upload, err := u.store.Uploads().Get(ctx, principal.UserID, id)
 	if errors.Is(err, store.ErrNotFound) {
 		return store.Upload{}, uploadNotFound()
@@ -543,17 +564,18 @@ func writeTusError(w http.ResponseWriter, r *http.Request, err error) {
 		return
 	}
 
-	if errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.EDQUOT) || errors.Is(err, store.ErrFull) {
-		WriteProblem(w, Problem{
-			Status: http.StatusInsufficientStorage,
-			Detail: "the server is out of storage, retry later",
-			Code:   defaultCode(http.StatusInsufficientStorage),
-		})
+	if isOutOfStorage(err) {
+		WriteProblem(w, *tusProblem(http.StatusInsufficientStorage, outOfStorageDetail))
 
 		return
 	}
 
 	ctx := r.Context()
 	logging.FromContext(ctx).ErrorContext(ctx, "serve upload", slog.Any("error", err))
-	WriteProblem(w, Problem{Status: http.StatusInternalServerError, Code: defaultCode(http.StatusInternalServerError)})
+	WriteProblem(w, *tusProblem(http.StatusInternalServerError, ""))
+}
+
+// uploadLocked returns the 423 problem of an upload that another request holds.
+func uploadLocked() *Problem {
+	return tusProblem(http.StatusLocked, "another request writes to the upload")
 }

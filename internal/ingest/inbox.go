@@ -127,6 +127,36 @@ func (i *Inbox) Remove(ctx context.Context, name string) error {
 	return removeIfExists(path)
 }
 
+// adopt moves the file at path, whose writes are synced, from a directory of the file system of the
+// inbox into the inbox under a new random name, which it returns, and syncs the inbox.
+func (i *Inbox) adopt(path string) (string, error) {
+	name := rand.Text()
+
+	if err := os.Rename(path, filepath.Join(i.dir, name)); err != nil {
+		return "", fmt.Errorf("move file into the inbox: %w", err)
+	}
+
+	if err := syncDir(i.dir); err != nil {
+		return "", err
+	}
+
+	return name, nil
+}
+
+// release moves the inbox file of name out to path, undoing adopt, and syncs the inbox.
+func (i *Inbox) release(name, path string) error {
+	from, err := i.path(name)
+	if err != nil {
+		return err
+	}
+
+	if err := os.Rename(from, path); err != nil {
+		return fmt.Errorf("move file out of the inbox: %w", err)
+	}
+
+	return syncDir(i.dir)
+}
+
 // Cleanup removes the files that no import needs, once they are older than InboxOrphanAge: those
 // of the imports that failed more than InboxFailedRetention ago, of the completed and cancelled
 // imports whose removal failed, and the files without import, temporary ones included. It keeps
@@ -144,9 +174,15 @@ func (i *Inbox) Cleanup(ctx context.Context, imports store.ImportsRepository) er
 		kept[name] = true
 	}
 
-	entries, err := os.ReadDir(i.dir)
+	return removeOrphans(ctx, i.dir, kept, now, InboxOrphanAge)
+}
+
+// removeOrphans removes the regular files of dir that kept does not name, once they are older than
+// age at now. It goes on past a file that fails, and returns the errors of all.
+func removeOrphans(ctx context.Context, dir string, kept map[string]bool, now time.Time, age time.Duration) error {
+	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return fmt.Errorf("list inbox: %w", err)
+		return fmt.Errorf("list directory: %w", err)
 	}
 
 	var errs []error
@@ -166,16 +202,16 @@ func (i *Inbox) Cleanup(ctx context.Context, imports store.ImportsRepository) er
 		}
 
 		if err != nil {
-			errs = append(errs, fmt.Errorf("stat inbox file: %w", err))
+			errs = append(errs, fmt.Errorf("stat file: %w", err))
 
 			continue
 		}
 
-		if now.Sub(info.ModTime()) < InboxOrphanAge {
+		if now.Sub(info.ModTime()) < age {
 			continue
 		}
 
-		if err := removeIfExists(filepath.Join(i.dir, entry.Name())); err != nil {
+		if err := removeIfExists(filepath.Join(dir, entry.Name())); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -196,7 +232,7 @@ func (i *Inbox) path(name string) (string, error) {
 // removeIfExists removes the file at path, and succeeds when it is already gone.
 func removeIfExists(path string) error {
 	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf("remove inbox file: %w", err)
+		return fmt.Errorf("remove file: %w", err)
 	}
 
 	return nil
@@ -204,17 +240,17 @@ func removeIfExists(path string) error {
 
 // syncDir syncs the directory dir, so that a rename in it survives a crash.
 func syncDir(dir string) error {
-	d, err := os.Open(dir) //nolint:gosec // G304: the inbox directory
+	d, err := os.Open(dir) //nolint:gosec // G304: the inbox or uploads directory
 	if err != nil {
-		return fmt.Errorf("open inbox: %w", err)
+		return fmt.Errorf("open directory: %w", err)
 	}
 
 	if err := d.Sync(); err != nil {
-		return errors.Join(fmt.Errorf("sync inbox: %w", err), d.Close())
+		return errors.Join(fmt.Errorf("sync directory: %w", err), d.Close())
 	}
 
 	if err := d.Close(); err != nil {
-		return fmt.Errorf("close inbox: %w", err)
+		return fmt.Errorf("close directory: %w", err)
 	}
 
 	return nil

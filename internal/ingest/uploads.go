@@ -55,11 +55,11 @@ func (u *Uploads) Create(ctx context.Context) (string, error) {
 	}
 
 	if err := f.Close(); err != nil {
-		return "", errors.Join(fmt.Errorf("close upload file: %w", err), removeUpload(path))
+		return "", errors.Join(fmt.Errorf("close upload file: %w", err), removeIfExists(path))
 	}
 
 	if err := syncDir(u.dir); err != nil {
-		return "", errors.Join(err, removeUpload(path))
+		return "", errors.Join(err, removeIfExists(path))
 	}
 
 	return name, nil
@@ -164,13 +164,8 @@ func (u *Uploads) Complete(ctx context.Context, name string) (string, error) {
 		return "", err
 	}
 
-	inboxName := rand.Text()
-
-	if err := os.Rename(path, filepath.Join(u.inbox.dir, inboxName)); err != nil {
-		return "", fmt.Errorf("move upload file into the inbox: %w", err)
-	}
-
-	if err := syncDir(u.inbox.dir); err != nil {
+	inboxName, err := u.inbox.adopt(path)
+	if err != nil {
 		return "", err
 	}
 
@@ -179,6 +174,25 @@ func (u *Uploads) Complete(ctx context.Context, name string) (string, error) {
 	}
 
 	return inboxName, nil
+}
+
+// Return moves the inbox file of inboxName back to the file of name, undoing Complete when the
+// import of the upload could not be created, so that its client resumes it.
+func (u *Uploads) Return(ctx context.Context, name, inboxName string) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("return upload file: %w", err)
+	}
+
+	path, err := u.path(name)
+	if err != nil {
+		return err
+	}
+
+	if err := u.inbox.release(inboxName, path); err != nil {
+		return err
+	}
+
+	return syncDir(u.dir)
 }
 
 // Remove removes the file of name. A file already gone is not an error, so that removing a file
@@ -193,7 +207,7 @@ func (u *Uploads) Remove(ctx context.Context, name string) error {
 		return err
 	}
 
-	return removeUpload(path)
+	return removeIfExists(path)
 }
 
 // Cleanup removes the expired uploads of uploads with their files, and the files without upload
@@ -224,43 +238,7 @@ func (u *Uploads) Cleanup(ctx context.Context, uploads store.UploadsRepository) 
 		kept[id] = true
 	}
 
-	entries, err := os.ReadDir(u.dir)
-	if err != nil {
-		return errors.Join(append(errs, fmt.Errorf("list uploads: %w", err))...)
-	}
-
-	now := u.clk.Now()
-
-	for _, entry := range entries {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-
-		if !entry.Type().IsRegular() || kept[entry.Name()] {
-			continue
-		}
-
-		info, err := entry.Info()
-		if errors.Is(err, fs.ErrNotExist) {
-			continue
-		}
-
-		if err != nil {
-			errs = append(errs, fmt.Errorf("stat upload file: %w", err))
-
-			continue
-		}
-
-		if now.Sub(info.ModTime()) < UploadOrphanAge {
-			continue
-		}
-
-		if err := removeUpload(filepath.Join(u.dir, entry.Name())); err != nil {
-			errs = append(errs, err)
-		}
-	}
-
-	return errors.Join(errs...)
+	return errors.Join(append(errs, removeOrphans(ctx, u.dir, kept, u.clk.Now(), UploadOrphanAge))...)
 }
 
 // path returns the path of the file of name, or errUploadName when name is not the one of a file of
@@ -271,13 +249,4 @@ func (u *Uploads) path(name string) (string, error) {
 	}
 
 	return filepath.Join(u.dir, name), nil
-}
-
-// removeUpload removes the upload file at path, and succeeds when it is already gone.
-func removeUpload(path string) error {
-	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf("remove upload file: %w", err)
-	}
-
-	return nil
 }
