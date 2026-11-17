@@ -145,6 +145,7 @@ export default interface Resources {
       "received_one": "{{received}} record received so far.",
       "received_other": "{{received}} records received so far.",
       "running": "An import is running.",
+      "uploadStopped": "The upload of {{fileName}} stopped.",
       "view": "View imports",
       "viewUpload": "View upload"
     },
@@ -383,11 +384,13 @@ export default interface Resources {
     "unexpectedError": "Something went wrong. Try again.",
     "upload": {
       "announce": "Upload {{percent}} done.",
+      "complete": "The upload of {{fileName}} is complete. Its import shows on the imports page.",
       "description": "Send the export of the Health app of your iPhone to Verve, with your whole history.",
       "dropZone": {
         "choose": "Choose a file",
         "description": "Drop the export.zip or export.xml file here, or choose it.",
-        "label": "Upload the export"
+        "label": "Upload the export",
+        "refused": "Choose the export.zip or export.xml file of the Health app."
       },
       "duration": "An export of several years can take 10 to 30 minutes to process on a Raspberry Pi.",
       "failure": {
@@ -412,7 +415,8 @@ export default interface Resources {
       "progress": "Uploading {{fileName}}: {{percent}}",
       "progressLabel": "Upload of {{fileName}}",
       "retry": "Try again",
-      "title": "Import an Apple Health export"
+      "title": "Import an Apple Health export",
+      "viewImports": "View imports"
     },
     "userMenu": {
       "logout": "Log out",

@@ -59,6 +59,7 @@
     "received_many": "{{received}} enregistrements reçus pour l'instant.",
     "received_other": "{{received}} enregistrements reçus pour l'instant.",
     "running": "Une importation est en cours.",
+    "uploadStopped": "L'envoi du fichier {{fileName}} s'est arrêté.",
     "view": "Voir les importations",
     "viewUpload": "Voir l'envoi"
   },
@@ -298,11 +299,13 @@
   "unexpectedError": "Une erreur s'est produite. Réessayez.",
   "upload": {
     "announce": "{{percent}} envoyés.",
+    "complete": "L'envoi du fichier {{fileName}} est terminé. Son importation apparaît sur la page des importations.",
     "description": "Envoyez à Verve l'export de l'app Santé de votre iPhone, avec tout votre historique.",
     "dropZone": {
       "choose": "Choisir un fichier",
       "description": "Déposez ici le fichier export.zip ou export.xml, ou choisissez-le.",
-      "label": "Envoyer l'export"
+      "label": "Envoyer l'export",
+      "refused": "Choisissez le fichier export.zip ou export.xml de l'app Santé."
     },
     "duration": "Le traitement d'un export de plusieurs années peut prendre de 10 à 30 minutes sur un Raspberry Pi.",
     "failure": {
@@ -327,7 +330,8 @@
     "progress": "Envoi du fichier {{fileName}} : {{percent}}",
     "progressLabel": "Envoi du fichier {{fileName}}",
     "retry": "Réessayer",
-    "title": "Importer un export Apple Health"
+    "title": "Importer un export Apple Health",
+    "viewImports": "Voir les importations"
   },
   "userMenu": {
     "logout": "Se déconnecter",

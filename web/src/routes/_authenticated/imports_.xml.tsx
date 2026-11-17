@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { type DragEvent, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -68,9 +68,22 @@ function UploadPage() {
           </Button>
         </div>
       )}
-      {state.status === "completed" && (
-        <FollowedImport id={state.importId} fileName={state.fileName} />
-      )}
+      {state.status === "completed" &&
+        (state.importId === undefined ? (
+          <div className="flex flex-col items-start gap-2">
+            <p>{t("upload.complete", { fileName: state.fileName })}</p>
+            <Button
+              asChild
+              variant="outline"
+              size="lg"
+              className="min-h-11 px-4"
+            >
+              <Link to="/imports">{t("upload.viewImports")}</Link>
+            </Button>
+          </div>
+        ) : (
+          <FollowedImport id={state.importId} fileName={state.fileName} />
+        ))}
     </div>
   );
 }
@@ -89,12 +102,20 @@ function DropZone({ disabled, onFile }: DropZoneProps) {
   const { t } = useTranslation();
   const inputId = useId();
   const [dragging, setDragging] = useState(false);
+  // Whether the file dropped last is not an export, which the file picker
+  // already filters.
+  const [refused, setRefused] = useState(false);
 
   function onDrop(event: DragEvent) {
     event.preventDefault();
     setDragging(false);
     const file = event.dataTransfer.files[0];
-    if (file !== undefined && !disabled) {
+    if (file === undefined || disabled) {
+      return;
+    }
+    const isExport = /\.(zip|xml)$/i.test(file.name);
+    setRefused(!isExport);
+    if (isExport) {
       onFile(file);
     }
   }
@@ -127,6 +148,7 @@ function DropZone({ disabled, onFile }: DropZoneProps) {
           // Cleared, so that choosing the same file again uploads it again.
           event.currentTarget.value = "";
           if (file !== undefined) {
+            setRefused(false);
             onFile(file);
           }
         }}
@@ -140,6 +162,11 @@ function DropZone({ disabled, onFile }: DropZoneProps) {
       >
         {t("upload.dropZone.choose")}
       </label>
+      {refused && (
+        <p role="alert" className="text-sm text-destructive">
+          {t("upload.dropZone.refused")}
+        </p>
+      )}
     </section>
   );
 }

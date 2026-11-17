@@ -41,7 +41,12 @@ export type UploadState =
       bytesTotal: number;
     }
   | { status: "failed"; fileName: string; failure: UploadFailure }
-  | { status: "completed"; fileName: string; importId: number };
+  | {
+      status: "completed";
+      fileName: string;
+      /** The id of its import, left out when the response did not give it. */
+      importId: number | undefined;
+    };
 
 interface UploadContextValue {
   state: UploadState;
@@ -101,7 +106,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
           setState({
             status: "completed",
             fileName: next.name,
-            importId: Number(lastResponse.getHeader("Verve-Import-Id")),
+            importId: importId(lastResponse.getHeader("Verve-Import-Id")),
           });
         }
       },
@@ -173,6 +178,12 @@ export function useUpload(): UploadContextValue {
     throw new Error("useUpload must be used inside UploadProvider");
   }
   return value;
+}
+
+/** The import id of a `Verve-Import-Id` header, when it is one. */
+function importId(header: string | undefined): number | undefined {
+  const id = Number(header);
+  return Number.isSafeInteger(id) && id > 0 ? id : undefined;
 }
 
 /** Why a request of an upload failed, from the status of its response. */

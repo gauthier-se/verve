@@ -19,7 +19,8 @@ const idlePollMs = 60_000;
  * otherwise. Screen readers announce that an import runs, from a live region
  * that stays on the page so that its change is announced, but not the count,
  * which changes at every poll. Outside the upload page, the banner also
- * shows the percentage of a running upload, with a link to the upload page.
+ * shows the percentage of a running upload, or that it stopped, with a link
+ * to the upload page.
  */
 export function ImportBanner() {
   const { t, i18n } = useTranslation();
@@ -34,13 +35,16 @@ export function ImportBanner() {
     undefined;
 
   const runningImport = running.data?.items[0];
-  const uploadText =
-    upload.status === "uploading" && !onUploadPage
+  const uploadText = onUploadPage
+    ? undefined
+    : upload.status === "uploading"
       ? t("upload.progress", {
           fileName: upload.fileName,
           percent: formatPercent(uploadRatio(upload), i18n.language),
         })
-      : undefined;
+      : upload.status === "failed"
+        ? t("importBanner.uploadStopped", { fileName: upload.fileName })
+        : undefined;
   const received = runningImport?.report.total.received ?? 0;
 
   return (
