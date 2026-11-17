@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/gauthier-se/verve/internal/ingest"
+	"github.com/gauthier-se/verve/internal/ingest/applexml"
 	"github.com/gauthier-se/verve/internal/store"
 )
 
@@ -276,7 +277,7 @@ func TestUploads_Create_RefusesAnInvalidCreation(t *testing.T) {
 }
 
 // tusMethods are the methods of the tus endpoint.
-var tusMethods = []string{http.MethodOptions, http.MethodPost, http.MethodHead, http.MethodPatch}
+var tusMethods = []string{http.MethodOptions, http.MethodPost, http.MethodHead, http.MethodPatch, http.MethodDelete}
 
 // Given a token, then every request of the tus endpoint answers 401, and so does a request without
 // a session that passes the CSRF checks.
@@ -330,7 +331,7 @@ func TestUploads_WithoutCSRFProtection_Answers403(t *testing.T) {
 	h := ut.handler(t, ut.files())
 	location := ut.mustCreate(t, h, 10)
 
-	for _, method := range []string{http.MethodPost, http.MethodPatch} {
+	for _, method := range []string{http.MethodPost, http.MethodPatch, http.MethodDelete} {
 		target := location
 		if method == http.MethodPost {
 			target = uploadsPath
@@ -628,4 +629,156 @@ func TestUploads_Patch_DiskFull_Answers507(t *testing.T) {
 	h = ut.handler(t, ut.files())
 	require.Equal(t, http.StatusNoContent, ut.patch(t, h, location, 3, "345").Code)
 	ut.requireOffset(t, h, location, 6, "012345")
+}
+
+// requireXMLImport requires that the import of the response rec is the queued import of origin xml
+// of alice, with client, whose inbox file holds content, and that its job is the queued
+// import.xml job of alice.
+func (ut uploadsTest) requireXMLImport(t *testing.T, rec *httptest.ResponseRecorder, client map[string]string, content string) {
+	t.Helper()
+
+	id, err := strconv.ParseInt(rec.Header().Get("Verve-Import-Id"), 10, 64)
+	require.NoError(t, err, "the response names the import")
+
+	imp, err := ut.store.Imports().Get(t.Context(), ut.alice.ID, id)
+	require.NoError(t, err)
+	require.Equal(t, store.OriginXML, imp.Origin)
+	require.Equal(t, store.ImportQueued, imp.Status)
+	require.Equal(t, client, imp.Client)
+	require.Zero(t, imp.TokenID)
+	require.Equal(t, []string{imp.InboxFile}, ut.inboxFiles(t))
+
+	data, err := os.ReadFile(filepath.Join(ut.inboxDir, imp.InboxFile))
+	require.NoError(t, err)
+	require.Equal(t, content, string(data))
+
+	job, _, err := ut.store.Jobs().Claim(t.Context(), time.Minute)
+	require.NoError(t, err)
+	require.Equal(t, applexml.KindImport, job.Kind)
+	require.Equal(t, ut.alice.ID, job.UserID)
+	require.Equal(t, fmt.Sprintf("import:%d", ut.alice.ID), job.SerialKey)
+	require.JSONEq(t, fmt.Sprintf(`{"importId": %d}`, imp.ID), string(job.Payload))
+}
+
+// Given the PATCH that reaches Upload-Length, then the file is renamed into the inbox, the upload is
+// deleted and an import of origin xml is created with that inbox file, the file name as the name of
+// its client, and its job import.xml. The response carries Verve-Import-Id, and HEAD on the upload
+// then answers 404.
+func TestUploads_Patch_LastByte_CreatesTheImport(t *testing.T) {
+	t.Parallel()
+
+	ut := newUploadsTest(t)
+	h := ut.handler(t, ut.files())
+	location := ut.mustCreate(t, h, 10)
+
+	require.Equal(t, http.StatusNoContent, ut.patch(t, h, location, 0, "01234").Code)
+
+	rec := ut.patch(t, h, location, 5, "56789")
+	require.Equal(t, http.StatusNoContent, rec.Code, rec.Body.String())
+	require.Equal(t, "10", rec.Header().Get("Upload-Offset"))
+	ut.requireXMLImport(t, rec, map[string]string{"name": "export.zip"}, "0123456789")
+
+	require.Equal(t, http.StatusNotFound, head(t, h, location, ut.aliceCookie).Code)
+	ut.requireNoUpload(t)
+}
+
+// Given an upload without file name, when one PATCH writes it whole, then its import has no client.
+func TestUploads_Patch_WholeUploadWithoutFileName_CreatesTheImportWithoutClient(t *testing.T) {
+	t.Parallel()
+
+	ut := newUploadsTest(t)
+	h := ut.handler(t, ut.files())
+
+	created := serveWith(h, ut.creationRequest(t, 3, ""))
+	require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
+
+	rec := ut.patch(t, h, created.Header().Get("Location"), 0, "<a>")
+	require.Equal(t, http.StatusNoContent, rec.Code, rec.Body.String())
+	ut.requireXMLImport(t, rec, nil, "<a>")
+	ut.requireNoUpload(t)
+}
+
+// Given a disk that fills up in the transaction that creates the import of a completed upload,
+// then the PATCH answers 507 and leaves no inbox file, no import and no job.
+func TestUploads_Patch_DiskFullInTheTransaction_Answers507(t *testing.T) {
+	t.Parallel()
+
+	ut := newUploadsTest(t)
+	location := ut.mustCreate(t, ut.handler(t, ut.files()), 3)
+
+	deps := ut.deps(t, "")
+	deps.Store = fullStore{Store: ut.store}
+	deps.Inbox = ut.inbox()
+	deps.Uploads = ut.files()
+	deps.MaxUploadSize = uploadsTestMaxSize
+
+	rec := ut.patch(t, NewHandler(deps), location, 0, "<a>")
+	status, _ := problemCode(t, rec)
+	require.Equal(t, http.StatusInsufficientStorage, status)
+	require.Empty(t, ut.inboxFiles(t))
+	ut.requireNothingQueued(t)
+}
+
+// Given an upload whose file is gone, such as after a crash between the rename into the inbox and
+// the commit of its import, then HEAD and PATCH answer 404, so that the client starts again.
+func TestUploads_FileGone_Answers404(t *testing.T) {
+	t.Parallel()
+
+	ut := newUploadsTest(t)
+	h := ut.handler(t, ut.files())
+	location := ut.mustCreate(t, h, 10)
+	require.NoError(t, os.Remove(filepath.Join(ut.uploadsDir, uploadID(location))))
+
+	require.Equal(t, http.StatusNotFound, head(t, h, location, ut.aliceCookie).Code)
+
+	status, _ := problemCode(t, ut.patch(t, h, location, 0, "01234"))
+	require.Equal(t, http.StatusNotFound, status)
+	require.Empty(t, ut.uploadFiles(t), "PATCH creates no file")
+}
+
+// deleteUpload serves the DELETE of the upload of location on h with cookie, and returns the
+// response.
+func deleteUpload(t *testing.T, h http.Handler, location, cookie string) *httptest.ResponseRecorder {
+	t.Helper()
+
+	return serveWith(h, tusRequest(t, http.MethodDelete, location, nil, cookie))
+}
+
+// Given DELETE on an upload, then it answers 204 and removes the upload and its file, and HEAD then
+// answers 404.
+func TestUploads_Delete_RemovesTheUploadAndItsFile(t *testing.T) {
+	t.Parallel()
+
+	ut := newUploadsTest(t)
+	h := ut.handler(t, ut.files())
+	location := ut.mustCreate(t, h, 10)
+	require.Equal(t, http.StatusNoContent, ut.patch(t, h, location, 0, "01234").Code)
+
+	rec := deleteUpload(t, h, location, ut.aliceCookie)
+	require.Equal(t, http.StatusNoContent, rec.Code, rec.Body.String())
+	require.Equal(t, "1.0.0", rec.Header().Get("Tus-Resumable"))
+	ut.requireNoUpload(t)
+	require.Equal(t, http.StatusNotFound, head(t, h, location, ut.aliceCookie).Code)
+}
+
+// Given an upload of another user, an unknown one or an expired one, then DELETE answers 404, and
+// the upload of another user stays.
+func TestUploads_Delete_OfAnotherUserUnknownOrExpired_Answers404(t *testing.T) {
+	t.Parallel()
+
+	ut := newUploadsTest(t)
+	h := ut.handler(t, ut.files())
+	location := ut.mustCreate(t, h, 10)
+
+	status, _ := problemCode(t, deleteUpload(t, h, location, ut.bobCookie))
+	require.Equal(t, http.StatusNotFound, status)
+	require.Equal(t, http.StatusOK, head(t, h, location, ut.aliceCookie).Code)
+
+	status, _ = problemCode(t, deleteUpload(t, h, uploadsPath+"UNKNOWN", ut.aliceCookie))
+	require.Equal(t, http.StatusNotFound, status)
+
+	ut.clock.Advance(24 * time.Hour)
+
+	status, _ = problemCode(t, deleteUpload(t, h, location, ut.aliceCookie))
+	require.Equal(t, http.StatusNotFound, status)
 }
