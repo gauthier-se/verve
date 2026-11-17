@@ -69,7 +69,7 @@ export function ImportReport({ report, timeZone }: ImportReportProps) {
       <Section title={t("imports.details.totals")}>
         <Counters counters={report.total} />
       </Section>
-      <Coverage report={report} timeZone={timeZone} />
+      <PeriodAndRoutes report={report} timeZone={timeZone} />
       <Section title={t("imports.details.byType")}>
         {types.length === 0 ? (
           <p className="text-muted-foreground">
@@ -107,7 +107,7 @@ export function ImportReport({ report, timeZone }: ImportReportProps) {
  * The period that the records of an import cover and the number of routes
  * stored with its workouts, each once the report has it.
  */
-function Coverage({ report, timeZone }: ImportReportProps) {
+function PeriodAndRoutes({ report, timeZone }: ImportReportProps) {
   const { t, i18n } = useTranslation();
   const day = (iso: string) =>
     formatDate(new Date(iso), i18n.language, {

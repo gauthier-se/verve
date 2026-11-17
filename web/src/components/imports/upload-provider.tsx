@@ -52,8 +52,6 @@ interface UploadContextValue {
   start: (file: File) => void;
   /** Uploads the file of a failed upload again, from where it stopped. */
   retry: () => void;
-  /** Forgets a completed or failed upload, to choose another file. */
-  reset: () => void;
 }
 
 const UploadContext = createContext<UploadContextValue | undefined>(undefined);
@@ -130,17 +128,19 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  // The failed upload starts again from its address, which it keeps also
+  // when local storage is not available.
   const retry = useCallback(() => {
-    if (file.current !== undefined) {
-      start(file.current);
+    if (upload.current === undefined || file.current === undefined) {
+      return;
     }
-  }, [start]);
-
-  const reset = useCallback(() => {
-    void upload.current?.abort();
-    upload.current = undefined;
-    file.current = undefined;
-    setState({ status: "idle" });
+    setState({
+      status: "uploading",
+      fileName: file.current.name,
+      bytesSent: 0,
+      bytesTotal: file.current.size,
+    });
+    upload.current.start();
   }, []);
 
   // The upload stops with the session, when the user logs out.
@@ -152,14 +152,18 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const value = useMemo(
-    () => ({ state, start, retry, reset }),
-    [state, start, retry, reset],
-  );
+  const value = useMemo(() => ({ state, start, retry }), [state, start, retry]);
 
   return (
     <UploadContext.Provider value={value}>{children}</UploadContext.Provider>
   );
+}
+
+/** The part of a running upload that the server received, from 0 to 1. */
+export function uploadRatio(
+  state: Extract<UploadState, { status: "uploading" }>,
+): number {
+  return state.bytesTotal > 0 ? state.bytesSent / state.bytesTotal : 0;
 }
 
 /** The upload of the session, inside `UploadProvider`. */

@@ -5,8 +5,8 @@ import { useTranslation } from "react-i18next";
 
 import { listImportsOptions } from "@/api/generated/@tanstack/react-query.gen";
 import { activePollMs } from "@/components/imports/labels";
-import { useUpload } from "@/components/imports/upload-provider";
-import { formatNumber } from "@/i18n/format";
+import { uploadRatio, useUpload } from "@/components/imports/upload-provider";
+import { formatNumber, formatPercent } from "@/i18n/format";
 
 /** How often the banner polls while no import runs. */
 const idlePollMs = 60_000;
@@ -18,9 +18,8 @@ const idlePollMs = 60_000;
  * running imports every 5 seconds while one runs, and every minute
  * otherwise. Screen readers announce that an import runs, from a live region
  * that stays on the page so that its change is announced, but not the count,
- * which changes at every poll. Outside the upload page, the
- * banner also shows the percentage of a running upload, with a link to the
- * upload page.
+ * which changes at every poll. Outside the upload page, the banner also
+ * shows the percentage of a running upload, with a link to the upload page.
  */
 export function ImportBanner() {
   const { t, i18n } = useTranslation();
@@ -39,11 +38,7 @@ export function ImportBanner() {
     upload.status === "uploading" && !onUploadPage
       ? t("upload.progress", {
           fileName: upload.fileName,
-          percent: formatNumber(
-            upload.bytesTotal > 0 ? upload.bytesSent / upload.bytesTotal : 0,
-            i18n.language,
-            { style: "percent" },
-          ),
+          percent: formatPercent(uploadRatio(upload), i18n.language),
         })
       : undefined;
   const received = runningImport?.report.total.received ?? 0;
@@ -73,9 +68,7 @@ export function ImportBanner() {
                 })}`}
               {runningImport.progress !== undefined &&
                 ` ${t("importBanner.progress", {
-                  percent: formatNumber(runningImport.progress, i18n.language, {
-                    style: "percent",
-                  }),
+                  percent: formatPercent(runningImport.progress, i18n.language),
                 })}`}
             </Row>
           )}

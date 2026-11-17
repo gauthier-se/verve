@@ -9,6 +9,11 @@ export function formatNumber(
   return new Intl.NumberFormat(lng, options).format(value);
 }
 
+/** Formats a ratio from 0 to 1 as a percentage for `lng`, such as "42%". */
+export function formatPercent(ratio: number, lng: string): string {
+  return formatNumber(ratio, lng, { style: "percent" });
+}
+
 /** Formats a date with `Intl.DateTimeFormat` for `lng`. */
 export function formatDate(
   date: Date,

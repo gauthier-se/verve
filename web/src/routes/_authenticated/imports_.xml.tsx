@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import type { TFunction } from "i18next";
 import { type DragEvent, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -9,15 +8,13 @@ import { getImportOptions } from "@/api/generated/@tanstack/react-query.gen";
 import { ImportReport } from "@/components/imports/import-report";
 import {
   activePollMs,
+  failureLabel,
   isActive,
   statusLabel,
 } from "@/components/imports/labels";
-import {
-  type UploadFailure,
-  useUpload,
-} from "@/components/imports/upload-provider";
+import { uploadRatio, useUpload } from "@/components/imports/upload-provider";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { formatNumber } from "@/i18n/format";
+import { formatPercent } from "@/i18n/format";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/imports_/xml")({
@@ -64,7 +61,7 @@ function UploadPage() {
       {state.status === "failed" && (
         <div className="flex flex-col items-start gap-2">
           <p role="alert" className="text-sm text-destructive">
-            {failureMessage(t, state.failure)}
+            {failureLabel(t, state.failure)}
           </p>
           <Button size="lg" className="min-h-11 px-4" onClick={retry}>
             {t("upload.retry")}
@@ -154,12 +151,8 @@ function DropZone({ disabled, onFile }: DropZoneProps) {
 function UploadProgress() {
   const { t, i18n } = useTranslation();
   const { state } = useUpload();
-  const ratio =
-    state.status === "uploading" && state.bytesTotal > 0
-      ? state.bytesSent / state.bytesTotal
-      : 0;
-  const percent = (value: number) =>
-    formatNumber(value, i18n.language, { style: "percent" });
+  const ratio = state.status === "uploading" ? uploadRatio(state) : 0;
+  const percent = (value: number) => formatPercent(value, i18n.language);
 
   return (
     <>
@@ -185,20 +178,6 @@ function UploadProgress() {
       )}
     </>
   );
-}
-
-/** What stopped an upload, in plain words, and whether trying again helps. */
-function failureMessage(t: TFunction, failure: UploadFailure) {
-  switch (failure) {
-    case "tooLarge":
-      return t("upload.failure.tooLarge");
-    case "diskFull":
-      return t("upload.failure.diskFull");
-    case "network":
-      return t("upload.failure.network");
-    case "other":
-      return t("upload.failure.other");
-  }
 }
 
 /**
@@ -244,9 +223,7 @@ function FollowedImport({ id, fileName }: { id: number; fileName: string }) {
             <div className="flex flex-col gap-2">
               <p>
                 {t("upload.import.progress", {
-                  percent: formatNumber(imp.progress, i18n.language, {
-                    style: "percent",
-                  }),
+                  percent: formatPercent(imp.progress, i18n.language),
                 })}
               </p>
               <ProgressBar

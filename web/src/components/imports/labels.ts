@@ -1,6 +1,7 @@
 import type { i18n, TFunction } from "i18next";
 
 import type { ImportCounters, ImportSummary } from "@/api/generated";
+import type { UploadFailure } from "@/components/imports/upload-provider";
 import type Resources from "@/i18n/resources";
 import { formatDate } from "@/i18n/format";
 
@@ -77,6 +78,20 @@ export function counterLabel(
       return t("imports.counters.deleted");
     case "notFound":
       return t("imports.counters.notFound");
+  }
+}
+
+/** What stopped an upload, in plain words, and whether trying again helps. */
+export function failureLabel(t: TFunction, failure: UploadFailure) {
+  switch (failure) {
+    case "tooLarge":
+      return t("upload.failure.tooLarge");
+    case "diskFull":
+      return t("upload.failure.diskFull");
+    case "network":
+      return t("upload.failure.network");
+    case "other":
+      return t("upload.failure.other");
   }
 }
 
