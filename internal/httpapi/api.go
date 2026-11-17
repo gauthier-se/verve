@@ -119,6 +119,7 @@ func NewAPI(mux *http.ServeMux, deps APIDeps) huma.API {
 	registerIngest(api, deps)
 	registerImports(api, deps)
 	registerUploads(mux, deps)
+	describeUploads(api)
 
 	return api
 }

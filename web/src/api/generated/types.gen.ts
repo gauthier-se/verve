@@ -2896,3 +2896,252 @@ export type UpdateSourceResponses = {
 };
 
 export type UpdateSourceResponse = UpdateSourceResponses[keyof UpdateSourceResponses];
+
+export type DescribeUploadsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/uploads/';
+};
+
+export type DescribeUploadsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+};
+
+export type DescribeUploadsError = DescribeUploadsErrors[keyof DescribeUploadsErrors];
+
+export type DescribeUploadsResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type DescribeUploadsResponse = DescribeUploadsResponses[keyof DescribeUploadsResponses];
+
+export type CreateUploadData = {
+    body?: never;
+    headers: {
+        /**
+         * The version of the tus protocol, `1.0.0`.
+         */
+        'Tus-Resumable': string;
+        /**
+         * The size of the whole upload in bytes, at least 1.
+         */
+        'Upload-Length': string;
+        /**
+         * The metadata of the upload, as keys with base64 values separated by commas. Only `filename` is kept, for display.
+         */
+        'Upload-Metadata'?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/uploads/';
+};
+
+export type CreateUploadErrors = {
+    /**
+     * Bad Request
+     */
+    400: Problem;
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Forbidden
+     */
+    403: Problem;
+    /**
+     * Precondition Failed
+     */
+    412: Problem;
+    /**
+     * Request Entity Too Large
+     */
+    413: Problem;
+    /**
+     * Insufficient Storage
+     */
+    507: Problem;
+};
+
+export type CreateUploadError = CreateUploadErrors[keyof CreateUploadErrors];
+
+export type CreateUploadResponses = {
+    /**
+     * Created
+     */
+    201: unknown;
+};
+
+export type DeleteUploadData = {
+    body?: never;
+    headers: {
+        /**
+         * The version of the tus protocol, `1.0.0`.
+         */
+        'Tus-Resumable': string;
+    };
+    path: {
+        /**
+         * The id of the upload, the last segment of its Location.
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/uploads/{id}';
+};
+
+export type DeleteUploadErrors = {
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Forbidden
+     */
+    403: Problem;
+    /**
+     * Not Found
+     */
+    404: Problem;
+    /**
+     * Precondition Failed
+     */
+    412: Problem;
+    /**
+     * Locked
+     */
+    423: Problem;
+};
+
+export type DeleteUploadError = DeleteUploadErrors[keyof DeleteUploadErrors];
+
+export type DeleteUploadResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type DeleteUploadResponse = DeleteUploadResponses[keyof DeleteUploadResponses];
+
+export type GetUploadOffsetData = {
+    body?: never;
+    headers: {
+        /**
+         * The version of the tus protocol, `1.0.0`.
+         */
+        'Tus-Resumable': string;
+    };
+    path: {
+        /**
+         * The id of the upload, the last segment of its Location.
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/uploads/{id}';
+};
+
+export type GetUploadOffsetErrors = {
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Not Found
+     */
+    404: unknown;
+    /**
+     * Precondition Failed
+     */
+    412: unknown;
+};
+
+export type GetUploadOffsetResponses = {
+    /**
+     * OK
+     */
+    200: unknown;
+};
+
+export type WriteUploadData = {
+    /**
+     * The next bytes of the upload.
+     */
+    body: unknown;
+    headers: {
+        /**
+         * The version of the tus protocol, `1.0.0`.
+         */
+        'Tus-Resumable': string;
+        /**
+         * The offset of the upload, where the body starts.
+         */
+        'Upload-Offset': string;
+    };
+    path: {
+        /**
+         * The id of the upload, the last segment of its Location.
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/uploads/{id}';
+};
+
+export type WriteUploadErrors = {
+    /**
+     * Bad Request
+     */
+    400: Problem;
+    /**
+     * Unauthorized
+     */
+    401: Problem;
+    /**
+     * Forbidden
+     */
+    403: Problem;
+    /**
+     * Not Found
+     */
+    404: Problem;
+    /**
+     * Conflict
+     */
+    409: Problem;
+    /**
+     * Precondition Failed
+     */
+    412: Problem;
+    /**
+     * Unsupported Media Type
+     */
+    415: Problem;
+    /**
+     * Locked
+     */
+    423: Problem;
+    /**
+     * Insufficient Storage
+     */
+    507: Problem;
+};
+
+export type WriteUploadError = WriteUploadErrors[keyof WriteUploadErrors];
+
+export type WriteUploadResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type WriteUploadResponse = WriteUploadResponses[keyof WriteUploadResponses];

@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AcceptInvitationData, AcceptInvitationErrors, AcceptInvitationResponses, CancelImportData, CancelImportErrors, CancelImportResponses, ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, CreateAdminBackupData, CreateAdminBackupErrors, CreateAdminBackupResponses, CreateFirstAdminData, CreateFirstAdminErrors, CreateFirstAdminResponses, CreateInvitationData, CreateInvitationErrors, CreateInvitationResponses, CreatePasswordResetLinkData, CreatePasswordResetLinkErrors, CreatePasswordResetLinkResponses, CreateTokenData, CreateTokenErrors, CreateTokenResponses, DeleteAccountData, DeleteAccountErrors, DeleteAccountResponses, DeleteUserData, DeleteUserErrors, DeleteUserResponses, DownloadAdminBackupData, DownloadAdminBackupErrors, DownloadAdminBackupResponses, GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetImportData, GetImportErrors, GetImportResponses, GetMetaData, GetMetaErrors, GetMetaResponses, GetMetricSeriesData, GetMetricSeriesErrors, GetMetricSeriesResponses, GetMetricSourcesData, GetMetricSourcesErrors, GetMetricSourcesResponses, GetPreferencesData, GetPreferencesErrors, GetPreferencesResponses, GetSetupStatusData, GetSetupStatusErrors, GetSetupStatusResponses, InspectInvitationData, InspectInvitationErrors, InspectInvitationResponses, ListAccountAuditEventsData, ListAccountAuditEventsErrors, ListAccountAuditEventsResponses, ListAdminAuditEventsData, ListAdminAuditEventsErrors, ListAdminAuditEventsResponses, ListAdminBackupsData, ListAdminBackupsErrors, ListAdminBackupsResponses, ListAdminJobsData, ListAdminJobsErrors, ListAdminJobsResponses, ListAdminUsersData, ListAdminUsersErrors, ListAdminUsersResponses, ListImportsData, ListImportsErrors, ListImportsResponses, ListMetricSamplesData, ListMetricSamplesErrors, ListMetricSamplesResponses, ListMetricsData, ListMetricsErrors, ListMetricsResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, ListSourcesData, ListSourcesErrors, ListSourcesResponses, ListTokensData, ListTokensErrors, ListTokensResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutErrors, LogoutResponses, MergeSourcesData, MergeSourcesErrors, MergeSourcesResponses, PushNativeData, PushNativeErrors, PushNativeResponses, ResetPasswordData, ResetPasswordErrors, ResetPasswordResponses, RevokeOtherSessionsData, RevokeOtherSessionsErrors, RevokeOtherSessionsResponses, RevokeSessionData, RevokeSessionErrors, RevokeSessionResponses, RevokeTokenData, RevokeTokenErrors, RevokeTokenResponses, SetMetricSourcesData, SetMetricSourcesErrors, SetMetricSourcesResponses, SetUserRoleData, SetUserRoleErrors, SetUserRoleResponses, SetUserStatusData, SetUserStatusErrors, SetUserStatusResponses, UpdatePreferencesData, UpdatePreferencesErrors, UpdatePreferencesResponses, UpdateSourceData, UpdateSourceErrors, UpdateSourceResponses } from './types.gen';
+import type { AcceptInvitationData, AcceptInvitationErrors, AcceptInvitationResponses, CancelImportData, CancelImportErrors, CancelImportResponses, ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, CreateAdminBackupData, CreateAdminBackupErrors, CreateAdminBackupResponses, CreateFirstAdminData, CreateFirstAdminErrors, CreateFirstAdminResponses, CreateInvitationData, CreateInvitationErrors, CreateInvitationResponses, CreatePasswordResetLinkData, CreatePasswordResetLinkErrors, CreatePasswordResetLinkResponses, CreateTokenData, CreateTokenErrors, CreateTokenResponses, CreateUploadData, CreateUploadErrors, CreateUploadResponses, DeleteAccountData, DeleteAccountErrors, DeleteAccountResponses, DeleteUploadData, DeleteUploadErrors, DeleteUploadResponses, DeleteUserData, DeleteUserErrors, DeleteUserResponses, DescribeUploadsData, DescribeUploadsErrors, DescribeUploadsResponses, DownloadAdminBackupData, DownloadAdminBackupErrors, DownloadAdminBackupResponses, GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetImportData, GetImportErrors, GetImportResponses, GetMetaData, GetMetaErrors, GetMetaResponses, GetMetricSeriesData, GetMetricSeriesErrors, GetMetricSeriesResponses, GetMetricSourcesData, GetMetricSourcesErrors, GetMetricSourcesResponses, GetPreferencesData, GetPreferencesErrors, GetPreferencesResponses, GetSetupStatusData, GetSetupStatusErrors, GetSetupStatusResponses, GetUploadOffsetData, GetUploadOffsetErrors, GetUploadOffsetResponses, InspectInvitationData, InspectInvitationErrors, InspectInvitationResponses, ListAccountAuditEventsData, ListAccountAuditEventsErrors, ListAccountAuditEventsResponses, ListAdminAuditEventsData, ListAdminAuditEventsErrors, ListAdminAuditEventsResponses, ListAdminBackupsData, ListAdminBackupsErrors, ListAdminBackupsResponses, ListAdminJobsData, ListAdminJobsErrors, ListAdminJobsResponses, ListAdminUsersData, ListAdminUsersErrors, ListAdminUsersResponses, ListImportsData, ListImportsErrors, ListImportsResponses, ListMetricSamplesData, ListMetricSamplesErrors, ListMetricSamplesResponses, ListMetricsData, ListMetricsErrors, ListMetricsResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, ListSourcesData, ListSourcesErrors, ListSourcesResponses, ListTokensData, ListTokensErrors, ListTokensResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutErrors, LogoutResponses, MergeSourcesData, MergeSourcesErrors, MergeSourcesResponses, PushNativeData, PushNativeErrors, PushNativeResponses, ResetPasswordData, ResetPasswordErrors, ResetPasswordResponses, RevokeOtherSessionsData, RevokeOtherSessionsErrors, RevokeOtherSessionsResponses, RevokeSessionData, RevokeSessionErrors, RevokeSessionResponses, RevokeTokenData, RevokeTokenErrors, RevokeTokenResponses, SetMetricSourcesData, SetMetricSourcesErrors, SetMetricSourcesResponses, SetUserRoleData, SetUserRoleErrors, SetUserRoleResponses, SetUserStatusData, SetUserStatusErrors, SetUserStatusResponses, UpdatePreferencesData, UpdatePreferencesErrors, UpdatePreferencesResponses, UpdateSourceData, UpdateSourceErrors, UpdateSourceResponses, WriteUploadData, WriteUploadErrors, WriteUploadResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -678,6 +678,85 @@ export const updateSource = <ThrowOnError extends boolean = false>(options: Opti
     ...options,
     headers: {
         'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Describe the tus server of the uploads
+ *
+ * Answers the version, the extensions and the largest upload of the tus server that receives the exports of Apple Health, `VERVE_MAX_UPLOAD_SIZE`. Accepts a session only.
+ */
+export const describeUploads = <ThrowOnError extends boolean = false>(options?: Options<DescribeUploadsData, ThrowOnError>): RequestResult<DescribeUploadsResponses, DescribeUploadsErrors, ThrowOnError> => (options?.client ?? client).options<DescribeUploadsResponses, DescribeUploadsErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'verve_session',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/uploads/',
+    ...options
+});
+
+/**
+ * Create a resumable upload of an export
+ *
+ * Creates a resumable upload of `Upload-Length` bytes with the tus protocol 1.0.0, for an `export.zip` or an `export.xml` of Apple Health. The body is sent with `PATCH` on its `Location`. A length above `VERVE_MAX_UPLOAD_SIZE` answers 413, and `Upload-Defer-Length` is not supported. An upload expires 24 hours after its last write. Called through `tus-js-client`. Accepts a session only.
+ */
+export const createUpload = <ThrowOnError extends boolean = false>(options: Options<CreateUploadData, ThrowOnError>): RequestResult<CreateUploadResponses, CreateUploadErrors, ThrowOnError> => (options.client ?? client).post<CreateUploadResponses, CreateUploadErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'verve_session',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/uploads/',
+    ...options
+});
+
+/**
+ * Delete an upload
+ *
+ * Removes an incomplete upload and its file. Accepts a session only.
+ */
+export const deleteUpload = <ThrowOnError extends boolean = false>(options: Options<DeleteUploadData, ThrowOnError>): RequestResult<DeleteUploadResponses, DeleteUploadErrors, ThrowOnError> => (options.client ?? client).delete<DeleteUploadResponses, DeleteUploadErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'verve_session',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/uploads/{id}',
+    ...options
+});
+
+/**
+ * Get the offset of an upload
+ *
+ * Answers the number of bytes of the upload that the server holds, from which the client resumes it. An upload of another user, unknown, expired, or completed into an import answers 404. Accepts a session only.
+ */
+export const getUploadOffset = <ThrowOnError extends boolean = false>(options: Options<GetUploadOffsetData, ThrowOnError>): RequestResult<GetUploadOffsetResponses, GetUploadOffsetErrors, ThrowOnError> => (options.client ?? client).head<GetUploadOffsetResponses, GetUploadOffsetErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'verve_session',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/uploads/{id}',
+    ...options
+});
+
+/**
+ * Write the next bytes of an upload
+ *
+ * Writes the body at `Upload-Offset`, the offset of the upload, and answers the new offset once the bytes are synced. Another offset answers 409, a body past `Upload-Length` 400, and a write while another runs on the upload 423. A full disk answers 507: resume from the offset of `HEAD` once space is freed. The write that reaches the length completes the upload into a queued XML import, whose id is in `Verve-Import-Id`, and the upload is then gone. Accepts a session only.
+ */
+export const writeUpload = <ThrowOnError extends boolean = false>(options: Options<WriteUploadData, ThrowOnError>): RequestResult<WriteUploadResponses, WriteUploadErrors, ThrowOnError> => (options.client ?? client).patch<WriteUploadResponses, WriteUploadErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'verve_session',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/uploads/{id}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/offset+octet-stream',
         ...options.headers
     }
 });

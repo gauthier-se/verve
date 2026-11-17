@@ -3,8 +3,8 @@
 import { type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { acceptInvitation, cancelImport, changePassword, createAdminBackup, createFirstAdmin, createInvitation, createPasswordResetLink, createToken, deleteAccount, deleteUser, downloadAdminBackup, getCurrentUser, getImport, getMeta, getMetricSeries, getMetricSources, getPreferences, getSetupStatus, inspectInvitation, listAccountAuditEvents, listAdminAuditEvents, listAdminBackups, listAdminJobs, listAdminUsers, listImports, listMetrics, listMetricSamples, listSessions, listSources, listTokens, login, logout, mergeSources, type Options, pushNative, resetPassword, revokeOtherSessions, revokeSession, revokeToken, setMetricSources, setUserRole, setUserStatus, updatePreferences, updateSource } from '../sdk.gen';
-import type { AcceptInvitationData, AcceptInvitationError, AcceptInvitationResponse, CancelImportData, CancelImportError, CancelImportResponse, ChangePasswordData, ChangePasswordError, ChangePasswordResponse, CreateAdminBackupData, CreateAdminBackupError, CreateAdminBackupResponse, CreateFirstAdminData, CreateFirstAdminError, CreateFirstAdminResponse, CreateInvitationData, CreateInvitationError, CreateInvitationResponse, CreatePasswordResetLinkData, CreatePasswordResetLinkError, CreatePasswordResetLinkResponse, CreateTokenData, CreateTokenError, CreateTokenResponse, DeleteAccountData, DeleteAccountError, DeleteUserData, DeleteUserError, DeleteUserResponse, DownloadAdminBackupData, DownloadAdminBackupError, DownloadAdminBackupResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetImportData, GetImportError, GetImportResponse, GetMetaData, GetMetaError, GetMetaResponse, GetMetricSeriesData, GetMetricSeriesError, GetMetricSeriesResponse, GetMetricSourcesData, GetMetricSourcesError, GetMetricSourcesResponse, GetPreferencesData, GetPreferencesError, GetPreferencesResponse, GetSetupStatusData, GetSetupStatusError, GetSetupStatusResponse, InspectInvitationData, InspectInvitationError, InspectInvitationResponse, ListAccountAuditEventsData, ListAccountAuditEventsError, ListAccountAuditEventsResponse, ListAdminAuditEventsData, ListAdminAuditEventsError, ListAdminAuditEventsResponse, ListAdminBackupsData, ListAdminBackupsError, ListAdminBackupsResponse, ListAdminJobsData, ListAdminJobsError, ListAdminJobsResponse, ListAdminUsersData, ListAdminUsersError, ListAdminUsersResponse, ListImportsData, ListImportsError, ListImportsResponse, ListMetricSamplesData, ListMetricSamplesError, ListMetricSamplesResponse, ListMetricsData, ListMetricsError, ListMetricsResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, ListSourcesData, ListSourcesError, ListSourcesResponse, ListTokensData, ListTokensError, ListTokensResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutError, LogoutResponse, MergeSourcesData, MergeSourcesError, PushNativeData, PushNativeError, PushNativeResponse, ResetPasswordData, ResetPasswordError, ResetPasswordResponse, RevokeOtherSessionsData, RevokeOtherSessionsError, RevokeOtherSessionsResponse, RevokeSessionData, RevokeSessionError, RevokeSessionResponse, RevokeTokenData, RevokeTokenError, RevokeTokenResponse, SetMetricSourcesData, SetMetricSourcesError, SetMetricSourcesResponse, SetUserRoleData, SetUserRoleError, SetUserRoleResponse, SetUserStatusData, SetUserStatusError, SetUserStatusResponse, UpdatePreferencesData, UpdatePreferencesError, UpdatePreferencesResponse, UpdateSourceData, UpdateSourceError, UpdateSourceResponse } from '../types.gen';
+import { acceptInvitation, cancelImport, changePassword, createAdminBackup, createFirstAdmin, createInvitation, createPasswordResetLink, createToken, createUpload, deleteAccount, deleteUpload, deleteUser, downloadAdminBackup, getCurrentUser, getImport, getMeta, getMetricSeries, getMetricSources, getPreferences, getSetupStatus, inspectInvitation, listAccountAuditEvents, listAdminAuditEvents, listAdminBackups, listAdminJobs, listAdminUsers, listImports, listMetrics, listMetricSamples, listSessions, listSources, listTokens, login, logout, mergeSources, type Options, pushNative, resetPassword, revokeOtherSessions, revokeSession, revokeToken, setMetricSources, setUserRole, setUserStatus, updatePreferences, updateSource, writeUpload } from '../sdk.gen';
+import type { AcceptInvitationData, AcceptInvitationError, AcceptInvitationResponse, CancelImportData, CancelImportError, CancelImportResponse, ChangePasswordData, ChangePasswordError, ChangePasswordResponse, CreateAdminBackupData, CreateAdminBackupError, CreateAdminBackupResponse, CreateFirstAdminData, CreateFirstAdminError, CreateFirstAdminResponse, CreateInvitationData, CreateInvitationError, CreateInvitationResponse, CreatePasswordResetLinkData, CreatePasswordResetLinkError, CreatePasswordResetLinkResponse, CreateTokenData, CreateTokenError, CreateTokenResponse, CreateUploadData, CreateUploadError, DeleteAccountData, DeleteAccountError, DeleteUploadData, DeleteUploadError, DeleteUploadResponse, DeleteUserData, DeleteUserError, DeleteUserResponse, DownloadAdminBackupData, DownloadAdminBackupError, DownloadAdminBackupResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetImportData, GetImportError, GetImportResponse, GetMetaData, GetMetaError, GetMetaResponse, GetMetricSeriesData, GetMetricSeriesError, GetMetricSeriesResponse, GetMetricSourcesData, GetMetricSourcesError, GetMetricSourcesResponse, GetPreferencesData, GetPreferencesError, GetPreferencesResponse, GetSetupStatusData, GetSetupStatusError, GetSetupStatusResponse, InspectInvitationData, InspectInvitationError, InspectInvitationResponse, ListAccountAuditEventsData, ListAccountAuditEventsError, ListAccountAuditEventsResponse, ListAdminAuditEventsData, ListAdminAuditEventsError, ListAdminAuditEventsResponse, ListAdminBackupsData, ListAdminBackupsError, ListAdminBackupsResponse, ListAdminJobsData, ListAdminJobsError, ListAdminJobsResponse, ListAdminUsersData, ListAdminUsersError, ListAdminUsersResponse, ListImportsData, ListImportsError, ListImportsResponse, ListMetricSamplesData, ListMetricSamplesError, ListMetricSamplesResponse, ListMetricsData, ListMetricsError, ListMetricsResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, ListSourcesData, ListSourcesError, ListSourcesResponse, ListTokensData, ListTokensError, ListTokensResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutError, LogoutResponse, MergeSourcesData, MergeSourcesError, PushNativeData, PushNativeError, PushNativeResponse, ResetPasswordData, ResetPasswordError, ResetPasswordResponse, RevokeOtherSessionsData, RevokeOtherSessionsError, RevokeOtherSessionsResponse, RevokeSessionData, RevokeSessionError, RevokeSessionResponse, RevokeTokenData, RevokeTokenError, RevokeTokenResponse, SetMetricSourcesData, SetMetricSourcesError, SetMetricSourcesResponse, SetUserRoleData, SetUserRoleError, SetUserRoleResponse, SetUserStatusData, SetUserStatusError, SetUserStatusResponse, UpdatePreferencesData, UpdatePreferencesError, UpdatePreferencesResponse, UpdateSourceData, UpdateSourceError, UpdateSourceResponse, WriteUploadData, WriteUploadError, WriteUploadResponse } from '../types.gen';
 
 /**
  * Delete the account of the current user
@@ -1086,6 +1086,63 @@ export const updateSourceMutation = (options?: Partial<Options<UpdateSourceData>
     const mutationOptions: UseMutationOptions<UpdateSourceResponse, UpdateSourceError, Options<UpdateSourceData>> = {
         mutationFn: async (fnOptions) => {
             const { data } = await updateSource({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Create a resumable upload of an export
+ *
+ * Creates a resumable upload of `Upload-Length` bytes with the tus protocol 1.0.0, for an `export.zip` or an `export.xml` of Apple Health. The body is sent with `PATCH` on its `Location`. A length above `VERVE_MAX_UPLOAD_SIZE` answers 413, and `Upload-Defer-Length` is not supported. An upload expires 24 hours after its last write. Called through `tus-js-client`. Accepts a session only.
+ */
+export const createUploadMutation = (options?: Partial<Options<CreateUploadData>>): UseMutationOptions<unknown, CreateUploadError, Options<CreateUploadData>> => {
+    const mutationOptions: UseMutationOptions<unknown, CreateUploadError, Options<CreateUploadData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await createUpload({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Delete an upload
+ *
+ * Removes an incomplete upload and its file. Accepts a session only.
+ */
+export const deleteUploadMutation = (options?: Partial<Options<DeleteUploadData>>): UseMutationOptions<DeleteUploadResponse, DeleteUploadError, Options<DeleteUploadData>> => {
+    const mutationOptions: UseMutationOptions<DeleteUploadResponse, DeleteUploadError, Options<DeleteUploadData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await deleteUpload({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Write the next bytes of an upload
+ *
+ * Writes the body at `Upload-Offset`, the offset of the upload, and answers the new offset once the bytes are synced. Another offset answers 409, a body past `Upload-Length` 400, and a write while another runs on the upload 423. A full disk answers 507: resume from the offset of `HEAD` once space is freed. The write that reaches the length completes the upload into a queued XML import, whose id is in `Verve-Import-Id`, and the upload is then gone. Accepts a session only.
+ */
+export const writeUploadMutation = (options?: Partial<Options<WriteUploadData>>): UseMutationOptions<WriteUploadResponse, WriteUploadError, Options<WriteUploadData>> => {
+    const mutationOptions: UseMutationOptions<WriteUploadResponse, WriteUploadError, Options<WriteUploadData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await writeUpload({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
