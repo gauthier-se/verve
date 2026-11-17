@@ -37,6 +37,7 @@ type Repositories interface {
 	Samples() SamplesRepository
 	Workouts() WorkoutsRepository
 	Imports() ImportsRepository
+	Uploads() UploadsRepository
 	Aggregates() AggregatesRepository
 
 	// AfterCommit calls fn once the writes made through these repositories are committed: at once

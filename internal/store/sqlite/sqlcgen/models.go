@@ -235,6 +235,16 @@ type SourceStat struct {
 	Count    int64
 }
 
+type Upload struct {
+	ID        string
+	UserID    int64
+	FileName  sql.NullString
+	Length    int64
+	Offset    int64
+	CreatedAt int64
+	ExpiresAt int64
+}
+
 type User struct {
 	ID           int64
 	Username     string
