@@ -16,7 +16,8 @@ export const Route = createFileRoute("/_authenticated/imports")({
 /**
  * The imports of the user of the session, newest first: a table of them
  * whose next pages load on demand, polled while one is queued or running, or
- * how to send data while there is none.
+ * how to send data while there is none. It links to the upload page of an
+ * Apple Health export.
  */
 function Imports() {
   const { t, i18n } = useTranslation();
@@ -39,11 +40,16 @@ function Imports() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-2">
-        <h1 id={headingId} className="font-heading text-2xl font-semibold">
-          {t("imports.title")}
-        </h1>
-        <p className="text-muted-foreground">{t("imports.description")}</p>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="flex flex-col gap-2">
+          <h1 id={headingId} className="font-heading text-2xl font-semibold">
+            {t("imports.title")}
+          </h1>
+          <p className="text-muted-foreground">{t("imports.description")}</p>
+        </div>
+        <Button asChild size="lg" className="min-h-11 px-4">
+          <Link to="/imports/xml">{t("imports.upload")}</Link>
+        </Button>
       </div>
       {imports.isError && (
         <p role="alert" className="text-sm text-destructive">
@@ -91,14 +97,14 @@ function EmptyState() {
         {t("imports.empty.title")}
       </h2>
       <p className="text-muted-foreground">{t("imports.empty.description")}</p>
-      <Button
-        asChild
-        variant="outline"
-        size="lg"
-        className="mt-2 min-h-11 px-4"
-      >
-        <Link to="/settings/tokens">{t("imports.empty.tokens")}</Link>
-      </Button>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <Button asChild variant="outline" size="lg" className="min-h-11 px-4">
+          <Link to="/imports/xml">{t("imports.empty.upload")}</Link>
+        </Button>
+        <Button asChild variant="outline" size="lg" className="min-h-11 px-4">
+          <Link to="/settings/tokens">{t("imports.empty.tokens")}</Link>
+        </Button>
+      </div>
     </section>
   );
 }

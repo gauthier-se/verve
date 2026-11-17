@@ -69,7 +69,7 @@ export function ImportDrawer({ summary, timeZone }: ImportDrawerProps) {
             })}
           </SheetDescription>
         </SheetHeader>
-        {open && <ImportDetails id={summary.id} />}
+        {open && <ImportDetails id={summary.id} timeZone={timeZone} />}
         <SheetFooter className="flex-row flex-wrap justify-end">
           {isActive(summary.status) && (
             <CancelImportDialog importId={summary.id} />
@@ -89,7 +89,13 @@ export function ImportDrawer({ summary, timeZone }: ImportDrawerProps) {
  * The whole report of the import `id`, once it is loaded, polled while the
  * import is queued or running.
  */
-function ImportDetails({ id }: { id: number }) {
+function ImportDetails({
+  id,
+  timeZone,
+}: {
+  id: number;
+  timeZone: string | null;
+}) {
   const { i18n } = useTranslation();
   const details = useQuery({
     ...getImportOptions({ path: { id } }),
@@ -109,5 +115,9 @@ function ImportDetails({ id }: { id: number }) {
   if (details.data === undefined) {
     return null;
   }
-  return <ImportReport report={details.data.report} />;
+  return (
+    <div className="px-4">
+      <ImportReport report={details.data.report} timeZone={timeZone} />
+    </div>
+  );
 }

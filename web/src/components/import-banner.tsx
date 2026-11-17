@@ -13,11 +13,12 @@ const idlePollMs = 60_000;
 
 /**
  * A banner while an import of the user of the session runs, with the number
- * of records it received so far once there is one, and a link to the imports
- * page. It polls the running imports every 5 seconds while one runs, and
- * every minute otherwise. Screen readers announce that an import runs, from
- * a live region that stays on the page so that its change is announced, but
- * not the count, which changes at every poll. Outside the upload page, the
+ * of records it received so far once there is one, the progress of an XML
+ * import as a percentage, and a link to the imports page. It polls the
+ * running imports every 5 seconds while one runs, and every minute
+ * otherwise. Screen readers announce that an import runs, from a live region
+ * that stays on the page so that its change is announced, but not the count,
+ * which changes at every poll. Outside the upload page, the
  * banner also shows the percentage of a running upload, with a link to the
  * upload page.
  */
@@ -69,6 +70,12 @@ export function ImportBanner() {
                 ` ${t("importBanner.received", {
                   count: received,
                   received: formatNumber(received, i18n.language),
+                })}`}
+              {runningImport.progress !== undefined &&
+                ` ${t("importBanner.progress", {
+                  percent: formatNumber(runningImport.progress, i18n.language, {
+                    style: "percent",
+                  }),
                 })}`}
             </Row>
           )}

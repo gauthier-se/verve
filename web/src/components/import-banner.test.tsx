@@ -127,7 +127,7 @@ describe("import banner", () => {
     const banner = await screen.findByRole("region", {
       name: "Importation en cours",
     });
-    expect(banner.textContent?.replace(/\s+/g, " ")).toBe(
+    expect(banner.textContent.replace(/\s+/g, " ")).toBe(
       "Une importation est en cours. 5 000 enregistrements reçus pour l'instant. 42 % effectués.Voir les importations",
     );
   });

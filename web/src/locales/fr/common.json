@@ -54,6 +54,7 @@
   },
   "importBanner": {
     "label": "Importation en cours",
+    "progress": "{{percent}} effectués.",
     "received_one": "{{received}} enregistrement reçu pour l'instant.",
     "received_many": "{{received}} enregistrements reçus pour l'instant.",
     "received_other": "{{received}} enregistrements reçus pour l'instant.",
@@ -111,9 +112,10 @@
       "workouts": "Entraînements"
     },
     "empty": {
-      "description": "Vos importations apparaissent ici dès qu'une app envoie des données à Verve. Créez un jeton d'API pour Health Auto Export ou une autre app pour commencer.",
+      "description": "Vos importations apparaissent ici dès que vous envoyez un export Apple Health ou qu'une app envoie des données à Verve. Envoyez l'export de votre iPhone pour votre historique, ou créez un jeton d'API pour Health Auto Export ou une autre app.",
       "title": "Aucune importation",
-      "tokens": "Créer un jeton d'API"
+      "tokens": "Créer un jeton d'API",
+      "upload": "Envoyer votre export Apple Health"
     },
     "inProgress": "En cours",
     "more": "Afficher plus",
@@ -133,7 +135,8 @@
       "running": "En cours"
     },
     "title": "Importations",
-    "token": "via {{name}}"
+    "token": "via {{name}}",
+    "upload": "Importer un export Apple Health"
   },
   "invite": {
     "askNewInvitation": "Demandez une nouvelle invitation à un administrateur.",
@@ -195,7 +198,8 @@
       "export": "Votre historique : sur votre iPhone, ouvrez l'app Santé, touchez votre photo de profil, puis Exporter toutes les données de santé, et envoyez le fichier export.zip à Verve.",
       "open": "Ouvrir Verve",
       "sync": "Synchronisation continue : l'app Health Auto Export envoie vos nouvelles données à Verve à intervalles réguliers.",
-      "title": "Importez vos données"
+      "title": "Importez vos données",
+      "upload": "Envoyer votre export Apple Health"
     },
     "progress": "Étape {{step}} sur {{total}}",
     "title": "Configurer Verve",
@@ -318,10 +322,10 @@
       "progress": "{{percent}} traités",
       "progressLabel": "Avancement de l'importation",
       "status": "Statut",
-      "title": "Importation de {{fileName}}"
+      "title": "Importation du fichier {{fileName}}"
     },
-    "progress": "Envoi de {{fileName}} : {{percent}}",
-    "progressLabel": "Envoi de {{fileName}}",
+    "progress": "Envoi du fichier {{fileName}} : {{percent}}",
+    "progressLabel": "Envoi du fichier {{fileName}}",
     "retry": "Réessayer",
     "title": "Importer un export Apple Health"
   },

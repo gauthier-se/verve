@@ -6,10 +6,7 @@ import { useTranslation } from "react-i18next";
 
 import { errorMessage } from "@/api/errors";
 import { getImportOptions } from "@/api/generated/@tanstack/react-query.gen";
-import {
-  ImportCoverage,
-  ImportReport,
-} from "@/components/imports/import-report";
+import { ImportReport } from "@/components/imports/import-report";
 import {
   activePollMs,
   isActive,
@@ -258,8 +255,7 @@ function FollowedImport({ id, fileName }: { id: number; fileName: string }) {
               />
             </div>
           )}
-          <ImportCoverage report={imp.report} timeZone={user.timezone} />
-          <ImportReport report={imp.report} />
+          <ImportReport report={imp.report} timeZone={user.timezone} />
         </>
       )}
     </section>

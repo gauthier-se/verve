@@ -15,12 +15,19 @@ import {
 } from "@/components/imports/labels";
 import { formatDate, formatNumber } from "@/i18n/format";
 
+interface ImportReportProps {
+  report: Import["report"];
+  /** The timezone of the user, in which the dates are shown. */
+  timeZone: string | null;
+}
+
 /**
- * The report of an import: the total counters, the counters of each type,
+ * The report of an import: the total counters, the period of its records and
+ * the routes of its workouts once it has them, the counters of each type,
  * the types with the most records first and the workouts last, and the
  * sample errors.
  */
-export function ImportReport({ report }: { report: Import["report"] }) {
+export function ImportReport({ report, timeZone }: ImportReportProps) {
   const { t, i18n } = useTranslation();
   const metrics = useQuery(listMetricsOptions());
   const uncuratedIdentifiers = useMemo(
@@ -58,10 +65,11 @@ export function ImportReport({ report }: { report: Import["report"] }) {
   ];
 
   return (
-    <div className="flex flex-col gap-6 px-4">
+    <div className="flex flex-col gap-6">
       <Section title={t("imports.details.totals")}>
         <Counters counters={report.total} />
       </Section>
+      <Coverage report={report} timeZone={timeZone} />
       <Section title={t("imports.details.byType")}>
         {types.length === 0 ? (
           <p className="text-muted-foreground">
@@ -95,17 +103,11 @@ export function ImportReport({ report }: { report: Import["report"] }) {
   );
 }
 
-interface ImportCoverageProps {
-  report: Pick<Import["report"], "period" | "routes">;
-  /** The timezone of the user, in which the dates are shown. */
-  timeZone: string | null;
-}
-
 /**
  * The period that the records of an import cover and the number of routes
  * stored with its workouts, each once the report has it.
  */
-export function ImportCoverage({ report, timeZone }: ImportCoverageProps) {
+function Coverage({ report, timeZone }: ImportReportProps) {
   const { t, i18n } = useTranslation();
   const day = (iso: string) =>
     formatDate(new Date(iso), i18n.language, {

@@ -13,6 +13,7 @@ import {
   fakeImports,
   runningXmlImport,
 } from "@/test/imports";
+import { initI18n } from "@/i18n";
 import { renderRoute } from "@/test/render";
 import { fakeAuth, member, server } from "@/test/server";
 import { exportFile, fakeUploads, MiB } from "@/test/uploads";
@@ -184,6 +185,73 @@ describe("upload page", () => {
       { offset: 0, size: 8 * MiB },
       { offset: 8 * MiB, size: 4 * MiB },
     ]);
+  });
+});
+
+describe("upload page in French", () => {
+  it("given the app in French, then the guide, the drop zone, the progress and the import are translated", async () => {
+    const user = userEvent.setup();
+    const i18n = await initI18n();
+    await i18n.changeLanguage("fr");
+    fakeImports([runningXmlImport]);
+    const uploads = fakeUploads({ importId: runningXmlImport.id });
+    const { release } = uploads.holdAt(8 * MiB);
+    server.use(...fakeAuth({ user: member, signedIn: true }));
+    renderRoute("/imports/xml");
+
+    await screen.findByRole("heading", {
+      level: 1,
+      name: "Importer un export Apple Health",
+    });
+    expect(
+      within(screen.getByRole("list", { name: "Exportez vos données" }))
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual([
+      "Ouvrez l'app Santé sur votre iPhone.",
+      "Touchez votre photo de profil, en haut à droite.",
+      "Touchez Exporter toutes les données de santé, puis Exporter, et patientez pendant que l'iPhone prépare le fichier export.zip.",
+      "Partagez le fichier vers Fichiers et envoyez-le ici, ou ouvrez cette page dans Safari sur l'iPhone et envoyez-le directement.",
+    ]);
+    expect(
+      screen.getByText(
+        "Le traitement d'un export de plusieurs années peut prendre de 10 à 30 minutes sur un Raspberry Pi.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Envoyer l'export" }),
+    ).toHaveTextContent(
+      "Déposez ici le fichier export.zip ou export.xml, ou choisissez-le.",
+    );
+
+    await user.upload(
+      screen.getByLabelText("Choisir un fichier"),
+      exportFile(12 * MiB),
+    );
+
+    expect(
+      await screen.findByText(
+        (_, element) =>
+          element?.tagName === "P" &&
+          normalize(element.textContent) ===
+            "Envoi du fichier export.zip : 67 %",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen
+        .getAllByRole("status")
+        .some((status) => normalize(status.textContent) === "60 % envoyés."),
+    ).toBe(true);
+    release();
+    const imported = await screen.findByRole("region", {
+      name: "Importation du fichier export.zip",
+    });
+    expect(await within(imported).findByText("En cours")).toBeInTheDocument();
+    expect(
+      within(imported).getByRole("progressbar", {
+        name: "Avancement de l'importation",
+      }),
+    ).toBeInTheDocument();
   });
 });
 

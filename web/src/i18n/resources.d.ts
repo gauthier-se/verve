@@ -141,6 +141,7 @@ export default interface Resources {
     },
     "importBanner": {
       "label": "Import in progress",
+      "progress": "{{percent}} done.",
       "received_one": "{{received}} record received so far.",
       "received_other": "{{received}} records received so far.",
       "running": "An import is running.",
@@ -196,9 +197,10 @@ export default interface Resources {
         "workouts": "Workouts"
       },
       "empty": {
-        "description": "Your imports appear here once an app sends data to Verve. Create an API token for Health Auto Export or another app to start.",
+        "description": "Your imports appear here once you upload an Apple Health export or an app sends data to Verve. Upload the export of your iPhone for your history, or create an API token for Health Auto Export or another app.",
         "title": "No import yet",
-        "tokens": "Create an API token"
+        "tokens": "Create an API token",
+        "upload": "Upload your Apple Health export"
       },
       "inProgress": "In progress",
       "more": "Show more",
@@ -218,7 +220,8 @@ export default interface Resources {
         "running": "Running"
       },
       "title": "Imports",
-      "token": "via {{name}}"
+      "token": "via {{name}}",
+      "upload": "Import an Apple Health export"
     },
     "invite": {
       "askNewInvitation": "Ask an admin for a new invitation.",
@@ -280,7 +283,8 @@ export default interface Resources {
         "export": "Your history: on your iPhone, open the Health app, tap your profile picture, then Export All Health Data, and upload the export.zip file to Verve.",
         "open": "Open Verve",
         "sync": "Continuous sync: the Health Auto Export app sends your new data to Verve on a schedule.",
-        "title": "Import your data"
+        "title": "Import your data",
+        "upload": "Upload your Apple Health export"
       },
       "progress": "Step {{step}} of {{total}}",
       "title": "Set up Verve",
