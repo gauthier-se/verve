@@ -144,7 +144,8 @@ export default interface Resources {
       "received_one": "{{received}} record received so far.",
       "received_other": "{{received}} records received so far.",
       "running": "An import is running.",
-      "view": "View imports"
+      "view": "View imports",
+      "viewUpload": "View upload"
     },
     "imports": {
       "cancel": {

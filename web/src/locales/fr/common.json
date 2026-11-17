@@ -58,7 +58,8 @@
     "received_many": "{{received}} enregistrements reçus pour l'instant.",
     "received_other": "{{received}} enregistrements reçus pour l'instant.",
     "running": "Une importation est en cours.",
-    "view": "Voir les importations"
+    "view": "Voir les importations",
+    "viewUpload": "Voir l'envoi"
   },
   "imports": {
     "cancel": {
