@@ -6,7 +6,15 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
 
 import {
   completedXmlImport,
@@ -401,4 +409,38 @@ describe("upload page, once the upload ends", () => {
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     },
   );
+
+  it("given local storage that throws, as in a private window, when an upload stopped by a network loss is tried again, then it resumes where it stopped", async () => {
+    const denied = () => {
+      throw new DOMException("The storage is not available.", "SecurityError");
+    };
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(denied);
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(denied);
+    vi.spyOn(Storage.prototype, "removeItem").mockImplementation(denied);
+    onTestFinished(() => {
+      vi.restoreAllMocks();
+    });
+    const user = setupUser();
+    fakeImports([completedXmlImport]);
+    const uploads = fakeUploads();
+    const { release } = uploads.holdAt(8 * MiB);
+    await openUploadPage();
+    await user.upload(getFilePicker(), exportFile(12 * MiB));
+    await screen.findByText("Uploading export.zip: 67%");
+    uploads.fail("network");
+    release();
+    // Past every retry of tus.
+    await elapse(30_000);
+    await screen.findByRole("alert");
+
+    uploads.recover();
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+
+    expect(await findImportSection()).toBeInTheDocument();
+    expect(uploads.creations).toHaveLength(1);
+    expect(uploads.patches[1]).toMatchObject({
+      offset: 8 * MiB,
+      size: 4 * MiB,
+    });
+  });
 });
