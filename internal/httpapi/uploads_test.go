@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -781,4 +782,77 @@ func TestUploads_Delete_OfAnotherUserUnknownOrExpired_Answers404(t *testing.T) {
 
 	status, _ = problemCode(t, deleteUpload(t, h, location, ut.aliceCookie))
 	require.Equal(t, http.StatusNotFound, status)
+}
+
+// Given the OpenAPI spec, then it describes the operations of the tus endpoint, for sessions only,
+// with the statuses that they answer, the errors being problems except for HEAD, whose responses
+// have no body.
+func TestUploads_OpenAPISpec_DescribesTheTusEndpoint(t *testing.T) {
+	t.Parallel()
+
+	rec := serve(t, apiHandler(), http.MethodGet, "/api/openapi.json")
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var spec struct {
+		Paths map[string]map[string]struct {
+			OperationID string                `json:"operationId"`
+			Tags        []string              `json:"tags"`
+			Security    []map[string][]string `json:"security"`
+			Responses   map[string]struct {
+				Headers map[string]any `json:"headers"`
+				Content map[string]struct {
+					Schema struct {
+						Ref string `json:"$ref"`
+					} `json:"schema"`
+				} `json:"content"`
+			} `json:"responses"`
+		} `json:"paths"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &spec))
+
+	tests := []struct {
+		path, method, operationID string
+		success                   string
+		headers                   []string
+		errors                    []string
+	}{
+		{path: "/api/v1/uploads/", method: "options", operationID: "describe-uploads", success: "204",
+			headers: []string{"Tus-Version", "Tus-Extension", "Tus-Max-Size"}, errors: []string{"401"}},
+		{path: "/api/v1/uploads/", method: "post", operationID: "create-upload", success: "201",
+			headers: []string{"Location", "Upload-Expires"}, errors: []string{"400", "401", "403", "412", "413", "507"}},
+		{path: "/api/v1/uploads/{id}", method: "head", operationID: "get-upload-offset", success: "200",
+			headers: []string{"Upload-Offset", "Upload-Length", "Upload-Expires"}, errors: []string{"401", "404", "412"}},
+		{path: "/api/v1/uploads/{id}", method: "patch", operationID: "write-upload", success: "204",
+			headers: []string{"Upload-Offset", "Upload-Expires", "Verve-Import-Id"},
+			errors:  []string{"400", "401", "403", "404", "409", "412", "415", "423", "507"}},
+		{path: "/api/v1/uploads/{id}", method: "delete", operationID: "delete-upload", success: "204",
+			errors: []string{"401", "403", "404", "412", "423"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.operationID, func(t *testing.T) {
+			op, ok := spec.Paths[tt.path][tt.method]
+			require.True(t, ok, "%s %s", tt.method, tt.path)
+			require.Equal(t, tt.operationID, op.OperationID)
+			require.Equal(t, []string{"Ingestion"}, op.Tags)
+			require.Equal(t, []map[string][]string{{"sessionCookie": {}}}, op.Security)
+
+			for _, header := range append([]string{"Tus-Resumable"}, tt.headers...) {
+				require.Contains(t, op.Responses[tt.success].Headers, header)
+			}
+
+			for _, status := range tt.errors {
+				require.Contains(t, op.Responses, status)
+
+				if tt.method == "head" {
+					require.Empty(t, op.Responses[status].Content, "a response to HEAD has no body")
+
+					continue
+				}
+
+				require.Equal(t, "#/components/schemas/Problem",
+					op.Responses[status].Content["application/problem+json"].Schema.Ref, status)
+			}
+		})
+	}
 }
