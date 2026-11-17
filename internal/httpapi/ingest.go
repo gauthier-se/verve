@@ -111,22 +111,12 @@ func acceptPush(ctx context.Context, deps APIDeps, principal auth.Principal, in 
 	err = deps.Store.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
 		var err error
 
-		imp, err = tx.Imports().Create(ctx, store.NewImport{
+		imp, err = queueImport(ctx, tx, deps.Jobs, store.NewImport{
 			UserID:    principal.UserID,
 			Origin:    store.OriginNative,
 			TokenID:   principal.TokenID,
 			InboxFile: name,
-		})
-		if err != nil {
-			return err
-		}
-
-		job, err := native.Job(principal.UserID, imp.ID)
-		if err != nil {
-			return err
-		}
-
-		_, err = deps.Jobs.Enqueue(ctx, tx, job)
+		}, func(importID int64) (store.NewJob, error) { return native.Job(principal.UserID, importID) })
 
 		return err
 	})
@@ -187,4 +177,27 @@ const outOfStorageDetail = "the server is out of storage, retry later"
 // or the database is written.
 func isOutOfStorage(err error) bool {
 	return errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.EDQUOT) || errors.Is(err, store.ErrFull)
+}
+
+// queueImport creates the queued import imp and its job, which newJob returns for the id of the
+// import, through tx, and returns the import. Run in the transaction of the request, it commits or
+// rolls back with it.
+func queueImport(ctx context.Context, tx store.Repositories, jobs auth.JobQueue, imp store.NewImport,
+	newJob func(importID int64) (store.NewJob, error),
+) (store.Import, error) {
+	created, err := tx.Imports().Create(ctx, imp)
+	if err != nil {
+		return store.Import{}, err
+	}
+
+	job, err := newJob(created.ID)
+	if err != nil {
+		return store.Import{}, err
+	}
+
+	if _, err := jobs.Enqueue(ctx, tx, job); err != nil {
+		return store.Import{}, err
+	}
+
+	return created, nil
 }
