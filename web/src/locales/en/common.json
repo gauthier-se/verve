@@ -283,6 +283,26 @@
     "unused": "Not used for 90 days or more. Revoke it if no app needs it anymore."
   },
   "unexpectedError": "Something went wrong. Try again.",
+  "upload": {
+    "announce": "Upload {{percent}} done.",
+    "description": "Send the export of the Health app of your iPhone to Verve, with your whole history.",
+    "dropZone": {
+      "choose": "Choose a file",
+      "description": "Drop the export.zip or export.xml file here, or choose it.",
+      "label": "Upload the export"
+    },
+    "duration": "An export of several years can take 10 to 30 minutes to process on a Raspberry Pi.",
+    "guide": {
+      "export": "Tap Export All Health Data, then Export, and wait while the iPhone prepares the export.zip file.",
+      "open": "Open the Health app on your iPhone.",
+      "profile": "Tap your profile picture, at the top right.",
+      "share": "Share the file to Files and upload it here, or open this page in Safari on the iPhone and upload it directly.",
+      "title": "Export your data"
+    },
+    "progress": "Uploading {{fileName}}: {{percent}}",
+    "progressLabel": "Upload of {{fileName}}",
+    "title": "Import an Apple Health export"
+  },
   "userMenu": {
     "logout": "Log out",
     "tokens": "API tokens"

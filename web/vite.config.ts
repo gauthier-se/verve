@@ -37,6 +37,16 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
+    alias: {
+      // Vitest resolves packages for Node, whose build of tus-js-client reads
+      // files from disk, not the File objects of the browser.
+      "tus-js-client": fileURLToPath(
+        new URL(
+          "./node_modules/tus-js-client/lib.es5/browser/index.js",
+          import.meta.url,
+        ),
+      ),
+    },
     // Playwright runs these, against the production binary.
     exclude: [...configDefaults.exclude, "e2e/**"],
     // Compiles the stylesheet with Tailwind, so that the theme tests check
