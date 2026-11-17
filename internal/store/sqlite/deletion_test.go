@@ -127,6 +127,18 @@ var userRowSeeders = map[string]func(ctx context.Context, t *testing.T, s store.
 		_, err := s.Imports().Create(ctx, store.NewImport{UserID: user.ID, Origin: store.OriginNative, TokenID: 7})
 		require.NoError(t, err)
 	},
+	"uploads": func(ctx context.Context, t *testing.T, s store.Store, user store.User) {
+		t.Helper()
+
+		_, err := s.Uploads().Create(ctx, store.NewUpload{
+			ID:        "upload-of-" + user.Username,
+			UserID:    user.ID,
+			FileName:  "export.zip",
+			Length:    1000,
+			ExpiresAt: deletionTestNow.Add(24 * time.Hour),
+		})
+		require.NoError(t, err)
+	},
 	"agg_hourly": func(ctx context.Context, t *testing.T, s store.Store, user store.User) {
 		t.Helper()
 

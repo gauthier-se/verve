@@ -25,14 +25,15 @@ import (
 	"github.com/gauthier-se/verve/internal/store/sqlite"
 )
 
-// jobsTest holds a store on a migrated database, an inbox in a temporary directory, and a worker with
-// the job kinds and the recurring jobs of the server, all on one fake clock.
+// jobsTest holds a store on a migrated database, an inbox and uploads in temporary directories, and a
+// worker with the job kinds and the recurring jobs of the server, all on one fake clock.
 type jobsTest struct {
-	store     store.Store
-	clock     *clock.Fake
-	inboxDir  string
-	worker    *jobs.Worker
-	schedules []jobs.Schedule
+	store      store.Store
+	clock      *clock.Fake
+	inboxDir   string
+	uploadsDir string
+	worker     *jobs.Worker
+	schedules  []jobs.Schedule
 }
 
 func newJobsTest(t *testing.T) jobsTest {
@@ -53,9 +54,9 @@ func newJobsTest(t *testing.T) jobsTest {
 	require.NoError(t, err)
 	require.NoError(t, st.MetricTypes().Sync(t.Context(), shipped))
 
-	inboxDir := t.TempDir()
+	inboxDir, uploadsDir := t.TempDir(), t.TempDir()
 
-	ing, err := newIngestion(st, shipped, inboxDir, clk, 0)
+	ing, err := newIngestion(st, shipped, inboxDir, uploadsDir, clk, 0)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, ing.Close()) })
 
@@ -63,11 +64,12 @@ func newJobsTest(t *testing.T) jobsTest {
 	schedules := registerJobs(registry, st, clk, config.Config{}, ing)
 
 	return jobsTest{
-		store:     st,
-		clock:     clk,
-		inboxDir:  inboxDir,
-		worker:    jobs.NewWorker(st, registry, clk, slog.New(slog.DiscardHandler), jobs.Options{}),
-		schedules: schedules,
+		store:      st,
+		clock:      clk,
+		inboxDir:   inboxDir,
+		uploadsDir: uploadsDir,
+		worker:     jobs.NewWorker(st, registry, clk, slog.New(slog.DiscardHandler), jobs.Options{}),
+		schedules:  schedules,
 	}
 }
 
@@ -190,6 +192,112 @@ func TestJobs_CleanupInboxRunsDailyAndRemovesOldFilesWithoutImport(t *testing.T)
 	require.NoError(t, err)
 	require.True(t, claimed)
 	require.NoFileExists(t, old)
+}
+
+// schedule returns the recurring job of the server named name.
+func (jt jobsTest) schedule(t *testing.T, name string) jobs.Schedule {
+	t.Helper()
+
+	for _, s := range jt.schedules {
+		if s.Name == name {
+			return s
+		}
+	}
+
+	require.Failf(t, "no recurring job", "named %q", name)
+
+	return jobs.Schedule{}
+}
+
+// runSchedule enqueues the job of schedule and runs it once with the worker.
+func (jt jobsTest) runSchedule(t *testing.T, schedule jobs.Schedule) {
+	t.Helper()
+
+	queued, err := jt.store.Jobs().Enqueue(t.Context(), store.NewJob{Kind: schedule.Kind, Payload: schedule.Payload})
+	require.NoError(t, err)
+
+	claimed, err := jt.worker.Tick(t.Context())
+	require.NoError(t, err)
+	require.True(t, claimed)
+
+	job, err := jt.store.Jobs().Get(t.Context(), queued.ID)
+	require.NoError(t, err)
+	require.Equal(t, store.JobCompleted, job.Status, job.LastError)
+}
+
+// writeUploadFile writes the file of an upload named name, last modified age ago, and returns its
+// path.
+func (jt jobsTest) writeUploadFile(t *testing.T, name string, age time.Duration) string {
+	t.Helper()
+
+	path := filepath.Join(jt.uploadsDir, name)
+	require.NoError(t, os.WriteFile(path, []byte("PK\x03\x04"), 0o600))
+
+	modified := jt.clock.Now().Add(-age)
+	require.NoError(t, os.Chtimes(path, modified, modified))
+
+	return path
+}
+
+// mustCreateUpload stores an upload of user named id, which expires at expires.
+func (jt jobsTest) mustCreateUpload(t *testing.T, user store.User, id string, expires time.Time) {
+	t.Helper()
+
+	_, err := jt.store.Uploads().Create(t.Context(), store.NewUpload{ID: id, UserID: user.ID, Length: 1000, ExpiresAt: expires})
+	require.NoError(t, err)
+}
+
+// Given the recurring jobs of the server, then cleanup.uploads runs every hour, and its job removes
+// the expired uploads with their files, and the files of the uploads directory without upload once
+// they are older than one hour.
+func TestJobs_CleanupUploadsRunsHourlyAndRemovesExpiredUploadsAndOldFilesWithoutUpload(t *testing.T) {
+	t.Parallel()
+
+	jt := newJobsTest(t)
+	alice := jt.mustCreateUser(t, "alice", store.UserActive)
+	now := jt.clock.Now()
+
+	schedule := jt.schedule(t, "cleanup.uploads")
+	require.Equal(t, "cleanup.uploads", schedule.Kind)
+	require.Equal(t, time.Hour, schedule.Every)
+
+	jt.mustCreateUpload(t, alice, "EXPIRED", now)
+	expired := jt.writeUploadFile(t, "EXPIRED", 24*time.Hour)
+	jt.mustCreateUpload(t, alice, "ALIVE", now.Add(time.Millisecond))
+	alive := jt.writeUploadFile(t, "ALIVE", 23*time.Hour)
+	orphan := jt.writeUploadFile(t, "ORPHAN", time.Hour)
+	recent := jt.writeUploadFile(t, "RECENT", time.Hour-time.Second)
+
+	jt.runSchedule(t, schedule)
+
+	require.NoFileExists(t, expired)
+	require.FileExists(t, alive)
+	require.NoFileExists(t, orphan)
+	require.FileExists(t, recent, "a file younger than one hour may still get its upload")
+
+	ids, err := jt.store.Uploads().IDs(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, []string{"ALIVE"}, ids)
+}
+
+// Given a deleted account, then its uploads are gone, and their files are removed by the next
+// cleanup.uploads.
+func TestJobs_CleanupUploadsRemovesTheFilesOfADeletedAccount(t *testing.T) {
+	t.Parallel()
+
+	jt := newJobsTest(t)
+	bob := jt.mustCreateUser(t, "bob", store.UserDeleting)
+	jt.mustCreateUpload(t, bob, "OF-BOB", jt.clock.Now().Add(23*time.Hour))
+	file := jt.writeUploadFile(t, "OF-BOB", time.Hour)
+
+	require.Equal(t, store.JobCompleted, jt.runDeletion(t, bob).Status)
+
+	ids, err := jt.store.Uploads().IDs(t.Context())
+	require.NoError(t, err)
+	require.Empty(t, ids)
+
+	jt.runSchedule(t, jt.schedule(t, "cleanup.uploads"))
+	require.NoFileExists(t, file)
 }
 
 // Given a native push in the inbox, then the import.native job of the server processes it to

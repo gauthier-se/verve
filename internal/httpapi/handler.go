@@ -58,6 +58,10 @@ type Deps struct {
 	// Inbox stores the bodies of the pushes, of at most MaxIngestBody bytes (VERVE_MAX_INGEST_BODY).
 	Inbox         Inbox
 	MaxIngestBody int64
+	// Uploads holds the files of the incomplete uploads, of at most MaxUploadSize bytes
+	// (VERVE_MAX_UPLOAD_SIZE).
+	Uploads       UploadFiles
+	MaxUploadSize int64
 	// RawMaxDays is the longest range of a raw samples read, in days (VERVE_RAW_MAX_DAYS).
 	RawMaxDays int
 }
@@ -101,6 +105,8 @@ func NewHandler(d Deps) http.Handler {
 		Catalog:        d.Catalog,
 		Inbox:          d.Inbox,
 		MaxIngestBody:  d.MaxIngestBody,
+		Uploads:        d.Uploads,
+		MaxUploadSize:  d.MaxUploadSize,
 		RawMaxDays:     d.RawMaxDays,
 	})
 

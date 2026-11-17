@@ -116,6 +116,10 @@ func (r repositories) Imports() store.ImportsRepository {
 	return imports(r)
 }
 
+func (r repositories) Uploads() store.UploadsRepository {
+	return uploads(r)
+}
+
 func (r repositories) Aggregates() store.AggregatesRepository {
 	return aggregates{q: r.q}
 }

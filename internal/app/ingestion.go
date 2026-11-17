@@ -20,9 +20,10 @@ import (
 const routeDecoderMaxMemory = 128 << 20
 
 // ingestion holds what the imports and the merges of sources need: the inbox of the pushes, the
-// pipeline and the merger.
+// files of the incomplete uploads, which complete into the inbox, the pipeline and the merger.
 type ingestion struct {
 	inbox    *ingest.Inbox
+	uploads  *ingest.Uploads
 	pipeline *ingest.Pipeline
 	merger   *ingest.Merger
 	enc      *zstd.Encoder
@@ -30,9 +31,10 @@ type ingestion struct {
 }
 
 // newIngestion returns the ingestion of st, whose metric types are those of shipped, with the
-// inbox of the directory inboxDir and batches of batchSize records, ingest.DefaultBatchSize when 0.
-// Close releases its codec.
-func newIngestion(st store.Store, shipped *catalog.Catalog, inboxDir string, clk clock.Clock, batchSize int,
+// inbox of the directory inboxDir, the uploads of the directory uploadsDir and batches of batchSize
+// records, ingest.DefaultBatchSize when 0. Close releases its codec.
+func newIngestion(st store.Store, shipped *catalog.Catalog, inboxDir, uploadsDir string, clk clock.Clock,
+	batchSize int,
 ) (*ingestion, error) {
 	activities, err := catalog.ShippedActivities()
 	if err != nil {
@@ -53,9 +55,11 @@ func newIngestion(st store.Store, shipped *catalog.Catalog, inboxDir string, clk
 	// exists, and the worker of the import or of the merge claims again as soon as it ends.
 	recorder := aggregate.NewRecorder(nil)
 	detector := workouts.NewDetector(activities)
+	inbox := ingest.NewInbox(inboxDir, clk)
 
 	return &ingestion{
-		inbox: ingest.NewInbox(inboxDir, clk),
+		inbox:   inbox,
+		uploads: ingest.NewUploads(uploadsDir, inbox, clk),
 		pipeline: ingest.NewPipeline(ingest.Config{
 			Store:       st,
 			Catalog:     shipped,

@@ -656,8 +656,9 @@ func storedSchedules(t *testing.T, cfg config.Config) map[string]time.Time {
 }
 
 // Given serve on a new database, then the purges of jobs, of audit events, of expired sessions and of
-// the inbox are scheduled daily, in a day, and no job is enqueued for them yet. Given the defaults, then the
-// backup is scheduled at the next 03:00 in the local time of the process.
+// the inbox are scheduled daily, in a day, the cleanup of the uploads hourly, in an hour, and no job is
+// enqueued for them yet. Given the defaults, then the backup is scheduled at the next 03:00 in the
+// local time of the process.
 func TestRun_SchedulesTheDailyPurgesAndBackups(t *testing.T) {
 	t.Parallel()
 
@@ -666,7 +667,7 @@ func TestRun_SchedulesTheDailyPurgesAndBackups(t *testing.T) {
 	_, _, stop := startRun(t, cfg)
 
 	require.Eventually(t, func() bool {
-		return len(storedSchedules(t, cfg)) == 5
+		return len(storedSchedules(t, cfg)) == 6
 	}, 5*time.Second, 10*time.Millisecond, "the server must schedule the purges and the backup")
 
 	stop()
@@ -675,6 +676,8 @@ func TestRun_SchedulesTheDailyPurgesAndBackups(t *testing.T) {
 	for _, name := range []string{"jobs.purge", "audit.purge", "cleanup.sessions", "cleanup.inbox"} {
 		require.WithinDuration(t, time.Now().Add(24*time.Hour), schedules[name], time.Minute, name)
 	}
+
+	require.WithinDuration(t, time.Now().Add(time.Hour), schedules["cleanup.uploads"], time.Minute, "cleanup.uploads")
 
 	local := before.Local()
 
@@ -686,7 +689,7 @@ func TestRun_SchedulesTheDailyPurgesAndBackups(t *testing.T) {
 	require.True(t, next.Equal(schedules["backup.run"]), "backup.run at %s, want %s", schedules["backup.run"], next)
 }
 
-// Given the backup schedule off, then serve schedules the purges and no backup.
+// Given the backup schedule off, then serve schedules the purges and the cleanups, and no backup.
 func TestRun_BackupScheduleOffSchedulesNoBackup(t *testing.T) {
 	t.Parallel()
 
@@ -695,7 +698,7 @@ func TestRun_BackupScheduleOffSchedulesNoBackup(t *testing.T) {
 	_, _, stop := startRun(t, cfg)
 
 	require.Eventually(t, func() bool {
-		return len(storedSchedules(t, cfg)) == 4
+		return len(storedSchedules(t, cfg)) == 5
 	}, 5*time.Second, 10*time.Millisecond, "the server must schedule the purges")
 
 	stop()

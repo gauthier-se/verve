@@ -84,7 +84,7 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger, stderr io.
 
 	layout := newLayout(cfg.DataDir)
 
-	ing, err := newIngestion(st, shipped, layout.Inbox, clk, 0)
+	ing, err := newIngestion(st, shipped, layout.Inbox, layout.Uploads, clk, 0)
 	if err != nil {
 		return err
 	}
@@ -116,6 +116,8 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger, stderr io.
 		Catalog:        shipped,
 		Inbox:          ing.inbox,
 		MaxIngestBody:  int64(cfg.MaxIngestBody),
+		Uploads:        ing.uploads,
+		MaxUploadSize:  int64(cfg.MaxUploadSize),
 		RawMaxDays:     cfg.RawMaxDays,
 	})
 	srv := NewServer(ServerConfig{Addr: cfg.ListenAddr}, handler, logger)
