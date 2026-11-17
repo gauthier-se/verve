@@ -20,6 +20,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -29,6 +30,9 @@ import (
 
 const (
 	mb = 1_000_000
+
+	// The peak resident memory that an import may reach, the target on a Raspberry Pi 4.
+	maxMemory = 300 * mb
 
 	// The density of a real Apple Watch, about 1 GB of XML a year.
 	density = 30
@@ -51,12 +55,6 @@ func main() {
 	}
 }
 
-// limits are what the import must stay within.
-type limits struct {
-	memoryMB int64
-	duration time.Duration
-}
-
 // run reads the command line, imports a synthetic export with the binary, prints the figures of the
 // import to stdout and the output of the binary to stderr, and fails when the import exceeds a limit.
 func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
@@ -65,9 +63,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 
 	verve := flags.String("verve", "", "path of the verve binary to check (required)")
 	sizeMB := flags.Int64("size-mb", 1000, "minimum size of the export.xml, in MB")
-	lim := limits{}
-	flags.Int64Var(&lim.memoryMB, "max-memory-mb", 300, "maximum peak resident memory of the import, in MB")
-	flags.DurationVar(&lim.duration, "max-duration", 30*time.Minute, "maximum duration of the import")
+	maxDuration := flags.Duration("max-duration", 30*time.Minute, "maximum duration of the import")
 
 	if err := flags.Parse(args); err != nil {
 		return fmt.Errorf("read flags: %w", err)
@@ -79,8 +75,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return errors.New("expected -verve <path> and no other argument")
 	}
 
-	if *sizeMB < 1 || lim.memoryMB < 1 || lim.duration <= 0 {
-		return errors.New("-size-mb, -max-memory-mb and -max-duration must be positive")
+	if *sizeMB < 1 || *maxDuration <= 0 {
+		return errors.New("-size-mb and -max-duration must be positive")
 	}
 
 	dir, err := os.MkdirTemp("", "importcheck-*")
@@ -90,12 +86,12 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 
 	defer func() { _ = os.RemoveAll(dir) }()
 
-	return check(ctx, *verve, dir, *sizeMB*mb, lim, stdout, stderr)
+	return check(ctx, *verve, dir, *sizeMB*mb, *maxDuration, stdout, stderr)
 }
 
 // check generates an export of at least minSize bytes of XML in dir, imports it with verve into a new
-// data directory in dir, prints the figures of the import and checks them against lim.
-func check(ctx context.Context, verve, dir string, minSize int64, lim limits, stdout, stderr io.Writer) error {
+// data directory in dir, prints the figures of the import and checks them against the limits.
+func check(ctx context.Context, verve, dir string, minSize int64, maxDuration time.Duration, stdout, stderr io.Writer) error {
 	export := filepath.Join(dir, "export.zip")
 
 	days, size, err := writeExport(ctx, export, minSize)
@@ -125,37 +121,58 @@ func check(ctx context.Context, verve, dir string, minSize int64, lim limits, st
 		return fmt.Errorf("create user: %w", err)
 	}
 
-	importCtx, cancel := context.WithTimeout(ctx, lim.duration)
+	// The maxrss of a child can start from memory of this process, which the export used: returning
+	// that memory first keeps it out, and the peak of this process bounds what remains of it.
+	debug.FreeOSMemory()
+
+	ownPeak, err := peakMemory()
+	if err != nil {
+		return err
+	}
+
+	importCtx, cancel := context.WithTimeout(ctx, maxDuration)
 	defer cancel()
 
-	imp := command(importCtx, "import", "xml", "--user", username, export)
+	importCmd := command(importCtx, "import", "xml", "--user", username, export)
 	start := time.Now()
-	runErr := imp.Run()
+	runErr := importCmd.Run()
 	took := time.Since(start)
 
 	// The child has ended, even when it failed to start or was killed, unless ProcessState is nil.
 	var peak int64
 
-	if imp.ProcessState != nil {
-		if usage, ok := imp.ProcessState.SysUsage().(*syscall.Rusage); ok {
+	if importCmd.ProcessState != nil {
+		if usage, ok := importCmd.ProcessState.SysUsage().(*syscall.Rusage); ok {
 			peak = usage.Maxrss * 1024 // in KiB on Linux
 		}
 	}
 
 	_, _ = fmt.Fprintf(stdout, "Export: %.1f MB of XML, %d days\n", float64(size)/mb, days)
-	_, _ = fmt.Fprintf(stdout, "Duration: %s (limit %s)\n", took.Round(time.Millisecond), lim.duration)
-	_, _ = fmt.Fprintf(stdout, "Peak memory: %.1f MB (limit %d MB)\n", float64(peak)/mb, lim.memoryMB)
+	_, _ = fmt.Fprintf(stdout, "Duration: %s (limit %s)\n", took.Round(time.Millisecond), maxDuration)
+	_, _ = fmt.Fprintf(stdout, "Peak memory: %.1f MB (limit %d MB)\n", float64(peak)/mb, maxMemory/mb)
+	_, _ = fmt.Fprintf(stdout, "Peak memory of importcheck: %.1f MB (the import reports at most this much of it)\n",
+		float64(ownPeak)/mb)
 
 	switch {
 	case errors.Is(importCtx.Err(), context.DeadlineExceeded):
-		return fmt.Errorf("import xml: stopped at the limit of %s", lim.duration)
+		return fmt.Errorf("import xml: stopped at the limit of %s", maxDuration)
 	case runErr != nil:
 		return fmt.Errorf("import xml: %w", runErr)
-	case peak > lim.memoryMB*mb:
-		return fmt.Errorf("peak memory of %.1f MB is above the limit of %d MB", float64(peak)/mb, lim.memoryMB)
+	case peak > maxMemory:
+		return fmt.Errorf("peak memory of %.1f MB is above the limit of %d MB", float64(peak)/mb, maxMemory/mb)
 	default:
 		return nil
 	}
+}
+
+// peakMemory returns the peak resident memory of this process, in bytes.
+func peakMemory() (int64, error) {
+	var usage syscall.Rusage
+	if err := syscall.Getrusage(syscall.RUSAGE_SELF, &usage); err != nil {
+		return 0, fmt.Errorf("read peak memory: %w", err)
+	}
+
+	return usage.Maxrss * 1024, nil // in KiB on Linux
 }
 
 // writeExport writes to path a synthetic export whose export.xml has at least minSize bytes, and
