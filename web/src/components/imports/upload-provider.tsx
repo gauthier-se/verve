@@ -15,6 +15,8 @@ import {
   type UrlStorage,
 } from "tus-js-client";
 
+import { csrfHeader } from "@/api/client";
+
 /** The size of each write of an upload (FR-2 of XML import). */
 export const uploadChunkSize = 8 * 1024 * 1024;
 
@@ -86,7 +88,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       endpoint: new URL("/api/v1/uploads/", window.location.origin).href,
       chunkSize: uploadChunkSize,
       retryDelays,
-      headers: { "Verve-Csrf": "1" },
+      headers: { [csrfHeader.name]: csrfHeader.value },
       metadata: { filename: next.name },
       storeFingerprintForResuming: true,
       removeFingerprintOnSuccess: true,

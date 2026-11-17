@@ -14,6 +14,7 @@ import {
 } from "@/components/imports/labels";
 import { uploadRatio, useUpload } from "@/components/imports/upload-provider";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { formatPercent } from "@/i18n/format";
 import { cn } from "@/lib/utils";
 
@@ -197,9 +198,10 @@ function UploadProgress() {
               percent: percent(ratio),
             })}
           </p>
-          <ProgressBar
-            label={t("upload.progressLabel", { fileName: state.fileName })}
-            ratio={ratio}
+          <Progress
+            aria-label={t("upload.progressLabel", { fileName: state.fileName })}
+            value={Math.round(ratio * 100)}
+            className="h-2"
           />
         </div>
       )}
@@ -253,9 +255,10 @@ function FollowedImport({ id, fileName }: { id: number; fileName: string }) {
                   percent: formatPercent(imp.progress, i18n.language),
                 })}
               </p>
-              <ProgressBar
-                label={t("upload.import.progressLabel")}
-                ratio={imp.progress}
+              <Progress
+                aria-label={t("upload.import.progressLabel")}
+                value={Math.round(imp.progress * 100)}
+                className="h-2"
               />
             </div>
           )}
@@ -263,24 +266,5 @@ function FollowedImport({ id, fileName }: { id: number; fileName: string }) {
         </>
       )}
     </section>
-  );
-}
-
-/** A bar filled to `ratio`, from 0 to 1, named `label`. */
-function ProgressBar({ label, ratio }: { label: string; ratio: number }) {
-  return (
-    <div
-      role="progressbar"
-      aria-label={label}
-      aria-valuemin={0}
-      aria-valuemax={100}
-      aria-valuenow={Math.round(ratio * 100)}
-      className="h-2 overflow-hidden rounded-full bg-muted"
-    >
-      <div
-        className="h-full bg-primary transition-[width]"
-        style={{ width: `${String(ratio * 100)}%` }}
-      />
-    </div>
   );
 }
