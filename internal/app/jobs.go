@@ -19,13 +19,14 @@ import (
 	"github.com/gauthier-se/verve/internal/store"
 )
 
-// The recurring jobs that remove finished jobs, old audit events, expired sessions and the inbox
-// files that no import needs.
+// The recurring jobs that remove finished jobs, old audit events, expired sessions, the inbox
+// files that no import needs and the expired uploads.
 const (
-	kindPurgeJobs     = "jobs.purge"
-	kindPurgeAudit    = "audit.purge"
-	kindPurgeSessions = "cleanup.sessions"
-	kindCleanupInbox  = "cleanup.inbox"
+	kindPurgeJobs      = "jobs.purge"
+	kindPurgeAudit     = "audit.purge"
+	kindPurgeSessions  = "cleanup.sessions"
+	kindCleanupInbox   = "cleanup.inbox"
+	kindCleanupUploads = "cleanup.uploads"
 )
 
 // deleteAccountMaxAttempts lets an account deletion wait, through its retries, for hours for the
@@ -71,11 +72,16 @@ func registerJobs(registry *jobs.Registry, st store.Store, clk clock.Clock, cfg 
 		return ing.inbox.Cleanup(ctx, st.Imports())
 	})
 
+	jobs.Register(registry, kindCleanupUploads, jobs.KindOptions{}, func(ctx context.Context, _ jobs.Job[struct{}]) error {
+		return ing.uploads.Cleanup(ctx, st.Uploads())
+	})
+
 	return []jobs.Schedule{
 		{Name: kindPurgeJobs, Kind: kindPurgeJobs, Every: 24 * time.Hour, Payload: json.RawMessage(`{}`)},
 		{Name: kindPurgeAudit, Kind: kindPurgeAudit, Every: 24 * time.Hour, Payload: json.RawMessage(`{}`)},
 		{Name: kindPurgeSessions, Kind: kindPurgeSessions, Every: 24 * time.Hour, Payload: json.RawMessage(`{}`)},
 		{Name: kindCleanupInbox, Kind: kindCleanupInbox, Every: 24 * time.Hour, Payload: json.RawMessage(`{}`)},
+		{Name: kindCleanupUploads, Kind: kindCleanupUploads, Every: time.Hour, Payload: json.RawMessage(`{}`)},
 		// Off leaves Cron empty, which disables the schedule and removes its stored next run.
 		{Name: backup.KindRun, Kind: backup.KindRun, Cron: cfg.Backup.Cron(), Payload: json.RawMessage(`{}`)},
 	}

@@ -85,7 +85,9 @@ func importXML(ctx context.Context, cfg config.Config, req XMLImport, logger *sl
 
 		clk := clock.Real()
 
-		ing, err := newIngestion(s, shipped, newLayout(cfg.DataDir).Inbox, clk, opts.batchSize)
+		layout := newLayout(cfg.DataDir)
+
+		ing, err := newIngestion(s, shipped, layout.Inbox, layout.Uploads, clk, opts.batchSize)
 		if err != nil {
 			return store.Import{}, err
 		}

@@ -12,7 +12,6 @@ import (
 	"github.com/gauthier-se/verve/internal/clock"
 	"github.com/gauthier-se/verve/internal/config"
 	"github.com/gauthier-se/verve/internal/httpapi"
-	"github.com/gauthier-se/verve/internal/ingest"
 	"github.com/gauthier-se/verve/internal/jobs"
 	"github.com/gauthier-se/verve/internal/store/sqlite"
 	"github.com/gauthier-se/verve/internal/version"
@@ -85,7 +84,7 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger, stderr io.
 
 	layout := newLayout(cfg.DataDir)
 
-	ing, err := newIngestion(st, shipped, layout.Inbox, clk, 0)
+	ing, err := newIngestion(st, shipped, layout.Inbox, layout.Uploads, clk, 0)
 	if err != nil {
 		return err
 	}
@@ -117,7 +116,7 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger, stderr io.
 		Catalog:        shipped,
 		Inbox:          ing.inbox,
 		MaxIngestBody:  int64(cfg.MaxIngestBody),
-		Uploads:        ingest.NewUploads(layout.Uploads, ing.inbox, clk),
+		Uploads:        ing.uploads,
 		MaxUploadSize:  int64(cfg.MaxUploadSize),
 		RawMaxDays:     cfg.RawMaxDays,
 	})

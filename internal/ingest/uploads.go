@@ -9,9 +9,15 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/gauthier-se/verve/internal/clock"
+	"github.com/gauthier-se/verve/internal/store"
 )
+
+// UploadOrphanAge is the age after which a file of the uploads without upload is removed. An upload
+// creates its file before it stores its upload, so a younger file may still get one.
+const UploadOrphanAge = time.Hour
 
 // errUploadName is the error of a name that is not the one of a file of the uploads.
 var errUploadName = errors.New("not the name of an upload file")
@@ -188,6 +194,73 @@ func (u *Uploads) Remove(ctx context.Context, name string) error {
 	}
 
 	return removeUpload(path)
+}
+
+// Cleanup removes the expired uploads of uploads with their files, and the files without upload
+// once they are older than UploadOrphanAge, such as those of the uploads of a deleted account or
+// whose removal failed. It is the handler of the hourly job cleanup.uploads.
+func (u *Uploads) Cleanup(ctx context.Context, uploads store.UploadsRepository) error {
+	expired, err := uploads.DeleteExpired(ctx)
+	if err != nil {
+		return err
+	}
+
+	var errs []error
+
+	for _, name := range expired {
+		// A file that fails to go has no upload any more: the next cleanup removes it.
+		if err := u.Remove(ctx, name); err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	ids, err := uploads.IDs(ctx)
+	if err != nil {
+		return errors.Join(append(errs, err)...)
+	}
+
+	kept := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		kept[id] = true
+	}
+
+	entries, err := os.ReadDir(u.dir)
+	if err != nil {
+		return errors.Join(append(errs, fmt.Errorf("list uploads: %w", err))...)
+	}
+
+	now := u.clk.Now()
+
+	for _, entry := range entries {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		if !entry.Type().IsRegular() || kept[entry.Name()] {
+			continue
+		}
+
+		info, err := entry.Info()
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+
+		if err != nil {
+			errs = append(errs, fmt.Errorf("stat upload file: %w", err))
+
+			continue
+		}
+
+		if now.Sub(info.ModTime()) < UploadOrphanAge {
+			continue
+		}
+
+		if err := removeUpload(filepath.Join(u.dir, entry.Name())); err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	return errors.Join(errs...)
 }
 
 // path returns the path of the file of name, or errUploadName when name is not the one of a file of
