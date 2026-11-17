@@ -60,6 +60,10 @@ type APIDeps struct {
 	// Inbox stores the bodies of the pushes, of at most MaxIngestBody bytes.
 	Inbox         Inbox
 	MaxIngestBody int64
+	// Uploads holds the files of the incomplete uploads, of at most MaxUploadSize bytes
+	// (VERVE_MAX_UPLOAD_SIZE), which complete into Inbox.
+	Uploads       UploadFiles
+	MaxUploadSize int64
 	// RawMaxDays is the longest range of a raw samples read, in days (VERVE_RAW_MAX_DAYS).
 	RawMaxDays int
 }
@@ -114,6 +118,7 @@ func NewAPI(mux *http.ServeMux, deps APIDeps) huma.API {
 	registerSources(api, deps, recorder)
 	registerIngest(api, deps)
 	registerImports(api, deps)
+	registerUploads(mux, deps)
 
 	return api
 }

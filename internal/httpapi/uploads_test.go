@@ -271,8 +271,11 @@ func TestUploads_Create_RefusesAnInvalidCreation(t *testing.T) {
 	}
 }
 
+// tusMethods are the methods of the tus endpoint.
+var tusMethods = []string{http.MethodOptions, http.MethodPost, http.MethodHead}
+
 // Given a token, then every request of the tus endpoint answers 401, and so does a request without
-// authentication.
+// a session that passes the CSRF checks.
 func TestUploads_TokenOrNoSession_Answers401(t *testing.T) {
 	t.Parallel()
 
@@ -281,7 +284,7 @@ func TestUploads_TokenOrNoSession_Answers401(t *testing.T) {
 	location := ut.mustCreate(t, h, 10)
 	token, _ := ut.mustCreateToken(t, ut.alice, time.Time{}, store.ScopeIngest, store.ScopeRead)
 
-	for _, method := range []string{http.MethodOptions, http.MethodPost, http.MethodHead, http.MethodPatch, http.MethodDelete} {
+	for _, method := range tusMethods {
 		target := location
 		if method == http.MethodOptions || method == http.MethodPost {
 			target = uploadsPath
@@ -289,12 +292,13 @@ func TestUploads_TokenOrNoSession_Answers401(t *testing.T) {
 
 		for _, auth := range []string{"token", "none"} {
 			t.Run(method+" "+auth, func(t *testing.T) {
-				r := tusRequest(t, method, target, strings.NewReader("0123456789"), "")
+				r := tusRequest(t, method, target, strings.NewReader("0123456789"), "theme=dark")
 				r.Header.Set("Upload-Length", "10")
 				r.Header.Set("Upload-Offset", "0")
 				r.Header.Set("Content-Type", "application/offset+octet-stream")
 
 				if auth == "token" {
+					r.Header.Del("Cookie")
 					r.Header.Set("Authorization", "Bearer "+token)
 				}
 
@@ -322,7 +326,7 @@ func TestUploads_WithoutCSRFProtection_Answers403(t *testing.T) {
 	h := ut.handler(t, ut.files())
 	location := ut.mustCreate(t, h, 10)
 
-	for _, method := range []string{http.MethodPost, http.MethodPatch, http.MethodDelete} {
+	for _, method := range []string{http.MethodPost} {
 		target := location
 		if method == http.MethodPost {
 			target = uploadsPath

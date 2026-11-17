@@ -12,6 +12,7 @@ import (
 	"github.com/gauthier-se/verve/internal/clock"
 	"github.com/gauthier-se/verve/internal/config"
 	"github.com/gauthier-se/verve/internal/httpapi"
+	"github.com/gauthier-se/verve/internal/ingest"
 	"github.com/gauthier-se/verve/internal/jobs"
 	"github.com/gauthier-se/verve/internal/store/sqlite"
 	"github.com/gauthier-se/verve/internal/version"
@@ -116,6 +117,8 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger, stderr io.
 		Catalog:        shipped,
 		Inbox:          ing.inbox,
 		MaxIngestBody:  int64(cfg.MaxIngestBody),
+		Uploads:        ingest.NewUploads(layout.Uploads, ing.inbox, clk),
+		MaxUploadSize:  int64(cfg.MaxUploadSize),
 		RawMaxDays:     cfg.RawMaxDays,
 	})
 	srv := NewServer(ServerConfig{Addr: cfg.ListenAddr}, handler, logger)
