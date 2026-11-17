@@ -18,6 +18,7 @@ import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 import { Route as AuthenticatedImportsRouteImport } from './routes/_authenticated/imports'
 import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin/index'
+import { Route as AuthenticatedImportsXmlRouteImport } from './routes/_authenticated/imports_.xml'
 import { Route as AuthenticatedSettingsTokensRouteImport } from './routes/_authenticated/settings/tokens'
 
 const AuthenticatedRoute = AuthenticatedRouteImport.update({
@@ -64,6 +65,11 @@ const AuthenticatedAdminIndexRoute = AuthenticatedAdminIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthenticatedAdminRoute,
 } as any)
+const AuthenticatedImportsXmlRoute = AuthenticatedImportsXmlRouteImport.update({
+  id: '/imports_/xml',
+  path: '/imports/xml',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedSettingsTokensRoute =
   AuthenticatedSettingsTokensRouteImport.update({
     id: '/settings/tokens',
@@ -79,6 +85,7 @@ export interface FileRoutesByFullPath {
   '/setup': typeof SetupRoute
   '/admin': typeof AuthenticatedAdminRouteWithChildren
   '/imports': typeof AuthenticatedImportsRoute
+  '/imports/xml': typeof AuthenticatedImportsXmlRoute
   '/settings/tokens': typeof AuthenticatedSettingsTokensRoute
   '/admin/': typeof AuthenticatedAdminIndexRoute
 }
@@ -89,6 +96,7 @@ export interface FileRoutesByTo {
   '/setup': typeof SetupRoute
   '/imports': typeof AuthenticatedImportsRoute
   '/': typeof AuthenticatedIndexRoute
+  '/imports/xml': typeof AuthenticatedImportsXmlRoute
   '/settings/tokens': typeof AuthenticatedSettingsTokensRoute
   '/admin': typeof AuthenticatedAdminIndexRoute
 }
@@ -102,6 +110,7 @@ export interface FileRoutesById {
   '/_authenticated/admin': typeof AuthenticatedAdminRouteWithChildren
   '/_authenticated/imports': typeof AuthenticatedImportsRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/imports_/xml': typeof AuthenticatedImportsXmlRoute
   '/_authenticated/settings/tokens': typeof AuthenticatedSettingsTokensRoute
   '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
 }
@@ -115,6 +124,7 @@ export interface FileRouteTypes {
     | '/setup'
     | '/admin'
     | '/imports'
+    | '/imports/xml'
     | '/settings/tokens'
     | '/admin/'
   fileRoutesByTo: FileRoutesByTo
@@ -125,6 +135,7 @@ export interface FileRouteTypes {
     | '/setup'
     | '/imports'
     | '/'
+    | '/imports/xml'
     | '/settings/tokens'
     | '/admin'
   id:
@@ -137,6 +148,7 @@ export interface FileRouteTypes {
     | '/_authenticated/admin'
     | '/_authenticated/imports'
     | '/_authenticated/'
+    | '/_authenticated/imports_/xml'
     | '/_authenticated/settings/tokens'
     | '/_authenticated/admin/'
   fileRoutesById: FileRoutesById
@@ -214,6 +226,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminIndexRouteImport
       parentRoute: typeof AuthenticatedAdminRoute
     }
+    '/_authenticated/imports_/xml': {
+      id: '/_authenticated/imports_/xml'
+      path: '/imports/xml'
+      fullPath: '/imports/xml'
+      preLoaderRoute: typeof AuthenticatedImportsXmlRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/settings/tokens': {
       id: '/_authenticated/settings/tokens'
       path: '/settings/tokens'
@@ -239,6 +258,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedAdminRoute: typeof AuthenticatedAdminRouteWithChildren
   AuthenticatedImportsRoute: typeof AuthenticatedImportsRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+  AuthenticatedImportsXmlRoute: typeof AuthenticatedImportsXmlRoute
   AuthenticatedSettingsTokensRoute: typeof AuthenticatedSettingsTokensRoute
 }
 
@@ -246,6 +266,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAdminRoute: AuthenticatedAdminRouteWithChildren,
   AuthenticatedImportsRoute: AuthenticatedImportsRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
+  AuthenticatedImportsXmlRoute: AuthenticatedImportsXmlRoute,
   AuthenticatedSettingsTokensRoute: AuthenticatedSettingsTokensRoute,
 }
 

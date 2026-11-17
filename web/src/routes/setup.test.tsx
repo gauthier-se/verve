@@ -140,6 +140,20 @@ describe("setup page", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
+  it("given the import step of the wizard, then it links to the upload page", async () => {
+    const user = userEvent.setup();
+    server.use(...fakeAuth({ setupToken }));
+    acceptPreferences();
+    renderRoute(`/setup#${setupToken}`);
+    await createAdmin(user);
+    await user.click(await screen.findByRole("button", { name: "Continue" }));
+
+    await screen.findByRole("heading", { level: 2, name: "Import your data" });
+    expect(
+      screen.getByRole("link", { name: "Upload your Apple Health export" }),
+    ).toHaveAttribute("href", "/imports/xml");
+  });
+
   it("given the wizard, when the user completes a step with the keyboard, then focus moves to the heading of the next step", async () => {
     const user = userEvent.setup();
     server.use(...fakeAuth({ setupToken }));

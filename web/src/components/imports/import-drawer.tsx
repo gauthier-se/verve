@@ -1,28 +1,18 @@
 import { useQuery } from "@tanstack/react-query";
-import { type ReactNode, useId, useMemo, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { errorMessage } from "@/api/errors";
-import type {
-  Import,
-  ImportCounters,
-  ImportSummary,
-  ImportTypeCounters,
-} from "@/api/generated";
-import {
-  getImportOptions,
-  listMetricsOptions,
-} from "@/api/generated/@tanstack/react-query.gen";
+import type { ImportSummary } from "@/api/generated";
+import { getImportOptions } from "@/api/generated/@tanstack/react-query.gen";
 import { CancelImportDialog } from "@/components/imports/cancel-import-dialog";
+import { ImportReport } from "@/components/imports/import-report";
 import {
-  counterLabel,
-  counterNames,
   activePollMs,
   formatImportDate,
   isActive,
   originLabel,
   statusLabel,
-  typeLabel,
 } from "@/components/imports/labels";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,7 +25,6 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { formatNumber } from "@/i18n/format";
 
 interface ImportDrawerProps {
   summary: ImportSummary;
@@ -80,7 +69,7 @@ export function ImportDrawer({ summary, timeZone }: ImportDrawerProps) {
             })}
           </SheetDescription>
         </SheetHeader>
-        {open && <ImportDetails id={summary.id} />}
+        {open && <ImportDetails id={summary.id} timeZone={timeZone} />}
         <SheetFooter className="flex-row flex-wrap justify-end">
           {isActive(summary.status) && (
             <CancelImportDialog importId={summary.id} />
@@ -100,7 +89,13 @@ export function ImportDrawer({ summary, timeZone }: ImportDrawerProps) {
  * The whole report of the import `id`, once it is loaded, polled while the
  * import is queued or running.
  */
-function ImportDetails({ id }: { id: number }) {
+function ImportDetails({
+  id,
+  timeZone,
+}: {
+  id: number;
+  timeZone: string | null;
+}) {
   const { i18n } = useTranslation();
   const details = useQuery({
     ...getImportOptions({ path: { id } }),
@@ -120,123 +115,9 @@ function ImportDetails({ id }: { id: number }) {
   if (details.data === undefined) {
     return null;
   }
-  return <Report report={details.data.report} />;
-}
-
-function Report({ report }: { report: Import["report"] }) {
-  const { t, i18n } = useTranslation();
-  const metrics = useQuery(listMetricsOptions());
-  const uncuratedIdentifiers = useMemo(
-    () =>
-      new Map(
-        (metrics.data?.items ?? [])
-          .filter((metric) => !metric.curated)
-          .map((metric) => [metric.key, metric.identifier]),
-      ),
-    [metrics.data],
-  );
-
-  // The types with the most records first, then the workouts.
-  const types = [
-    ...Object.entries(report.types)
-      .map(([key, counters]) => ({
-        key,
-        name: typeLabel(key, i18n, uncuratedIdentifiers),
-        counters,
-      }))
-      .sort(
-        (a, b) =>
-          (b.counters.received ?? 0) - (a.counters.received ?? 0) ||
-          a.name.localeCompare(b.name, i18n.language),
-      ),
-    ...(Object.keys(report.workouts).length > 0
-      ? [
-          {
-            key: "workouts",
-            name: t("imports.details.workouts"),
-            counters: report.workouts,
-          },
-        ]
-      : []),
-  ];
-
   return (
-    <div className="flex flex-col gap-6 px-4">
-      <Section title={t("imports.details.totals")}>
-        <Counters counters={report.total} />
-      </Section>
-      <Section title={t("imports.details.byType")}>
-        {types.length === 0 ? (
-          <p className="text-muted-foreground">
-            {t("imports.details.noRecord")}
-          </p>
-        ) : (
-          <ul className="flex flex-col gap-4">
-            {types.map((type) => (
-              <li key={type.key} className="flex flex-col gap-1">
-                <h4 className="font-medium break-all">{type.name}</h4>
-                <Counters counters={type.counters} />
-              </li>
-            ))}
-          </ul>
-        )}
-      </Section>
-      <Section title={t("imports.details.errors")}>
-        {report.errors.length === 0 ? (
-          <p className="text-muted-foreground">
-            {t("imports.details.noError")}
-          </p>
-        ) : (
-          <ul className="flex flex-col gap-2 font-mono text-xs break-words">
-            {report.errors.map((message, i) => (
-              <li key={i}>{message}</li>
-            ))}
-          </ul>
-        )}
-      </Section>
+    <div className="px-4">
+      <ImportReport report={details.data.report} timeZone={timeZone} />
     </div>
-  );
-}
-
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  const headingId = useId();
-
-  return (
-    <section aria-labelledby={headingId} className="flex flex-col gap-2">
-      <h3 id={headingId} className="font-heading font-medium">
-        {title}
-      </h3>
-      {children}
-    </section>
-  );
-}
-
-/**
- * The counters given, in the order of the report: every counter of the
- * total, and only the counters that a type has.
- */
-function Counters({
-  counters,
-}: {
-  counters: ImportCounters | ImportTypeCounters;
-}) {
-  const { t, i18n } = useTranslation();
-
-  return (
-    <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1">
-      {counterNames.map((name) => {
-        const value = counters[name];
-        return (
-          value !== undefined && (
-            <div key={name} className="contents">
-              <dt className="text-muted-foreground">{counterLabel(t, name)}</dt>
-              <dd className="text-right tabular-nums">
-                {formatNumber(value, i18n.language)}
-              </dd>
-            </div>
-          )
-        );
-      })}
-    </dl>
   );
 }

@@ -169,6 +169,9 @@ jobs:
       - name: Build
         run: go tool task build
 
+      - name: Write the synthetic export of the upload test
+        run: go run ./tools/synthexport -o bin/export.zip
+
       # WebKit builds are specific to an Ubuntu release, which runner.os does
       # not tell apart, and the cached directory name does not depend on it.
       - name: Read the Playwright and Ubuntu versions

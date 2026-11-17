@@ -2,6 +2,12 @@ import { unexpectedResponseCode } from "@/api/errors";
 import type { Problem } from "@/api/generated";
 import type { CreateClientConfig } from "@/api/generated/client.gen";
 
+/**
+ * The header that the server requires on every request other than GET,
+ * against cross-site request forgery.
+ */
+export const csrfHeader = { name: "Verve-Csrf", value: "1" } as const;
+
 /** The media type of the errors that the Verve API answers. */
 const problemMediaType = "application/problem+json";
 
@@ -18,7 +24,7 @@ export const createClientConfig: CreateClientConfig = (config) => ({
   fetch: async (input, init) => {
     const request = new Request(input, init);
     if (request.method !== "GET") {
-      request.headers.set("Verve-Csrf", "1");
+      request.headers.set(csrfHeader.name, csrfHeader.value);
     }
     const response = await fetch(request);
     return response.ok || hasProblemMediaType(response)

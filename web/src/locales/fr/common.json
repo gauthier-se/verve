@@ -54,11 +54,14 @@
   },
   "importBanner": {
     "label": "Importation en cours",
+    "progress": "{{percent}} effectués.",
     "received_one": "{{received}} enregistrement reçu pour l'instant.",
     "received_many": "{{received}} enregistrements reçus pour l'instant.",
     "received_other": "{{received}} enregistrements reçus pour l'instant.",
     "running": "Une importation est en cours.",
-    "view": "Voir les importations"
+    "uploadStopped": "L'envoi du fichier {{fileName}} s'est arrêté.",
+    "view": "Voir les importations",
+    "viewUpload": "Voir l'envoi"
   },
   "imports": {
     "cancel": {
@@ -99,14 +102,21 @@
       "label": "Détails de l'importation du {{date}}",
       "noError": "Aucune erreur.",
       "noRecord": "Aucun enregistrement pour l'instant.",
+      "period": "Période",
+      "periodRange": "Du {{start}} au {{end}}",
+      "routes": "Parcours",
+      "routesStored_one": "{{routes}} parcours enregistré avec son entraînement.",
+      "routesStored_many": "{{routes}} parcours enregistrés avec leurs entraînements.",
+      "routesStored_other": "{{routes}} parcours enregistrés avec leurs entraînements.",
       "title": "Importation du {{date}}",
       "totals": "Totaux",
       "workouts": "Entraînements"
     },
     "empty": {
-      "description": "Vos importations apparaissent ici dès qu'une app envoie des données à Verve. Créez un jeton d'API pour Health Auto Export ou une autre app pour commencer.",
+      "description": "Vos importations apparaissent ici dès que vous envoyez un export Apple Health ou qu'une app envoie des données à Verve. Envoyez l'export de votre iPhone pour votre historique, ou créez un jeton d'API pour Health Auto Export ou une autre app.",
       "title": "Aucune importation",
-      "tokens": "Créer un jeton d'API"
+      "tokens": "Créer un jeton d'API",
+      "upload": "Envoyer votre export Apple Health"
     },
     "inProgress": "En cours",
     "more": "Afficher plus",
@@ -126,7 +136,8 @@
       "running": "En cours"
     },
     "title": "Importations",
-    "token": "via {{name}}"
+    "token": "via {{name}}",
+    "upload": "Importer un export Apple Health"
   },
   "invite": {
     "askNewInvitation": "Demandez une nouvelle invitation à un administrateur.",
@@ -188,7 +199,8 @@
       "export": "Votre historique : sur votre iPhone, ouvrez l'app Santé, touchez votre photo de profil, puis Exporter toutes les données de santé, et envoyez le fichier export.zip à Verve.",
       "open": "Ouvrir Verve",
       "sync": "Synchronisation continue : l'app Health Auto Export envoie vos nouvelles données à Verve à intervalles réguliers.",
-      "title": "Importez vos données"
+      "title": "Importez vos données",
+      "upload": "Envoyer votre export Apple Health"
     },
     "progress": "Étape {{step}} sur {{total}}",
     "title": "Configurer Verve",
@@ -285,6 +297,42 @@
     "unused": "Inutilisé depuis 90 jours ou plus. Révoquez-le si aucune application n'en a plus besoin."
   },
   "unexpectedError": "Une erreur s'est produite. Réessayez.",
+  "upload": {
+    "announce": "{{percent}} envoyés.",
+    "complete": "L'envoi du fichier {{fileName}} est terminé. Son importation apparaît sur la page des importations.",
+    "description": "Envoyez à Verve l'export de l'app Santé de votre iPhone, avec tout votre historique.",
+    "dropZone": {
+      "choose": "Choisir un fichier",
+      "description": "Déposez ici le fichier export.zip ou export.xml, ou choisissez-le.",
+      "label": "Envoyer l'export",
+      "refused": "Choisissez le fichier export.zip ou export.xml de l'app Santé."
+    },
+    "duration": "Le traitement d'un export de plusieurs années peut prendre de 10 à 30 minutes sur un Raspberry Pi.",
+    "failure": {
+      "diskFull": "Le serveur n'a plus d'espace disque. Une fois de l'espace libéré, réessayez : l'envoi reprend là où il s'est arrêté.",
+      "network": "La connexion au serveur a été perdue. Vérifiez votre réseau, puis réessayez : l'envoi reprend là où il s'est arrêté.",
+      "other": "L'envoi a échoué. Réessayez : l'envoi reprend là où il s'est arrêté quand c'est possible.",
+      "tooLarge": "Le fichier dépasse la taille que ce serveur accepte. Son administrateur peut relever la limite, VERVE_MAX_UPLOAD_SIZE, puis vous pourrez réessayer."
+    },
+    "guide": {
+      "export": "Touchez Exporter toutes les données de santé, puis Exporter, et patientez pendant que l'iPhone prépare le fichier export.zip.",
+      "open": "Ouvrez l'app Santé sur votre iPhone.",
+      "profile": "Touchez votre photo de profil, en haut à droite.",
+      "share": "Partagez le fichier vers Fichiers et envoyez-le ici, ou ouvrez cette page dans Safari sur l'iPhone et envoyez-le directement.",
+      "title": "Exportez vos données"
+    },
+    "import": {
+      "progress": "{{percent}} traités",
+      "progressLabel": "Avancement de l'importation",
+      "status": "Statut",
+      "title": "Importation du fichier {{fileName}}"
+    },
+    "progress": "Envoi du fichier {{fileName}} : {{percent}}",
+    "progressLabel": "Envoi du fichier {{fileName}}",
+    "retry": "Réessayer",
+    "title": "Importer un export Apple Health",
+    "viewImports": "Voir les importations"
+  },
   "userMenu": {
     "logout": "Se déconnecter",
     "tokens": "Jetons d'API"

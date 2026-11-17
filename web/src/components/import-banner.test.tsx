@@ -1,18 +1,22 @@
-import { act, screen, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Import } from "@/api/generated";
 import {
   completedImport,
+  completedXmlImport,
   fakeImports,
   queuedImport,
   runningImport,
+  runningXmlImport,
   zeroCounters,
 } from "@/test/imports";
+import { initI18n } from "@/i18n";
 import { renderRoute } from "@/test/render";
 import { fakeAuth, member, server } from "@/test/server";
 import { fakeTokens } from "@/test/tokens";
+import { exportFile, fakeUploads, MiB } from "@/test/uploads";
 
 /** The text of the banner of `runningImport`. */
 const runningText = "An import is running. 5,000 records received so far.";
@@ -105,6 +109,29 @@ describe("import banner", () => {
     );
   });
 
+  it("given a running XML import, then the banner shows its progress as a percentage", async () => {
+    fakeImports([runningXmlImport]);
+    openPage("/");
+
+    expect(await findBanner()).toHaveTextContent(
+      /^An import is running\. 5,000 records received so far\. 42% done\.View imports$/,
+    );
+  });
+
+  it("given the app in French, then the banner of a running XML import is translated", async () => {
+    const i18n = await initI18n();
+    await i18n.changeLanguage("fr");
+    fakeImports([runningXmlImport]);
+    openPage("/");
+
+    const banner = await screen.findByRole("region", {
+      name: "Importation en cours",
+    });
+    expect(banner.textContent.replace(/\s+/g, " ")).toBe(
+      "Une importation est en cours. 5 000 enregistrements reçus pour l'instant. 42 % effectués.Voir les importations",
+    );
+  });
+
   it("given no running import, only a queued and a completed one, then no banner shows", async () => {
     fakeImports([queuedImport, completedImport]);
     openPage("/");
@@ -176,5 +203,88 @@ describe("import banner", () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: "Imports" }),
     ).toBeInTheDocument();
+  });
+
+  it("given an upload running, when the user navigates to another page, then the upload continues, and the banner shows its percentage with a link to the upload page", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    fakeImports([completedXmlImport]);
+    const uploads = fakeUploads();
+    const { release } = uploads.holdAt(8 * MiB);
+    openPage("/imports/xml");
+    await user.upload(
+      await screen.findByLabelText("Choose a file"),
+      exportFile(12 * MiB),
+    );
+    await screen.findByText("Uploading export.zip: 67%");
+    // The page shows the upload itself.
+    expect(queryBanner()).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("link", { name: "Home" }));
+
+    const banner = await findBanner();
+    expect(banner).toHaveTextContent(/^Uploading export\.zip: 67%View upload$/);
+    expect(
+      within(banner).getByRole("link", { name: "View upload" }),
+    ).toHaveAttribute("href", "/imports/xml");
+    release();
+    await waitFor(() => {
+      expect(uploads.patches).toHaveLength(2);
+    });
+    await waitFor(() => {
+      expect(queryBanner()).not.toBeInTheDocument();
+    });
+  });
+
+  it("given an upload that stops while the user is on another page, then the banner says so with a link to the upload page", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    fakeImports();
+    const uploads = fakeUploads();
+    const { release } = uploads.holdAt(8 * MiB);
+    openPage("/imports/xml");
+    await user.upload(
+      await screen.findByLabelText("Choose a file"),
+      exportFile(12 * MiB),
+    );
+    await screen.findByText("Uploading export.zip: 67%");
+    await user.click(screen.getByRole("link", { name: "Home" }));
+    await findBanner();
+
+    uploads.fail("network");
+    release();
+    // Past every retry of tus.
+    await elapse(30_000);
+
+    const banner = await findBanner();
+    expect(banner).toHaveTextContent(
+      /^The upload of export\.zip stopped\.View upload$/,
+    );
+    expect(
+      within(banner).getByRole("link", { name: "View upload" }),
+    ).toHaveAttribute("href", "/imports/xml");
+  });
+
+  it("given the app in French and an upload running, when the user navigates to another page, then the banner of the upload is translated", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const i18n = await initI18n();
+    await i18n.changeLanguage("fr");
+    fakeImports([completedXmlImport]);
+    const uploads = fakeUploads();
+    const { release } = uploads.holdAt(8 * MiB);
+    openPage("/imports/xml");
+    await user.upload(
+      await screen.findByLabelText("Choisir un fichier"),
+      exportFile(12 * MiB),
+    );
+    await screen.findByRole("progressbar");
+
+    await user.click(screen.getByRole("link", { name: "Accueil" }));
+
+    const banner = await screen.findByRole("region", {
+      name: "Importation en cours",
+    });
+    expect(banner.textContent.replace(/\s+/g, " ")).toBe(
+      "Envoi du fichier export.zip : 67 %Voir l'envoi",
+    );
+    release();
   });
 });

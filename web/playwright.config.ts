@@ -3,7 +3,8 @@ import { defineConfig, devices } from "@playwright/test";
 import { setupLinkFile } from "./e2e/setup-link";
 
 // Each browser has its own server, on its own data directory: the setup test
-// creates the first admin, which an instance accepts once.
+// creates the first admin, which an instance accepts once, so it runs first,
+// and the tests that need a session log in with that admin.
 const browsers = [
   {
     name: "chromium",
@@ -23,10 +24,18 @@ export default defineConfig({
   // The HTML report opens on failure by default, which blocks `task e2e`.
   reporter: [["list"], ["html", { open: "never" }]],
   use: { trace: "retain-on-failure" },
-  projects: browsers.map(({ name, device, listenAddr }) => ({
-    name,
-    use: { ...device, baseURL: `http://${listenAddr}` },
-  })),
+  projects: browsers.flatMap(({ name, device, listenAddr }) => {
+    const use = { ...device, baseURL: `http://${listenAddr}` };
+    return [
+      { name: `${name} setup`, testMatch: "setup.spec.ts", use },
+      {
+        name,
+        testIgnore: "setup.spec.ts",
+        dependencies: [`${name} setup`],
+        use,
+      },
+    ];
+  }),
   webServer: browsers.map(({ listenAddr }) => ({
     command: "node e2e/server.ts",
     url: `http://${listenAddr}/readyz`,

@@ -107,6 +107,43 @@ export const runningImport: Import = {
   },
 };
 
+/**
+ * The Apple Health export of a completed upload, whose id `fakeUploads`
+ * answers by default, running at 42 percent.
+ */
+export const runningXmlImport: Import = {
+  id: 5,
+  origin: "xml",
+  status: "running",
+  client: { name: "export.zip" },
+  createdAt: "2026-11-11T11:59:00Z",
+  startedAt: "2026-11-11T11:59:01Z",
+  progress: 0.42,
+  report: {
+    total: { ...zeroCounters, received: 5000, inserted: 5000 },
+    types: { step_count: { received: 5000, inserted: 5000 } },
+    workouts: {},
+    errors: [],
+    period: { start: "2025-12-30T08:00:00Z", end: "2026-01-02T20:00:00Z" },
+  },
+};
+
+/** The same export once its import completed, with its period and routes. */
+export const completedXmlImport: Import = {
+  ...runningXmlImport,
+  status: "completed",
+  progress: 1,
+  finishedAt: "2026-11-11T12:01:00Z",
+  report: {
+    total: { ...zeroCounters, received: 12002, inserted: 12000, warnings: 1 },
+    types: { step_count: { received: 12000, inserted: 12000 } },
+    workouts: { received: 2, inserted: 2, warnings: 1 },
+    errors: ["workout 9 (HKWorkoutActivityTypeRunning): route not found"],
+    period: { start: "2025-12-30T08:00:00Z", end: "2026-01-05T08:00:00Z" },
+    routes: 1,
+  },
+};
+
 /** The step count, curated, and the UV exposure, uncurated. */
 export const metrics: Metric[] = [
   {
