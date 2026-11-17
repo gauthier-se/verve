@@ -77,6 +77,12 @@ func importXML(ctx context.Context, cfg config.Config, req XMLImport, logger *sl
 			return store.Import{}, err
 		}
 
+		// As at a start of the server: the server may never have started on this data directory,
+		// and the import maps the records through the types of this binary.
+		if err := syncMetricTypes(ctx, s.MetricTypes(), shipped, logger); err != nil {
+			return store.Import{}, err
+		}
+
 		clk := clock.Real()
 
 		ing, err := newIngestion(s, shipped, newLayout(cfg.DataDir).Inbox, clk, opts.batchSize)
