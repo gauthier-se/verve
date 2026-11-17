@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -22,12 +23,14 @@ type Uploads struct {
 	dir   string
 	inbox *Inbox
 	clk   clock.Clock
+	// wrap wraps the writer of each write of Append, so that a test can fill the disk.
+	wrap func(io.Writer) io.Writer
 }
 
 // NewUploads returns the uploads of the directory dir, which exists on the file system of the
 // directory of inbox, so that a completed upload moves into the inbox by a rename.
 func NewUploads(dir string, inbox *Inbox, clk clock.Clock) *Uploads {
-	return &Uploads{dir: dir, inbox: inbox, clk: clk}
+	return &Uploads{dir: dir, inbox: inbox, clk: clk, wrap: func(w io.Writer) io.Writer { return w }}
 }
 
 // Create creates the empty file of a new upload, syncs the directory and returns its name, a random
@@ -77,6 +80,69 @@ func (u *Uploads) Exists(ctx context.Context, name string) (bool, error) {
 	default:
 		return true, nil
 	}
+}
+
+// Append writes body at offset of the file of name, over the bytes past offset that an earlier
+// write left, and syncs the file. It returns the number of bytes written and synced, also when it
+// fails: when body fails, such as a cut request, or when the disk fills up, its error wraps the error
+// of body or syscall.ENOSPC, and the bytes before stay. It returns an error wrapping fs.ErrNotExist
+// when the file is gone. It stops when ctx is done.
+func (u *Uploads) Append(ctx context.Context, name string, offset int64, body io.Reader) (int64, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, fmt.Errorf("append to upload file: %w", err)
+	}
+
+	path, err := u.path(name)
+	if err != nil {
+		return 0, err
+	}
+
+	f, err := os.OpenFile(path, os.O_WRONLY, 0) //nolint:gosec // G304: path checks that name is a file of the uploads
+	if err != nil {
+		return 0, fmt.Errorf("open upload file: %w", err)
+	}
+
+	if err := seekTo(f, offset); err != nil {
+		return 0, errors.Join(err, f.Close())
+	}
+
+	written, err := io.Copy(u.wrap(f), contextReader{ctx: ctx, r: body})
+	if err != nil {
+		err = fmt.Errorf("append to upload file: %w", err)
+	}
+
+	if syncErr := f.Sync(); syncErr != nil {
+		return 0, errors.Join(err, fmt.Errorf("sync upload file: %w", syncErr), f.Close())
+	}
+
+	if closeErr := f.Close(); closeErr != nil {
+		return 0, errors.Join(err, fmt.Errorf("close upload file: %w", closeErr))
+	}
+
+	return written, err
+}
+
+// seekTo truncates f at offset and moves to it, so that a write replaces the bytes past offset. It
+// refuses a file shorter than offset, which lost bytes that were synced.
+func seekTo(f *os.File, offset int64) error {
+	info, err := f.Stat()
+	if err != nil {
+		return fmt.Errorf("stat upload file: %w", err)
+	}
+
+	if info.Size() < offset {
+		return fmt.Errorf("upload file of %d bytes is shorter than its offset %d", info.Size(), offset)
+	}
+
+	if err := f.Truncate(offset); err != nil {
+		return fmt.Errorf("truncate upload file: %w", err)
+	}
+
+	if _, err := f.Seek(offset, io.SeekStart); err != nil {
+		return fmt.Errorf("seek upload file: %w", err)
+	}
+
+	return nil
 }
 
 // Remove removes the file of name. A file already gone is not an error, so that removing a file
