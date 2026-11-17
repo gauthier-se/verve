@@ -277,9 +277,6 @@ func TestUploads_Create_RefusesAnInvalidCreation(t *testing.T) {
 	}
 }
 
-// tusMethods are the methods of the tus endpoint.
-var tusMethods = []string{http.MethodOptions, http.MethodPost, http.MethodHead, http.MethodPatch, http.MethodDelete}
-
 // Given a token, then every request of the tus endpoint answers 401, and so does a request without
 // a session that passes the CSRF checks.
 func TestUploads_TokenOrNoSession_Answers401(t *testing.T) {
@@ -290,7 +287,7 @@ func TestUploads_TokenOrNoSession_Answers401(t *testing.T) {
 	location := ut.mustCreate(t, h, 10)
 	token, _ := ut.mustCreateToken(t, ut.alice, time.Time{}, store.ScopeIngest, store.ScopeRead)
 
-	for _, method := range tusMethods {
+	for _, method := range []string{http.MethodOptions, http.MethodPost, http.MethodHead, http.MethodPatch, http.MethodDelete} {
 		target := location
 		if method == http.MethodOptions || method == http.MethodPost {
 			target = uploadsPath
@@ -718,6 +715,108 @@ func TestUploads_Patch_DiskFullInTheTransaction_Answers507(t *testing.T) {
 	require.Equal(t, http.StatusInsufficientStorage, status)
 	require.Empty(t, ut.inboxFiles(t))
 	ut.requireNothingQueued(t)
+
+	// The file goes back to the upload, which the client resumes once space is freed.
+	h := ut.handler(t, ut.files())
+	ut.requireOffset(t, h, location, 0, "<a>")
+
+	rec = ut.patch(t, h, location, 0, "<a>")
+	require.Equal(t, http.StatusNoContent, rec.Code, rec.Body.String())
+	ut.requireXMLImport(t, rec, map[string]string{"name": "export.zip"}, "<a>")
+}
+
+// Given a chunked PATCH whose body fails after the last byte of the upload, then the upload still
+// completes into its import, and its offset is never stored at its length, which a client would take
+// for a finished upload.
+func TestUploads_Patch_BodyCutAfterTheLastByte_CreatesTheImport(t *testing.T) {
+	t.Parallel()
+
+	ut := newUploadsTest(t)
+	h := ut.handler(t, ut.files())
+	location := ut.mustCreate(t, h, 3)
+
+	r := ut.patchRequest(t, location, 0, cutBody{data: strings.NewReader("<a>")})
+	r.ContentLength = -1
+
+	rec := serveWith(h, r)
+	require.Equal(t, http.StatusNoContent, rec.Code, rec.Body.String())
+	ut.requireXMLImport(t, rec, map[string]string{"name": "export.zip"}, "<a>")
+	ut.requireNoUpload(t)
+}
+
+// Given a PATCH that holds an upload of alice, then a PATCH or a DELETE of bob on it answers 404, as
+// for an unknown upload, not 423.
+func TestUploads_LockedUploadOfAnotherUser_Answers404(t *testing.T) {
+	t.Parallel()
+
+	ut := newUploadsTest(t)
+	h := ut.handler(t, ut.files())
+	location := ut.mustCreate(t, h, 10)
+
+	body, writer := io.Pipe()
+	done := make(chan *httptest.ResponseRecorder)
+	r := ut.patchRequest(t, location, 0, body)
+
+	go func() { done <- serveWith(h, r) }()
+
+	_, err := writer.Write([]byte("01"))
+	require.NoError(t, err)
+
+	byBob := tusRequest(t, http.MethodPatch, location, strings.NewReader("ab"), ut.bobCookie)
+	byBob.Header.Set("Upload-Offset", "0")
+	byBob.Header.Set("Content-Type", "application/offset+octet-stream")
+
+	status, _ := problemCode(t, serveWith(h, byBob))
+	require.Equal(t, http.StatusNotFound, status)
+
+	status, _ = problemCode(t, deleteUpload(t, h, location, ut.bobCookie))
+	require.Equal(t, http.StatusNotFound, status)
+
+	require.NoError(t, writer.Close())
+	require.Equal(t, http.StatusNoContent, (<-done).Code)
+}
+
+// expiringStore is a store whose uploads all expire, as cleanup.uploads removes them, once a
+// PATCH wrote its bytes.
+type expiringStore struct {
+	store.Store
+}
+
+func (s expiringStore) Uploads() store.UploadsRepository {
+	return expiringUploads{UploadsRepository: s.Store.Uploads(), store: s.Store}
+}
+
+// expiringUploads removes the upload before storing its new offset.
+type expiringUploads struct {
+	store.UploadsRepository
+
+	store store.Store
+}
+
+func (u expiringUploads) Advance(ctx context.Context, userID int64, id string, from, to int64, expiresAt time.Time) (store.Upload, error) {
+	if err := u.store.Uploads().Delete(ctx, userID, id); err != nil {
+		return store.Upload{}, err
+	}
+
+	return u.UploadsRepository.Advance(ctx, userID, id, from, to, expiresAt)
+}
+
+// Given an upload removed by cleanup.uploads while a PATCH writes it, then the PATCH answers 404, as
+// for an expired upload.
+func TestUploads_Patch_UploadRemovedMeanwhile_Answers404(t *testing.T) {
+	t.Parallel()
+
+	ut := newUploadsTest(t)
+	location := ut.mustCreate(t, ut.handler(t, ut.files()), 10)
+
+	deps := ut.deps(t, "")
+	deps.Store = expiringStore{Store: ut.store}
+	deps.Inbox = ut.inbox()
+	deps.Uploads = ut.files()
+	deps.MaxUploadSize = uploadsTestMaxSize
+
+	status, _ := problemCode(t, ut.patch(t, NewHandler(deps), location, 0, "01234"))
+	require.Equal(t, http.StatusNotFound, status)
 }
 
 // Given an upload whose file is gone, such as after a crash between the rename into the inbox and
