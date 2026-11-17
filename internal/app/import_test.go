@@ -629,7 +629,9 @@ func TestImportXML_Killed_TheServerResumesTheJob(t *testing.T) {
 	shipped, err := catalog.Shipped()
 	require.NoError(t, err)
 
-	ing, err := newIngestion(server, shipped, newLayout(it.cfg.DataDir).Inbox, clk, 0)
+	layout := newLayout(it.cfg.DataDir)
+
+	ing, err := newIngestion(server, shipped, layout.Inbox, layout.Uploads, clk, 0)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, ing.Close()) })
 
