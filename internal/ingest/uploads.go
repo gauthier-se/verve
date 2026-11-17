@@ -145,6 +145,36 @@ func seekTo(f *os.File, offset int64) error {
 	return nil
 }
 
+// Complete moves the file of name, whose writes are synced, into the inbox under a new random name,
+// which it returns, and syncs both directories, so that a crash leaves the file in one of them
+// (FR-4 of XML import).
+func (u *Uploads) Complete(ctx context.Context, name string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", fmt.Errorf("complete upload file: %w", err)
+	}
+
+	path, err := u.path(name)
+	if err != nil {
+		return "", err
+	}
+
+	inboxName := rand.Text()
+
+	if err := os.Rename(path, filepath.Join(u.inbox.dir, inboxName)); err != nil {
+		return "", fmt.Errorf("move upload file into the inbox: %w", err)
+	}
+
+	if err := syncDir(u.inbox.dir); err != nil {
+		return "", err
+	}
+
+	if err := syncDir(u.dir); err != nil {
+		return "", err
+	}
+
+	return inboxName, nil
+}
+
 // Remove removes the file of name. A file already gone is not an error, so that removing a file
 // twice is harmless.
 func (u *Uploads) Remove(ctx context.Context, name string) error {

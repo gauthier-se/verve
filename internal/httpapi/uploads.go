@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"mime"
 	"net/http"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/gauthier-se/verve/internal/auth"
 	"github.com/gauthier-se/verve/internal/clock"
+	"github.com/gauthier-se/verve/internal/ingest/applexml"
 	"github.com/gauthier-se/verve/internal/logging"
 	"github.com/gauthier-se/verve/internal/store"
 )
@@ -32,6 +34,8 @@ type UploadFiles interface {
 	// written and synced, also on failure. Its error wraps the error of body when body fails,
 	// syscall.ENOSPC when the disk is full, and fs.ErrNotExist when the file is gone.
 	Append(ctx context.Context, name string, offset int64, body io.Reader) (int64, error)
+	// Complete moves the file of name into the inbox, and returns its name there.
+	Complete(ctx context.Context, name string) (inboxName string, err error)
 	// Remove removes the file of name, and succeeds when it is already gone.
 	Remove(ctx context.Context, name string) error
 }
@@ -50,10 +54,13 @@ const (
 )
 
 // tusUploads serves the tus endpoint under uploadsPathPrefix: the incomplete uploads of the sessions,
-// stored in its store with their files in its files.
+// stored in its store with their files in its files, which complete into its inbox with a job of
+// its jobs.
 type tusUploads struct {
 	store   store.Store
 	files   UploadFiles
+	inbox   Inbox
+	jobs    auth.JobQueue
 	clock   clock.Clock
 	maxSize int64
 
@@ -69,6 +76,8 @@ func registerUploads(mux *http.ServeMux, deps APIDeps) {
 	u := &tusUploads{
 		store:   deps.Store,
 		files:   deps.Uploads,
+		inbox:   deps.Inbox,
+		jobs:    deps.Jobs,
 		clock:   deps.Clock,
 		maxSize: deps.MaxUploadSize,
 		writing: map[string]bool{},
@@ -78,6 +87,7 @@ func registerUploads(mux *http.ServeMux, deps APIDeps) {
 	mux.HandleFunc("POST /api/v1/uploads/{$}", u.handle(true, u.create))
 	mux.HandleFunc("HEAD /api/v1/uploads/{id}", u.handle(true, u.head))
 	mux.HandleFunc("PATCH /api/v1/uploads/{id}", u.handle(true, u.patch))
+	mux.HandleFunc("DELETE /api/v1/uploads/{id}", u.handle(true, u.terminate))
 }
 
 // tusHandler serves a request of the tus endpoint for the user of principal.
@@ -232,6 +242,14 @@ func (u *tusUploads) patch(w http.ResponseWriter, r *http.Request, principal aut
 		return bodyPastLength()
 	}
 
+	if errors.Is(err, fs.ErrNotExist) {
+		return uploadNotFound()
+	}
+
+	if err == nil && upload.Offset+written == upload.Length {
+		return u.complete(ctx, w, principal, upload)
+	}
+
 	if err == nil || written > 0 {
 		// Stored also when the client went away with the context of the request.
 		var advanceErr error
@@ -253,6 +271,100 @@ func (u *tusUploads) patch(w http.ResponseWriter, r *http.Request, principal aut
 
 	w.Header().Set("Upload-Offset", strconv.FormatInt(upload.Offset, 10))
 	setUploadExpires(w, upload)
+	w.WriteHeader(http.StatusNoContent)
+
+	return nil
+}
+
+// complete hands upload, whose last byte is synced, to the import pipeline (FR-4 of XML import): it
+// moves its file into the inbox, then in one transaction deletes the upload and creates its import
+// of origin xml, with the file name of the upload as the name of its client, and its job import.xml,
+// and answers with the import id in Verve-Import-Id. Its offset is never stored at the length, so
+// that a client resumes an upload that a crash left before the commit. A failure of the transaction
+// removes the inbox file.
+func (u *tusUploads) complete(ctx context.Context, w http.ResponseWriter, principal auth.Principal, upload store.Upload) error {
+	// Every byte is received: the import is created also when the client went away.
+	ctx = context.WithoutCancel(ctx)
+
+	inboxFile, err := u.files.Complete(ctx, upload.ID)
+	if err != nil {
+		return err
+	}
+
+	var client map[string]string
+	if upload.FileName != "" {
+		client = map[string]string{"name": upload.FileName}
+	}
+
+	var imp store.Import
+
+	err = u.store.WithTx(ctx, func(ctx context.Context, tx store.Repositories) error {
+		if err := tx.Uploads().Delete(ctx, principal.UserID, upload.ID); err != nil {
+			return err
+		}
+
+		var err error
+
+		imp, err = tx.Imports().Create(ctx, store.NewImport{
+			UserID:    principal.UserID,
+			Origin:    store.OriginXML,
+			Client:    client,
+			InboxFile: inboxFile,
+		})
+		if err != nil {
+			return err
+		}
+
+		job, err := applexml.Job(principal.UserID, imp.ID, "")
+		if err != nil {
+			return err
+		}
+
+		_, err = u.jobs.Enqueue(ctx, tx, job)
+
+		return err
+	})
+	if err != nil {
+		return errors.Join(fmt.Errorf("queue import of upload: %w", err), u.inbox.Remove(ctx, inboxFile))
+	}
+
+	w.Header().Set("Upload-Offset", strconv.FormatInt(upload.Length, 10))
+	w.Header().Set("Verve-Import-Id", strconv.FormatInt(imp.ID, 10))
+	w.WriteHeader(http.StatusNoContent)
+
+	return nil
+}
+
+// terminate removes an upload and its file.
+func (u *tusUploads) terminate(w http.ResponseWriter, r *http.Request, principal auth.Principal) error {
+	id := r.PathValue("id")
+	if !u.lock(id) {
+		return tusProblem(http.StatusLocked, "another request writes to the upload")
+	}
+
+	defer u.unlock(id)
+
+	ctx := r.Context()
+
+	// The upload goes also when its file is gone.
+	if _, err := u.findStored(ctx, principal, id); err != nil {
+		return err
+	}
+
+	err := u.store.Uploads().Delete(ctx, principal.UserID, id)
+	if errors.Is(err, store.ErrNotFound) {
+		return uploadNotFound()
+	}
+
+	if err != nil {
+		return err
+	}
+
+	// A file left behind is removed by cleanup.uploads.
+	if err := u.files.Remove(ctx, id); err != nil {
+		return err
+	}
+
 	w.WriteHeader(http.StatusNoContent)
 
 	return nil
@@ -338,6 +450,26 @@ func bodyPastLength() *Problem {
 // expired or of another user, or when its file is gone, such as after a crash between the rename
 // of its last write and the commit of its import (FR-4 of XML import).
 func (u *tusUploads) find(ctx context.Context, principal auth.Principal, id string) (store.Upload, error) {
+	upload, err := u.findStored(ctx, principal, id)
+	if err != nil {
+		return store.Upload{}, err
+	}
+
+	exists, err := u.files.Exists(ctx, upload.ID)
+	if err != nil {
+		return store.Upload{}, err
+	}
+
+	if !exists {
+		return store.Upload{}, uploadNotFound()
+	}
+
+	return upload, nil
+}
+
+// findStored returns the upload of id of the user of principal, or a 404 problem when it is
+// unknown, expired (FR-3 of XML import) or of another user.
+func (u *tusUploads) findStored(ctx context.Context, principal auth.Principal, id string) (store.Upload, error) {
 	upload, err := u.store.Uploads().Get(ctx, principal.UserID, id)
 	if errors.Is(err, store.ErrNotFound) {
 		return store.Upload{}, uploadNotFound()
@@ -348,15 +480,6 @@ func (u *tusUploads) find(ctx context.Context, principal auth.Principal, id stri
 	}
 
 	if !u.clock.Now().Before(upload.ExpiresAt) {
-		return store.Upload{}, uploadNotFound()
-	}
-
-	exists, err := u.files.Exists(ctx, upload.ID)
-	if err != nil {
-		return store.Upload{}, err
-	}
-
-	if !exists {
 		return store.Upload{}, uploadNotFound()
 	}
 
