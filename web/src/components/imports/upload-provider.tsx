@@ -205,8 +205,7 @@ function safeUrlStorage(storage: UrlStorage): UrlStorage {
     findAllUploads: () => attempt(() => storage.findAllUploads(), []),
     findUploadsByFingerprint: (fingerprint) =>
       attempt(() => storage.findUploadsByFingerprint(fingerprint), []),
-    removeUpload: (key) =>
-      attempt(() => storage.removeUpload(key), undefined),
+    removeUpload: (key) => attempt(() => storage.removeUpload(key), undefined),
     addUpload: (fingerprint, previous) =>
       attempt(() => storage.addUpload(fingerprint, previous), ""),
   };

@@ -1,9 +1,25 @@
+import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
+import type { TFunction } from "i18next";
 import { type DragEvent, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { useUpload } from "@/components/imports/upload-provider";
-import { buttonVariants } from "@/components/ui/button";
+import { errorMessage } from "@/api/errors";
+import { getImportOptions } from "@/api/generated/@tanstack/react-query.gen";
+import {
+  ImportCoverage,
+  ImportReport,
+} from "@/components/imports/import-report";
+import {
+  activePollMs,
+  isActive,
+  statusLabel,
+} from "@/components/imports/labels";
+import {
+  type UploadFailure,
+  useUpload,
+} from "@/components/imports/upload-provider";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { formatNumber } from "@/i18n/format";
 import { cn } from "@/lib/utils";
 
@@ -14,12 +30,14 @@ export const Route = createFileRoute("/_authenticated/imports_/xml")({
 /**
  * The upload of an Apple Health export: a guide from the Health app to the
  * export file, and a drop zone that uploads it with resumption. The upload
- * belongs to the session, not the page, so that it continues elsewhere.
+ * belongs to the session, not the page, so that it continues elsewhere. Once
+ * it completes, the page follows its import, and when it fails, it explains
+ * why and offers to try again.
  */
 function UploadPage() {
   const { t } = useTranslation();
   const guideId = useId();
-  const { state, start } = useUpload();
+  const { state, start, retry } = useUpload();
 
   return (
     <div className="flex flex-col gap-6">
@@ -46,6 +64,19 @@ function UploadPage() {
       </section>
       <DropZone disabled={state.status === "uploading"} onFile={start} />
       <UploadProgress />
+      {state.status === "failed" && (
+        <div className="flex flex-col items-start gap-2">
+          <p role="alert" className="text-sm text-destructive">
+            {failureMessage(t, state.failure)}
+          </p>
+          <Button size="lg" className="min-h-11 px-4" onClick={retry}>
+            {t("upload.retry")}
+          </Button>
+        </div>
+      )}
+      {state.status === "completed" && (
+        <FollowedImport id={state.importId} fileName={state.fileName} />
+      )}
     </div>
   );
 }
@@ -149,21 +180,107 @@ function UploadProgress() {
               percent: percent(ratio),
             })}
           </p>
-          <div
-            role="progressbar"
-            aria-label={t("upload.progressLabel", { fileName: state.fileName })}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={Math.round(ratio * 100)}
-            className="h-2 overflow-hidden rounded-full bg-muted"
-          >
-            <div
-              className="h-full bg-primary transition-[width]"
-              style={{ width: `${String(ratio * 100)}%` }}
-            />
-          </div>
+          <ProgressBar
+            label={t("upload.progressLabel", { fileName: state.fileName })}
+            ratio={ratio}
+          />
         </div>
       )}
     </>
+  );
+}
+
+/** What stopped an upload, in plain words, and whether trying again helps. */
+function failureMessage(t: TFunction, failure: UploadFailure) {
+  switch (failure) {
+    case "tooLarge":
+      return t("upload.failure.tooLarge");
+    case "diskFull":
+      return t("upload.failure.diskFull");
+    case "network":
+      return t("upload.failure.network");
+    case "other":
+      return t("upload.failure.other");
+  }
+}
+
+/**
+ * The import of the completed upload, `id` in `Verve-Import-Id`: its
+ * progress while it runs, then its status and its report, polled while it is
+ * queued or running.
+ */
+function FollowedImport({ id, fileName }: { id: number; fileName: string }) {
+  const { t, i18n } = useTranslation();
+  const { user } = Route.useRouteContext();
+  const headingId = useId();
+  const followed = useQuery({
+    ...getImportOptions({ path: { id } }),
+    refetchInterval: (query) =>
+      query.state.data && isActive(query.state.data.status)
+        ? activePollMs
+        : false,
+  });
+  const imp = followed.data;
+
+  return (
+    <section
+      aria-labelledby={headingId}
+      className="flex flex-col gap-6 rounded-xl border p-4"
+    >
+      <h2 id={headingId} className="font-heading text-lg font-medium">
+        {t("upload.import.title", { fileName })}
+      </h2>
+      {followed.isError && (
+        <p role="alert" className="text-sm text-destructive">
+          {errorMessage(followed.error, i18n)}
+        </p>
+      )}
+      {imp && (
+        <>
+          <dl className="grid grid-cols-[auto_1fr] gap-x-4">
+            <dt className="text-muted-foreground">
+              {t("upload.import.status")}
+            </dt>
+            <dd>{statusLabel(t, imp.status)}</dd>
+          </dl>
+          {imp.status === "running" && imp.progress !== undefined && (
+            <div className="flex flex-col gap-2">
+              <p>
+                {t("upload.import.progress", {
+                  percent: formatNumber(imp.progress, i18n.language, {
+                    style: "percent",
+                  }),
+                })}
+              </p>
+              <ProgressBar
+                label={t("upload.import.progressLabel")}
+                ratio={imp.progress}
+              />
+            </div>
+          )}
+          <ImportCoverage report={imp.report} timeZone={user.timezone} />
+          <ImportReport report={imp.report} />
+        </>
+      )}
+    </section>
+  );
+}
+
+/** A bar filled to `ratio`, from 0 to 1, named `label`. */
+function ProgressBar({ label, ratio }: { label: string; ratio: number }) {
+  return (
+    <div
+      role="progressbar"
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(ratio * 100)}
+      className="h-2 overflow-hidden rounded-full bg-muted"
+    >
+      <div
+        className="h-full bg-primary transition-[width]"
+        style={{ width: `${String(ratio * 100)}%` }}
+      />
+    </div>
   );
 }

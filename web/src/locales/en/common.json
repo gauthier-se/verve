@@ -98,6 +98,11 @@
       "label": "Details of the import of {{date}}",
       "noError": "No error.",
       "noRecord": "No record yet.",
+      "period": "Period",
+      "periodRange": "From {{start}} to {{end}}",
+      "routes": "Routes",
+      "routesStored_one": "{{routes}} route stored with its workout.",
+      "routesStored_other": "{{routes}} routes stored with their workouts.",
       "title": "Import of {{date}}",
       "totals": "Totals",
       "workouts": "Workouts"
@@ -293,6 +298,12 @@
       "label": "Upload the export"
     },
     "duration": "An export of several years can take 10 to 30 minutes to process on a Raspberry Pi.",
+    "failure": {
+      "diskFull": "The server has run out of disk space. Once space is freed, try again: the upload resumes where it stopped.",
+      "network": "The connection to the server was lost. Check your network, then try again: the upload resumes where it stopped.",
+      "other": "The upload failed. Try again: the upload resumes where it stopped when it can.",
+      "tooLarge": "The file is larger than this server accepts. Its administrator can raise the limit, VERVE_MAX_UPLOAD_SIZE, then you can try again."
+    },
     "guide": {
       "export": "Tap Export All Health Data, then Export, and wait while the iPhone prepares the export.zip file.",
       "open": "Open the Health app on your iPhone.",
@@ -300,8 +311,15 @@
       "share": "Share the file to Files and upload it here, or open this page in Safari on the iPhone and upload it directly.",
       "title": "Export your data"
     },
+    "import": {
+      "progress": "{{percent}} processed",
+      "progressLabel": "Import progress",
+      "status": "Status",
+      "title": "Import of {{fileName}}"
+    },
     "progress": "Uploading {{fileName}}: {{percent}}",
     "progressLabel": "Upload of {{fileName}}",
+    "retry": "Try again",
     "title": "Import an Apple Health export"
   },
   "userMenu": {

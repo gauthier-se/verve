@@ -100,6 +100,12 @@
       "label": "Détails de l'importation du {{date}}",
       "noError": "Aucune erreur.",
       "noRecord": "Aucun enregistrement pour l'instant.",
+      "period": "Période",
+      "periodRange": "Du {{start}} au {{end}}",
+      "routes": "Parcours",
+      "routesStored_one": "{{routes}} parcours enregistré avec son entraînement.",
+      "routesStored_many": "{{routes}} parcours enregistrés avec leurs entraînements.",
+      "routesStored_other": "{{routes}} parcours enregistrés avec leurs entraînements.",
       "title": "Importation du {{date}}",
       "totals": "Totaux",
       "workouts": "Entraînements"
@@ -295,6 +301,12 @@
       "label": "Envoyer l'export"
     },
     "duration": "Le traitement d'un export de plusieurs années peut prendre de 10 à 30 minutes sur un Raspberry Pi.",
+    "failure": {
+      "diskFull": "Le serveur n'a plus d'espace disque. Une fois de l'espace libéré, réessayez : l'envoi reprend là où il s'est arrêté.",
+      "network": "La connexion au serveur a été perdue. Vérifiez votre réseau, puis réessayez : l'envoi reprend là où il s'est arrêté.",
+      "other": "L'envoi a échoué. Réessayez : l'envoi reprend là où il s'est arrêté quand c'est possible.",
+      "tooLarge": "Le fichier dépasse la taille que ce serveur accepte. Son administrateur peut relever la limite, VERVE_MAX_UPLOAD_SIZE, puis vous pourrez réessayer."
+    },
     "guide": {
       "export": "Touchez Exporter toutes les données de santé, puis Exporter, et patientez pendant que l'iPhone prépare le fichier export.zip.",
       "open": "Ouvrez l'app Santé sur votre iPhone.",
@@ -302,8 +314,15 @@
       "share": "Partagez le fichier vers Fichiers et envoyez-le ici, ou ouvrez cette page dans Safari sur l'iPhone et envoyez-le directement.",
       "title": "Exportez vos données"
     },
+    "import": {
+      "progress": "{{percent}} traités",
+      "progressLabel": "Avancement de l'importation",
+      "status": "Statut",
+      "title": "Importation de {{fileName}}"
+    },
     "progress": "Envoi de {{fileName}} : {{percent}}",
     "progressLabel": "Envoi de {{fileName}}",
+    "retry": "Réessayer",
     "title": "Importer un export Apple Health"
   },
   "userMenu": {

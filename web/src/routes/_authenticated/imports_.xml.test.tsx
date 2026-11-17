@@ -292,7 +292,8 @@ describe("upload page, once the upload ends", () => {
       await openUploadPage();
 
       await user.upload(getFilePicker(), exportFile(2 * MiB));
-      await elapse(10_000);
+      // Past every retry of tus.
+      await elapse(30_000);
 
       expect(await screen.findByRole("alert")).toHaveTextContent(message);
       expect(
@@ -313,7 +314,8 @@ describe("upload page, once the upload ends", () => {
       await screen.findByText("Uploading export.zip: 67%");
       uploads.fail(failure);
       release();
-      await elapse(10_000);
+      // Past every retry of tus.
+      await elapse(30_000);
       await screen.findByRole("alert");
 
       uploads.recover();

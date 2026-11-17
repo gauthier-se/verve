@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useMatch } from "@tanstack/react-router";
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { listImportsOptions } from "@/api/generated/@tanstack/react-query.gen";
@@ -57,26 +58,19 @@ export function ImportBanner() {
           className="mb-6 flex flex-col gap-y-1 rounded-xl border bg-muted px-4 py-2 text-sm"
         >
           {uploadText !== undefined && (
-            <Row
-              text={uploadText}
-              to="/imports/xml"
-              label={t("importBanner.viewUpload")}
-            />
+            <Row to="/imports/xml" label={t("importBanner.viewUpload")}>
+              {uploadText}
+            </Row>
           )}
           {runningImport && (
-            <Row
-              text={
-                t("importBanner.running") +
-                (received > 0
-                  ? ` ${t("importBanner.received", {
-                      count: received,
-                      received: formatNumber(received, i18n.language),
-                    })}`
-                  : "")
-              }
-              to="/imports"
-              label={t("importBanner.view")}
-            />
+            <Row to="/imports" label={t("importBanner.view")}>
+              {t("importBanner.running")}
+              {received > 0 &&
+                ` ${t("importBanner.received", {
+                  count: received,
+                  received: formatNumber(received, i18n.language),
+                })}`}
+            </Row>
           )}
         </section>
       )}
@@ -86,17 +80,17 @@ export function ImportBanner() {
 
 /** A line of the banner, with the link to its page. */
 function Row({
-  text,
   to,
   label,
+  children,
 }: {
-  text: string;
   to: "/imports" | "/imports/xml";
   label: string;
+  children: ReactNode;
 }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-x-4">
-      <p>{text}</p>
+      <p>{children}</p>
       <Link
         to={to}
         className="inline-flex min-h-11 items-center font-medium underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
