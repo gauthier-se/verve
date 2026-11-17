@@ -1,10 +1,9 @@
+import { admin } from "./admin";
 import { expect, test } from "./fixtures";
 import { readSetupLink } from "./setup-link";
 
 // The wizard proposes the timezone of the browser.
 test.use({ timezoneId: "Asia/Tokyo" });
-
-const password = "a long passphrase for the first admin";
 
 test("given the built binary on an empty data directory, when the installer opens the setup link of its log and completes the wizard, then the admin can log out and log in", async ({
   page,
@@ -34,9 +33,9 @@ test("given the built binary on an empty data directory, when the installer open
   ).toBeVisible();
   // The token has left the address bar and the history entry.
   expect(page.url()).toBe(new URL("/setup", baseURL).href);
-  await page.getByLabel("Username").fill("admin");
-  await page.getByLabel("Password", { exact: true }).fill(password);
-  await page.getByLabel("Confirm password").fill(password);
+  await page.getByLabel("Username").fill(admin.username);
+  await page.getByLabel("Password", { exact: true }).fill(admin.password);
+  await page.getByLabel("Confirm password").fill(admin.password);
   await page.getByRole("button", { name: "Create account" }).click();
 
   await expect(page.getByLabel("Timezone")).toHaveValue("Asia/Tokyo");
@@ -53,8 +52,8 @@ test("given the built binary on an empty data directory, when the installer open
     page.getByRole("heading", { level: 1, name: "Log in" }),
   ).toBeVisible();
 
-  await page.getByLabel("Username or email").fill("admin");
-  await page.getByLabel("Password").fill(password);
+  await page.getByLabel("Username or email").fill(admin.username);
+  await page.getByLabel("Password").fill(admin.password);
   await page.getByRole("button", { name: "Log in" }).click();
   await expect(
     page.getByRole("heading", { level: 1, name: "Verve" }),

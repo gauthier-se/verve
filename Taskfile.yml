@@ -121,6 +121,8 @@ tasks:
     desc: Build the binary and run the Playwright tests against it in Chromium and WebKit
     deps: [build]
     cmds:
+      # The synthetic export that the upload test sends.
+      - go run ./tools/synthexport -o bin/export.zip
       - pnpm --dir web exec playwright test
 
   dev:
