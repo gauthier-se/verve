@@ -118,8 +118,16 @@ func (e *pipelineEnv) running(t *testing.T, origin store.Origin) store.Import {
 func (e *pipelineEnv) run(t *testing.T, origin store.Origin, records ...ingest.Record) store.Import {
 	t.Helper()
 
+	return e.runOn(t, e.pipeline(), origin, records...)
+}
+
+// runOn runs records through pipeline, in a new running import of origin, and returns the import
+// once the run is over.
+func (e *pipelineEnv) runOn(t *testing.T, pipeline *ingest.Pipeline, origin store.Origin, records ...ingest.Record) store.Import {
+	t.Helper()
+
 	imp := e.running(t, origin)
-	require.NoError(t, e.pipeline().Run(t.Context(), e.user.ID, imp.ID, recordsOf(records...)))
+	require.NoError(t, pipeline.Run(t.Context(), e.user.ID, imp.ID, recordsOf(records...)))
 
 	return e.importOf(t, imp.ID)
 }
@@ -501,19 +509,12 @@ func TestRun_SameRecordsWithoutModelAroundTwoModelsTwiceCountZeroInserts(t *test
 	}
 
 	records := []ingest.Record{record("AirPods Pro", 0), record("", 1), record("0x7777", 2), record("", 3)}
+	batches := env.pipeline(func(cfg *ingest.Config) { cfg.BatchSize = 1 })
 
-	run := func() store.Import {
-		imp := env.running(t, store.OriginXML)
-		pipeline := env.pipeline(func(cfg *ingest.Config) { cfg.BatchSize = 1 })
-		require.NoError(t, pipeline.Run(t.Context(), env.user.ID, imp.ID, recordsOf(records...)))
-
-		return env.importOf(t, imp.ID)
-	}
-
-	first := run()
+	first := env.runOn(t, batches, store.OriginXML, records...)
 	require.Equal(t, store.ImportCounters{Received: 4, Inserted: 4}, first.Report.Total)
 
-	second := run()
+	second := env.runOn(t, batches, store.OriginXML, records...)
 	require.Equal(t, store.ImportCounters{Received: 4, Duplicates: 4}, second.Report.Total)
 }
 

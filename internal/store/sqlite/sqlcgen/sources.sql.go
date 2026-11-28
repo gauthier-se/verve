@@ -101,8 +101,9 @@ type CreateSourceAliasWithoutModelParams struct {
 	SourceID int64
 }
 
-// The alias that an identity without model leaves behind once it takes a model: it matches the
-// records of its name without model, and takes no model.
+// The alias that an identity without model leaves behind once it takes a model, or that a record
+// without model leaves on the only source of its name: it matches the records of its name without
+// model, and takes no model.
 func (q *Queries) CreateSourceAliasWithoutModel(ctx context.Context, arg CreateSourceAliasWithoutModelParams) error {
 	_, err := q.db.ExecContext(ctx, createSourceAliasWithoutModel, arg.UserID, arg.Name, arg.SourceID)
 	return err

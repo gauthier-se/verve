@@ -105,6 +105,11 @@ type SourcesRepository interface {
 	//   - info without device model matches the only source of its name, otherwise the identity of
 	//     its name without model, otherwise it creates a source of its name without model.
 	//
+	// An identity without model that takes a model, and info without device model that matches the
+	// only source of its name when no identity of that name is without model, leave an alias of that
+	// name without model on the source, which takes no model, so that info lands in the same source
+	// whatever the order of the records.
+	//
 	// An alias matched returns its source, and a source merged into another, or the source of an
 	// alias that is, returns the target of the merge, as if the identity were an alias of it. The
 	// model that a matched identity without model takes stays on that identity. The returned

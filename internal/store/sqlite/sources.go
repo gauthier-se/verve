@@ -43,7 +43,10 @@ func (r sources) Resolve(ctx context.Context, userID int64, info store.SourceInf
 			// The identity without model that a record with a model matches takes that model: an
 			// alias or a merged source here, and the matched source with its update otherwise.
 			takesModel := info.DeviceModel != "" && matched.model == ""
-			tookModel := takesModel
+			// The records of the name without model keep matching the source through an alias
+			// without model: the one that the identity taking a model leaves behind, or the one
+			// that a record without model leaves on the only source of its name.
+			leavesAlias := takesModel || matched.onlySource
 
 			if takesModel && matched.alias {
 				err := q.SetSourceAliasModel(ctx, sqlcgen.SetSourceAliasModelParams{
@@ -79,11 +82,10 @@ func (r sources) Resolve(ctx context.Context, userID int64, info store.SourceInf
 			}
 
 			row, err = q.UpdateSource(ctx, update)
-			if err != nil || !tookModel {
+			if err != nil || !leavesAlias {
 				return err
 			}
 
-			// The identity keeps matching the records of its name without model.
 			return q.CreateSourceAliasWithoutModel(ctx, sqlcgen.CreateSourceAliasWithoutModelParams{
 				UserID:   userID,
 				Name:     info.Name,
@@ -366,7 +368,8 @@ type candidate struct {
 	sourceID int64
 	alias    bool
 	// keepsModel is true for the alias without model that an identity left behind once it took a
-	// model: it matches the records without model only.
+	// model, or that a record without model left on the only source of its name: it matches the
+	// records without model only.
 	keepsModel bool
 }
 
@@ -396,34 +399,48 @@ func candidatesOf(ctx context.Context, q *sqlcgen.Queries, userID int64, name st
 	return identities, nil
 }
 
+// matching is the identity that a record matches.
+type matching struct {
+	candidate
+	// onlySource is true for a record without model that matched the only source of its name, of
+	// which no identity is without model.
+	onlySource bool
+}
+
 // match returns the identity among identities, all of one name, that a record of that name and of
 // the device model model matches by the rule of FR-2, or false when the record makes a new source.
-func match(identities []candidate, model string) (candidate, bool) {
-	byModel := func(model string, takingModel bool) (candidate, bool) {
-		i := slices.IndexFunc(identities, func(id candidate) bool { return id.model == model && (!takingModel || !id.keepsModel) })
+func match(identities []candidate, model string) (matching, bool) {
+	find := func(is func(candidate) bool) (matching, bool) {
+		i := slices.IndexFunc(identities, is)
 		if i < 0 {
-			return candidate{}, false
+			return matching{}, false
 		}
 
-		return identities[i], true
+		return matching{candidate: identities[i]}, true
 	}
 
 	if model != "" {
-		if matched, ok := byModel(model, false); ok {
+		if matched, ok := find(func(id candidate) bool { return id.model == model }); ok {
 			return matched, true
 		}
 
-		return byModel("", true)
+		// The identity without model takes the model, unless it is an alias that takes none.
+		return find(func(id candidate) bool { return id.model == "" && !id.keepsModel })
+	}
+
+	// The identity without model is of the only source of the name when there is one.
+	if matched, ok := find(func(id candidate) bool { return id.model == "" }); ok {
+		return matched, true
 	}
 
 	only := len(identities) > 0 && !slices.ContainsFunc(identities, func(id candidate) bool {
 		return id.sourceID != identities[0].sourceID
 	})
 	if only {
-		return identities[0], true
+		return matching{candidate: identities[0], onlySource: true}, true
 	}
 
-	return byModel("", false)
+	return matching{}, false
 }
 
 // seenUpdate returns the update of the source of row that a record of info and of kind, seen at seenAt,
