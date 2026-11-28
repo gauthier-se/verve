@@ -728,7 +728,8 @@ func runSourcesIdentity(t *testing.T, newStore NewStoreFunc) {
 
 	// Given records with and without device model resolved in order, then each lands in the source
 	// numbered by want, sources being numbered in the order of their creation, and the sources end
-	// with the identities of identities.
+	// with the identities of identities. When the same records are resolved again, as importing the
+	// same export again does, then each lands in the same source, and no source is created.
 	cases := []struct {
 		name       string
 		records    []store.SourceInfo
@@ -784,6 +785,16 @@ func runSourcesIdentity(t *testing.T, newStore NewStoreFunc) {
 			identities: []store.SourceIdentity{sourceIdentity("Camille", "Watch")},
 		},
 		{
+			// So that a record keeps its source whatever the order of the records of an import.
+			name: "RecordWithoutModelKeepsTheOnlySourceOfItsNameOnceAnotherModelComes",
+			records: []store.SourceInfo{
+				sourceInfo("Camille", "Watch"), sourceInfo("Camille", ""), sourceInfo("Camille", "iPhone"),
+				sourceInfo("Camille", ""),
+			},
+			want:       []int{0, 0, 1, 0},
+			identities: []store.SourceIdentity{sourceIdentity("Camille", "Watch"), sourceIdentity("Camille", "iPhone")},
+		},
+		{
 			name: "RecordWithoutModelAmongSourcesWithModelsCreatesASourceWithoutModel",
 			records: []store.SourceInfo{
 				sourceInfo("Camille", "Watch"), sourceInfo("Camille", "iPhone"), sourceInfo("Camille", ""),
@@ -813,6 +824,7 @@ func runSourcesIdentity(t *testing.T, newStore NewStoreFunc) {
 
 			numbers := make(map[int64]int)
 			got := make([]int, 0, len(tc.records))
+			ids := make([]int64, 0, len(tc.records))
 
 			for _, record := range tc.records {
 				source := mustResolve(ctx, t, s.Sources(), user.ID, record, store.SourceUnknown, sourcesTime)
@@ -822,16 +834,29 @@ func runSourcesIdentity(t *testing.T, newStore NewStoreFunc) {
 				}
 
 				got = append(got, numbers[source.ID])
+				ids = append(ids, source.ID)
 			}
 
 			require.Equal(t, tc.want, got)
 
-			identities := make([]store.SourceIdentity, 0, len(tc.identities))
-			for _, source := range mustListSources(ctx, t, s.Sources(), user.ID) {
-				identities = append(identities, sourceIdentity(source.Name, source.DeviceModel))
+			identities := func() []store.SourceIdentity {
+				list := make([]store.SourceIdentity, 0, len(tc.identities))
+				for _, source := range mustListSources(ctx, t, s.Sources(), user.ID) {
+					list = append(list, sourceIdentity(source.Name, source.DeviceModel))
+				}
+
+				return list
 			}
 
-			require.Equal(t, tc.identities, identities)
+			require.Equal(t, tc.identities, identities())
+
+			again := make([]int64, 0, len(tc.records))
+			for _, record := range tc.records {
+				again = append(again, mustResolve(ctx, t, s.Sources(), user.ID, record, store.SourceUnknown, sourcesTime).ID)
+			}
+
+			require.Equal(t, ids, again, "the records resolved again land in the same sources")
+			require.Equal(t, tc.identities, identities(), "the records resolved again create no source")
 		})
 	}
 }

@@ -482,6 +482,41 @@ func TestRun_SameRecordsTwiceCountZeroInserts(t *testing.T) {
 	require.Equal(t, store.ImportCounters{Received: 1, Duplicates: 1}, second.Report.Workouts)
 }
 
+// Given records of a name without device model, one after a record of a model of that name and one
+// after a record of another model, each in its own batch, when the same records run again, then the
+// second run inserts nothing (dedup FR-2).
+func TestRun_SameRecordsWithoutModelAroundTwoModelsTwiceCountZeroInserts(t *testing.T) {
+	t.Parallel()
+
+	env := newPipelineEnv(t)
+
+	record := func(model string, minute int) ingest.Record {
+		s := quantitySample()
+		s.UUID = ""
+		s.Source = store.SourceInfo{Name: "Bluetooth Device", DeviceModel: model}
+		s.Start = time.Date(2026, 11, 10, 7, minute, 0, 0, time.UTC).Format(time.RFC3339)
+		s.End = s.Start
+
+		return quantity(s)
+	}
+
+	records := []ingest.Record{record("AirPods Pro", 0), record("", 1), record("0x7777", 2), record("", 3)}
+
+	run := func() store.Import {
+		imp := env.running(t, store.OriginXML)
+		pipeline := env.pipeline(func(cfg *ingest.Config) { cfg.BatchSize = 1 })
+		require.NoError(t, pipeline.Run(t.Context(), env.user.ID, imp.ID, recordsOf(records...)))
+
+		return env.importOf(t, imp.ID)
+	}
+
+	first := run()
+	require.Equal(t, store.ImportCounters{Received: 4, Inserted: 4}, first.Report.Total)
+
+	second := run()
+	require.Equal(t, store.ImportCounters{Received: 4, Duplicates: 4}, second.Report.Total)
+}
+
 // Given workouts, then their natural key and rule follow dedup FR-1: (origin, external id) with
 // update, or (activity type, source, start, end) with ignore, and their route is encoded and stored.
 func TestRun_WorkoutKeysFollowTheirRulesAndRoutesAreStored(t *testing.T) {
