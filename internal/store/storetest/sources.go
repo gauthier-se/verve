@@ -268,6 +268,59 @@ func runSourcesMerges(t *testing.T, newStore NewStoreFunc) {
 			mustListSources(ctx, t, s.Sources(), user.ID))
 	})
 
+	// Given a source without model that took a model, merged into a target, when FinishMerge runs,
+	// then the alias without model that the source left behind moves to the target and still takes
+	// no model: a record of another model of its name creates a source, and a record without model
+	// lands in the target.
+	t.Run("FinishMergeMovesTheAliasWithoutModelWhichTakesNoModel", func(t *testing.T) {
+		t.Parallel()
+
+		s := newStore(t, clock.NewFake(sourcesTime))
+		ctx := t.Context()
+		user := mustCreateUser(ctx, t, s.Users(), newUser("camille", "camille@example.com"))
+		target := mustResolve(ctx, t, s.Sources(), user.ID, watchInfo, store.SourceWatch, sourcesTime)
+		old := mustResolve(ctx, t, s.Sources(), user.ID, sourceInfo("Ancienne montre", ""), store.SourceUnknown, sourcesTime)
+		mustResolve(ctx, t, s.Sources(), user.ID, sourceInfo("Ancienne montre", "Watch"), store.SourceWatch, sourcesTime)
+
+		require.NoError(t, s.Sources().StartMerge(ctx, user.ID, target.ID, []int64{old.ID}))
+		require.NoError(t, s.Sources().FinishMerge(ctx, user.ID, old.ID))
+
+		other := mustResolve(ctx, t, s.Sources(), user.ID, sourceInfo("Ancienne montre", "iPhone"), store.SourcePhone, sourcesTime)
+		require.NotEqual(t, target.ID, other.ID)
+
+		withoutModel := mustResolve(ctx, t, s.Sources(), user.ID, sourceInfo("Ancienne montre", ""), store.SourceWatch, sourcesTime)
+		require.Equal(t, target.ID, withoutModel.ID)
+		require.Len(t, mustListSources(ctx, t, s.Sources(), user.ID), 2, "a record without model creates no source")
+	})
+
+	// Given the only source of a name, with a model, merged into a target, when a record of that name
+	// without model is resolved during the merge, then it lands in the target, and keeps landing
+	// there once the merge is finished, after a record of another model of that name created a
+	// source: the alias without model that the record left moves to the target with the merge.
+	t.Run("ResolveWithoutModelDuringAMergeKeepsTheTargetOnceItIsFinished", func(t *testing.T) {
+		t.Parallel()
+
+		s := newStore(t, clock.NewFake(sourcesTime))
+		ctx := t.Context()
+		user := mustCreateUser(ctx, t, s.Users(), newUser("camille", "camille@example.com"))
+		target := mustResolve(ctx, t, s.Sources(), user.ID, watchInfo, store.SourceWatch, sourcesTime)
+		old := mustResolve(ctx, t, s.Sources(), user.ID, sourceInfo("Ancienne montre", "Watch"), store.SourceWatch, sourcesTime)
+
+		require.NoError(t, s.Sources().StartMerge(ctx, user.ID, target.ID, []int64{old.ID}))
+
+		during := mustResolve(ctx, t, s.Sources(), user.ID, sourceInfo("Ancienne montre", ""), store.SourceWatch, sourcesTime)
+		require.Equal(t, target.ID, during.ID)
+
+		require.NoError(t, s.Sources().FinishMerge(ctx, user.ID, old.ID))
+
+		other := mustResolve(ctx, t, s.Sources(), user.ID, sourceInfo("Ancienne montre", "iPhone"), store.SourcePhone, sourcesTime)
+		require.NotEqual(t, target.ID, other.ID)
+
+		after := mustResolve(ctx, t, s.Sources(), user.ID, sourceInfo("Ancienne montre", ""), store.SourceWatch, sourcesTime)
+		require.Equal(t, target.ID, after.ID)
+		require.Len(t, mustListSources(ctx, t, s.Sources(), user.ID), 2, "a record without model creates no source")
+	})
+
 	// Given a source that is not merged, a source that does not exist or of another user, or a merged
 	// source that still has samples, then FinishMerge refuses it and changes nothing.
 	t.Run("FinishMergeRefusesASourceNotMergedOrWithData", func(t *testing.T) {
@@ -585,7 +638,9 @@ func runSourcesAliases(t *testing.T, newStore NewStoreFunc) {
 	})
 
 	// Given an alias with a model, when a record of its name without model is resolved, then it
-	// returns the source of the alias, the only identity of that name.
+	// returns the source of the alias, the only identity of that name, and keeps it: a record of
+	// another model then creates a source, and a record without model still lands in the source of
+	// the alias.
 	t.Run("ResolveWithoutModelMatchesTheOnlyAliasOfItsName", func(t *testing.T) {
 		t.Parallel()
 
@@ -598,6 +653,13 @@ func runSourcesAliases(t *testing.T, newStore NewStoreFunc) {
 
 		got := mustResolve(ctx, t, s.Sources(), user.ID, sourceInfo("Ancienne montre", ""), store.SourceWatch, sourcesTime)
 		require.Equal(t, target, got)
+
+		other := mustResolve(ctx, t, s.Sources(), user.ID, sourceInfo("Ancienne montre", "iPhone"), store.SourcePhone, sourcesTime)
+		require.NotEqual(t, target.ID, other.ID)
+
+		withoutModel := mustResolve(ctx, t, s.Sources(), user.ID, sourceInfo("Ancienne montre", ""), store.SourceWatch, sourcesTime)
+		require.Equal(t, target.ID, withoutModel.ID)
+		require.Len(t, mustListSources(ctx, t, s.Sources(), user.ID), 2, "a record without model creates no source")
 	})
 
 	// Given an identity that a source or an alias already has, an empty name, or a source that the
@@ -728,7 +790,8 @@ func runSourcesIdentity(t *testing.T, newStore NewStoreFunc) {
 
 	// Given records with and without device model resolved in order, then each lands in the source
 	// numbered by want, sources being numbered in the order of their creation, and the sources end
-	// with the identities of identities.
+	// with the identities of identities. When the same records are resolved again, as importing the
+	// same export again does, then each lands in the same source, and no source is created.
 	cases := []struct {
 		name       string
 		records    []store.SourceInfo
@@ -784,6 +847,16 @@ func runSourcesIdentity(t *testing.T, newStore NewStoreFunc) {
 			identities: []store.SourceIdentity{sourceIdentity("Camille", "Watch")},
 		},
 		{
+			// So that a record keeps its source whatever the order of the records of an import.
+			name: "RecordWithoutModelKeepsTheOnlySourceOfItsNameOnceAnotherModelComes",
+			records: []store.SourceInfo{
+				sourceInfo("Camille", "Watch"), sourceInfo("Camille", ""), sourceInfo("Camille", "iPhone"),
+				sourceInfo("Camille", ""),
+			},
+			want:       []int{0, 0, 1, 0},
+			identities: []store.SourceIdentity{sourceIdentity("Camille", "Watch"), sourceIdentity("Camille", "iPhone")},
+		},
+		{
 			name: "RecordWithoutModelAmongSourcesWithModelsCreatesASourceWithoutModel",
 			records: []store.SourceInfo{
 				sourceInfo("Camille", "Watch"), sourceInfo("Camille", "iPhone"), sourceInfo("Camille", ""),
@@ -811,27 +884,42 @@ func runSourcesIdentity(t *testing.T, newStore NewStoreFunc) {
 			ctx := t.Context()
 			user := mustCreateUser(ctx, t, s.Users(), newUser("camille", "camille@example.com"))
 
-			numbers := make(map[int64]int)
-			got := make([]int, 0, len(tc.records))
-
-			for _, record := range tc.records {
-				source := mustResolve(ctx, t, s.Sources(), user.ID, record, store.SourceUnknown, sourcesTime)
-
-				if _, ok := numbers[source.ID]; !ok {
-					numbers[source.ID] = len(numbers)
+			resolveAll := func() []int64 {
+				ids := make([]int64, 0, len(tc.records))
+				for _, record := range tc.records {
+					ids = append(ids, mustResolve(ctx, t, s.Sources(), user.ID, record, store.SourceUnknown, sourcesTime).ID)
 				}
 
-				got = append(got, numbers[source.ID])
+				return ids
+			}
+
+			ids := resolveAll()
+			numbers := make(map[int64]int)
+			got := make([]int, 0, len(ids))
+
+			for _, id := range ids {
+				if _, ok := numbers[id]; !ok {
+					numbers[id] = len(numbers)
+				}
+
+				got = append(got, numbers[id])
 			}
 
 			require.Equal(t, tc.want, got)
 
-			identities := make([]store.SourceIdentity, 0, len(tc.identities))
-			for _, source := range mustListSources(ctx, t, s.Sources(), user.ID) {
-				identities = append(identities, sourceIdentity(source.Name, source.DeviceModel))
+			identities := func() []store.SourceIdentity {
+				list := make([]store.SourceIdentity, 0, len(tc.identities))
+				for _, source := range mustListSources(ctx, t, s.Sources(), user.ID) {
+					list = append(list, sourceIdentity(source.Name, source.DeviceModel))
+				}
+
+				return list
 			}
 
-			require.Equal(t, tc.identities, identities)
+			require.Equal(t, tc.identities, identities())
+
+			require.Equal(t, ids, resolveAll(), "the records resolved again land in the same sources")
+			require.Equal(t, tc.identities, identities(), "the records resolved again create no source")
 		})
 	}
 }

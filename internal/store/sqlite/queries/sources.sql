@@ -54,8 +54,9 @@ SET device_model = sqlc.arg(device_model)
 WHERE user_id = sqlc.arg(user_id) AND name = sqlc.arg(name) AND device_model = '';
 
 -- name: CreateSourceAliasWithoutModel :exec
--- The alias that an identity without model leaves behind once it takes a model: it matches the
--- records of its name without model, and takes no model.
+-- The alias that an identity without model leaves behind once it takes a model, or that a record
+-- without model leaves on the only source of its name: it matches the records of its name without
+-- model, and takes no model.
 INSERT INTO source_aliases (user_id, name, device_model, source_id, takes_model)
 VALUES (sqlc.arg(user_id), sqlc.arg(name), '', sqlc.arg(source_id), 0);
 

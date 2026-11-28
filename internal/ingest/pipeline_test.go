@@ -118,8 +118,16 @@ func (e *pipelineEnv) running(t *testing.T, origin store.Origin) store.Import {
 func (e *pipelineEnv) run(t *testing.T, origin store.Origin, records ...ingest.Record) store.Import {
 	t.Helper()
 
+	return e.runOn(t, e.pipeline(), origin, records...)
+}
+
+// runOn runs records through pipeline, in a new running import of origin, and returns the import
+// once the run is over.
+func (e *pipelineEnv) runOn(t *testing.T, pipeline *ingest.Pipeline, origin store.Origin, records ...ingest.Record) store.Import {
+	t.Helper()
+
 	imp := e.running(t, origin)
-	require.NoError(t, e.pipeline().Run(t.Context(), e.user.ID, imp.ID, recordsOf(records...)))
+	require.NoError(t, pipeline.Run(t.Context(), e.user.ID, imp.ID, recordsOf(records...)))
 
 	return e.importOf(t, imp.ID)
 }
@@ -480,6 +488,34 @@ func TestRun_SameRecordsTwiceCountZeroInserts(t *testing.T) {
 	second := env.run(t, store.OriginNative, records...)
 	require.Equal(t, store.ImportCounters{Received: 4, Duplicates: 4}, second.Report.Total)
 	require.Equal(t, store.ImportCounters{Received: 1, Duplicates: 1}, second.Report.Workouts)
+}
+
+// Given records of a name without device model, one after a record of a model of that name and one
+// after a record of another model, each in its own batch, when the same records run again, then the
+// second run inserts nothing (dedup FR-2).
+func TestRun_SameRecordsWithoutModelAroundTwoModelsTwiceCountZeroInserts(t *testing.T) {
+	t.Parallel()
+
+	env := newPipelineEnv(t)
+
+	record := func(model string, minute int) ingest.Record {
+		s := quantitySample()
+		s.UUID = ""
+		s.Source = store.SourceInfo{Name: "Bluetooth Device", DeviceModel: model}
+		s.Start = time.Date(2026, 11, 10, 7, minute, 0, 0, time.UTC).Format(time.RFC3339)
+		s.End = s.Start
+
+		return quantity(s)
+	}
+
+	records := []ingest.Record{record("AirPods Pro", 0), record("", 1), record("0x7777", 2), record("", 3)}
+	batches := env.pipeline(func(cfg *ingest.Config) { cfg.BatchSize = 1 })
+
+	first := env.runOn(t, batches, store.OriginXML, records...)
+	require.Equal(t, store.ImportCounters{Received: 4, Inserted: 4}, first.Report.Total)
+
+	second := env.runOn(t, batches, store.OriginXML, records...)
+	require.Equal(t, store.ImportCounters{Received: 4, Duplicates: 4}, second.Report.Total)
 }
 
 // Given workouts, then their natural key and rule follow dedup FR-1: (origin, external id) with
